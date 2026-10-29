@@ -1,25 +1,38 @@
-# Workspace Setup and Owner Access: Decision Record
+# Your Space Architecture and Product Decisions
 
 **Status**: Accepted direction with implementation choices explicitly left open
 
 **Recorded**: 2026-10-28
 
-**Feature**: [Workspace Setup and Owner Access](spec.md)
+**Scope**: Project-wide direction, independent of any feature specification
+
+**Related feature**: [Workspace Setup and Owner Access](../../specs/001-workspace-owner-access/spec.md)
 
 **Governing document**: [Your Space Constitution](../../.specify/memory/constitution.md)
 
 ## Purpose and Scope
 
-This record preserves decisions made while defining the first feature and discussing later app integration.
-The feature specification defines the acceptance criteria for the current implementation.
-Recording a future direction here does not add that functionality to the first feature.
+This is the canonical project-wide record of accepted architecture and product direction, including decisions for future work.
+It remains relevant across feature specifications and must not be archived or replaced when an individual feature is completed.
+The constitution establishes governing principles; this record captures shared decisions and open choices; individual specifications define delivery scope and acceptance criteria.
 Open proposals remain candidates, even when they have been discussed in detail.
 
 The first feature establishes installation, owner setup, authentication, an empty workspace, persistence, and recovery.
 It does not install independent apps or implement app roles, agents, a marketplace, or an agent execution runtime.
 Later specifications must turn those directions into concrete contracts and acceptance criteria.
+Recording an accepted future direction here does not add it to the first feature or claim that it has been implemented.
 
-## Accepted Decisions for the First Feature
+## How to Use and Maintain This Record
+
+- Consult this record and the constitution before creating or changing specifications, technical plans, or public integration contracts.
+- Keep cross-feature decisions here and link to them from feature documents rather than creating competing copies of project direction.
+- Update this record in the relevant pull request when a shared decision is agreed or changed. Keep accepted decisions, open proposals, and superseded decisions distinguishable.
+- When replacing an accepted decision, record the date, rationale, and what it supersedes; retain its rationale or link to the change that preserves that history.
+- Resolve conflicts with the constitution explicitly through its governance process. A feature plan must not silently override shared decisions.
+
+The repository README and agent guidance link here so future planning can find this record without knowing which feature originally prompted a decision.
+
+## Accepted Foundation Decisions
 
 ### Installation and Hosting
 

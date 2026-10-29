@@ -4,7 +4,9 @@
 
 **Created**: 2026-10-28
 
-**Feature**: [Specification](../spec.md) and [decision record](../decisions.md)
+**Feature**: [Specification](../spec.md)
+
+**Shared direction**: [Project decision record](../../../docs/architecture/decisions.md)
 
 **Marker semantics**: Checked items indicate reviewed document quality, not implemented or tested
 product behavior. This checklist is maintained by the Spec Kit specification workflow.
@@ -12,7 +14,7 @@ product behavior. This checklist is maintained by the Spec Kit specification wor
 ## Content Quality
 
 - [x] The behavioral specification focuses on user outcomes rather than a prescribed implementation.
-- [x] Selected technologies and future architecture are preserved in the companion decision record.
+- [x] Selected technologies and future architecture are preserved in the project-wide decision record.
 - [x] The specification is readable without knowledge of internal frameworks or schemas.
 - [x] All required Spec Kit sections are complete and template placeholders are removed.
 

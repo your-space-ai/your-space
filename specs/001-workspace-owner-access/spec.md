@@ -20,9 +20,9 @@ This feature supports exactly one human owner and one workspace. Account identit
 membership, and ownership remain distinct so later membership can be added without replacing
 existing identities or reassigning their data.
 
-[Decisions and follow-up architecture](decisions.md) records selected technologies, accepted
-future app and agent design, and choices still open. It is part of this specification package,
-but its explicitly future work is not required to complete this feature. The
+The [project-wide decision record](../../docs/architecture/decisions.md) preserves
+selected technologies, accepted future app and agent design, and choices still open. That shared
+record applies across specifications; its future work is not required to complete this feature. The
 [constitution](../../.specify/memory/constitution.md) remains the governing document.
 
 ## User Scenarios & Testing
@@ -279,7 +279,8 @@ These are domain concepts, not prescribed database tables or framework types.
 - Browser sessions may require fresh sign-in after a restart; durable account and ownership
   records must not require recreation.
 - Product behavior is specified here. Selected technologies and unresolved implementation
-  choices are preserved in [decisions.md](decisions.md), rather than silently selected by this PR.
+  choices are preserved in the [project decision record](../../docs/architecture/decisions.md),
+  rather than silently selected by this PR.
 - Planning must settle the initial host/version support matrix, account validation rules, expiry
   and attempt limits, and encrypted remote-connection instructions before claiming those paths work.
 
@@ -293,5 +294,5 @@ These are domain concepts, not prescribed database tables or framework types.
 - Managed-service provisioning, billing, email delivery, and provider-specific cloud installers.
 - A universal app gateway, embedding mechanism, container orchestration system, or app storage scheme.
 
-The accepted direction for these later features is retained in the companion decision record.
+The accepted direction for these later features is retained in the project-wide decision record.
 Their presence there must not be treated as authorization to implement them in this first slice.
