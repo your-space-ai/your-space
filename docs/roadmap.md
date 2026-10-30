@@ -9,53 +9,33 @@ It is derived from the [architecture and product decisions](architecture/decisio
 That record preserves decisions and rationale; the [constitution](../.specify/memory/constitution.md)
 sets governing principles; feature specifications define scope and acceptance.
 
+The pre-public checklist describes the intended core experience and work needed before publishing
+the repository. The post-public checklist captures later direction and possible enhancements.
+Release scope and details may evolve as the remaining questions are resolved. See the
+[public release readiness checklist](public-release-readiness.md) for the publication review.
+
+**Next session:** Agree what the app deployment file contains and defines. Its format and image
+pull-versus-build behavior have not been selected.
+
 Each parent checkbox represents a capability; its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
 place with their completion date and implementation PR or release link so this remains a record.
 All functionality below is currently unchecked because application implementation has not started.
 
-## Public Open-Source Readiness
+## Pre-public: Core Experience and First Working Version
 
-**Status:** The proposed product scope includes owner and member accounts, the CLI, web/desktop/PWA
-clients, independent apps and developer integration, and external agents. Whether to publish source
-before those features are ready remains open. See [public launch scope](architecture/decisions.md#public-launch-scope-under-discussion).
+The first release targets people comfortable installing Docker and following a guided CLI. The
+[owner-access feature (PR #3)](https://github.com/your-space-ai/your-space/pull/3) is first; the
+CLI follows in a separate specification and implementation PR. The remaining items need their
+own specifications; their order here is not a delivery sequence.
 
-- [ ] **Prepare for public source development — timing under discussion**
+- [ ] **Workspace setup and owner access**
 
-  **Details:** [Public open-source readiness checklist](public-release-readiness.md).
-
-  - [ ] Audit repository history, GitHub content, and release artifacts for private data and secrets.
-  - [ ] Review publication rights, project and dependency licensing, and required notices.
-  - [ ] Describe project status and participation expectations honestly.
-  - [ ] Review repository settings, the implications of public access, and authorize publication.
-
-- [ ] **Deliver a usable public product — scope under discussion**
-
-  **Details:** [Public open-source readiness checklist](public-release-readiness.md).
-
-  - [ ] Agree the intended launch audience, maturity, required functionality, and support claims.
-  - [ ] Implement and verify the selected product experience on supported environments.
-  - [ ] Review security, provide safe defaults, and establish a private vulnerability-reporting process.
-  - [ ] Provide accurate installation, operation, recovery, contributor, and project-status documentation.
-  - [ ] Verify automated checks, release artifacts, and the documented recovery and maintenance paths.
-  - [ ] Review the evidence and unresolved issues, and approve the product release.
-
-  The detailed checklist contains the proposed checks and evidence. Selecting launch scope does
-  not change the agreed owner-access specification or imply that later features are implemented.
-
-## Agreed Delivery Order
-
-These are the first two deliveries, in order.
-
-- [ ] **1. Workspace setup and owner access**
-
-  **Status:** Specification in review; implementation not started.
-  **Specification:** [Workspace Setup and Owner Access (PR #3)](https://github.com/your-space-ai/your-space/pull/3).
   **Source:** [Accepted foundation decisions](architecture/decisions.md#accepted-foundation-decisions).
 
-  - [ ] Install manually with documented Docker Compose procedures on supported macOS and Linux hosts.
+  - [ ] Install manually with documented Docker Compose procedures on supported macOS and Linux server hosts.
   - [ ] Reach browser-guided setup and prove operator authority with a temporary, single-use setup code.
-  - [ ] Create one owner account and workspace, with distinct account, workspace, membership, and ownership concepts and relationships.
+  - [ ] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct.
   - [ ] Prevent duplicate claims and close initial registration after setup.
   - [ ] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation.
   - [ ] Reach an accurate empty workspace and distinguish unavailable services from empty or unclaimed state.
@@ -64,61 +44,80 @@ These are the first two deliveries, in order.
   - [ ] Recover the existing owner account through an operator command without requiring email delivery or a standalone CLI.
   - [ ] Preserve identity and revoke existing sessions after successful password recovery.
 
-  This establishes the Compose deployment that later tooling will manage. Independent apps,
-  agents, additional members, and the standalone CLI remain outside this delivery.
-  Remaining planning decisions include the support matrix, encrypted remote-access pathway,
-  account/password rules, session and credential lifetimes, and failed-attempt behavior.
+  This first feature is owner-only and web-only. Exact host support, remote access, password rules,
+  session and credential lifetimes, and failed-attempt behavior still need planning.
 
-- [ ] **2. CLI installation and management**
+- [ ] **CLI installation and management**
 
-  **Status:** Agreed follow-up; separate specification not yet written.
-  **Dependency:** The working, verified manual Compose deployment and owner-access implementation.
   **Source:** [CLI delivery sequence](architecture/decisions.md#cli-delivery-sequence).
 
-  - [ ] Guide installation of the established Compose deployment through the Your Space CLI.
-  - [ ] Support CLI installation for local and production self-hosted deployments.
-  - [ ] Manage the existing deployment through the operations defined in the CLI specification.
+  - [ ] Guide local and production self-hosted installation of the established Compose deployment through the Your Space CLI.
+  - [ ] Manage the deployment through operations defined in the CLI specification.
 
-  Its implementation PR follows owner access. The command set, distribution format, prerequisite
-  handling, configuration, and management operations remain to be specified; no particular
-  management command is committed by this checklist.
+  The CLI follows the working, verified manual Compose deployment and owner-access implementation.
+  Commands, packaging, prerequisites, and management scope remain to be specified.
 
-## App and Agent Foundations
+- [ ] **Additional workspace members**
 
-These capabilities need their own specifications after the initial platform and CLI work.
-Their order here is not a release sequence. The app contract must be agreed before implementing
-independent app installation and SDK integration.
+  **Source:** [Owner and workspace model](architecture/decisions.md#owner-and-workspace-model).
 
-- [ ] **Independent apps and SDK**
+  - [ ] Let the owner create an invitation link and share it directly with a prospective member.
+  - [ ] Let the recipient sign up and join the workspace through the invitation.
+  - [ ] Let workspace administrators assign app roles to human members.
+  - [ ] Retain existing account, workspace, membership, and ownership identities when adding members.
 
-  **Source:** [Platform and independent apps](architecture/decisions.md#platform-and-independent-apps).
+  Invitation and membership details require their own specification.
 
-  - [ ] Integrate independently built and running apps through documented, versioned public contracts.
-  - [ ] Publish an SDK from this repository for use by apps in their own repositories, including first-party apps.
-  - [ ] Enable developers to create or adapt additional apps and install them using the public integration contracts.
-  - [ ] Install compatible apps without rebuilding Your Space or including their source in the platform build.
-  - [ ] Protect platform services and other apps through the app runtime isolation boundary.
-
-  Packaging, execution, isolation, storage, compatibility, SDK languages, and lifecycle contracts
-  remain open.
-
-- [ ] **Installed apps within the web client**
+- [ ] **Workspace clients**
 
   **Source:** [UI integration](architecture/decisions.md#ui-integration).
 
-  - [ ] Open installed apps while Your Space navigation remains available.
-  - [ ] Preserve existing app frontend requests to the app's backend without requiring every request to be rewritten.
+  - [ ] Provide web, desktop, and installable PWA clients with the same core workspace and installed-app experience when connected to the server.
+  - [ ] Support and test the desktop client on macOS, Windows, and Linux.
+  - [ ] Open installed apps within the Your Space interface while platform navigation remains available.
+  - [ ] Preserve normal frontend requests to the app backend without requiring each request to be rewritten for Your Space.
   - [ ] Apply equivalent backend authorization checks to human UI and programmatic access.
 
-  Embedding, origins, routing, isolation, and session bridging remain open. No iframe or alternative
-  mechanism is selected yet.
+  The first owner feature uses the web client. Desktop technology, PWA offline behavior, embedding,
+  origins, routing, isolation, and session bridging remain open.
 
-- [ ] **Platform identity and app-owned authorization**
+- [ ] **Independent app deployment and lifecycle**
+
+  **Source:** [Platform and independent apps](architecture/decisions.md#platform-and-independent-apps) and [app distribution](architecture/decisions.md#accepted-future-app-distribution-direction).
+
+  - [ ] Let the owner install a compatible public GitHub repository by pasting its URL into the UI.
+  - [ ] Read the app's separate deployment file from the repository's default branch and record the exact revision used for installation.
+  - [ ] Start and manage each app's independent container or containers using Docker on the same server as Your Space.
+  - [ ] Run an app-declared database service alongside the app when needed.
+  - [ ] Provide app-specific durable storage that survives restarts and remains after uninstall.
+  - [ ] Let the owner explicitly delete retained app data from the administration UI.
+  - [ ] Restrict app installation and removal to the owner for the first public release.
+  - [ ] Isolate apps from host filesystem access, devices, and Docker controls, and protect platform services and other apps.
+  - [ ] Preserve app identity, exact source version, provenance, and approved update source or policy; do not silently expand granted access on update.
+
+  **Next design discussion:** define what the deployment file contains and how it works. Its format,
+  discovery details, image pulling versus local builds, resource and isolation enforcement, lifecycle,
+  update mechanics, and rollback are not yet selected. A deployment file does not itself guarantee
+  isolation; that boundary needs a design and verification.
+
+- [ ] **App integration and developer experience**
+
+  **Source:** [Platform and independent apps](architecture/decisions.md#platform-and-independent-apps).
+
+  - [ ] Document versioned public integration contracts for independently built and running apps.
+  - [ ] Publish an SDK from this repository for apps in their own repositories, including first-party apps.
+  - [ ] Enable developers to create or adapt apps and install them without rebuilding Your Space or including app source in the platform build.
+  - [ ] Provide at least one independently maintained, installable app and verify the complete installation and usage journey.
+
+  The app contract, SDK language and coverage, and first app choice remain open. A small Tasks app
+  is a candidate, not a committed choice.
+
+- [ ] **Platform identity and app-owned roles**
 
   **Source:** [Identity and app-owned roles](architecture/decisions.md#identity-and-app-owned-roles).
 
   - [ ] Supply verified human or agent identity to installed apps.
-  - [ ] Let apps publish stable role identifiers while retaining their native role and resource rules.
+  - [ ] Let apps publish stable role identifiers while retaining their own role semantics and resource rules.
   - [ ] Assign multiple app roles to humans and agents within an app installation and workspace.
   - [ ] Integrate identity and role assignments at the app's authentication and authorization boundary, reusing existing boundaries where suitable.
 
@@ -129,43 +128,36 @@ independent app installation and SDK integration.
 
   **Source:** [Delegation by exact role subsets](architecture/decisions.md#delegation-by-exact-role-subsets).
 
-  - [ ] Give agents distinct identities and non-interactive credentials, linked to their delegating human.
+  - [ ] Give external agents distinct identities and non-interactive credentials linked to their delegating human.
   - [ ] Let a user delegate any exact subset of their assigned role IDs for the same app installation and workspace.
   - [ ] Remove the corresponding delegated role from affected agents when the human loses that role.
   - [ ] Apply access removal to existing app sessions and credentials.
   - [ ] Attribute app actions to the actual actor and retain the delegating-user relationship.
+  - [ ] Verify permitted operations, denied actions, attribution, and revocation against an installed app.
 
   Credential issuance, revocation guarantees, refresh behavior, and compatibility with app role
   semantics remain open. External agents precede platform-hosted agent execution.
 
-- [ ] **Tasks integration journey — candidate**
+- [ ] **Public release readiness**
 
-  **Status:** Candidate app, not a committed next release.
-  **Dependency:** The platform foundation and an agreed app contract.
-  **Source:** [Later candidate journeys](architecture/decisions.md#later-candidate-journeys).
+  **Details:** [Public release readiness checklist](public-release-readiness.md).
 
-  - [ ] Install a small Tasks app maintained in its own repository through the public app contract.
-  - [ ] Create and view a task inside the Your Space interface.
-  - [ ] Recover that task after restarting the deployment.
-  - [ ] Allow limited external-agent access to the same app operations.
-  - [ ] Verify attribution, denied actions, and revocation through UI and programmatic access.
+  - [ ] Review repository history, GitHub content, and release artifacts for private data and secrets.
+  - [ ] Review publication rights, project and dependency licensing, and required notices.
+  - [ ] Review security and isolation, provide safe defaults, and establish private vulnerability reporting.
+  - [ ] Document installation, operation, recovery, developer integration, contribution, and project status.
+  - [ ] Verify the core journeys, supported environments, release artifacts, recovery, and maintenance paths.
+  - [ ] Review release evidence, unresolved issues, and GitHub settings before authorizing publication.
 
-  This could validate the SDK, app integration, and external-agent access together.
+## Post-public: Later Direction and Enhancements
 
-## Broader Product Direction
+These capabilities are not required for the first public release. Their order and timing remain open.
 
-These areas are unscheduled. No order or release dates are committed; candidate items are labeled.
-
-- [ ] **GitHub app installation and updates**
+- [ ] **Private GitHub app installation**
 
   **Source:** [App distribution](architecture/decisions.md#accepted-future-app-distribution-direction).
 
-  - [ ] Install compatible apps directly from public GitHub repositories.
-  - [ ] Connect GitHub access to install private repositories the user is authorized to access.
-  - [ ] Preserve app identity, exact version, provenance, and approved update source or policy.
-  - [ ] Update apps without silently expanding granted access.
-
-  This depends on the app contract. Artifact trust, installation, updates, and rollback need specification.
+  - [ ] Connect a GitHub account to install private repositories the user is authorized to access.
 
 - [ ] **Optional app discovery**
 
@@ -178,19 +170,8 @@ These areas are unscheduled. No order or release dates are committed; candidate 
 
   Catalog implementation remains open.
 
-- [ ] **Shared workspaces**
-
-  **Source:** [Owner and workspace model](architecture/decisions.md#owner-and-workspace-model).
-
-  - [ ] Add human members without replacing existing account, workspace, membership, or ownership identities.
-  - [ ] Support signup for additional human workspace members.
-  - [ ] Let workspace administrators assign app roles to human members.
-
-  Membership and collaboration need their own scope and access rules.
-
 - [ ] **Platform-hosted agents and workflows**
 
-  **Dependency:** External-agent access.
   **Source:** [Later candidate journeys](architecture/decisions.md#later-candidate-journeys).
 
   - [ ] Run hosted agents through the same identity and authorization contracts as external agents.
@@ -203,6 +184,8 @@ These areas are unscheduled. No order or release dates are committed; candidate 
 
   **Source:** [Deployment boundaries](architecture/decisions.md#deployment-boundaries-and-licensing).
 
+  - [ ] Support running app containers on hosts other than the Your Space server.
+  - [ ] Add app deployment backends beyond Docker as they are specified and supported.
   - [ ] Provide platform-specific installation guides and deployment adapters for additional supported environments.
   - [ ] Keep provider-specific provisioning, networking, and storage outside the core platform.
   - [ ] Verify persistence and lifecycle behavior for each newly supported environment.
@@ -218,16 +201,6 @@ These areas are unscheduled. No order or release dates are committed; candidate 
   - [ ] Use the same server-managed authentication model across deployment modes.
 
   Provisioning, operations, billing, and email delivery require future planning.
-
-- [ ] **Desktop and PWA clients — proposed launch scope**
-
-  **Source:** [Public launch scope under discussion](architecture/decisions.md#public-launch-scope-under-discussion).
-
-  - [ ] Provide a desktop client alongside the web client.
-  - [ ] Provide a workspace client as an installable PWA.
-
-  Electron is a candidate; desktop implementation, PWA behavior, and timing remain open.
-  The initial owner-access feature remains web-only.
 
 ## Maintaining the Checklist
 
