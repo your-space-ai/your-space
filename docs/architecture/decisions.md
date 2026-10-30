@@ -43,7 +43,7 @@ The repository README and agent guidance link here so future planning can find t
 
 - Begin with a documented, manual Docker Compose installation and browser-guided owner setup.
 - Initially support macOS and Linux server hosts. Users on other operating systems can access a supported server through the web client.
-- Begin with a web client. An Electron client may be considered later.
+- Begin with a web client in the owner-access feature. Web, desktop, and PWA clients are part of the first public-release target; desktop technology remains open.
 - Keep client and server as independent components that can run on the same machine or different machines.
 - Store authoritative account and workspace state on the server, rather than relying on a particular browser.
 - Use persistent storage so supported restarts retain identity, ownership, and workspace state.
@@ -143,6 +143,13 @@ The intended developer experience is to adapt an existing app for installation a
 An app should remain independently runnable rather than requiring a replacement frontend networking layer.
 Existing app authorization should be reusable where it has a suitable integration boundary.
 
+### First Public-Release Audience and Clients
+
+- The first public release targets people who can install Docker and follow a guided CLI without one-on-one assistance.
+- The web, desktop, and PWA clients provide the same core workspace and installed-app experience while connected to the user's server; a local network connection is sufficient.
+- Support and test the desktop client on macOS, Windows, and Linux. This does not expand the initial macOS and Linux server-host commitment.
+- Desktop technology and offline support remain open. The first owner-access feature remains web-only.
+
 ### Deployment Boundaries and Licensing
 
 - Keep core behavior independent of a particular cloud provider.
@@ -157,8 +164,8 @@ Dependency selection must consider actual licenses, including bundled components
 
 ## Accepted Future App Distribution Direction
 
-- Users can install compatible apps directly from public GitHub repositories.
-- Connected GitHub account access can enable installation from private repositories the user is authorized to access.
+- For the first public release, an owner can paste a public GitHub repository URL into Your Space to install a compatible app.
+- Connected GitHub account access for installing authorized private repositories is future work after the first public release.
 - Curated app listings provide discovery and use the same installation contract as direct repository installation.
 - The official curated listing is optional, rather than a prerequisite for installing compatible apps.
 - Preserve each installation's app identity, exact source version, provenance, and approved update policy or source.
@@ -168,7 +175,20 @@ Dependency selection must consider actual licenses, including bundled components
 Public, community, and private discovery experiences can coexist without redefining installed app ownership or update routing.
 No catalog federation protocol or marketplace implementation is selected here.
 Repository access authorizes retrieval of code; it does not grant that code access to workspace resources.
-Packaging, release verification, installation execution, runtime isolation, storage, upgrades, and rollback need a separate app contract.
+Deployment-file contents, packaging, release verification, installation execution, storage, upgrades, and rollback need a separate app contract.
+
+## Accepted Future App Deployment Direction
+
+- Independent apps run in their own container or containers and integrate with Your Space through APIs. They do not run inside a Your Space-specific application environment.
+- Your Space starts and manages installed app containers. For the first public release, it supports Docker on the same machine as the Your Space server. Other machines and deployment backends are future work.
+- An app can declare and use its own database service, which Your Space runs alongside it; apps are not required to use the platform's database.
+- Apps have isolated environments and app-specific durable storage. They do not receive direct access to host folders, devices, or Docker controls. The enforcement mechanism and precise isolation guarantees require design and verification.
+- Uninstalling an app retains its data by default. The owner can explicitly delete retained app data from an administration UI.
+- The app developer supplies a separate deployment file in the app's existing repository. On installation, Your Space reads it from the repository's default branch and records the exact commit used.
+
+The deployment file is intended to describe how Your Space launches the app without coupling deployment configuration to application code. Its definition is the next discussion: format, contents, location and discovery convention, supported operations, and how deployment backends interpret it remain open. A restricted subset of Docker Compose was discussed but not selected. Docker is the first supported backend, not a commitment to any specific deployment-file format. Whether the first release supports published images, local builds, or both remains open; image references, version pinning, trust, and update behavior also need decisions.
+
+App role authorization controls what users and agents may do within an app. Host isolation is a separate boundary and must not rely on those roles or the SDK alone. The runtime manager's privileges and deployment-file processing must be designed so app-provided configuration cannot bypass the agreed host-access boundary.
 
 ## Accepted Future App UI and Authorization Direction
 
@@ -187,7 +207,7 @@ Frontend controls may reflect granted access, but hiding a control is not author
 
 - Your Space manages identities and app role assignments.
 - Apps expose a supported role catalog with stable role identifiers and retain their existing role semantics and domain-specific authorization rules.
-- Workspace administrators assign app roles to human users.
+- Workspace administrators assign app roles to human users; the first public-release administration model remains to be specified.
 - Both humans and agents can hold multiple roles for an app installation.
 - Role assignments are scoped to the specific app installation and workspace.
 - Apps receive verified identity and role information through an integration with their authentication and authorization boundary.
@@ -242,17 +262,13 @@ Later hosted agents could run workflows such as daily triage through the same id
 Identity and permissions remain independent of any model provider or execution runtime.
 No hosted workflow engine or model-provider integration is selected here.
 
-## Public Launch Scope Under Discussion
+## First Public-Release Direction
 
-**Recorded 2026-10-29; proposed scope, timing open.** The owner described a potential bar before
-making Your Space public: owner setup, additional member signup, the installation CLI, workspace UI
-on the web, desktop, and as a PWA, at least one installed independent app, the ability for developers
-to create and install more apps, and external-agent access. Additional requirements may emerge.
+**Decision update (2026-10-29)**: Plan the roadmap in pre-public and post-public sections. The pre-public section covers the core experience and a working first version; post-public covers capabilities that are not crucial to that release. The owner prefers an installable, usable product before making the repository public rather than publishing only plans.
 
-The owner is also considering publishing the source earlier and developing in public. Whether the
-proposed functionality must precede source publication or instead define a later usable product
-release remains open. Neither choice changes the owner-only first feature or selects desktop
-technology, PWA offline behavior, membership admission, or the app contract.
+The intended pre-public experience includes owner setup; additional members signing up through invitation links created and shared by the owner; the installation CLI; web, desktop, and PWA workspace clients; at least one installed independent app; a way for developers to create, integrate, and install more apps; and access for external agents. Only the owner installs or removes apps in the first public release. The first release targets users comfortable installing Docker and following a guided CLI.
+
+This is a developing release roadmap, not a complete acceptance specification or a claim of implementation. Additional requirements may emerge during the interview. These future capabilities do not expand the owner-only first feature. The agreed sequence remains manual Compose and owner access first, then a separate CLI specification and implementation; no further feature order is established.
 
 ## Choices Still Open
 
@@ -263,11 +279,13 @@ technology, PWA offline behavior, membership admission, or the app contract.
 | Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
 | Initial deployment details | macOS and Linux with manual Docker Compose are selected; exact OS/CPU support, versions, transport, networking, and configuration need planning. |
 | CLI delivery | A separate follow-up specification will define packaging, commands, prerequisite automation, and management behavior over the established Compose deployment. |
-| Public launch scope | The proposed product bar and the timing of early public source publication are under discussion; see [public release readiness](../public-release-readiness.md). |
+| Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |
-| App integration | Packaging, SDK language support, role registration, authorization compatibility, and revocation mechanics need a later specification. |
-| App distribution | GitHub access, artifact trust, catalog implementation, update mechanics, and rollback remain open. |
+| App integration | SDK language support, role registration, authorization compatibility, and revocation mechanics need a later specification. |
+| App deployment file | Define what it contains and means next session, including format, location, discovery, supported operations, backend interpretation, and image pull versus local build. |
+| App runtime and data | Design and verify isolation, lifecycle, networking, persistent storage, retained-data deletion, and runtime-manager privileges. |
+| App distribution | Default branch and exact commit recording are accepted for initial installation; artifact trust, image pinning, catalog implementation, update mechanics, and rollback remain open. |
 
 These open choices do not erase the accepted requirements above.
 Resolve implementation-critical choices in the relevant technical plan and future app-contract decisions in their own specifications.

@@ -1,10 +1,10 @@
 # Public Open-Source Release Readiness
 
-**Status:** Proposed checklist; launch scope and readiness bar are not yet approved.
+**Status:** Working checklist; the public-release interview and detailed readiness bar are in progress.
 
-This checklist separates early public source availability from a usable public product release.
-It describes proposed work to implement, prove, and polish; the full product checklist is not a
-list of legal prerequisites for making source visible. The timing and exact launch bar remain open.
+The current direction is to make the repository public with an installable first version that
+demonstrates the core experience. This checklist captures work to implement, prove, and polish
+before that release. More requirements and the exact launch bar remain under discussion.
 
 The [roadmap](roadmap.md) tracks product delivery, and the [architecture and product decisions](architecture/decisions.md)
 record agreed direction. The [owner access specification under review](https://github.com/your-space-ai/your-space/pull/3)
@@ -13,7 +13,7 @@ new capabilities need their own specifications and implementation work.
 
 ## How to Use This Checklist
 
-- Agree the release scope and intended audience before treating these proposed items as a gate.
+- Finalize the release scope before treating every item as an agreed gate.
 - Each parent represents a readiness area, and its children identify concrete work or evidence.
 - Check an item only when completed and verified. Add the date, tested commit or release version,
   and a link to the implementation, review, or test evidence; retain checked items as a record.
@@ -26,25 +26,24 @@ new capabilities need their own specifications and implementation work.
 
 ## Release Scope and Promise
 
-- [ ] **Agree what each public milestone means**
-  - [ ] Decide whether to publish source while development is underway or wait for the product scope
-    below; define the audience and timing of source publication and a usable product release.
+- [ ] **Define the public release promise**
+  - [ ] Target people comfortable installing Docker and following a guided CLI without one-on-one help.
   - [ ] Record the intended users, release maturity, supported behaviors, and what is explicitly
     deferred; update the roadmap and decisions if the agreed direction changes.
   - [ ] For milestones that claim supported environments, define supported operating system versions,
     CPU architectures, browsers, Docker/Compose versions, and local or remote deployment paths.
   - [ ] Define release blockers and who will accept remaining known limitations.
 
-**Product scope under discussion:** The owner described owner setup, additional member signup,
-the CLI, a workspace UI on web, desktop, and as a PWA, one independently installed app, developer
-ability to create and install additional apps, and external-agent access. More requirements may emerge.
-Whether all of this must precede public source availability remains open. Tasks remains a candidate
-app, not a required choice. This scope does not change the owner-only first specification.
+**First public version:** Owner setup, invited member signup, the CLI, web, desktop and PWA
+workspace clients, at least one independently installed app, developer ability to create and install
+additional apps, and external-agent access. The interview is ongoing, so additional requirements may
+emerge. Tasks remains a candidate app, not a required choice. This scope does not change the owner-only
+first specification.
 
 ## Early Source Publication: Building in Public
 
-If chosen, this milestone makes the work visible while the product is still being built. The following
-checks are a proposed minimum for responsibly opening the source, not a promise of a usable release.
+Early source publication remains an alternative if the owner later chooses it. It is not the current
+release plan. These checks are a proposed minimum for that alternative, not a promise of a usable release.
 
 - [ ] **Prepare the repository for public development**
   - [ ] Review repository history, branches, tags, commit identities, issues, PRs, logs, artifacts,
@@ -59,10 +58,10 @@ checks are a proposed minimum for responsibly opening the source, not a promise 
   - [ ] Review public repository settings and the effects of publication, then authorize the visibility
     change separately. Making source public does not imply a supported or production-ready product.
 
-## Common Readiness Work
+## Public Release Readiness Work
 
-The following is a proposed bar for a usable public product release. If an earlier source-only publication is
-chosen, explicitly decide which items apply and describe what is not ready to use.
+The following work supports the intended usable public release. If an earlier source-only publication
+is chosen instead, explicitly decide which items apply and describe what is not ready to use.
 
 - [ ] **Install and use the owner workspace**
   - [ ] Implement the owner-access specification and its manual Docker Compose pathway, including
@@ -148,25 +147,28 @@ chosen, explicitly decide which items apply and describe what is not ready to us
   - [ ] Record test evidence, outstanding issues, accepted limitations, and any unsupported paths for
     the exact release candidate.
 
-## Product Scope Under Discussion
+## First Public Product Scope
 
-These areas reflect the owner's proposed product scope. Apply them to the selected release milestone;
-their detailed requirements belong in their own specifications.
+These areas capture the scope agreed so far for the first public version. Their detailed requirements
+belong in their own specifications; the scope remains subject to the ongoing interview.
 
 - [ ] **CLI installation and management**
   - [ ] Specify and implement the supported commands and CLI distribution for the established
     Compose deployment, including installation, prerequisite handling, and management scope.
   - [ ] Test the CLI on each claimed host for initial setup, repeat invocation, failures, and
     preservation of existing configuration and data; document manual alternatives and limitations.
+  - [ ] Verify the guided installation is usable by someone comfortable installing Docker and following a CLI.
 
 - [ ] **Additional members and signup**
-  - [ ] Specify and implement signup and access for additional human workspace members.
+  - [ ] Let the owner create invitation links and share them directly so recipients can sign up and join.
   - [ ] Verify membership and access controls while preserving existing owner, account, and workspace identities.
-  - [ ] Document and test the chosen admission and recovery paths; invitation and signup rules remain open.
+  - [ ] Document and test invitation, signup, and recovery paths; detailed invitation and signup rules remain open.
 
 - [ ] **Workspace clients on web, desktop, and PWA**
-  - [ ] Provide a usable web workspace UI and desktop and installable PWA experiences.
-  - [ ] Verify supported clients can connect to the same workspace and handle authentication and failures.
+  - [ ] Provide the same core workspace and installed-app experience on web, desktop, and installable PWA clients.
+  - [ ] Support and test desktop clients on macOS, Windows, and Linux; initially support server hosts on macOS and Linux.
+  - [ ] Verify supported clients connect to the same workspace and handle authentication and failures;
+    a connection to the server is required.
   - [ ] Define and test supported devices, platforms, installation and accessibility expectations.
 
   Desktop technology, PWA offline behavior, and packaging remain open.
@@ -174,6 +176,16 @@ their detailed requirements belong in their own specifications.
 - [ ] **Independent apps and developer integration**
   - [ ] Specify and implement the versioned app integration and SDK contract needed by the journey;
     keep the app independently built, running, and maintained in its own repository.
+  - [ ] Let only the owner install and remove apps; support installing public GitHub repositories by
+    pasting their URL in the workspace UI. Private repository support is post-public.
+  - [ ] Read the app's separate deployment file from its repository's default branch and record the
+    exact repository revision used for installation.
+  - [ ] Have Your Space manage each app's Docker container or containers on the server host, including
+    an app-declared database service when needed. Apps integrate with Your Space through APIs.
+  - [ ] Isolate apps from host folders, devices, and Docker controls; verify the boundary for the
+    supported deployment path and do not assume containers alone make untrusted code safe.
+  - [ ] Provide persistent app-specific storage; keep data after uninstall and allow the owner to
+    explicitly delete retained data through an administration UI.
   - [ ] Install at least one independent app, exercise its core workflow inside the Your Space
     interface, and verify its data survives a supported restart.
   - [ ] Enable a developer to create or adapt and install an additional independent app using the
@@ -182,6 +194,10 @@ their detailed requirements belong in their own specifications.
     boundaries for the supported installation path.
   - [ ] Document app developer integration and the supported example, including compatibility,
     limitations, and any intentionally deferred distribution or update functionality.
+
+  Next session: agree what the deployment file contains and defines. Its format and discovery
+  conventions, image pull versus local build, build security, SDK language support, and update
+  mechanics remain open; no specific deployment format or build method is selected.
 
 - [ ] **External agent access**
   - [ ] Implement external-agent access to the installed app through the supported identity and role integration.
