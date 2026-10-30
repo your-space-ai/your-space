@@ -1,6 +1,6 @@
 # Your Space Roadmap
 
-**Last updated**: 2026-10-29
+**Last updated**: 2026-10-30
 
 This roadmap tracks the functionality we want to build for Your Space: a self-hostable platform
 for independent apps, human users, and agents, with a managed offering planned later.
@@ -14,8 +14,9 @@ the repository. The post-public checklist captures later direction and possible 
 Release scope and details may evolve as the remaining questions are resolved. See the
 [public release readiness checklist](public-release-readiness.md) for the publication review.
 
-**Next session:** Agree what the app deployment file contains and defines. Its format and image
-pull-versus-build behavior have not been selected.
+**Next discussion:** Define the remaining app deployment-file and lifecycle scope, including whether
+app updates are required before publication. Published images with exact declared versions are selected
+for the first release; building from source is post-open-source work.
 
 Each parent checkbox represents a capability; its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
@@ -87,6 +88,7 @@ own specifications; their order here is not a delivery sequence.
 
   - [ ] Let the owner install a compatible public GitHub repository by pasting its URL into the UI.
   - [ ] Read the app's separate deployment file from the repository's default branch and record the exact revision used for installation.
+  - [ ] Download and run published container images using the exact image and version declared in the app's integration files for each container, including database services; validate and retain the installed image identity.
   - [ ] Start and manage each app's independent container or containers using Docker on the same server as Your Space.
   - [ ] Run an app-declared database service alongside the app when needed.
   - [ ] Provide app-specific durable storage that survives restarts and remains after uninstall.
@@ -95,10 +97,11 @@ own specifications; their order here is not a delivery sequence.
   - [ ] Isolate apps from host filesystem access, devices, and Docker controls, and protect platform services and other apps.
   - [ ] Preserve app identity, exact source version, provenance, and approved update source or policy; do not silently expand granted access on update.
 
-  **Next design discussion:** define what the deployment file contains and how it works. Its format,
-  discovery details, image pulling versus local builds, resource and isolation enforcement, lifecycle,
-  update mechanics, and rollback are not yet selected. A deployment file does not itself guarantee
-  isolation; that boundary needs a design and verification.
+  Published images are the only first-release installation path; Your Space does not build app source
+  during installation. Remaining deployment-file contents, format, discovery details, image identity
+  validation, resource and isolation enforcement, lifecycle, update mechanics, and rollback need
+  definition. A deployment file does not itself guarantee isolation; that boundary needs design and
+  verification.
 
 - [ ] **App integration and developer experience**
 
@@ -152,6 +155,15 @@ own specifications; their order here is not a delivery sequence.
 ## Post-public: Later Direction and Enhancements
 
 These capabilities are not required for the first public release. Their order and timing remain open.
+
+- [ ] **Build apps from source during installation**
+
+  **Deferred (2026-10-30):** [App deployment decision](architecture/decisions.md#accepted-future-app-deployment-direction).
+
+  - [ ] Support building app images from repository source as an additional installation path.
+
+  The first release requires developers to publish the exact images and versions declared by their
+  app's integration files. Build execution and its operational requirements belong to this later work.
 
 - [ ] **Private GitHub app installation**
 

@@ -4,7 +4,7 @@
 
 **Recorded**: 2026-10-28
 
-**Last updated**: 2026-10-29
+**Last updated**: 2026-10-30
 
 **Scope**: Project-wide direction, independent of any feature specification
 
@@ -185,8 +185,12 @@ Deployment-file contents, packaging, release verification, installation executio
 - Apps have isolated environments and app-specific durable storage. They do not receive direct access to host folders, devices, or Docker controls. The enforcement mechanism and precise isolation guarantees require design and verification.
 - Uninstalling an app retains its data by default. The owner can explicitly delete retained app data from an administration UI.
 - The app developer supplies a separate deployment file in the app's existing repository. On installation, Your Space reads it from the repository's default branch and records the exact commit used.
+- The first public release installs published container images only. The app's integration files must declare the exact image and version to install for each container, including any declared database service.
+- Building apps from source during installation is post-open-source work.
 
-The deployment file is intended to describe how Your Space launches the app without coupling deployment configuration to application code. Its definition is the next discussion: format, contents, location and discovery convention, supported operations, and how deployment backends interpret it remain open. A restricted subset of Docker Compose was discussed but not selected. Docker is the first supported backend, not a commitment to any specific deployment-file format. Whether the first release supports published images, local builds, or both remains open; image references, version pinning, trust, and update behavior also need decisions.
+**Decision update (2026-10-30):** Published images with exact declared image versions are required for the first release. This resolves the previously open image-pull-versus-source-build choice. Developers publish their images; Your Space downloads and runs the declared versions. Deferring source builds keeps build execution and its operation outside the initial installation scope.
+
+The deployment file is intended to describe how Your Space launches the app without coupling deployment configuration to application code. Its format, remaining contents, location and discovery convention, supported operations, and backend interpretation remain open. A restricted subset of Docker Compose was discussed but not selected. The app contract must define how exact image identity is validated and retained alongside the repository commit. Trust verification, update behavior, and rollback still need decisions.
 
 App role authorization controls what users and agents may do within an app. Host isolation is a separate boundary and must not rely on those roles or the SDK alone. The runtime manager's privileges and deployment-file processing must be designed so app-provided configuration cannot bypass the agreed host-access boundary.
 
@@ -283,9 +287,9 @@ This is a developing release roadmap, not a complete acceptance specification or
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |
 | App integration | SDK language support, role registration, authorization compatibility, and revocation mechanics need a later specification. |
-| App deployment file | Define what it contains and means next session, including format, location, discovery, supported operations, backend interpretation, and image pull versus local build. |
+| App deployment file | Published images with exact declared images and versions are selected for the first release; source builds are post-open-source. Remaining contents, format, location, discovery, supported operations, and backend interpretation need definition. |
 | App runtime and data | Design and verify isolation, lifecycle, networking, persistent storage, retained-data deletion, and runtime-manager privileges. |
-| App distribution | Default branch and exact commit recording are accepted for initial installation; artifact trust, image pinning, catalog implementation, update mechanics, and rollback remain open. |
+| App distribution | Default branch, exact commit recording, and exact declared image versions are accepted for initial installation; image identity validation and retention, artifact trust, catalog implementation, update mechanics, and rollback remain open. |
 
 These open choices do not erase the accepted requirements above.
 Resolve implementation-critical choices in the relevant technical plan and future app-contract decisions in their own specifications.

@@ -180,6 +180,9 @@ belong in their own specifications; the scope remains subject to the ongoing int
     pasting their URL in the workspace UI. Private repository support is post-public.
   - [ ] Read the app's separate deployment file from its repository's default branch and record the
     exact repository revision used for installation.
+  - [ ] Require published container images with exact images and versions declared in the app's
+    integration files, including declared database services; verify the installed image identities
+    match those declarations and are retained with installation provenance.
   - [ ] Have Your Space manage each app's Docker container or containers on the server host, including
     an app-declared database service when needed. Apps integrate with Your Space through APIs.
   - [ ] Isolate apps from host folders, devices, and Docker controls; verify the boundary for the
@@ -195,9 +198,10 @@ belong in their own specifications; the scope remains subject to the ongoing int
   - [ ] Document app developer integration and the supported example, including compatibility,
     limitations, and any intentionally deferred distribution or update functionality.
 
-  Next session: agree what the deployment file contains and defines. Its format and discovery
-  conventions, image pull versus local build, build security, SDK language support, and update
-  mechanics remain open; no specific deployment format or build method is selected.
+  Published images are the only first-release installation path. Building apps from source during
+  installation is explicitly [post-open-source work](roadmap.md#post-public-later-direction-and-enhancements).
+  Remaining deployment-file contents, format, discovery conventions, image identity validation,
+  SDK language support, and update mechanics remain open.
 
 - [ ] **External agent access**
   - [ ] Implement external-agent access to the installed app through the supported identity and role integration.
