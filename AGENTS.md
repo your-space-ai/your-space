@@ -15,3 +15,9 @@ Keep the [roadmap](docs/roadmap.md) as a derived delivery view of the decision r
 direction, sequencing, or verified delivery status changes, update the affected roadmap entries
 in the same PR. Preserve the distinction between agreed order, unscheduled direction, and candidates;
 keep rationale in decisions and acceptance criteria in specifications.
+
+Structure the roadmap as nested checklists: high-level capabilities contain specific functionality.
+Check off only delivered, verified work; retain completed entries with a completion date and
+implementation PR or release link. A parent is complete only when its in-scope children and the
+combined capability are complete. Preserve deferred or replaced work explicitly rather than deleting
+its history or marking it complete.
