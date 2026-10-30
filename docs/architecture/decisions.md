@@ -242,6 +242,18 @@ Later hosted agents could run workflows such as daily triage through the same id
 Identity and permissions remain independent of any model provider or execution runtime.
 No hosted workflow engine or model-provider integration is selected here.
 
+## Public Launch Scope Under Discussion
+
+**Recorded 2026-10-29; proposed scope, timing open.** The owner described a potential bar before
+making Your Space public: owner setup, additional member signup, the installation CLI, workspace UI
+on the web, desktop, and as a PWA, at least one installed independent app, the ability for developers
+to create and install more apps, and external-agent access. Additional requirements may emerge.
+
+The owner is also considering publishing the source earlier and developing in public. Whether the
+proposed functionality must precede source publication or instead define a later usable product
+release remains open. Neither choice changes the owner-only first feature or selects desktop
+technology, PWA offline behavior, membership admission, or the app contract.
+
 ## Choices Still Open
 
 | Area | Current status |
@@ -251,6 +263,7 @@ No hosted workflow engine or model-provider integration is selected here.
 | Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
 | Initial deployment details | macOS and Linux with manual Docker Compose are selected; exact OS/CPU support, versions, transport, networking, and configuration need planning. |
 | CLI delivery | A separate follow-up specification will define packaging, commands, prerequisite automation, and management behavior over the established Compose deployment. |
+| Public launch scope | The proposed product bar and the timing of early public source publication are under discussion; see [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |
 | App integration | Packaging, SDK language support, role registration, authorization compatibility, and revocation mechanics need a later specification. |
