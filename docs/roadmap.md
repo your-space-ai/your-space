@@ -7,12 +7,33 @@ for independent apps, human users, and agents, with a managed offering planned l
 
 It is derived from the [architecture and product decisions](architecture/decisions.md).
 That record preserves decisions and rationale; the [constitution](../.specify/memory/constitution.md)
-sets governing principles; [feature specifications](../specs/) define scope and acceptance.
+sets governing principles; feature specifications define scope and acceptance.
 
 Each parent checkbox represents a capability; its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
 place with their completion date and implementation PR or release link so this remains a record.
 All functionality below is currently unchecked because application implementation has not started.
+
+## Public Open-Source Readiness
+
+**Status:** Proposed launch criteria; product scope awaits a decision. The checklist covers a
+responsible public launch, not legal prerequisites for making source code visible.
+
+- [ ] **Make Your Space ready for a public open-source launch**
+
+  **Details:** [Public open-source readiness checklist](public-release-readiness.md).
+
+  - [ ] Agree the intended launch audience, maturity, required functionality, and support claims.
+  - [ ] Implement and verify the selected first-use product experience on supported environments.
+  - [ ] Review publication rights, project and dependency licensing, and required notices.
+  - [ ] Audit repository history, GitHub content, and release artifacts for private data and secrets.
+  - [ ] Review security, provide safe defaults, and establish a private vulnerability-reporting process.
+  - [ ] Provide accurate installation, operation, recovery, contributor, and project-status documentation.
+  - [ ] Verify automated checks, release artifacts, and the documented recovery and maintenance paths.
+  - [ ] Review the evidence and unresolved issues, and approve the visibility change.
+
+  The detailed checklist contains the proposed checks and evidence. Selecting launch scope does
+  not change the agreed owner-access specification or imply that later features are implemented.
 
 ## Agreed Delivery Order
 
@@ -21,7 +42,7 @@ These are the first two deliveries, in order.
 - [ ] **1. Workspace setup and owner access**
 
   **Status:** Specification in review; implementation not started.
-  **Specification:** [Workspace Setup and Owner Access](../specs/001-workspace-owner-access/spec.md).
+  **Specification:** [Workspace Setup and Owner Access (PR #3)](https://github.com/your-space-ai/your-space/pull/3).
   **Source:** [Accepted foundation decisions](architecture/decisions.md#accepted-foundation-decisions).
 
   - [ ] Install manually with documented Docker Compose procedures on supported macOS and Linux hosts.

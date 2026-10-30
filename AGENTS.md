@@ -21,3 +21,6 @@ Check off only delivered, verified work; retain completed entries with a complet
 implementation PR or release link. A parent is complete only when its in-scope children and the
 combined capability are complete. Preserve deferred or replaced work explicitly rather than deleting
 its history or marking it complete.
+
+When a feature specification referenced through an in-review PR is merged, replace its PR links
+in the roadmap and readiness documents with links to the maintained specification.

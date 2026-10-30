@@ -10,7 +10,7 @@
 
 **Delivery view**: [Roadmap](../roadmap.md), derived from this record
 
-**Related feature**: [Workspace Setup and Owner Access](../../specs/001-workspace-owner-access/spec.md)
+**Related feature**: [Workspace Setup and Owner Access specification (PR #3)](https://github.com/your-space-ai/your-space/pull/3)
 
 **Governing document**: [Your Space Constitution](../../.specify/memory/constitution.md)
 
