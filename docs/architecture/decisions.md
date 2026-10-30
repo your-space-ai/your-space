@@ -8,6 +8,8 @@
 
 **Scope**: Project-wide direction, independent of any feature specification
 
+**Delivery view**: [Roadmap](../roadmap.md), derived from this record
+
 **Related feature**: [Workspace Setup and Owner Access](../../specs/001-workspace-owner-access/spec.md)
 
 **Governing document**: [Your Space Constitution](../../.specify/memory/constitution.md)
@@ -30,6 +32,7 @@ Recording an accepted future direction here does not add it to the first feature
 - Keep cross-feature decisions here and link to them from feature documents rather than creating competing copies of project direction.
 - Update this record in the relevant pull request when a shared decision is agreed or changed. Keep accepted decisions, open proposals, and superseded decisions distinguishable.
 - When replacing an accepted decision, record the date, rationale, and what it supersedes; retain its rationale or link to the change that preserves that history.
+- Reflect changes to agreed direction and sequencing in the [roadmap](../roadmap.md) in the same PR. The roadmap is a derived delivery view, not a competing source of decisions or acceptance criteria.
 - Resolve conflicts with the constitution explicitly through its governance process. A feature plan must not silently override shared decisions.
 
 The repository README and agent guidance link here so future planning can find this record without knowing which feature originally prompted a decision.
