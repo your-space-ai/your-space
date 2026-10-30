@@ -4,6 +4,8 @@
 
 **Recorded**: 2026-10-28
 
+**Last updated**: 2026-10-29
+
 **Scope**: Project-wide direction, independent of any feature specification
 
 **Related feature**: [Workspace Setup and Owner Access](../../specs/001-workspace-owner-access/spec.md)
@@ -17,7 +19,7 @@ It remains relevant across feature specifications and must not be archived or re
 The constitution establishes governing principles; this record captures shared decisions and open choices; individual specifications define delivery scope and acceptance criteria.
 Open proposals remain candidates, even when they have been discussed in detail.
 
-The first feature establishes installation, owner setup, authentication, an empty workspace, persistence, and recovery.
+The first feature establishes manual Docker Compose installation, owner setup, authentication, an empty workspace, persistence, and recovery.
 It does not install independent apps or implement app roles, agents, a marketplace, or an agent execution runtime.
 Later specifications must turn those directions into concrete contracts and acceptance criteria.
 Recording an accepted future direction here does not add it to the first feature or claim that it has been implemented.
@@ -36,7 +38,8 @@ The repository README and agent guidance link here so future planning can find t
 
 ### Installation and Hosting
 
-- Begin with a guided Docker Compose installation.
+- Begin with a documented, manual Docker Compose installation and browser-guided owner setup.
+- Initially support macOS and Linux server hosts. Users on other operating systems can access a supported server through the web client.
 - Begin with a web client. An Electron client may be considered later.
 - Keep client and server as independent components that can run on the same machine or different machines.
 - Store authoritative account and workspace state on the server, rather than relying on a particular browser.
@@ -46,18 +49,37 @@ The repository README and agent guidance link here so future planning can find t
 
 Docker Compose provides a concrete first installation target without requiring Kubernetes administration.
 This choice does not commit every future deployment to Compose or promise identical deployment configuration everywhere.
-The supported operating systems, prerequisites, versions, networking, and transport configuration require an implementation plan.
+Exact supported OS versions and CPU architectures, prerequisites, networking, and transport configuration require an implementation plan.
+
+### CLI Delivery Sequence
+
+**Decision update (2026-10-29)**: Establish and verify the Compose deployment with the owner-access feature first.
+A separate specification and the next implementation PR will add a Your Space CLI for installation and management of that deployment.
+This replaces the earlier proposed CLI-first ordering: the CLI needs a working deployment to manage.
+
+- The first feature must be installable and operable through documented manual Compose procedures without a standalone Your Space CLI.
+- Setup authority and owner recovery remain part of the first feature, with documented operator commands available through the deployment.
+- The later CLI will support local and production self-hosted installations using the established deployment and account behavior.
+- CLI command names, packaging, prerequisite automation, and management scope belong in its separate specification.
+
+Guided installation remains the product direction. The initial guide and browser setup establish the working pathway that the CLI will automate.
 
 ### Server and Database
 
 - Use Node.js and Express for the platform server.
 - Use PostgreSQL as the initially supported platform database.
+- Use Drizzle for database access and schema tooling.
 - Do not require a second platform database implementation for local installations.
 
 Express is the accepted server framework; future capacity decisions should use measured workloads.
 PostgreSQL provides one persistence foundation across local and hosted server deployments.
 This choice does not require every independently developed app to use PostgreSQL.
-Exact runtime and database versions, schema tooling, migration tooling, and connection configuration remain open.
+Exact runtime and database versions, migration execution and recovery strategy, and connection configuration remain open.
+
+### Web Client
+
+- Use React, TypeScript, and Vite for the initial web client.
+- Router, query/state tooling, styling, and component library remain implementation planning choices.
 
 ### Owner and Workspace Model
 
@@ -67,16 +89,17 @@ Exact runtime and database versions, schema tooling, migration tooling, and conn
 - Do not expose invitations, additional human accounts, role administration, or ownership transfer in this feature.
 
 Owner-only scope limits the first user journey; it is not a permanent single-user constraint on the product.
-These concepts do not prescribe a specific database schema or authentication library.
+These concepts do not prescribe a specific database schema.
 
 ### Authentication and Initial Claim
 
 - Your Space defines and operates one server-managed authentication system across deployment modes.
+- Use Better Auth as the authentication library within that system.
 - Authentication must not depend on an external identity provider.
 - Initial account creation collects a name, email address, and password.
 - Email serves as a login identifier and is not treated as verified without mailbox verification.
 - Initial self-hosted setup does not require SMTP or another email-delivery service.
-- An installer-issued, temporary, single-use setup code establishes authority to claim an installation.
+- A temporary, single-use setup code supplied through the operator-only installation procedure establishes authority to claim an installation.
 - Network access to an unclaimed server alone is insufficient authority to create its owner.
 - Successful setup creates the initial owner and workspace, then closes initial registration.
 - Concurrent or retried setup must not create duplicate owners or replace an existing owner.
@@ -209,7 +232,7 @@ Platform isolation must protect platform services and other apps; SDK checks alo
 After the owner-access feature and an agreed app contract, a small Tasks app is a candidate for an end-to-end integration slice.
 That journey would install the independent app, create and view a task, retain it after restart, and expose permitted operations to an agent.
 Verification would cover identity attribution, denied operations, and revocation across UI and programmatic access.
-This is a candidate next slice, not an app implementation included in the current feature.
+This is a later candidate slice, after the planned CLI follow-up and an agreed app contract, not an app implementation included in the current feature.
 
 External agents come before platform-hosted agent execution.
 Later hosted agents could run workflows such as daily triage through the same identity and authorization contracts.
@@ -220,11 +243,11 @@ No hosted workflow engine or model-provider integration is selected here.
 
 | Area | Current status |
 | --- | --- |
-| Web client | React, TypeScript, and Vite are candidates; the client stack has not been approved. |
 | Client supporting libraries | Router, query/state tooling, styling, and component library remain open. |
-| Database tooling | Drizzle is a candidate; ORM and migration tooling are not selected. |
-| Authentication library | Better Auth is a candidate; the account and recovery requirements are accepted independently. |
-| Initial deployment details | Supported host matrix, exact versions, transport, networking, and configuration need planning. |
+| Database configuration | PostgreSQL and Drizzle are selected; versions, migration execution and recovery, and connection configuration need planning. |
+| Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
+| Initial deployment details | macOS and Linux with manual Docker Compose are selected; exact OS/CPU support, versions, transport, networking, and configuration need planning. |
+| CLI delivery | A separate follow-up specification will define packaging, commands, prerequisite automation, and management behavior over the established Compose deployment. |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |
 | App integration | Packaging, SDK language support, role registration, authorization compatibility, and revocation mechanics need a later specification. |

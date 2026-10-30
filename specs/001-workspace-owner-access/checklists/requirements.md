@@ -4,6 +4,8 @@
 
 **Created**: 2026-10-28
 
+**Last updated**: 2026-10-29
+
 **Feature**: [Specification](../spec.md)
 
 **Shared direction**: [Project decision record](../../../docs/architecture/decisions.md)
@@ -32,8 +34,10 @@ product behavior. This checklist is maintained by the Spec Kit specification wor
 
 ## Decision Preservation
 
-- [x] Guided Docker Compose, web-only delivery, Express on Node.js, and PostgreSQL are recorded as selected.
-- [x] React/TypeScript/Vite, client libraries, Better Auth, and Drizzle remain candidates.
+- [x] Manual Docker Compose on macOS/Linux, web-only delivery, Express on Node.js, and PostgreSQL are recorded as selected.
+- [x] React/TypeScript/Vite, Better Auth, and Drizzle are recorded as selected; client supporting libraries remain open.
+- [x] Owner setup and the working Compose deployment precede a separate CLI specification and implementation PR.
+- [x] Setup-code delivery and operator recovery remain available without the later standalone CLI.
 - [x] Independent apps and the in-repository SDK remain future integration boundaries.
 - [x] Embedded app UI is a product requirement; iframe and other implementation choices remain open.
 - [x] Native app authorization and identity/role adapters replace the earlier universal endpoint-gateway proposal.
@@ -62,4 +66,4 @@ product behavior. This checklist is maintained by the Spec Kit specification wor
 - No runtime tests apply to this documentation-only change. Implementation acceptance scenarios
   have been specified, not executed.
 - The next phase is technical planning with the open implementation choices in the decision record.
-  This PR does not select remaining libraries or start implementation.
+  Agreed stack selections are recorded; this PR does not select remaining libraries or start implementation.

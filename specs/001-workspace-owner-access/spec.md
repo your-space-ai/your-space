@@ -4,10 +4,12 @@
 
 **Created**: 2026-10-28
 
+**Last updated**: 2026-10-29
+
 **Status**: Draft for PR review; implementation has not started
 
-**Input**: Establish an owner-only Your Space installation with guided setup, a web client,
-durable workspace state, and account recovery. Preserve the agreed platform, app, and agent
+**Input**: Establish an owner-only Your Space installation with manual Docker Compose installation,
+browser-guided setup, a web client, durable workspace state, and account recovery. Preserve the agreed platform, app, and agent
 architecture without adding those later features to this first delivery.
 
 ## Objective and Scope
@@ -20,6 +22,12 @@ This feature supports exactly one human owner and one workspace. Account identit
 membership, and ownership remain distinct so later membership can be added without replacing
 existing identities or reassigning their data.
 
+The first delivery establishes the Compose deployment on supported macOS and Linux hosts,
+with documented manual installation and operator procedures. A separate follow-up specification
+and implementation PR will add a Your Space CLI for installation and management. Completing this
+feature must not depend on that CLI; setup authority and owner recovery remain available through
+the documented deployment procedures.
+
 The [project-wide decision record](../../docs/architecture/decisions.md) preserves
 selected technologies, accepted future app and agent design, and choices still open. That shared
 record applies across specifications; its future work is not required to complete this feature. The
@@ -29,7 +37,7 @@ record applies across specifications; its future work is not required to complet
 
 ### User Story 1 - Install and Establish the Owner (Priority: P1)
 
-As the operator of a new installation, I can follow a guided installation pathway and establish
+As the operator of a new installation, I can follow the manual Docker Compose guide and establish
 my account as the owner of its first workspace.
 
 **Why this priority**: Every subsequent capability depends on a usable installation with an
@@ -40,11 +48,13 @@ complete setup with operator-issued authority, and reach one empty workspace as 
 
 **Acceptance Scenarios**:
 
-1. **Given** a documented supported environment, **When** the operator follows the installation
-   guide, **Then** the system starts and the web client can reach setup. Missing prerequisites
-   produce actionable instructions rather than an apparent successful installation.
-2. **Given** an unclaimed installation, **When** the installer prepares setup, **Then** it supplies
-   the operator with a temporary, single-use setup code through the installation process.
+1. **Given** a documented supported environment, **When** the operator follows the manual Compose
+   installation guide, **Then** the system starts and the web client can reach setup without a
+   standalone Your Space CLI. Missing prerequisites produce actionable instructions rather than
+   an apparent successful installation.
+2. **Given** an unclaimed installation, **When** the operator follows the documented setup-code
+   procedure, **Then** the system supplies a temporary, single-use setup code through an
+   operator-only channel.
    Visiting the public setup page does not reveal that authority.
 3. **Given** a valid setup code and valid name, email, and password, **When** setup succeeds,
    **Then** exactly one account, one workspace, and their ownership and membership relationships
@@ -176,6 +186,8 @@ complete the issued password-reset flow, and verify identity preservation and se
 
 - **FR-001**: The installation guide MUST identify supported prerequisites, how to start and
   reach setup, where durable state lives, safe restart procedures, and owner recovery steps.
+  It MUST provide a manual Docker Compose pathway on supported macOS and Linux hosts, including
+  configuration and setup-code delivery, without requiring a standalone Your Space CLI.
   Failed prerequisites and startup failures MUST provide actionable feedback.
 - **FR-002**: Initial claim MUST require temporary, single-use setup authority supplied through
   the operator's installation process. Public reachability alone MUST NOT establish that authority.
@@ -217,6 +229,7 @@ complete the issued password-reset flow, and verify identity preservation and se
   operations or an empty/unclaimed workspace.
 - **FR-017**: An operator recovery command MUST issue a short-lived, single-use reset link for
   the existing owner without email delivery. It MUST NOT create an account or reopen initial setup.
+  The command MUST be available through the documented deployment procedures without the later CLI.
 - **FR-018**: Invalid, expired, or consumed reset credentials MUST leave protected account state
   unchanged. Merely issuing a reset link MUST NOT change the owner password or ownership.
 - **FR-019**: A successful password reset MUST preserve account and workspace identity, replace
@@ -247,7 +260,8 @@ These are domain concepts, not prescribed database tables or framework types.
 ### Measurable Outcomes
 
 - **SC-001**: On each environment claimed as supported, following the installation guide from a
-  clean state produces exactly one usable owner account and workspace without manual data edits.
+  clean state using manual Docker Compose procedures produces exactly one usable owner account
+  and workspace without a standalone Your Space CLI or manual database edits.
 - **SC-002**: Every acceptance case involving an invalid, expired, missing, or replayed setup
   credential is denied. Concurrent claims and retries produce at most one complete initial claim.
 - **SC-003**: Valid owner sign-in reaches the existing workspace; invalid credentials and direct
@@ -271,6 +285,8 @@ These are domain concepts, not prescribed database tables or framework types.
 
 - The operator can install the documented prerequisites and administer the server. A visitor's
   ability to load a page does not imply operator authority.
+- Initial server hosts are macOS and Linux. Exact supported OS versions and CPU architectures
+  must be documented and verified during implementation.
 - The first delivery is an online web client and one server installation with one human owner
   and one workspace. Offline synchronization, multiple servers in one client, and shared access
   are not required here.
@@ -286,6 +302,8 @@ These are domain concepts, not prescribed database tables or framework types.
 
 ## Explicitly Out of Scope
 
+- A standalone Your Space CLI or automated installer; a separate follow-up spec and PR will
+  add installation and management commands over this feature's working Compose deployment.
 - Installing or running an independent app, including Tasks; implementing the SDK or app contract.
 - GitHub account connections, repository installation, app updates, or marketplace/catalog services.
 - Registering agents, assigning app roles, role delegation, programmatic agent credentials, or workflows.
