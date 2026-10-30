@@ -143,7 +143,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
   - [ ] Build and identify versioned release artifacts and images, verify installation uses the
     intended versions, and document their source and integrity verification where available.
   - [ ] Define the initial upgrade and rollback policy, including schema migrations and data safety;
-    test supported paths or explicitly state when upgrading is unsupported.
+    test supported paths and document unsupported transitions. The first release must include the
+    owner-triggered app update path; its failed-update recovery experience remains to be defined.
   - [ ] Record test evidence, outstanding issues, accepted limitations, and any unsupported paths for
     the exact release candidate.
 
@@ -183,6 +184,8 @@ belong in their own specifications; the scope remains subject to the ongoing int
   - [ ] Require published container images with exact images and versions declared in the app's
     integration files, including declared database services; verify the installed image identities
     match those declarations and are retained with installation provenance.
+  - [ ] Let the owner trigger updates of installed apps; verify app data is preserved, the installed
+    revision and image provenance reflect the update, and additional access requires explicit approval.
   - [ ] Have Your Space manage each app's Docker container or containers on the server host, including
     an app-declared database service when needed. Apps integrate with Your Space through APIs.
   - [ ] Isolate apps from host folders, devices, and Docker controls; verify the boundary for the
@@ -200,8 +203,9 @@ belong in their own specifications; the scope remains subject to the ongoing int
 
   Published images are the only first-release installation path. Building apps from source during
   installation is explicitly [post-open-source work](roadmap.md#post-public-later-direction-and-enhancements).
+  Owner-triggered app updates are required before publication; automatic app updates are post-open-source.
   Remaining deployment-file contents, format, discovery conventions, image identity validation,
-  SDK language support, and update mechanics remain open.
+  SDK language support, owner-triggered update mechanics, and failed-update recovery remain open.
 
 - [ ] **External agent access**
   - [ ] Implement external-agent access to the installed app through the supported identity and role integration.
