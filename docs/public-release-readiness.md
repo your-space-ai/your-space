@@ -2,11 +2,9 @@
 
 **Status:** Proposed checklist; launch scope and readiness bar are not yet approved.
 
-This checklist describes work to implement, prove, and polish before inviting people to use the
-public open-source project. It is a proposed product release bar, not a statement that every item
-is a legal prerequisite for making a repository public. A public source repository can exist before
-the product is ready for general use; a reliable public alpha makes a stronger promise about the
-journeys and environments it supports. Choose and describe that promise explicitly.
+This checklist separates early public source availability from a usable public product release.
+It describes proposed work to implement, prove, and polish; the full product checklist is not a
+list of legal prerequisites for making source visible. The timing and exact launch bar remain open.
 
 The [roadmap](roadmap.md) tracks product delivery, and the [architecture and product decisions](architecture/decisions.md)
 record agreed direction. The [owner access specification under review](https://github.com/your-space-ai/your-space/pull/3)
@@ -28,24 +26,42 @@ new capabilities need their own specifications and implementation work.
 
 ## Release Scope and Promise
 
-- [ ] **Agree what the first public release means**
-  - [ ] Choose whether the first public milestone is source availability, an owner-only alpha,
-    an alpha including the CLI, or an end-to-end alpha including an independent app and external agents.
+- [ ] **Agree what each public milestone means**
+  - [ ] Decide whether to publish source while development is underway or wait for the product scope
+    below; define the audience and timing of source publication and a usable product release.
   - [ ] Record the intended users, release maturity, supported behaviors, and what is explicitly
     deferred; update the roadmap and decisions if the agreed direction changes.
-  - [ ] Define supported operating system versions, CPU architectures, browsers, Docker/Compose
-    versions, and local or remote deployment paths for the chosen milestone.
+  - [ ] For milestones that claim supported environments, define supported operating system versions,
+    CPU architectures, browsers, Docker/Compose versions, and local or remote deployment paths.
   - [ ] Define release blockers and who will accept remaining known limitations.
 
-**Working proposal:** A public alpha demonstrating an independently installed Tasks app and an
-external agent would prove the product's core idea end to end. This is a recommendation, not an
-accepted scope or a change to the first owner-access specification. An earlier source-only or
-owner-only release is also possible if its status and limitations are explicit. The CLI is the
-agreed follow-up to the owner-access implementation; whether it must precede public release is open.
+**Product scope under discussion:** The owner described owner setup, additional member signup,
+the CLI, a workspace UI on web, desktop, and as a PWA, one independently installed app, developer
+ability to create and install additional apps, and external-agent access. More requirements may emerge.
+Whether all of this must precede public source availability remains open. Tasks remains a candidate
+app, not a required choice. This scope does not change the owner-only first specification.
+
+## Early Source Publication: Building in Public
+
+If chosen, this milestone makes the work visible while the product is still being built. The following
+checks are a proposed minimum for responsibly opening the source, not a promise of a usable release.
+
+- [ ] **Prepare the repository for public development**
+  - [ ] Review repository history, branches, tags, commit identities, issues, PRs, logs, artifacts,
+    and other potentially public material for private data and secrets; remediate findings and
+    rotate or revoke exposed credentials where needed.
+  - [ ] Confirm publication rights for existing material, choose an open-source project license
+    compatible with the intended business, and meet applicable third-party license and notice obligations.
+  - [ ] Explain the project's purpose, current state, unimplemented functionality, and participation
+    expectations in the README, with links to the roadmap and relevant development instructions.
+  - [ ] Review the security and safe-use implications of any runnable code and provide a private
+    security reporting route appropriate to the project state.
+  - [ ] Review public repository settings and the effects of publication, then authorize the visibility
+    change separately. Making source public does not imply a supported or production-ready product.
 
 ## Common Readiness Work
 
-The following is a proposed bar for a usable public alpha. If an earlier source-only publication is
+The following is a proposed bar for a usable public product release. If an earlier source-only publication is
 chosen, explicitly decide which items apply and describe what is not ready to use.
 
 - [ ] **Install and use the owner workspace**
@@ -132,37 +148,55 @@ chosen, explicitly decide which items apply and describe what is not ready to us
   - [ ] Record test evidence, outstanding issues, accepted limitations, and any unsupported paths for
     the exact release candidate.
 
-## Conditional Product Scope
+## Product Scope Under Discussion
 
-Apply these areas only if the corresponding capability is included in the agreed public release.
-Their detailed requirements belong in their own specifications.
+These areas reflect the owner's proposed product scope. Apply them to the selected release milestone;
+their detailed requirements belong in their own specifications.
 
-- [ ] **CLI installation and management, if included**
+- [ ] **CLI installation and management**
   - [ ] Specify and implement the supported commands and CLI distribution for the established
     Compose deployment, including installation, prerequisite handling, and management scope.
   - [ ] Test the CLI on each claimed host for initial setup, repeat invocation, failures, and
     preservation of existing configuration and data; document manual alternatives and limitations.
 
-- [ ] **Independent Tasks app and external agent journey, if included**
+- [ ] **Additional members and signup**
+  - [ ] Specify and implement signup and access for additional human workspace members.
+  - [ ] Verify membership and access controls while preserving existing owner, account, and workspace identities.
+  - [ ] Document and test the chosen admission and recovery paths; invitation and signup rules remain open.
+
+- [ ] **Workspace clients on web, desktop, and PWA**
+  - [ ] Provide a usable web workspace UI and desktop and installable PWA experiences.
+  - [ ] Verify supported clients can connect to the same workspace and handle authentication and failures.
+  - [ ] Define and test supported devices, platforms, installation and accessibility expectations.
+
+  Desktop technology, PWA offline behavior, and packaging remain open.
+
+- [ ] **Independent apps and developer integration**
   - [ ] Specify and implement the versioned app integration and SDK contract needed by the journey;
     keep the app independently built, running, and maintained in its own repository.
-  - [ ] Install the app through the supported path and create and view a task within the Your Space
-    interface; verify the task survives a supported restart.
+  - [ ] Install at least one independent app, exercise its core workflow inside the Your Space
+    interface, and verify its data survives a supported restart.
+  - [ ] Enable a developer to create or adapt and install an additional independent app using the
+    documented SDK and contracts; validate the process beyond the first app.
+  - [ ] Review and test the app isolation, source and version provenance, and installation trust
+    boundaries for the supported installation path.
+  - [ ] Document app developer integration and the supported example, including compatibility,
+    limitations, and any intentionally deferred distribution or update functionality.
+
+- [ ] **External agent access**
+  - [ ] Implement external-agent access to the installed app through the supported identity and role integration.
   - [ ] Verify human and external agent identity, app-owned authorization, distinct actor attribution,
     and exact-subset role delegation.
   - [ ] Verify denied actions through UI and programmatic access, and removal of delegated roles and
     access through existing app sessions and credentials.
-  - [ ] Review and test the app isolation, credential handling, source and version provenance, and
-    installation trust boundaries for the supported installation path.
-  - [ ] Document app developer integration and the supported example, including compatibility,
-    limitations, and any intentionally deferred distribution or update functionality.
+  - [ ] Review and test agent credential handling and revocation for the supported integration.
 
-## Launch Decision
+## Product Release Decision
 
-- [ ] **Approve the release and publication**
+- [ ] **Approve the product release**
   - [ ] Review checklist evidence for the release candidate, confirm the chosen scope, and resolve
     blockers or record explicitly accepted limitations and follow-up owners.
   - [ ] Review repository configuration, access, branch protections, security reporting, release
     assets, and public-facing metadata for the intended public state.
-  - [ ] Obtain explicit authorization for the repository visibility change and record the launch
-    decision and release reference before making the repository public.
+  - [ ] Record the launch decision and release reference. If the source is still private, complete
+    the separate early-publication checks and obtain authorization before changing visibility.

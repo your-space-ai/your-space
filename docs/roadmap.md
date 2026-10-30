@@ -16,21 +16,29 @@ All functionality below is currently unchecked because application implementatio
 
 ## Public Open-Source Readiness
 
-**Status:** Proposed launch criteria; product scope awaits a decision. The checklist covers a
-responsible public launch, not legal prerequisites for making source code visible.
+**Status:** The proposed product scope includes owner and member accounts, the CLI, web/desktop/PWA
+clients, independent apps and developer integration, and external agents. Whether to publish source
+before those features are ready remains open. See [public launch scope](architecture/decisions.md#public-launch-scope-under-discussion).
 
-- [ ] **Make Your Space ready for a public open-source launch**
+- [ ] **Prepare for public source development — timing under discussion**
+
+  **Details:** [Public open-source readiness checklist](public-release-readiness.md).
+
+  - [ ] Audit repository history, GitHub content, and release artifacts for private data and secrets.
+  - [ ] Review publication rights, project and dependency licensing, and required notices.
+  - [ ] Describe project status and participation expectations honestly.
+  - [ ] Review repository settings, the implications of public access, and authorize publication.
+
+- [ ] **Deliver a usable public product — scope under discussion**
 
   **Details:** [Public open-source readiness checklist](public-release-readiness.md).
 
   - [ ] Agree the intended launch audience, maturity, required functionality, and support claims.
-  - [ ] Implement and verify the selected first-use product experience on supported environments.
-  - [ ] Review publication rights, project and dependency licensing, and required notices.
-  - [ ] Audit repository history, GitHub content, and release artifacts for private data and secrets.
+  - [ ] Implement and verify the selected product experience on supported environments.
   - [ ] Review security, provide safe defaults, and establish a private vulnerability-reporting process.
   - [ ] Provide accurate installation, operation, recovery, contributor, and project-status documentation.
   - [ ] Verify automated checks, release artifacts, and the documented recovery and maintenance paths.
-  - [ ] Review the evidence and unresolved issues, and approve the visibility change.
+  - [ ] Review the evidence and unresolved issues, and approve the product release.
 
   The detailed checklist contains the proposed checks and evidence. Selecting launch scope does
   not change the agreed owner-access specification or imply that later features are implemented.
@@ -87,6 +95,7 @@ independent app installation and SDK integration.
 
   - [ ] Integrate independently built and running apps through documented, versioned public contracts.
   - [ ] Publish an SDK from this repository for use by apps in their own repositories, including first-party apps.
+  - [ ] Enable developers to create or adapt additional apps and install them using the public integration contracts.
   - [ ] Install compatible apps without rebuilding Your Space or including their source in the platform build.
   - [ ] Protect platform services and other apps through the app runtime isolation boundary.
 
@@ -174,6 +183,7 @@ These areas are unscheduled. No order or release dates are committed; candidate 
   **Source:** [Owner and workspace model](architecture/decisions.md#owner-and-workspace-model).
 
   - [ ] Add human members without replacing existing account, workspace, membership, or ownership identities.
+  - [ ] Support signup for additional human workspace members.
   - [ ] Let workspace administrators assign app roles to human members.
 
   Membership and collaboration need their own scope and access rules.
@@ -209,13 +219,15 @@ These areas are unscheduled. No order or release dates are committed; candidate 
 
   Provisioning, operations, billing, and email delivery require future planning.
 
-- [ ] **Desktop client — candidate**
+- [ ] **Desktop and PWA clients — proposed launch scope**
 
-  **Source:** [Installation and hosting](architecture/decisions.md#installation-and-hosting).
+  **Source:** [Public launch scope under discussion](architecture/decisions.md#public-launch-scope-under-discussion).
 
   - [ ] Provide a desktop client alongside the web client.
+  - [ ] Provide a workspace client as an installable PWA.
 
-  Electron is a candidate. Desktop scope and timing remain uncommitted; the initial client is web-only.
+  Electron is a candidate; desktop implementation, PWA behavior, and timing remain open.
+  The initial owner-access feature remains web-only.
 
 ## Maintaining the Checklist
 
