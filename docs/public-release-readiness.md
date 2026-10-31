@@ -34,11 +34,10 @@ new capabilities need their own specifications and implementation work.
     CPU architectures, browsers, Docker/Compose versions, and local or remote deployment paths.
   - [ ] Define release blockers and who will accept remaining known limitations.
 
-**First public version:** Owner setup, invited member signup, the CLI, web, desktop and PWA
-workspace clients, at least one independently installed app, developer ability to create and install
-additional apps, and external-agent access. The interview is ongoing, so additional requirements may
-emerge. Tasks remains a candidate app, not a required choice. This scope does not change the owner-only
-first specification.
+**First public version:** Owner setup, invited member signup, the CLI, web, desktop and PWA workspace
+clients, at least one independently installed app, developer ability to create and install additional
+apps, and external-agent access. The interview is ongoing, so additional requirements may emerge. A
+small Tasks app is the first app. This scope does not change the owner-only first specification.
 
 ## Early Source Publication: Building in Public
 
@@ -200,8 +199,8 @@ belong in their own specifications; the scope remains subject to the ongoing int
     supported deployment path and do not assume containers alone make untrusted code safe.
   - [ ] Provide persistent app-specific storage; keep data after uninstall and allow the owner to
     explicitly delete retained data through an administration UI.
-  - [ ] Install at least one independent app, exercise its core workflow inside the Your Space
-    interface, and verify its data survives a supported restart.
+  - [ ] Install the Tasks app as the first independent app, exercise its core workflow inside the
+    Your Space interface, and verify its data survives a supported restart.
   - [ ] Enable a developer to create or adapt and install an additional independent app using the
     documented SDK and contracts; validate the process beyond the first app.
   - [ ] Review and test the app isolation, source and version provenance, and installation trust

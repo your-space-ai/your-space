@@ -211,7 +211,7 @@ Deployment-file contents, packaging, release verification, installation executio
 
 **Decision update (2026-10-31):** Your Space accepts only Compose settings on an approved list rather than blocking known-dangerous ones. An approved list fails safe: an unlisted setting is rejected until it is reviewed and added, while a blocked list lets through any setting nobody thought to block. The list is derived from what the first app needs during its implementation instead of being guessed up front.
 
-The deployment file is intended to describe how Your Space launches the app without coupling deployment configuration to application code. It uses Docker Compose. The initial approved list of Compose settings, set when the first app is implemented, the contents of the `x-your-space` section, supported operations, and backend interpretation remain open. The app contract must define how exact image identity is validated and retained alongside the repository commit. Trust verification, owner-triggered update mechanics, and how a failed update is detected still need decisions.
+The deployment file is intended to describe how Your Space launches the app without coupling deployment configuration to application code. It uses Docker Compose. The initial approved list of Compose settings, set when the first app (Tasks) is implemented, the contents of the `x-your-space` section, supported operations, and backend interpretation remain open. The app contract must define how exact image identity is validated and retained alongside the repository commit. Trust verification, owner-triggered update mechanics, and how a failed update is detected still need decisions.
 
 App role authorization controls what users and agents may do within an app. Host isolation is a separate boundary and must not rely on those roles or the SDK alone. The runtime manager's privileges and deployment-file processing must be designed so app-provided configuration cannot bypass the agreed host-access boundary.
 
@@ -277,10 +277,12 @@ Platform isolation must protect platform services and other apps; SDK checks alo
 
 ## Later Candidate Journeys
 
-After the owner-access feature and an agreed app contract, a small Tasks app is a candidate for an end-to-end integration slice.
+After the owner-access feature and an agreed app contract, a small Tasks app is the first app and the end-to-end integration slice.
 That journey would install the independent app, create and view a task, retain it after restart, and expose permitted operations to an agent.
 Verification would cover identity attribution, denied operations, and revocation across UI and programmatic access.
-This is a later candidate slice, after the planned CLI follow-up and an agreed app contract, not an app implementation included in the current feature.
+It follows the planned CLI follow-up and an agreed app contract and is not an app implementation included in the current feature.
+
+**Decision update (2026-10-31):** The small Tasks app is selected as the first app, replacing its candidate status. It is small, needs a database, and exercises roles (viewing and editing tasks) and agent access (an agent creating tasks), covering each part of the first-release app journey. Its needs set the initial approved list of Compose settings.
 
 External agents come before platform-hosted agent execution.
 Later hosted agents could run workflows such as daily triage through the same identity and authorization contracts.
