@@ -27,17 +27,19 @@ new capabilities need their own specifications and implementation work.
 ## Release Scope and Promise
 
 - [ ] **Define the public release promise**
-  - [ ] Target people comfortable installing Docker and following a guided CLI without one-on-one help.
+  - [ ] Target people who can install Docker Desktop and the desktop app for a local workspace, or
+    install Docker and follow a guided CLI for a server, without one-on-one help.
   - [ ] Record the intended users, release maturity, supported behaviors, and what is explicitly
     deferred; update the roadmap and decisions if the agreed direction changes.
   - [ ] For milestones that claim supported environments, define supported operating system versions,
     CPU architectures, browsers, Docker/Compose versions, and local or remote deployment paths.
   - [ ] Define release blockers and who will accept remaining known limitations.
 
-**First public version:** Owner setup, invited member signup, the CLI, web and PWA workspace clients,
-at least one independently installed app, developer ability to create and install additional apps, and
-external-agent access. The interview is ongoing, so additional requirements may emerge. A small Tasks
-app is the first app. This scope does not change the owner-only first specification.
+**First public version:** Owner setup, invited member signup, the CLI for servers, a desktop app that
+can also run a local workspace, web, desktop, and PWA workspace clients, at least one independently
+installed app, developer ability to create and install additional apps, and external-agent access. The
+interview is ongoing, so additional requirements may emerge. A small Tasks app is the first app. This
+scope does not change the owner-only first specification.
 
 ## Early Source Publication: Building in Public
 
@@ -164,15 +166,21 @@ belong in their own specifications; the scope remains subject to the ongoing int
   - [ ] Verify membership and access controls while preserving existing owner, account, and workspace identities.
   - [ ] Document and test invitation, signup, and recovery paths; detailed invitation and signup rules remain open.
 
-- [ ] **Workspace clients on web and PWA**
-  - [ ] Provide the same core workspace and installed-app experience on web and installable PWA clients.
-  - [ ] Initially support server hosts on macOS and Linux.
+- [ ] **Workspace clients on web, desktop, and PWA**
+  - [ ] Provide the same core workspace and installed-app experience on web, desktop, and installable
+    PWA clients.
+  - [ ] Ship and test the Electron desktop app on macOS, Windows, and Linux; initially support server
+    hosts on macOS and Linux.
+  - [ ] Verify the desktop app can connect to an existing server by URL, or set up, run, and connect to
+    a local Your Space Docker Compose stack on the same machine.
+  - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off,
+    and state the Docker Desktop license terms.
   - [ ] Verify supported clients connect to the same workspace and handle authentication and failures;
     a connection to the server is required.
   - [ ] Define and test supported devices, platforms, installation and accessibility expectations.
 
-  Desktop clients are [post-open-source work](roadmap.md#post-public-later-direction-and-enhancements).
-  PWA offline behavior and packaging remain open.
+  Local-mode management scope, desktop packaging, code signing, self-update, and PWA offline behavior
+  remain open.
 
 - [ ] **Independent apps and developer integration**
   - [ ] Specify and implement the versioned app integration and SDK contract needed by the journey;

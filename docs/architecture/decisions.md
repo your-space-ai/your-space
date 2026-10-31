@@ -43,7 +43,8 @@ The repository README and agent guidance link here so future planning can find t
 
 - Begin with a documented, manual Docker Compose installation and browser-guided owner setup.
 - Initially support macOS and Linux server hosts. Users on other operating systems can access a supported server through the web client.
-- Begin with a web client in the owner-access feature. Web and PWA clients are part of the first public-release target; desktop clients are post-open-source work.
+- The desktop app can also run a local workspace on the same machine on macOS, Windows, and Linux. This does not add Windows as a supported server host.
+- Begin with a web client in the owner-access feature. Web, desktop, and PWA clients are part of the first public-release target; the desktop app uses Electron.
 - Keep client and server as independent components that can run on the same machine or different machines.
 - Store authoritative account and workspace state on the server, rather than relying on a particular browser.
 - Use persistent storage so supported restarts retain identity, ownership, and workspace state.
@@ -148,12 +149,17 @@ Existing app authorization should be reusable where it has a suitable integratio
 
 ### First Public-Release Audience and Clients
 
-- The first public release targets people who can install Docker and follow a guided CLI without one-on-one assistance.
-- The web and PWA clients provide the same core workspace and installed-app experience while connected to the user's server; a local network connection is sufficient.
-- Desktop clients for macOS, Windows, and Linux are post-open-source work. They do not expand the initial macOS and Linux server-host commitment.
-- Desktop technology and PWA offline support remain open. The first owner-access feature remains web-only.
+- The first public release targets two groups: people who can install Docker Desktop and the Your Space desktop app to run a local workspace, and people who can install Docker and follow a guided CLI to deploy a server, both without one-on-one assistance.
+- The web, desktop, and PWA clients provide the same core workspace and installed-app experience while connected to a Your Space server; a local network connection is sufficient.
+- The desktop app uses Electron and ships for macOS, Windows, and Linux.
+- When setting up the desktop app, the user either connects to an existing server by URL or runs Your Space locally. In local mode, the desktop app sets up and runs the Your Space Docker Compose stack on that machine through Docker, then connects to it.
+- The CLI remains part of the first public release for deploying Your Space to a server; desktop, web, and PWA clients can connect to that server.
+- A local workspace is unavailable to other people and remote agents while its machine is asleep or off. Install documentation must state this and the Docker Desktop license terms.
+- PWA offline support remains open. The first owner-access feature remains web-only.
 
 **Decision update (2026-10-31):** Desktop clients move from the first public release to post-open-source work. They need a separate build for each operating system, code signing including Apple notarization, and their own update mechanism, while the installable PWA already opens in its own app window on macOS, Windows, and Linux.
+
+**Decision update (2026-10-31):** Desktop clients return to the first public release, superseding the deferral above, so that less technical users can run their own workspace. The desktop app can connect to an existing server or set up and run a local Docker Compose stack. The CLI stays for server deployment. Electron is selected, shipping for macOS, Windows, and Linux, which accepts the per-OS build, signing, and update costs.
 
 ### Deployment Boundaries and Licensing
 
@@ -298,7 +304,7 @@ No hosted workflow engine or model-provider integration is selected here.
 
 **Decision update (2026-10-29)**: Plan the roadmap in pre-public and post-public sections. The pre-public section covers the core experience and a working first version; post-public covers capabilities that are not crucial to that release. The owner prefers an installable, usable product before making the repository public rather than publishing only plans.
 
-The intended pre-public experience includes owner setup; additional members signing up through invitation links created and shared by the owner; the installation CLI; web and PWA workspace clients; at least one installed independent app; a way for developers to create, integrate, and install more apps; and access for external agents. Only the owner installs or removes apps in the first public release. The first release targets users comfortable installing Docker and following a guided CLI.
+The intended pre-public experience includes owner setup; additional members signing up through invitation links created and shared by the owner; the installation CLI for servers; a desktop app that can also run a local workspace; web, desktop, and PWA workspace clients; at least one installed independent app; a way for developers to create, integrate, and install more apps; and access for external agents. Only the owner installs or removes apps in the first public release. The first release targets users who can install Docker Desktop and the Your Space desktop app for a local workspace, or install Docker and follow a guided CLI for a server.
 
 This is a developing release roadmap, not a complete acceptance specification or a claim of implementation. Additional requirements may emerge during the interview. These future capabilities do not expand the owner-only first feature. The agreed sequence remains manual Compose and owner access first, then a separate CLI specification and implementation; no further feature order is established.
 
@@ -310,6 +316,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Database configuration | PostgreSQL and Drizzle are selected; versions, migration execution and recovery, and connection configuration need planning. |
 | Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
 | Initial deployment details | macOS and Linux with manual Docker Compose are selected; exact OS/CPU support, versions, transport, networking, and configuration need planning. |
+| Desktop app | Electron is selected for macOS, Windows, and Linux. Local-mode management scope, Docker detection, packaging, code signing, and self-update need a specification. |
 | CLI delivery | A separate follow-up specification will define packaging, commands, prerequisite automation, and management behavior over the established Compose deployment. |
 | Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
