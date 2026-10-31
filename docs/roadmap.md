@@ -14,11 +14,11 @@ the repository. The post-public checklist captures later direction and possible 
 Release scope and details may evolve as the remaining questions are resolved. See the
 [public release readiness checklist](public-release-readiness.md) for the publication review.
 
-**Next discussion:** Define where the app deployment file lives in the repository and how Your Space
-finds it. A restricted Docker Compose deployment file, published images with exact declared versions,
-owner-triggered app updates, and automatic rollback of failed updates are required before publication;
-building from source, alternative deployment-file formats, and automatic app updates are
-post-open-source work.
+**Next discussion:** Define how an app declares its Your Space details, such as its name and the
+access it needs. The owner installs an app by pasting its deployment file's GitHub URL. A restricted
+Docker Compose deployment file, published images with exact declared versions, owner-triggered app
+updates, and automatic rollback of failed updates are required before publication; building from
+source, alternative deployment-file formats, and automatic app updates are post-open-source work.
 
 Each parent checkbox represents a capability; its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
@@ -88,8 +88,8 @@ own specifications; their order here is not a delivery sequence.
 
   **Source:** [Platform and independent apps](architecture/decisions.md#platform-and-independent-apps) and [app distribution](architecture/decisions.md#accepted-future-app-distribution-direction).
 
-  - [ ] Let the owner install a compatible public GitHub repository by pasting its URL into the UI.
-  - [ ] Read the app's separate deployment file from the repository's default branch and record the exact revision used for installation.
+  - [ ] Let the owner install a compatible app by pasting the GitHub URL of its deployment file in a public repository into the UI.
+  - [ ] Read the deployment file at that URL and record the exact revision used for installation; updates re-read the file from the same URL.
   - [ ] Download and run published container images using the exact image and version declared in the app's integration files for each container, including database services; validate and retain the installed image identity.
   - [ ] Start and manage each app's independent container or containers using Docker on the same server as Your Space.
   - [ ] Run an app-declared database service alongside the app when needed.
@@ -104,10 +104,10 @@ own specifications; their order here is not a delivery sequence.
 
   Published images are the only first-release installation path; Your Space does not build app source
   during installation. The deployment file is a restricted Docker Compose file. The supported Compose
-  subset, remaining deployment-file contents, discovery details, image identity validation, resource
-  and isolation enforcement, lifecycle, owner-triggered update mechanics, and failed-update detection
-  need definition. A deployment file does not itself guarantee isolation;
-  that boundary needs design and verification.
+  subset, remaining deployment-file contents, image identity validation, resource and isolation
+  enforcement, lifecycle, owner-triggered update mechanics, and failed-update detection need
+  definition. A deployment file does not itself guarantee isolation; that boundary needs design and
+  verification.
 
 - [ ] **App integration and developer experience**
 

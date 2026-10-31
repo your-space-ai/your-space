@@ -177,10 +177,11 @@ belong in their own specifications; the scope remains subject to the ongoing int
 - [ ] **Independent apps and developer integration**
   - [ ] Specify and implement the versioned app integration and SDK contract needed by the journey;
     keep the app independently built, running, and maintained in its own repository.
-  - [ ] Let only the owner install and remove apps; support installing public GitHub repositories by
-    pasting their URL in the workspace UI. Private repository support is post-public.
-  - [ ] Read the app's separate deployment file from its repository's default branch and record the
-    exact repository revision used for installation.
+  - [ ] Let only the owner install and remove apps; support installing apps from public GitHub
+    repositories by pasting the deployment file's URL in the workspace UI. Private repository
+    support is post-public.
+  - [ ] Read the deployment file at the pasted URL and record the exact repository revision used for
+    installation; verify updates re-read the file from the same URL.
   - [ ] Require published container images with exact images and versions declared in the app's
     integration files, including declared database services; verify the installed image identities
     match those declarations and are retained with installation provenance.
@@ -207,13 +208,13 @@ belong in their own specifications; the scope remains subject to the ongoing int
     limitations, and any intentionally deferred distribution or update functionality.
 
   Published images are the only first-release installation path. Building apps from source during
-  installation is explicitly [post-open-source work](roadmap.md#post-public-later-direction-and-enhancements).
-  Owner-triggered app updates with automatic rollback of failed updates are required before publication;
-  automatic app updates, backup history, and manual rollback are post-open-source.
-  The deployment file is a restricted Docker Compose file; alternative formats are post-open-source.
-  The supported Compose subset, remaining deployment-file contents, discovery conventions, image
-  identity validation, SDK language support, owner-triggered update mechanics, and failed-update
-  detection remain open.
+  installation is explicitly [post-open-source
+  work](roadmap.md#post-public-later-direction-and-enhancements). Owner-triggered app updates with
+  automatic rollback of failed updates are required before publication; automatic app updates, backup
+  history, and manual rollback are post-open-source. The deployment file is a restricted Docker
+  Compose file; alternative formats are post-open-source. The supported Compose subset, remaining
+  deployment-file contents, image identity validation, SDK language support, owner-triggered update
+  mechanics, and failed-update detection remain open.
 
 - [ ] **External agent access**
   - [ ] Implement external-agent access to the installed app through the supported identity and role integration.
