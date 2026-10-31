@@ -186,6 +186,9 @@ belong in their own specifications; the scope remains subject to the ongoing int
     match those declarations and are retained with installation provenance.
   - [ ] Let the owner trigger updates of installed apps; verify app data is preserved, the installed
     revision and image provenance reflect the update, and additional access requires explicit approval.
+  - [ ] Accept the deployment file as a restricted Docker Compose file; verify settings that would
+    break app isolation, such as host folder mounts, devices, privileged mode, or host networking,
+    are rejected.
   - [ ] Back up app data and record image versions before each update; verify a failed update
     automatically restores the previous image versions and the pre-update data.
   - [ ] Have Your Space manage each app's Docker container or containers on the server host, including
@@ -207,8 +210,10 @@ belong in their own specifications; the scope remains subject to the ongoing int
   installation is explicitly [post-open-source work](roadmap.md#post-public-later-direction-and-enhancements).
   Owner-triggered app updates with automatic rollback of failed updates are required before publication;
   automatic app updates, backup history, and manual rollback are post-open-source.
-  Remaining deployment-file contents, format, discovery conventions, image identity validation,
-  SDK language support, owner-triggered update mechanics, and failed-update detection remain open.
+  The deployment file is a restricted Docker Compose file; alternative formats are post-open-source.
+  The supported Compose subset, remaining deployment-file contents, discovery conventions, image
+  identity validation, SDK language support, owner-triggered update mechanics, and failed-update
+  detection remain open.
 
 - [ ] **External agent access**
   - [ ] Implement external-agent access to the installed app through the supported identity and role integration.
