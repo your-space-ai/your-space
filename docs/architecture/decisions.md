@@ -173,8 +173,13 @@ Dependency selection must consider actual licenses, including bundled components
 - App updates must not silently expand granted access.
 - The first public release supports owner-triggered updates of installed apps, preserving app data and requiring explicit approval for any additional access.
 - Automatic app updates are post-open-source work.
+- Before each app update, Your Space records the app's current image versions and backs up its data.
+- If an update fails, Your Space automatically rolls the app back to the recorded image versions and restores the pre-update data backup.
+- Keep failed-update rollback minimal: only the backup needed to restore the pre-update state is required. Backup history and owner-initiated rollback of a successful update are post-open-source work.
 
 **Decision update (2026-10-30):** Owner-triggered app updates are required before publication so owners can keep installed apps current. Automatic updates are deferred. Update selection, compatibility checks, and failed-update recovery still need definition in the app contract.
+
+**Decision update (2026-10-31):** A failed update rolls back automatically from a pre-update backup instead of relying on a manual recovery procedure. Data is backed up because an update can change app data in ways the previous version cannot read. The mechanism stays simple; the app contract defines what counts as a failed update.
 
 Public, community, and private discovery experiences can coexist without redefining installed app ownership or update routing.
 No catalog federation protocol or marketplace implementation is selected here.
@@ -194,7 +199,7 @@ Deployment-file contents, packaging, release verification, installation executio
 
 **Decision update (2026-10-30):** Published images with exact declared image versions are required for the first release. This resolves the previously open image-pull-versus-source-build choice. Developers publish their images; Your Space downloads and runs the declared versions. Deferring source builds keeps build execution and its operation outside the initial installation scope.
 
-The deployment file is intended to describe how Your Space launches the app without coupling deployment configuration to application code. Its format, remaining contents, location and discovery convention, supported operations, and backend interpretation remain open. A restricted subset of Docker Compose was discussed but not selected. The app contract must define how exact image identity is validated and retained alongside the repository commit. Trust verification, owner-triggered update mechanics, and failed-update recovery still need decisions.
+The deployment file is intended to describe how Your Space launches the app without coupling deployment configuration to application code. Its format, remaining contents, location and discovery convention, supported operations, and backend interpretation remain open. A restricted subset of Docker Compose was discussed but not selected. The app contract must define how exact image identity is validated and retained alongside the repository commit. Trust verification, owner-triggered update mechanics, and how a failed update is detected still need decisions.
 
 App role authorization controls what users and agents may do within an app. Host isolation is a separate boundary and must not rely on those roles or the SDK alone. The runtime manager's privileges and deployment-file processing must be designed so app-provided configuration cannot bypass the agreed host-access boundary.
 
@@ -293,7 +298,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | App integration | SDK language support, role registration, authorization compatibility, and revocation mechanics need a later specification. |
 | App deployment file | Published images with exact declared images and versions are selected for the first release; source builds are post-open-source. Remaining contents, format, location, discovery, supported operations, and backend interpretation need definition. |
 | App runtime and data | Design and verify isolation, lifecycle, networking, persistent storage, retained-data deletion, and runtime-manager privileges. |
-| App distribution | Default branch, exact commit recording, and exact declared image versions are accepted for initial installation. Owner-triggered updates are pre-public; automatic updates are post-public. Image identity validation and retention, artifact trust, catalog implementation, update selection and mechanics, and failed-update recovery remain open. |
+| App distribution | Default branch, exact commit recording, and exact declared image versions are accepted for initial installation. Owner-triggered updates are pre-public; automatic updates are post-public. Failed updates roll back automatically to the previous image versions and pre-update data backup. Image identity validation and retention, artifact trust, catalog implementation, update selection and mechanics, and failed-update detection remain open. |
 
 These open choices do not erase the accepted requirements above.
 Resolve implementation-critical choices in the relevant technical plan and future app-contract decisions in their own specifications.

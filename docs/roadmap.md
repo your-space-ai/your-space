@@ -14,9 +14,10 @@ the repository. The post-public checklist captures later direction and possible 
 Release scope and details may evolve as the remaining questions are resolved. See the
 [public release readiness checklist](public-release-readiness.md) for the publication review.
 
-**Next discussion:** Define the first-release recovery experience when an app update fails. Published
-images with exact declared versions and owner-triggered app updates are required before publication;
-building from source and automatic app updates are post-open-source work.
+**Next discussion:** Define the remaining app deployment-file scope: format, location and discovery,
+and supported operations. Published images with exact declared versions, owner-triggered app updates,
+and automatic rollback of failed updates are required before publication; building from source and
+automatic app updates are post-open-source work.
 
 Each parent checkbox represents a capability; its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
@@ -97,11 +98,12 @@ own specifications; their order here is not a delivery sequence.
   - [ ] Isolate apps from host filesystem access, devices, and Docker controls, and protect platform services and other apps.
   - [ ] Preserve app identity, exact source version, provenance, and approved update source or policy; do not silently expand granted access on update.
   - [ ] Let the owner trigger updates of installed apps, preserving app data and requiring explicit approval for any additional access.
+  - [ ] Back up app data and record image versions before each update; if the update fails, automatically roll back to the previous versions and restore the backup.
 
   Published images are the only first-release installation path; Your Space does not build app source
   during installation. Remaining deployment-file contents, format, discovery details, image identity
   validation, resource and isolation enforcement, lifecycle, owner-triggered update mechanics, and
-  failed-update recovery need definition. A deployment file does not itself guarantee isolation;
+  failed-update detection need definition. A deployment file does not itself guarantee isolation;
   that boundary needs design and verification.
 
 - [ ] **App integration and developer experience**
@@ -164,6 +166,14 @@ These capabilities are not required for the first public release. Their order an
   - [ ] Support automatic app updates under the owner's approved update policy.
 
   The first public release supports updates explicitly triggered by the owner.
+
+- [ ] **App backup history and manual rollback**
+
+  **Deferred (2026-10-31):** [App update decision](architecture/decisions.md#accepted-future-app-distribution-direction).
+
+  - [ ] Keep more than one app backup and let the owner roll back an update that succeeded.
+
+  The first public release rolls back failed updates automatically from a single pre-update backup.
 
 - [ ] **Build apps from source during installation**
 
