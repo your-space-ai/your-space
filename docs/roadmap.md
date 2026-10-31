@@ -99,12 +99,12 @@ specifications; their order here is not a delivery sequence.
   - [ ] On setup, let the user connect to an existing server by URL or run Your Space locally.
   - [ ] In local mode, drive the Your Space CLI to set up and run the Docker Compose stack on the same machine, then connect to it.
   - [ ] Detect Docker and link to the Docker Desktop download when it is missing.
-  - [ ] In local mode, create the owner and workspace directly in the desktop app without a setup code, while preventing anyone else on the network from claiming the workspace.
+  - [ ] In local mode, obtain the setup code through the CLI and submit it on the user's behalf, using the same setup flow as every other installation.
   - [ ] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
   - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off, and state the Docker Desktop license terms.
 
   Streamlined local setup has its own specification and implementation PR, separate from the
-  owner-access feature; server installations keep the setup code. Desktop packaging, code signing,
+  owner-access feature; it wraps the CLI and setup flow without changing them. Desktop packaging, code signing,
   and self-update need a specification. Local backup, restore, and moving a local workspace to a
   server are post-open-source. The desktop app drives the CLI rather than managing Docker itself.
 

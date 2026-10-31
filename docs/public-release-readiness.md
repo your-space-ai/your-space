@@ -178,8 +178,8 @@ belong in their own specifications; the scope remains subject to the ongoing int
     a local Your Space Docker Compose stack on the same machine through the CLI.
   - [ ] In local mode, verify Docker detection with a download link when missing, stack startup when
     the app opens, and owner-triggered Your Space updates.
-  - [ ] Verify local-mode owner setup completes in the desktop app without a setup code, and that
-    another device on the network cannot claim the local workspace.
+  - [ ] Verify the desktop app completes local-mode owner setup by submitting the setup code from the
+    CLI on the user's behalf, through the same setup flow as every other installation.
   - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off,
     and state the Docker Desktop license terms.
   - [ ] Verify supported clients connect to the same workspace and handle authentication and failures;

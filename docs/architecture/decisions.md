@@ -65,6 +65,7 @@ This replaces the earlier proposed CLI-first ordering: the CLI needs a working d
 - Setup authority and owner recovery remain part of the first feature, with documented operator commands available through the deployment.
 - The CLI drives Docker Compose on the user's behalf for both local and server installations, so installation and management are a managed experience rather than users running Compose themselves.
 - The desktop app's local mode drives the CLI for the user. People can also run the CLI themselves to set up a local workspace.
+- There is one installation and setup behavior. The CLI behaves the same for local and server installations, and wrappers such as the desktop app simplify the experience without changing the CLI or setup behavior.
 - CLI command names, packaging, prerequisite automation, and management scope belong in its separate specification.
 
 Guided installation remains the product direction. The initial guide and browser setup establish the working pathway that the CLI will automate.
@@ -112,7 +113,7 @@ These concepts do not prescribe a specific database schema.
 - Concurrent or retried setup must not create duplicate owners or replace an existing owner.
 
 The setup code proves installation authority. It does not prove control of the supplied email address.
-In desktop local mode, the desktop app sets up the stack and supplies this authority itself, so the user never enters a setup code; network access alone still cannot claim a local workspace.
+Every installation uses the same setup-code flow. In desktop local mode, the desktop app obtains the setup code through the CLI and submits it on the user's behalf, so the user never has to enter it; the setup flow itself does not change.
 The same account model serves local and remote installations; deployment configuration may govern email delivery and verification policy.
 Separate local-only and hosted authentication implementations are not part of the direction.
 
@@ -159,7 +160,7 @@ Existing app authorization should be reusable where it has a suitable integratio
 - When setting up the desktop app, the user either connects to an existing server by URL or runs Your Space locally. In local mode, the desktop app uses the Your Space CLI to set up and run the Docker Compose stack on that machine, then connects to it.
 - The CLI is part of the first public release for setting up Your Space on a server or locally; desktop, web, and PWA clients can connect to a server it sets up.
 - Before publication, local mode detects Docker and links to the Docker Desktop download when it is missing, sets up the Your Space stack, starts it when the desktop app opens, and updates Your Space when the owner chooses.
-- Local-mode setup creates the owner and workspace directly in the desktop app without showing a setup code; the app supplies setup authority itself. Server installations keep the setup code. Streamlined local setup gets its own specification and implementation PR, separate from the owner-access feature.
+- Every installation, local or server, uses one setup flow with the setup code. In local mode the desktop app obtains the setup code through the CLI and submits it for the user, so the user never has to enter it. Streamlined local setup in the desktop app gets its own specification and implementation PR, separate from the owner-access feature.
 - Backing up and restoring a local workspace, and moving a local workspace to a server, are post-open-source work.
 - A local workspace is unavailable to other people and remote agents while its machine is asleep or off. Install documentation must state this and the Docker Desktop license terms.
 - PWA offline support remains open. The first owner-access feature remains web-only.
@@ -171,6 +172,8 @@ Existing app authorization should be reusable where it has a suitable integratio
 **Decision update (2026-10-31):** Local mode's first-release scope is Docker detection with a download link, stack setup, starting the stack with the app, and owner-triggered Your Space updates. Local backup and restore, and moving a local workspace to a server, are deferred.
 
 **Decision update (2026-10-31):** Local mode skips the setup code: the desktop app sets up the stack and supplies setup authority itself, so network access alone still cannot claim a local workspace. Server installations keep the setup code from the owner-access feature. Streamlined local setup is specified and implemented in its own PR, separate from the owner-access feature.
+
+**Decision update (2026-10-31):** Supersedes the setup-code exception above. There is one setup flow for every installation, and the CLI behaves the same for local and server installations. The desktop app wraps the CLI and handles the setup code on the user's behalf; it does not skip or replace setup authority.
 
 ### Deployment Boundaries and Licensing
 
@@ -327,7 +330,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Database configuration | PostgreSQL and Drizzle are selected; versions, migration execution and recovery, and connection configuration need planning. |
 | Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
 | Initial deployment details | macOS and Linux with manual Docker Compose are selected; exact OS/CPU support, versions, transport, networking, and configuration need planning. |
-| Desktop app | Electron is selected for macOS, Windows, and Linux. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup without a setup code, and owner-triggered Your Space updates; local backup, restore, and migration to a server are post-open-source. Packaging, code signing, and self-update need a specification. |
+| Desktop app | Electron is selected for macOS, Windows, and Linux. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates; local backup, restore, and migration to a server are post-open-source. Packaging, code signing, and self-update need a specification. |
 | CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. A separate follow-up specification will define packaging, commands, prerequisite automation, and management behavior over the established Compose deployment. |
 | Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
