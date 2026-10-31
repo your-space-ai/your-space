@@ -17,13 +17,14 @@ Release scope and details may evolve as the remaining questions are resolved. Se
 **Next discussion:** Review the remaining pre-public capabilities for anything else to defer, then
 finalize this roadmap. Local mode detects Docker, sets up, starts, and updates a local workspace. An
 Electron desktop app for macOS, Windows, and Linux can connect to a server or run a local workspace;
-the CLI remains the server deployment path. TypeScript and Python SDKs are required before
-publication. A small Tasks app is the first app; its needs set the initial list of Compose settings
-Your Space accepts. The owner installs an app by pasting its deployment file's GitHub URL, and the app
-describes itself in an `x-your-space` section of that file. A Docker Compose deployment file limited
-to an approved list of settings, published images with exact declared versions, owner-triggered app
-updates, and automatic rollback of failed updates are required before publication; building from
-source, alternative deployment-file formats, and automatic app updates are post-open-source work.
+the CLI drives Docker Compose for server and local installs, and desktop local mode drives the CLI.
+TypeScript and Python SDKs are required before publication. A small Tasks app is the first app; its
+needs set the initial list of Compose settings Your Space accepts. The owner installs an app by
+pasting its deployment file's GitHub URL, and the app describes itself in an `x-your-space` section
+of that file. A Docker Compose deployment file limited to an approved list of settings, published
+images with exact declared versions, owner-triggered app updates, and automatic rollback of failed
+updates are required before publication; building from source, alternative deployment-file formats,
+and automatic app updates are post-open-source work.
 
 Each parent checkbox represents a capability; its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
@@ -33,10 +34,10 @@ All functionality below is currently unchecked because application implementatio
 ## Pre-public: Core Experience and First Working Version
 
 The first release targets people who can install Docker Desktop and the Your Space desktop app for a
-local workspace, or install Docker and follow a guided CLI for a server. The [owner-access feature (PR
-#3)](https://github.com/your-space-ai/your-space/pull/3) is first; the CLI follows in a separate
-specification and implementation PR. The remaining items need their
-own specifications; their order here is not a delivery sequence.
+local workspace, or install Docker and follow a guided CLI for a server or local workspace. The
+[owner-access feature (PR #3)](https://github.com/your-space-ai/your-space/pull/3) is first; the CLI
+follows in a separate specification and implementation PR. The remaining items need their own
+specifications; their order here is not a delivery sequence.
 
 - [ ] **Workspace setup and owner access**
 
@@ -60,8 +61,9 @@ own specifications; their order here is not a delivery sequence.
 
   **Source:** [CLI delivery sequence](architecture/decisions.md#cli-delivery-sequence).
 
-  - [ ] Guide local and production self-hosted installation of the established Compose deployment through the Your Space CLI.
+  - [ ] Guide local and server installation through the Your Space CLI, which drives Docker Compose so users don't run Compose themselves.
   - [ ] Manage the deployment through operations defined in the CLI specification.
+  - [ ] Run the CLI on macOS, Windows, and Linux so the desktop app can drive it for local workspaces.
 
   The CLI follows the working, verified manual Compose deployment and owner-access implementation.
   Commands, packaging, prerequisites, and management scope remain to be specified.
@@ -95,7 +97,7 @@ own specifications; their order here is not a delivery sequence.
 
   - [ ] Ship an Electron desktop app for macOS, Windows, and Linux.
   - [ ] On setup, let the user connect to an existing server by URL or run Your Space locally.
-  - [ ] In local mode, set up and run the Your Space Docker Compose stack on the same machine through Docker, then connect to it.
+  - [ ] In local mode, drive the Your Space CLI to set up and run the Docker Compose stack on the same machine, then connect to it.
   - [ ] Detect Docker and link to the Docker Desktop download when it is missing.
   - [ ] In local mode, create the owner and workspace directly in the desktop app without a setup code, while preventing anyone else on the network from claiming the workspace.
   - [ ] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
@@ -104,7 +106,7 @@ own specifications; their order here is not a delivery sequence.
   Streamlined local setup has its own specification and implementation PR, separate from the
   owner-access feature; server installations keep the setup code. Desktop packaging, code signing,
   and self-update need a specification. Local backup, restore, and moving a local workspace to a
-  server are post-open-source. The CLI remains the server deployment path.
+  server are post-open-source. The desktop app drives the CLI rather than managing Docker itself.
 
 - [ ] **Independent app deployment and lifecycle**
 

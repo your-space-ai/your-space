@@ -43,7 +43,7 @@ The repository README and agent guidance link here so future planning can find t
 
 - Begin with a documented, manual Docker Compose installation and browser-guided owner setup.
 - Initially support macOS and Linux server hosts. Users on other operating systems can access a supported server through the web client.
-- The desktop app can also run a local workspace on the same machine on macOS, Windows, and Linux. This does not add Windows as a supported server host.
+- The desktop app can also run a local workspace on the same machine on macOS, Windows, and Linux, through the Your Space CLI. The CLI therefore runs on all three. This does not add Windows as a supported server host.
 - Begin with a web client in the owner-access feature. Web, desktop, and PWA clients are part of the first public-release target; the desktop app uses Electron.
 - Keep client and server as independent components that can run on the same machine or different machines.
 - Store authoritative account and workspace state on the server, rather than relying on a particular browser.
@@ -63,10 +63,13 @@ This replaces the earlier proposed CLI-first ordering: the CLI needs a working d
 
 - The first feature must be installable and operable through documented manual Compose procedures without a standalone Your Space CLI.
 - Setup authority and owner recovery remain part of the first feature, with documented operator commands available through the deployment.
-- The later CLI will support local and production self-hosted installations using the established deployment and account behavior.
+- The CLI drives Docker Compose on the user's behalf for both local and server installations, so installation and management are a managed experience rather than users running Compose themselves.
+- The desktop app's local mode drives the CLI for the user. People can also run the CLI themselves to set up a local workspace.
 - CLI command names, packaging, prerequisite automation, and management scope belong in its separate specification.
 
 Guided installation remains the product direction. The initial guide and browser setup establish the working pathway that the CLI will automate.
+
+**Decision update (2026-10-31):** The CLI is the managed installation and management path for both local and server installations, driving Docker Compose for the user. The desktop app's local mode drives the CLI rather than managing Docker itself, and people can run the CLI themselves for a local install. This supersedes the 2026-10-31 position that the CLI is only the server deployment path.
 
 ### Server and Database
 
@@ -150,11 +153,11 @@ Existing app authorization should be reusable where it has a suitable integratio
 
 ### First Public-Release Audience and Clients
 
-- The first public release targets two groups: people who can install Docker Desktop and the Your Space desktop app to run a local workspace, and people who can install Docker and follow a guided CLI to deploy a server, both without one-on-one assistance.
+- The first public release targets two groups: people who can install Docker Desktop and the Your Space desktop app to run a local workspace, and people who can install Docker and follow a guided CLI to deploy a server or a local workspace, both without one-on-one assistance.
 - The web, desktop, and PWA clients provide the same core workspace and installed-app experience while connected to a Your Space server; a local network connection is sufficient.
 - The desktop app uses Electron and ships for macOS, Windows, and Linux.
-- When setting up the desktop app, the user either connects to an existing server by URL or runs Your Space locally. In local mode, the desktop app sets up and runs the Your Space Docker Compose stack on that machine through Docker, then connects to it.
-- The CLI remains part of the first public release for deploying Your Space to a server; desktop, web, and PWA clients can connect to that server.
+- When setting up the desktop app, the user either connects to an existing server by URL or runs Your Space locally. In local mode, the desktop app uses the Your Space CLI to set up and run the Docker Compose stack on that machine, then connects to it.
+- The CLI is part of the first public release for setting up Your Space on a server or locally; desktop, web, and PWA clients can connect to a server it sets up.
 - Before publication, local mode detects Docker and links to the Docker Desktop download when it is missing, sets up the Your Space stack, starts it when the desktop app opens, and updates Your Space when the owner chooses.
 - Local-mode setup creates the owner and workspace directly in the desktop app without showing a setup code; the app supplies setup authority itself. Server installations keep the setup code. Streamlined local setup gets its own specification and implementation PR, separate from the owner-access feature.
 - Backing up and restoring a local workspace, and moving a local workspace to a server, are post-open-source work.
@@ -312,7 +315,7 @@ No hosted workflow engine or model-provider integration is selected here.
 
 **Decision update (2026-10-29)**: Plan the roadmap in pre-public and post-public sections. The pre-public section covers the core experience and a working first version; post-public covers capabilities that are not crucial to that release. The owner prefers an installable, usable product before making the repository public rather than publishing only plans.
 
-The intended pre-public experience includes owner setup; additional members signing up through invitation links created and shared by the owner; the installation CLI for servers; a desktop app that can also run a local workspace; web, desktop, and PWA workspace clients; at least one installed independent app; a way for developers to create, integrate, and install more apps; and access for external agents. Only the owner installs or removes apps in the first public release. The first release targets users who can install Docker Desktop and the Your Space desktop app for a local workspace, or install Docker and follow a guided CLI for a server.
+The intended pre-public experience includes owner setup; additional members signing up through invitation links created and shared by the owner; the installation CLI for servers and local workspaces; a desktop app that can also run a local workspace; web, desktop, and PWA workspace clients; at least one installed independent app; a way for developers to create, integrate, and install more apps; and access for external agents. Only the owner installs or removes apps in the first public release. The first release targets users who can install Docker Desktop and the Your Space desktop app for a local workspace, or install Docker and follow a guided CLI for a server.
 
 This is a developing release roadmap, not a complete acceptance specification or a claim of implementation. Additional requirements may emerge during the interview. These future capabilities do not expand the owner-only first feature. The agreed sequence remains manual Compose and owner access first, then a separate CLI specification and implementation; no further feature order is established.
 
@@ -324,8 +327,8 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Database configuration | PostgreSQL and Drizzle are selected; versions, migration execution and recovery, and connection configuration need planning. |
 | Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
 | Initial deployment details | macOS and Linux with manual Docker Compose are selected; exact OS/CPU support, versions, transport, networking, and configuration need planning. |
-| Desktop app | Electron is selected for macOS, Windows, and Linux. Local mode covers Docker detection, stack setup and startup, owner setup without a setup code, and owner-triggered Your Space updates; local backup, restore, and migration to a server are post-open-source. Packaging, code signing, and self-update need a specification. |
-| CLI delivery | A separate follow-up specification will define packaging, commands, prerequisite automation, and management behavior over the established Compose deployment. |
+| Desktop app | Electron is selected for macOS, Windows, and Linux. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup without a setup code, and owner-triggered Your Space updates; local backup, restore, and migration to a server are post-open-source. Packaging, code signing, and self-update need a specification. |
+| CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. A separate follow-up specification will define packaging, commands, prerequisite automation, and management behavior over the established Compose deployment. |
 | Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |

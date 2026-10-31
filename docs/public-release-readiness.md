@@ -28,18 +28,19 @@ new capabilities need their own specifications and implementation work.
 
 - [ ] **Define the public release promise**
   - [ ] Target people who can install Docker Desktop and the desktop app for a local workspace, or
-    install Docker and follow a guided CLI for a server, without one-on-one help.
+    install Docker and follow a guided CLI for a server or local workspace, without one-on-one help.
   - [ ] Record the intended users, release maturity, supported behaviors, and what is explicitly
     deferred; update the roadmap and decisions if the agreed direction changes.
   - [ ] For milestones that claim supported environments, define supported operating system versions,
     CPU architectures, browsers, Docker/Compose versions, and local or remote deployment paths.
   - [ ] Define release blockers and who will accept remaining known limitations.
 
-**First public version:** Owner setup, invited member signup, the CLI for servers, a desktop app that
-can also run a local workspace, web, desktop, and PWA workspace clients, at least one independently
-installed app, developer ability to create and install additional apps, and external-agent access. The
-interview is ongoing, so additional requirements may emerge. A small Tasks app is the first app. This
-scope does not change the owner-only first specification.
+**First public version:** Owner setup, invited member signup, the CLI for servers and local
+workspaces, a desktop app that drives the CLI to run a local workspace, web, desktop, and PWA
+workspace clients, at least one independently installed app, developer ability to create and install
+additional apps, and external-agent access. The interview is ongoing, so additional requirements may
+emerge. A small Tasks app is the first app. This scope does not change the owner-only first
+specification.
 
 ## Early Source Publication: Building in Public
 
@@ -157,6 +158,8 @@ belong in their own specifications; the scope remains subject to the ongoing int
 - [ ] **CLI installation and management**
   - [ ] Specify and implement the supported commands and CLI distribution for the established
     Compose deployment, including installation, prerequisite handling, and management scope.
+  - [ ] Verify the CLI drives Docker Compose for both local and server installations on macOS,
+    Windows, and Linux, and that the desktop app drives it in local mode.
   - [ ] Test the CLI on each claimed host for initial setup, repeat invocation, failures, and
     preservation of existing configuration and data; document manual alternatives and limitations.
   - [ ] Verify the guided installation is usable by someone comfortable installing Docker and following a CLI.
@@ -172,7 +175,7 @@ belong in their own specifications; the scope remains subject to the ongoing int
   - [ ] Ship and test the Electron desktop app on macOS, Windows, and Linux; initially support server
     hosts on macOS and Linux.
   - [ ] Verify the desktop app can connect to an existing server by URL, or set up, run, and connect to
-    a local Your Space Docker Compose stack on the same machine.
+    a local Your Space Docker Compose stack on the same machine through the CLI.
   - [ ] In local mode, verify Docker detection with a download link when missing, stack startup when
     the app opens, and owner-triggered Your Space updates.
   - [ ] Verify local-mode owner setup completes in the desktop app without a setup code, and that
