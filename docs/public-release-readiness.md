@@ -189,9 +189,9 @@ belong in their own specifications; the scope remains subject to the ongoing int
     revision and image provenance reflect the update, and additional access requires explicit approval.
   - [ ] Read the app's name and requested access from the `x-your-space` section of its Compose
     file.
-  - [ ] Accept the deployment file as a restricted Docker Compose file; verify settings that would
-    break app isolation, such as host folder mounts, devices, privileged mode, or host networking,
-    are rejected.
+  - [ ] Accept only Compose settings on an approved list, starting with what the first app needs;
+    verify unlisted settings and settings that would break app isolation, such as host folder
+    mounts, devices, privileged mode, or host networking, are rejected.
   - [ ] Back up app data and record image versions before each update; verify a failed update
     automatically restores the previous image versions and the pre-update data.
   - [ ] Have Your Space manage each app's Docker container or containers on the server host, including
@@ -213,10 +213,11 @@ belong in their own specifications; the scope remains subject to the ongoing int
   installation is explicitly [post-open-source
   work](roadmap.md#post-public-later-direction-and-enhancements). Owner-triggered app updates with
   automatic rollback of failed updates are required before publication; automatic app updates, backup
-  history, and manual rollback are post-open-source. The deployment file is a restricted Docker
-  Compose file; alternative formats are post-open-source. App details go in an `x-your-space` section
-  of that file. The supported Compose subset, the section's contents, image identity validation, SDK
-  language support, owner-triggered update mechanics, and failed-update detection remain open.
+  history, and manual rollback are post-open-source. The deployment file is a Docker Compose file;
+  alternative formats are post-open-source. App details go in an `x-your-space` section of that file.
+  The approved list of Compose settings is set when the first app is implemented. The section's
+  contents, image identity validation, SDK language support, owner-triggered update mechanics, and
+  failed-update detection remain open.
 
 - [ ] **External agent access**
   - [ ] Implement external-agent access to the installed app through the supported identity and role integration.
