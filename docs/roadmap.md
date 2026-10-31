@@ -14,7 +14,8 @@ the repository. The post-public checklist captures later direction and possible 
 Release scope and details may evolve as the remaining questions are resolved. See the
 [public release readiness checklist](public-release-readiness.md) for the publication review.
 
-**Next discussion:** Decide whether desktop clients are required before publication or can follow it.
+**Next discussion:** Review the remaining pre-public capabilities for anything else to defer, then
+finalize this roadmap. Desktop clients are post-open-source work.
 TypeScript and Python SDKs are required before publication. A small Tasks app is the first app; its
 needs set the initial list of Compose settings Your Space accepts. The owner installs an app by
 pasting its deployment file's GitHub URL, and the app describes itself in an `x-your-space` section of
@@ -78,14 +79,13 @@ own specifications; their order here is not a delivery sequence.
 
   **Source:** [UI integration](architecture/decisions.md#ui-integration).
 
-  - [ ] Provide web, desktop, and installable PWA clients with the same core workspace and installed-app experience when connected to the server.
-  - [ ] Support and test the desktop client on macOS, Windows, and Linux.
+  - [ ] Provide web and installable PWA clients with the same core workspace and installed-app experience when connected to the server.
   - [ ] Open installed apps within the Your Space interface while platform navigation remains available.
   - [ ] Preserve normal frontend requests to the app backend without requiring each request to be rewritten for Your Space.
   - [ ] Apply equivalent backend authorization checks to human UI and programmatic access.
 
-  The first owner feature uses the web client. Desktop technology, PWA offline behavior, embedding,
-  origins, routing, isolation, and session bridging remain open.
+  The first owner feature uses the web client. Desktop clients are post-open-source. PWA offline
+  behavior, embedding, origins, routing, isolation, and session bridging remain open.
 
 - [ ] **Independent app deployment and lifecycle**
 
@@ -166,6 +166,15 @@ own specifications; their order here is not a delivery sequence.
 ## Post-public: Later Direction and Enhancements
 
 These capabilities are not required for the first public release. Their order and timing remain open.
+
+- [ ] **Desktop clients**
+
+  **Deferred (2026-10-31):** [First public-release audience and clients](architecture/decisions.md#first-public-release-audience-and-clients).
+
+  - [ ] Provide desktop clients with the same core workspace and installed-app experience as the web client.
+  - [ ] Support and test the desktop clients on macOS, Windows, and Linux.
+
+  The first public release provides web and installable PWA clients. Desktop technology remains open.
 
 - [ ] **Automatic app updates**
 

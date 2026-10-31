@@ -34,10 +34,10 @@ new capabilities need their own specifications and implementation work.
     CPU architectures, browsers, Docker/Compose versions, and local or remote deployment paths.
   - [ ] Define release blockers and who will accept remaining known limitations.
 
-**First public version:** Owner setup, invited member signup, the CLI, web, desktop and PWA workspace
-clients, at least one independently installed app, developer ability to create and install additional
-apps, and external-agent access. The interview is ongoing, so additional requirements may emerge. A
-small Tasks app is the first app. This scope does not change the owner-only first specification.
+**First public version:** Owner setup, invited member signup, the CLI, web and PWA workspace clients,
+at least one independently installed app, developer ability to create and install additional apps, and
+external-agent access. The interview is ongoing, so additional requirements may emerge. A small Tasks
+app is the first app. This scope does not change the owner-only first specification.
 
 ## Early Source Publication: Building in Public
 
@@ -164,14 +164,15 @@ belong in their own specifications; the scope remains subject to the ongoing int
   - [ ] Verify membership and access controls while preserving existing owner, account, and workspace identities.
   - [ ] Document and test invitation, signup, and recovery paths; detailed invitation and signup rules remain open.
 
-- [ ] **Workspace clients on web, desktop, and PWA**
-  - [ ] Provide the same core workspace and installed-app experience on web, desktop, and installable PWA clients.
-  - [ ] Support and test desktop clients on macOS, Windows, and Linux; initially support server hosts on macOS and Linux.
+- [ ] **Workspace clients on web and PWA**
+  - [ ] Provide the same core workspace and installed-app experience on web and installable PWA clients.
+  - [ ] Initially support server hosts on macOS and Linux.
   - [ ] Verify supported clients connect to the same workspace and handle authentication and failures;
     a connection to the server is required.
   - [ ] Define and test supported devices, platforms, installation and accessibility expectations.
 
-  Desktop technology, PWA offline behavior, and packaging remain open.
+  Desktop clients are [post-open-source work](roadmap.md#post-public-later-direction-and-enhancements).
+  PWA offline behavior and packaging remain open.
 
 - [ ] **Independent apps and developer integration**
   - [ ] Specify and implement the versioned app integration and SDK contract needed by the journey;

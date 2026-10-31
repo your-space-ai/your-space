@@ -43,7 +43,7 @@ The repository README and agent guidance link here so future planning can find t
 
 - Begin with a documented, manual Docker Compose installation and browser-guided owner setup.
 - Initially support macOS and Linux server hosts. Users on other operating systems can access a supported server through the web client.
-- Begin with a web client in the owner-access feature. Web, desktop, and PWA clients are part of the first public-release target; desktop technology remains open.
+- Begin with a web client in the owner-access feature. Web and PWA clients are part of the first public-release target; desktop clients are post-open-source work.
 - Keep client and server as independent components that can run on the same machine or different machines.
 - Store authoritative account and workspace state on the server, rather than relying on a particular browser.
 - Use persistent storage so supported restarts retain identity, ownership, and workspace state.
@@ -149,9 +149,11 @@ Existing app authorization should be reusable where it has a suitable integratio
 ### First Public-Release Audience and Clients
 
 - The first public release targets people who can install Docker and follow a guided CLI without one-on-one assistance.
-- The web, desktop, and PWA clients provide the same core workspace and installed-app experience while connected to the user's server; a local network connection is sufficient.
-- Support and test the desktop client on macOS, Windows, and Linux. This does not expand the initial macOS and Linux server-host commitment.
-- Desktop technology and offline support remain open. The first owner-access feature remains web-only.
+- The web and PWA clients provide the same core workspace and installed-app experience while connected to the user's server; a local network connection is sufficient.
+- Desktop clients for macOS, Windows, and Linux are post-open-source work. They do not expand the initial macOS and Linux server-host commitment.
+- Desktop technology and PWA offline support remain open. The first owner-access feature remains web-only.
+
+**Decision update (2026-10-31):** Desktop clients move from the first public release to post-open-source work. They need a separate build for each operating system, code signing including Apple notarization, and their own update mechanism, while the installable PWA already opens in its own app window on macOS, Windows, and Linux.
 
 ### Deployment Boundaries and Licensing
 
@@ -296,7 +298,7 @@ No hosted workflow engine or model-provider integration is selected here.
 
 **Decision update (2026-10-29)**: Plan the roadmap in pre-public and post-public sections. The pre-public section covers the core experience and a working first version; post-public covers capabilities that are not crucial to that release. The owner prefers an installable, usable product before making the repository public rather than publishing only plans.
 
-The intended pre-public experience includes owner setup; additional members signing up through invitation links created and shared by the owner; the installation CLI; web, desktop, and PWA workspace clients; at least one installed independent app; a way for developers to create, integrate, and install more apps; and access for external agents. Only the owner installs or removes apps in the first public release. The first release targets users comfortable installing Docker and following a guided CLI.
+The intended pre-public experience includes owner setup; additional members signing up through invitation links created and shared by the owner; the installation CLI; web and PWA workspace clients; at least one installed independent app; a way for developers to create, integrate, and install more apps; and access for external agents. Only the owner installs or removes apps in the first public release. The first release targets users comfortable installing Docker and following a guided CLI.
 
 This is a developing release roadmap, not a complete acceptance specification or a claim of implementation. Additional requirements may emerge during the interview. These future capabilities do not expand the owner-only first feature. The agreed sequence remains manual Compose and owner access first, then a separate CLI specification and implementation; no further feature order is established.
 
