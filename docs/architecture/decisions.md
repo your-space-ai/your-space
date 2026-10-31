@@ -109,6 +109,7 @@ These concepts do not prescribe a specific database schema.
 - Concurrent or retried setup must not create duplicate owners or replace an existing owner.
 
 The setup code proves installation authority. It does not prove control of the supplied email address.
+In desktop local mode, the desktop app sets up the stack and supplies this authority itself, so the user never enters a setup code; network access alone still cannot claim a local workspace.
 The same account model serves local and remote installations; deployment configuration may govern email delivery and verification policy.
 Separate local-only and hosted authentication implementations are not part of the direction.
 
@@ -155,6 +156,7 @@ Existing app authorization should be reusable where it has a suitable integratio
 - When setting up the desktop app, the user either connects to an existing server by URL or runs Your Space locally. In local mode, the desktop app sets up and runs the Your Space Docker Compose stack on that machine through Docker, then connects to it.
 - The CLI remains part of the first public release for deploying Your Space to a server; desktop, web, and PWA clients can connect to that server.
 - Before publication, local mode detects Docker and links to the Docker Desktop download when it is missing, sets up the Your Space stack, starts it when the desktop app opens, and updates Your Space when the owner chooses.
+- Local-mode setup creates the owner and workspace directly in the desktop app without showing a setup code; the app supplies setup authority itself. Server installations keep the setup code. Streamlined local setup gets its own specification and implementation PR, separate from the owner-access feature.
 - Backing up and restoring a local workspace, and moving a local workspace to a server, are post-open-source work.
 - A local workspace is unavailable to other people and remote agents while its machine is asleep or off. Install documentation must state this and the Docker Desktop license terms.
 - PWA offline support remains open. The first owner-access feature remains web-only.
@@ -164,6 +166,8 @@ Existing app authorization should be reusable where it has a suitable integratio
 **Decision update (2026-10-31):** Desktop clients return to the first public release, superseding the deferral above, so that less technical users can run their own workspace. The desktop app can connect to an existing server or set up and run a local Docker Compose stack. The CLI stays for server deployment. Electron is selected, shipping for macOS, Windows, and Linux, which accepts the per-OS build, signing, and update costs.
 
 **Decision update (2026-10-31):** Local mode's first-release scope is Docker detection with a download link, stack setup, starting the stack with the app, and owner-triggered Your Space updates. Local backup and restore, and moving a local workspace to a server, are deferred.
+
+**Decision update (2026-10-31):** Local mode skips the setup code: the desktop app sets up the stack and supplies setup authority itself, so network access alone still cannot claim a local workspace. Server installations keep the setup code from the owner-access feature. Streamlined local setup is specified and implemented in its own PR, separate from the owner-access feature.
 
 ### Deployment Boundaries and Licensing
 
@@ -320,7 +324,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Database configuration | PostgreSQL and Drizzle are selected; versions, migration execution and recovery, and connection configuration need planning. |
 | Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
 | Initial deployment details | macOS and Linux with manual Docker Compose are selected; exact OS/CPU support, versions, transport, networking, and configuration need planning. |
-| Desktop app | Electron is selected for macOS, Windows, and Linux. Local mode covers Docker detection, stack setup and startup, and owner-triggered Your Space updates; local backup, restore, and migration to a server are post-open-source. Packaging, code signing, and self-update need a specification. |
+| Desktop app | Electron is selected for macOS, Windows, and Linux. Local mode covers Docker detection, stack setup and startup, owner setup without a setup code, and owner-triggered Your Space updates; local backup, restore, and migration to a server are post-open-source. Packaging, code signing, and self-update need a specification. |
 | CLI delivery | A separate follow-up specification will define packaging, commands, prerequisite automation, and management behavior over the established Compose deployment. |
 | Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
