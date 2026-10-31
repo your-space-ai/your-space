@@ -14,11 +14,12 @@ the repository. The post-public checklist captures later direction and possible 
 Release scope and details may evolve as the remaining questions are resolved. See the
 [public release readiness checklist](public-release-readiness.md) for the publication review.
 
-**Next discussion:** Define how an app declares its Your Space details, such as its name and the
-access it needs. The owner installs an app by pasting its deployment file's GitHub URL. A restricted
-Docker Compose deployment file, published images with exact declared versions, owner-triggered app
-updates, and automatic rollback of failed updates are required before publication; building from
-source, alternative deployment-file formats, and automatic app updates are post-open-source work.
+**Next discussion:** Define which Compose settings Your Space accepts in an app's deployment file. The
+owner installs an app by pasting its deployment file's GitHub URL, and the app describes itself in an
+`x-your-space` section of that file. A restricted Docker Compose deployment file, published images
+with exact declared versions, owner-triggered app updates, and automatic rollback of failed updates
+are required before publication; building from source, alternative deployment-file formats, and
+automatic app updates are post-open-source work.
 
 Each parent checkbox represents a capability; its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
@@ -101,11 +102,12 @@ own specifications; their order here is not a delivery sequence.
   - [ ] Let the owner trigger updates of installed apps, preserving app data and requiring explicit approval for any additional access.
   - [ ] Back up app data and record image versions before each update; if the update fails, automatically roll back to the previous versions and restore the backup.
   - [ ] Read the app's deployment file as a restricted Docker Compose file, rejecting settings that would break app isolation.
+  - [ ] Read the app's name and requested access from the `x-your-space` section of its Compose file.
 
   Published images are the only first-release installation path; Your Space does not build app source
   during installation. The deployment file is a restricted Docker Compose file. The supported Compose
-  subset, remaining deployment-file contents, image identity validation, resource and isolation
-  enforcement, lifecycle, owner-triggered update mechanics, and failed-update detection need
+  subset, the contents of the `x-your-space` section, image identity validation, resource and
+  isolation enforcement, lifecycle, owner-triggered update mechanics, and failed-update detection need
   definition. A deployment file does not itself guarantee isolation; that boundary needs design and
   verification.
 
@@ -182,9 +184,10 @@ These capabilities are not required for the first public release. Their order an
 
   **Deferred (2026-10-31):** [App deployment decision](architecture/decisions.md#accepted-future-app-deployment-direction).
 
-  - [ ] Explore a deployment-file format other than Docker Compose if a real need surfaces.
+  - [ ] Explore a deployment-file format other than Docker Compose if a real need surfaces, such as app
+    details the `x-your-space` section cannot express.
 
-  The first public release uses a restricted Docker Compose file.
+  The first public release uses a restricted Docker Compose file with an `x-your-space` section.
 
 - [ ] **Build apps from source during installation**
 

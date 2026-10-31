@@ -197,7 +197,8 @@ Deployment-file contents, packaging, release verification, installation executio
 - The first public release installs published container images only. The app's integration files must declare the exact image and version to install for each container, including any declared database service.
 - Building apps from source during installation is post-open-source work.
 - The deployment file is a Docker Compose file. Your Space supports a restricted subset of Compose and rejects settings that would break app isolation, such as host folder mounts, devices, privileged mode, or host networking.
-- Alternative deployment-file formats are post-open-source work, explored only if a real need surfaces.
+- The app describes itself to Your Space, such as its name and the access it needs, in a dedicated `x-your-space` section of the same Compose file.
+- Alternative deployment-file formats are post-open-source work, explored only if a real need surfaces, such as app details the Compose file cannot express.
 
 **Decision update (2026-10-30):** Published images with exact declared image versions are required for the first release. This resolves the previously open image-pull-versus-source-build choice. Developers publish their images; Your Space downloads and runs the declared versions. Deferring source builds keeps build execution and its operation outside the initial installation scope.
 
@@ -205,7 +206,9 @@ Deployment-file contents, packaging, release verification, installation executio
 
 **Decision update (2026-10-31):** The owner pastes the URL of the deployment file itself, superseding the earlier choice to paste the repository URL and read the file from the default branch. Because the URL names the exact file, Your Space needs no file-naming or discovery convention, and one repository can hold more than one app.
 
-The deployment file is intended to describe how Your Space launches the app without coupling deployment configuration to application code. It uses Docker Compose. The supported subset of Compose settings, remaining contents, supported operations, and backend interpretation remain open. The app contract must define how exact image identity is validated and retained alongside the repository commit. Trust verification, owner-triggered update mechanics, and how a failed update is detected still need decisions.
+**Decision update (2026-10-31):** App details for Your Space go in a dedicated `x-your-space` section of the Compose file. Compose permits extension sections and ignores them, so installation stays one file and one URL. A separate details file would need a second URL or file-finding logic. If the Compose section proves too limited, a custom format can be explored later.
+
+The deployment file is intended to describe how Your Space launches the app without coupling deployment configuration to application code. It uses Docker Compose. The supported subset of Compose settings, the contents of the `x-your-space` section, supported operations, and backend interpretation remain open. The app contract must define how exact image identity is validated and retained alongside the repository commit. Trust verification, owner-triggered update mechanics, and how a failed update is detected still need decisions.
 
 App role authorization controls what users and agents may do within an app. Host isolation is a separate boundary and must not rely on those roles or the SDK alone. The runtime manager's privileges and deployment-file processing must be designed so app-provided configuration cannot bypass the agreed host-access boundary.
 
@@ -302,7 +305,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |
 | App integration | SDK language support, role registration, authorization compatibility, and revocation mechanics need a later specification. |
-| App deployment file | A restricted Docker Compose file declaring published images with exact versions is selected for the first release; source builds and alternative formats are post-open-source. The owner installs by pasting the file's GitHub URL. The supported Compose subset, remaining contents, supported operations, and backend interpretation need definition. |
+| App deployment file | A restricted Docker Compose file declaring published images with exact versions is selected for the first release; source builds and alternative formats are post-open-source. The owner installs by pasting the file's GitHub URL. App details go in an `x-your-space` section. The supported Compose subset, the section's contents, supported operations, and backend interpretation need definition. |
 | App runtime and data | Design and verify isolation, lifecycle, networking, persistent storage, retained-data deletion, and runtime-manager privileges. |
 | App distribution | Installation from the deployment file's GitHub URL, exact commit recording, and exact declared image versions are accepted for initial installation. Owner-triggered updates are pre-public; automatic updates are post-public. Failed updates roll back automatically to the previous image versions and pre-update data backup. Image identity validation and retention, artifact trust, catalog implementation, update selection and mechanics, and failed-update detection remain open. |
 
