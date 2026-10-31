@@ -138,6 +138,9 @@ Token lifetimes, operator command mechanics, session storage, and revocation imp
 - Installing a compatible app does not require rebuilding the platform or including app source in its build.
 - The SDK is developed in this repository and published for use by independent app projects.
 - First-party apps use the same public integration surface as other apps.
+- The first public release publishes TypeScript and Python SDKs. SDKs for other languages are post-open-source work.
+
+**Decision update (2026-10-31):** TypeScript and Python SDKs are required before publication. Together they cover two common stacks: a TypeScript frontend with a Python backend, and TypeScript on both frontend and backend. Developers using other languages can still integrate through the documented public contracts.
 
 The intended developer experience is to adapt an existing app for installation and platform identity integration.
 An app should remain independently runnable rather than requiring a replacement frontend networking layer.
@@ -309,7 +312,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |
-| App integration | SDK language support, role registration, authorization compatibility, and revocation mechanics need a later specification. |
+| App integration | TypeScript and Python SDKs are selected for the first release; other languages are post-open-source. Role registration, authorization compatibility, and revocation mechanics need a later specification. |
 | App deployment file | A Docker Compose file limited to an approved list of settings, declaring published images with exact versions is selected for the first release; source builds and alternative formats are post-open-source. The owner installs by pasting the file's GitHub URL. App details go in an `x-your-space` section. The approved settings list, set when the first app is implemented, the section's contents, supported operations, and backend interpretation need definition. |
 | App runtime and data | Design and verify isolation, lifecycle, networking, persistent storage, retained-data deletion, and runtime-manager privileges. |
 | App distribution | Installation from the deployment file's GitHub URL, exact commit recording, and exact declared image versions are accepted for initial installation. Owner-triggered updates are pre-public; automatic updates are post-public. Failed updates roll back automatically to the previous image versions and pre-update data backup. Image identity validation and retention, artifact trust, catalog implementation, update selection and mechanics, and failed-update detection remain open. |

@@ -203,6 +203,7 @@ belong in their own specifications; the scope remains subject to the ongoing int
     Your Space interface, and verify its data survives a supported restart.
   - [ ] Enable a developer to create or adapt and install an additional independent app using the
     documented SDK and contracts; validate the process beyond the first app.
+  - [ ] Publish TypeScript and Python SDKs and verify each with a working app.
   - [ ] Review and test the app isolation, source and version provenance, and installation trust
     boundaries for the supported installation path.
   - [ ] Document app developer integration and the supported example, including compatibility,
@@ -215,8 +216,8 @@ belong in their own specifications; the scope remains subject to the ongoing int
   history, and manual rollback are post-open-source. The deployment file is a Docker Compose file;
   alternative formats are post-open-source. App details go in an `x-your-space` section of that file.
   The approved list of Compose settings is set when the first app is implemented. The section's
-  contents, image identity validation, SDK language support, owner-triggered update mechanics, and
-  failed-update detection remain open.
+  contents, image identity validation, owner-triggered update mechanics, and failed-update detection
+  remain open.
 
 - [ ] **External agent access**
   - [ ] Implement external-agent access to the installed app through the supported identity and role integration.

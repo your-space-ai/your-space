@@ -14,13 +14,14 @@ the repository. The post-public checklist captures later direction and possible 
 Release scope and details may evolve as the remaining questions are resolved. See the
 [public release readiness checklist](public-release-readiness.md) for the publication review.
 
-**Next discussion:** Choose which languages the first-release SDK supports. A small Tasks app is the
-first app; its needs set the initial list of Compose settings Your Space accepts. The owner installs
-an app by pasting its deployment file's GitHub URL, and the app describes itself in an `x-your-space`
-section of that file. A Docker Compose deployment file limited to an approved list of settings,
-published images with exact declared versions, owner-triggered app updates, and automatic rollback of
-failed updates are required before publication; building from source, alternative deployment-file
-formats, and automatic app updates are post-open-source work.
+**Next discussion:** Decide whether desktop clients are required before publication or can follow it.
+TypeScript and Python SDKs are required before publication. A small Tasks app is the first app; its
+needs set the initial list of Compose settings Your Space accepts. The owner installs an app by
+pasting its deployment file's GitHub URL, and the app describes itself in an `x-your-space` section of
+that file. A Docker Compose deployment file limited to an approved list of settings, published images
+with exact declared versions, owner-triggered app updates, and automatic rollback of failed updates
+are required before publication; building from source, alternative deployment-file formats, and
+automatic app updates are post-open-source work.
 
 Each parent checkbox represents a capability; its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
@@ -117,11 +118,13 @@ own specifications; their order here is not a delivery sequence.
   **Source:** [Platform and independent apps](architecture/decisions.md#platform-and-independent-apps).
 
   - [ ] Document versioned public integration contracts for independently built and running apps.
-  - [ ] Publish an SDK from this repository for apps in their own repositories, including first-party apps.
+  - [ ] Publish TypeScript and Python SDKs from this repository for apps in their own repositories, including first-party apps.
+  - [ ] Verify each SDK with a working app.
   - [ ] Enable developers to create or adapt apps and install them without rebuilding Your Space or including app source in the platform build.
   - [ ] Provide a small Tasks app as the first independently maintained, installable app and verify the complete installation and usage journey.
 
-  A small Tasks app is the first app. The app contract and SDK language and coverage remain open.
+  A small Tasks app is the first app. SDKs for languages other than TypeScript and Python are
+  post-open-source. The app contract and SDK coverage remain open.
 
 - [ ] **Platform identity and app-owned roles**
 
@@ -188,6 +191,14 @@ These capabilities are not required for the first public release. Their order an
     details the `x-your-space` section cannot express.
 
   The first public release uses a Docker Compose file with an `x-your-space` section.
+
+- [ ] **Additional SDK languages**
+
+  **Deferred (2026-10-31):** [Platform and independent apps](architecture/decisions.md#platform-and-independent-apps).
+
+  - [ ] Publish SDKs for languages beyond TypeScript and Python, such as Go.
+
+  The first public release publishes TypeScript and Python SDKs.
 
 - [ ] **Build apps from source during installation**
 
