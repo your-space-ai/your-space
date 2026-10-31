@@ -173,14 +173,16 @@ belong in their own specifications; the scope remains subject to the ongoing int
     hosts on macOS and Linux.
   - [ ] Verify the desktop app can connect to an existing server by URL, or set up, run, and connect to
     a local Your Space Docker Compose stack on the same machine.
+  - [ ] In local mode, verify Docker detection with a download link when missing, stack startup when
+    the app opens, and owner-triggered Your Space updates.
   - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off,
     and state the Docker Desktop license terms.
   - [ ] Verify supported clients connect to the same workspace and handle authentication and failures;
     a connection to the server is required.
   - [ ] Define and test supported devices, platforms, installation and accessibility expectations.
 
-  Local-mode management scope, desktop packaging, code signing, self-update, and PWA offline behavior
-  remain open.
+  Local backup, restore, and moving a local workspace to a server are post-open-source. Desktop
+  packaging, code signing, self-update, and PWA offline behavior remain open.
 
 - [ ] **Independent apps and developer integration**
   - [ ] Specify and implement the versioned app integration and SDK contract needed by the journey;

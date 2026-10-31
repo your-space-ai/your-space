@@ -14,15 +14,16 @@ the repository. The post-public checklist captures later direction and possible 
 Release scope and details may evolve as the remaining questions are resolved. See the
 [public release readiness checklist](public-release-readiness.md) for the publication review.
 
-**Next discussion:** Define what the desktop app's local mode must do before publication. An Electron
-desktop app for macOS, Windows, and Linux can connect to a server or run a local workspace; the CLI
-remains the server deployment path. TypeScript and Python SDKs are required before publication. A
-small Tasks app is the first app; its needs set the initial list of Compose settings Your Space
-accepts. The owner installs an app by pasting its deployment file's GitHub URL, and the app describes
-itself in an `x-your-space` section of that file. A Docker Compose deployment file limited to an
-approved list of settings, published images with exact declared versions, owner-triggered app updates,
-and automatic rollback of failed updates are required before publication; building from source,
-alternative deployment-file formats, and automatic app updates are post-open-source work.
+**Next discussion:** Review the remaining pre-public capabilities for anything else to defer, then
+finalize this roadmap. Local mode detects Docker, sets up, starts, and updates a local workspace. An
+Electron desktop app for macOS, Windows, and Linux can connect to a server or run a local workspace;
+the CLI remains the server deployment path. TypeScript and Python SDKs are required before
+publication. A small Tasks app is the first app; its needs set the initial list of Compose settings
+Your Space accepts. The owner installs an app by pasting its deployment file's GitHub URL, and the app
+describes itself in an `x-your-space` section of that file. A Docker Compose deployment file limited
+to an approved list of settings, published images with exact declared versions, owner-triggered app
+updates, and automatic rollback of failed updates are required before publication; building from
+source, alternative deployment-file formats, and automatic app updates are post-open-source work.
 
 Each parent checkbox represents a capability; its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
@@ -95,10 +96,13 @@ own specifications; their order here is not a delivery sequence.
   - [ ] Ship an Electron desktop app for macOS, Windows, and Linux.
   - [ ] On setup, let the user connect to an existing server by URL or run Your Space locally.
   - [ ] In local mode, set up and run the Your Space Docker Compose stack on the same machine through Docker, then connect to it.
+  - [ ] Detect Docker and link to the Docker Desktop download when it is missing.
+  - [ ] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
   - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off, and state the Docker Desktop license terms.
 
-  Local-mode management scope, Docker detection, packaging, code signing, and self-update need a
-  specification. The CLI remains the server deployment path.
+  Desktop packaging, code signing, and self-update need a specification. Local backup, restore, and
+  moving a local workspace to a server are post-open-source. The CLI remains the server deployment
+  path.
 
 - [ ] **Independent app deployment and lifecycle**
 
@@ -179,6 +183,15 @@ own specifications; their order here is not a delivery sequence.
 ## Post-public: Later Direction and Enhancements
 
 These capabilities are not required for the first public release. Their order and timing remain open.
+
+- [ ] **Local workspace backup and migration**
+
+  **Deferred (2026-10-31):** [First public-release audience and clients](architecture/decisions.md#first-public-release-audience-and-clients).
+
+  - [ ] Back up and restore a local workspace from the desktop app.
+  - [ ] Move a local workspace to a server.
+
+  The first public release sets up, starts, and updates local workspaces.
 
 - [ ] **Automatic app updates**
 
