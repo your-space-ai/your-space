@@ -4,7 +4,7 @@
 
 **Recorded**: 2026-10-28
 
-**Last updated**: 2026-10-30
+**Last updated**: 2026-11-01
 
 **Scope**: Project-wide direction, independent of any feature specification
 
@@ -66,11 +66,16 @@ This replaces the earlier proposed CLI-first ordering: the CLI needs a working d
 - The CLI drives Docker Compose on the user's behalf for both local and server installations, so installation and management are a managed experience rather than users running Compose themselves.
 - The desktop app's local mode drives the CLI for the user. People can also run the CLI themselves to set up a local workspace.
 - There is one installation and setup behavior. The CLI behaves the same for local and server installations, and wrappers such as the desktop app simplify the experience without changing the CLI or setup behavior.
-- CLI command names, packaging, prerequisite automation, and management scope belong in its separate specification.
+- The manual Compose procedures stay documented as an advanced alternative; the CLI is the supported way to install.
+- Before publication the CLI provides at least these operations: install, start, stop, status, logs, update Your Space, and owner password recovery.
+- Updating Your Space through the CLI rolls back automatically if the update fails; see [Your Space updates, backup, and restore](#your-space-updates-backup-and-restore).
+- CLI command names, packaging, prerequisite automation, and the rest of its management scope belong in its separate specification.
 
 Guided installation remains the product direction. The initial guide and browser setup establish the working pathway that the CLI will automate.
 
 **Decision update (2026-10-31):** The CLI is the managed installation and management path for both local and server installations, driving Docker Compose for the user. The desktop app's local mode drives the CLI rather than managing Docker itself, and people can run the CLI themselves for a local install. This supersedes the 2026-10-31 position that the CLI is only the server deployment path.
+
+**Decision update (2026-11-01):** The owner-access feature (PR #3) and its manual Compose procedure come first, then the CLI. The minimum CLI operations before publication are install, start, stop, status, logs, update Your Space, and owner password recovery. Backup and restore are not part of the first release; see [Your Space updates, backup, and restore](#your-space-updates-backup-and-restore).
 
 ### Server and Database
 
@@ -132,6 +137,20 @@ Future email delivery can send reset links to verified addresses through the sam
 A managed service can provide that delivery without introducing a second authentication system.
 Token lifetimes, operator command mechanics, session storage, and revocation implementation remain technical planning choices.
 
+### Your Space Updates, Backup, and Restore
+
+- Updating Your Space has the same safety net as app updates. Before an update, Your Space records its current versions and takes a snapshot of its data. If the update fails, it rolls back automatically to those versions and restores the snapshot.
+- Releases are not expected to break on update; automatic rollback is protection, not a substitute for release testing.
+- One pre-update snapshot mechanism serves both app updates and Your Space updates, and is built before publication.
+- Backup and restore are post-open-source work with a single implementation for every installation. The CLI asks a Your Space server to produce a backup, and the server returns it through its API, so the behavior is the same whether the server runs locally or remotely. Wrappers such as the desktop app use the same operation.
+- Backup and restore build on the pre-update snapshot mechanism rather than a separate implementation.
+- A backup contains everything in the workspace, including credentials and app data, so producing or restoring one requires owner authority.
+- Moving a workspace between installations, such as from a local machine to a server, is a backup from one and a restore into the other rather than a separate feature.
+
+**Decision update (2026-11-01):** Failed Your Space updates roll back automatically, matching app updates. Backup and restore move to post-open-source work and have one server-produced, CLI-driven implementation for local and server installations, superseding the earlier local-only framing of deferred backup and migration.
+
+What counts as a failed Your Space update, snapshot contents and storage, how the CLI authenticates to a remote server, how a restore reaches a broken or fresh installation, and backup format and protection remain open.
+
 ## Accepted Product and Repository Direction
 
 ### Platform and Independent Apps
@@ -161,7 +180,7 @@ Existing app authorization should be reusable where it has a suitable integratio
 - The CLI is part of the first public release for setting up Your Space on a server or locally; desktop, web, and PWA clients can connect to a server it sets up.
 - Before publication, local mode detects Docker and links to the Docker Desktop download when it is missing, sets up the Your Space stack, starts it when the desktop app opens, and updates Your Space when the owner chooses.
 - Every installation, local or server, uses one setup flow with the setup code. In local mode the desktop app obtains the setup code through the CLI and submits it for the user, so the user never has to enter it. Streamlined local setup in the desktop app gets its own specification and implementation PR, separate from the owner-access feature.
-- Backing up and restoring a local workspace, and moving a local workspace to a server, are post-open-source work.
+- Backup and restore, for local and server installations alike, and moving a local workspace to a server are post-open-source work. Owner-triggered Your Space updates in local mode go through the CLI and roll back automatically if they fail.
 - A local workspace is unavailable to other people and remote agents while its machine is asleep or off. Install documentation must state this and the Docker Desktop license terms.
 - PWA offline support remains open. The first owner-access feature remains web-only.
 
@@ -330,8 +349,9 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Database configuration | PostgreSQL and Drizzle are selected; versions, migration execution and recovery, and connection configuration need planning. |
 | Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
 | Initial deployment details | macOS and Linux with manual Docker Compose are selected; exact OS/CPU support, versions, transport, networking, and configuration need planning. |
-| Desktop app | Electron is selected for macOS, Windows, and Linux. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates; local backup, restore, and migration to a server are post-open-source. Packaging, code signing, and self-update need a specification. |
-| CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. A separate follow-up specification will define packaging, commands, prerequisite automation, and management behavior over the established Compose deployment. |
+| Desktop app | Electron is selected for macOS, Windows, and Linux. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates through the CLI; backup, restore, and migration to a server are post-open-source. Packaging, code signing, and self-update need a specification. |
+| CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. Its minimum operations are install, start, stop, status, logs, update Your Space, and owner password recovery. A separate follow-up specification will define packaging, command names, prerequisite automation, and management behavior over the established Compose deployment. |
+| Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup and restore are post-open-source; remote CLI authentication, restore into a broken or fresh installation, and backup format and protection remain open. |
 | Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |

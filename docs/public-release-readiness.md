@@ -126,8 +126,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     environments, prerequisites, installation entry point, and known limitations.
   - [ ] Provide accurate installation, configuration, restart, remote access, troubleshooting,
     owner recovery, and safe removal guidance for the actual release.
-  - [ ] Document where durable data lives and how users can back it up and restore it; test the
-    documented procedure and state its limitations.
+  - [ ] Document where durable data lives, and state that built-in backup and restore are
+    post-open-source work.
   - [ ] Explain local development, tests, contribution and review expectations, issue reporting,
     maintainer support expectations, and where to find the roadmap and security policy.
   - [ ] Decide and publish the project's community participation expectations and contact paths.
@@ -146,7 +146,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     intended versions, and document their source and integrity verification where available.
   - [ ] Define the initial upgrade and rollback policy, including schema migrations and data safety;
     test supported paths and document unsupported transitions. The first release must include the
-    owner-triggered app update path with automatic rollback of failed updates.
+    owner-triggered app update path and the CLI's Your Space update path, both with automatic rollback
+    of failed updates.
   - [ ] Record test evidence, outstanding issues, accepted limitations, and any unsupported paths for
     the exact release candidate.
 
@@ -157,7 +158,10 @@ belong in their own specifications; the scope remains subject to the ongoing int
 
 - [ ] **CLI installation and management**
   - [ ] Specify and implement the supported commands and CLI distribution for the established
-    Compose deployment, including installation, prerequisite handling, and management scope.
+    Compose deployment, including installation, prerequisite handling, and management scope. Provide
+    at least install, start, stop, status, logs, update Your Space, and owner password recovery.
+  - [ ] Verify a failed Your Space update through the CLI automatically restores the previous
+    versions and the pre-update data snapshot.
   - [ ] Verify the CLI drives Docker Compose for both local and server installations on macOS,
     Windows, and Linux, and that the desktop app drives it in local mode.
   - [ ] Test the CLI on each claimed host for initial setup, repeat invocation, failures, and
@@ -186,7 +190,7 @@ belong in their own specifications; the scope remains subject to the ongoing int
     a connection to the server is required.
   - [ ] Define and test supported devices, platforms, installation and accessibility expectations.
 
-  Local backup, restore, and moving a local workspace to a server are post-open-source. Desktop
+  Backup, restore, and moving a local workspace to a server are post-open-source. Desktop
   packaging, code signing, self-update, and PWA offline behavior remain open.
 
 - [ ] **Independent apps and developer integration**

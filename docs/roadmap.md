@@ -1,6 +1,6 @@
 # Your Space Roadmap
 
-**Last updated**: 2026-10-30
+**Last updated**: 2026-11-01
 
 This roadmap tracks the functionality we want to build for Your Space: a self-hostable platform
 for independent apps, human users, and agents, with a managed offering planned later.
@@ -24,7 +24,8 @@ pasting its deployment file's GitHub URL, and the app describes itself in an `x-
 of that file. A Docker Compose deployment file limited to an approved list of settings, published
 images with exact declared versions, owner-triggered app updates, and automatic rollback of failed
 updates are required before publication; building from source, alternative deployment-file formats,
-and automatic app updates are post-open-source work.
+and automatic app updates are post-open-source work. Failed Your Space updates also roll back
+automatically; backup and restore are post-open-source work for every installation.
 
 Each parent checkbox represents a capability; its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
@@ -62,11 +63,14 @@ specifications; their order here is not a delivery sequence.
   **Source:** [CLI delivery sequence](architecture/decisions.md#cli-delivery-sequence).
 
   - [ ] Guide local and server installation through the Your Space CLI, which drives Docker Compose so users don't run Compose themselves.
-  - [ ] Manage the deployment through operations defined in the CLI specification.
+  - [ ] Provide at least install, start, stop, status, logs, update Your Space, and owner password recovery.
+  - [ ] Before updating Your Space, record versions and snapshot its data; if the update fails, roll back automatically.
+  - [ ] Keep the manual Compose procedure documented as an advanced alternative to the CLI.
   - [ ] Run the CLI on macOS, Windows, and Linux so the desktop app can drive it for local workspaces.
 
   The CLI follows the working, verified manual Compose deployment and owner-access implementation.
-  Commands, packaging, prerequisites, and management scope remain to be specified.
+  Command names, packaging, prerequisites, and the rest of the management scope remain to be specified.
+  The update rollback uses the same snapshot mechanism as app updates. Backup and restore are post-open-source.
 
 - [ ] **Additional workspace members**
 
@@ -105,8 +109,9 @@ specifications; their order here is not a delivery sequence.
 
   Streamlined local setup has its own specification and implementation PR, separate from the
   owner-access feature; it wraps the CLI and setup flow without changing them. Desktop packaging, code signing,
-  and self-update need a specification. Local backup, restore, and moving a local workspace to a
-  server are post-open-source. The desktop app drives the CLI rather than managing Docker itself.
+  and self-update need a specification. Your Space updates go through the CLI and roll back
+  automatically if they fail. Backup, restore, and moving a local workspace to a server are
+  post-open-source. The desktop app drives the CLI rather than managing Docker itself.
 
 - [ ] **Independent app deployment and lifecycle**
 
@@ -131,7 +136,8 @@ specifications; their order here is not a delivery sequence.
   during installation. The deployment file is a Docker Compose file limited to an approved list of
   settings, which starts with what the first app needs. The contents of the `x-your-space` section,
   image identity validation, resource and isolation enforcement, lifecycle, owner-triggered update
-  mechanics, and failed-update detection need definition. A deployment file does not itself guarantee
+  mechanics, and failed-update detection need definition. App updates and Your Space updates share one
+  pre-update snapshot and rollback mechanism. A deployment file does not itself guarantee
   isolation; that boundary needs design and verification.
 
 - [ ] **App integration and developer experience**
@@ -188,14 +194,17 @@ specifications; their order here is not a delivery sequence.
 
 These capabilities are not required for the first public release. Their order and timing remain open.
 
-- [ ] **Local workspace backup and migration**
+- [ ] **Backup, restore, and migration**
 
-  **Deferred (2026-10-31):** [First public-release audience and clients](architecture/decisions.md#first-public-release-audience-and-clients).
+  **Deferred (2026-10-31; broadened to every installation 2026-11-01):** [Your Space updates, backup, and restore](architecture/decisions.md#your-space-updates-backup-and-restore).
 
-  - [ ] Back up and restore a local workspace from the desktop app.
-  - [ ] Move a local workspace to a server.
+  - [ ] Back up any installation through the CLI: the Your Space server produces the backup and returns it through its API, wherever the server runs.
+  - [ ] Restore a backup into an installation.
+  - [ ] Move a workspace between installations, such as from a local machine to a server, through backup and restore.
+  - [ ] Back up and restore a local workspace from the desktop app through the same CLI operation.
 
-  The first public release sets up, starts, and updates local workspaces.
+  One owner-only implementation serves every installation and builds on the pre-update snapshot
+  mechanism. The first public release uses snapshots only for automatic rollback of failed updates.
 
 - [ ] **Automatic app updates**
 
