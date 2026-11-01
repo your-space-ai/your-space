@@ -14,18 +14,20 @@ the repository. The post-public checklist captures later direction and possible 
 Release scope and details may evolve as the remaining questions are resolved. See the
 [public release readiness checklist](public-release-readiness.md) for the publication review.
 
-**Next discussion:** Review the remaining pre-public capabilities for anything else to defer, then
-finalize this roadmap. Local mode detects Docker, sets up, starts, and updates a local workspace. An
-Electron desktop app for macOS, Windows, and Linux can connect to a server or run a local workspace;
-the CLI drives Docker Compose for server and local installs, and desktop local mode drives the CLI.
-TypeScript and Python SDKs are required before publication. A small Tasks app is the first app; its
-needs set the initial list of Compose settings Your Space accepts. The owner installs an app by
-pasting its deployment file's GitHub URL, and the app describes itself in an `x-your-space` section
-of that file. A Docker Compose deployment file limited to an approved list of settings, published
-images with exact declared versions, owner-triggered app updates, and automatic rollback of failed
-updates are required before publication; building from source, alternative deployment-file formats,
-and automatic app updates are post-open-source work. Failed Your Space updates also roll back
-automatically; backup and restore are post-open-source work for every installation.
+**Current direction:** Owner access with a manual Compose install comes first (PR #3), followed by
+a CLI that drives Docker Compose for server and local installs. An Electron desktop app for macOS,
+Windows, and Linux connects to a server or drives the CLI to run a local workspace; Windows supports
+the desktop app and local workspaces through Docker Desktop, but not server hosting. Before
+publication, the release also needs invited members; web, desktop, and PWA clients; app installation
+from a pasted Docker Compose deployment file limited to an approved list of settings and exact
+published image versions, with app details in an `x-your-space` section; owner-triggered app and
+Your Space updates that roll back automatically if they fail; TypeScript and Python SDKs with a small
+Tasks app as the first app; app roles and external agents; and a security hardening pass on app and
+workspace boundaries. Backup and restore, automatic app updates, building apps from source, and
+alternative deployment-file formats are post-open-source work.
+
+**Next discussion:** Member password recovery without email, remaining pre-public open questions,
+and whether to reduce the first release's size; then a final consistency review.
 
 Each parent checkbox represents a capability; its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
@@ -78,10 +80,12 @@ specifications; their order here is not a delivery sequence.
 
   - [ ] Let the owner create an invitation link and share it directly with a prospective member.
   - [ ] Let the recipient sign up and join the workspace through the invitation.
-  - [ ] Let workspace administrators assign app roles to human members.
+  - [ ] Let the owner assign app roles to human members.
   - [ ] Retain existing account, workspace, membership, and ownership identities when adding members.
 
-  Invitation and membership details require their own specification.
+  Invitation and membership details require their own specification. Member password recovery without
+  email or owner action on every reset is open and needs exploration. Workspace roles, such as an
+  administrator, may come later.
 
 - [ ] **Workspace clients**
 
@@ -100,6 +104,7 @@ specifications; their order here is not a delivery sequence.
   **Source:** [First public-release audience and clients](architecture/decisions.md#first-public-release-audience-and-clients).
 
   - [ ] Ship an Electron desktop app for macOS, Windows, and Linux.
+  - [ ] On Windows, support the desktop app and a local workspace through Docker Desktop; Windows is not a supported server host.
   - [ ] On setup, let the user connect to an existing server by URL or run Your Space locally.
   - [ ] In local mode, drive the Your Space CLI to set up and run the Docker Compose stack on the same machine, then connect to it.
   - [ ] Detect Docker and link to the Docker Desktop download when it is missing.
@@ -126,6 +131,7 @@ specifications; their order here is not a delivery sequence.
   - [ ] Let the owner explicitly delete retained app data from the administration UI.
   - [ ] Restrict app installation and removal to the owner for the first public release.
   - [ ] Isolate apps from host filesystem access, devices, and Docker controls, and protect platform services and other apps.
+  - [ ] Warn the owner when installing an app that it is trusted with its own data, and state in the documentation that Your Space protects itself and other apps but is not a sandbox for hostile code.
   - [ ] Preserve app identity, exact source version, provenance, and approved update source or policy; do not silently expand granted access on update.
   - [ ] Let the owner trigger updates of installed apps, preserving app data and requiring explicit approval for any additional access.
   - [ ] Back up app data and record image versions before each update; if the update fails, automatically roll back to the previous versions and restore the backup.
@@ -186,6 +192,7 @@ specifications; their order here is not a delivery sequence.
   - [ ] Review repository history, GitHub content, and release artifacts for private data and secrets.
   - [ ] Review publication rights, project and dependency licensing, and required notices.
   - [ ] Review security and isolation, provide safe defaults, and establish private vulnerability reporting.
+  - [ ] Complete a security hardening pass on the boundaries between apps and the workspace, enforcing them and protecting users as far as reasonably possible.
   - [ ] Document installation, operation, recovery, developer integration, contribution, and project status.
   - [ ] Verify the core journeys, supported environments, release artifacts, recovery, and maintenance paths.
   - [ ] Review release evidence, unresolved issues, and GitHub settings before authorizing publication.

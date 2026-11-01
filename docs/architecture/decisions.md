@@ -43,7 +43,8 @@ The repository README and agent guidance link here so future planning can find t
 
 - Begin with a documented, manual Docker Compose installation and browser-guided owner setup.
 - Initially support macOS and Linux server hosts. Users on other operating systems can access a supported server through the web client.
-- The desktop app can also run a local workspace on the same machine on macOS, Windows, and Linux, through the Your Space CLI. The CLI therefore runs on all three. This does not add Windows as a supported server host.
+- The desktop app can also run a local workspace on the same machine on macOS, Windows, and Linux, through the Your Space CLI. The CLI therefore runs on all three.
+- On Windows, people can use the desktop app and run a local workspace through Docker Desktop. Windows is not a supported server host.
 - Begin with a web client in the owner-access feature. Web, desktop, and PWA clients are part of the first public-release target; the desktop app uses Electron.
 - Keep client and server as independent components that can run on the same machine or different machines.
 - Store authoritative account and workspace state on the server, rather than relying on a particular browser.
@@ -54,6 +55,8 @@ The repository README and agent guidance link here so future planning can find t
 Docker Compose provides a concrete first installation target without requiring Kubernetes administration.
 This choice does not commit every future deployment to Compose or promise identical deployment configuration everywhere.
 Exact supported OS versions and CPU architectures, prerequisites, networking, and transport configuration require an implementation plan.
+
+**Decision update (2026-11-01):** Windows is supported for the desktop app and for a local workspace run through Docker Desktop, but not as a server host. Server hosts remain macOS and Linux.
 
 ### CLI Delivery Sequence
 
@@ -137,6 +140,8 @@ Future email delivery can send reset links to verified addresses through the sam
 A managed service can provide that delivery without introducing a second authentication system.
 Token lifetimes, operator command mechanics, session storage, and revocation implementation remain technical planning choices.
 
+Password recovery for invited members is unresolved. Requiring an email service, or requiring the owner to act on every reset, are both poor fits for the first release; alternatives need exploration before the members specification.
+
 ### Your Space Updates, Backup, and Restore
 
 - Updating Your Space has the same safety net as app updates. Before an update, Your Space records its current versions and takes a snapshot of its data. If the update fails, it rolls back automatically to those versions and restores the snapshot.
@@ -186,7 +191,7 @@ Existing app authorization should be reusable where it has a suitable integratio
 
 **Decision update (2026-10-31):** Desktop clients move from the first public release to post-open-source work. They need a separate build for each operating system, code signing including Apple notarization, and their own update mechanism, while the installable PWA already opens in its own app window on macOS, Windows, and Linux.
 
-**Decision update (2026-10-31):** Desktop clients return to the first public release, superseding the deferral above, so that less technical users can run their own workspace. The desktop app can connect to an existing server or set up and run a local Docker Compose stack. The CLI stays for server deployment. Electron is selected, shipping for macOS, Windows, and Linux, which accepts the per-OS build, signing, and update costs.
+**Decision update (2026-10-31):** Desktop clients return to the first public release, superseding the deferral above, so that less technical users can run their own workspace. The desktop app can connect to an existing server or set up and run a local Docker Compose stack. The CLI stays for server deployment (superseded by the [CLI delivery sequence](#cli-delivery-sequence): the CLI handles local and server installations). Electron is selected, shipping for macOS, Windows, and Linux, which accepts the per-OS build, signing, and update costs.
 
 **Decision update (2026-10-31):** Local mode's first-release scope is Docker detection with a download link, stack setup, starting the stack with the app, and owner-triggered Your Space updates. Local backup and restore, and moving a local workspace to a server, are deferred.
 
@@ -276,7 +281,7 @@ Frontend controls may reflect granted access, but hiding a control is not author
 
 - Your Space manages identities and app role assignments.
 - Apps expose a supported role catalog with stable role identifiers and retain their existing role semantics and domain-specific authorization rules.
-- Workspace administrators assign app roles to human users; the first public-release administration model remains to be specified.
+- In the first public release, the owner assigns app roles to human members. Workspace roles, such as an administrator, may be added later.
 - Both humans and agents can hold multiple roles for an app installation.
 - Role assignments are scoped to the specific app installation and workspace.
 - Apps receive verified identity and role information through an integration with their authentication and authorization boundary.
@@ -319,6 +324,12 @@ A gateway can support deployment and access control, but mandatory endpoint-to-p
 Installing an app still trusts its implementation with data under that app's control.
 Platform isolation must protect platform services and other apps; SDK checks alone do not constrain malicious app code.
 
+- Security and flexibility are the two cornerstones of the app foundation.
+- The first public release states plainly, in the documentation and when an owner installs an app, that installing an app trusts it with its own data. Your Space protects itself and other apps from an installed app, but is not a sandbox for hostile code.
+- Before publication, a security hardening pass reviews the boundaries between apps and the workspace, enforces them, and protects users as far as Your Space reasonably can.
+
+**Decision update (2026-11-01):** Add install-time warnings, documentation disclaimers, and a pre-publication security hardening pass on app and workspace boundaries, so the isolation work is not mistaken for a sandbox for untrusted code.
+
 ## Later Candidate Journeys
 
 After the owner-access feature and an agreed app contract, a small Tasks app is the first app and the end-to-end integration slice.
@@ -337,7 +348,7 @@ No hosted workflow engine or model-provider integration is selected here.
 
 **Decision update (2026-10-29)**: Plan the roadmap in pre-public and post-public sections. The pre-public section covers the core experience and a working first version; post-public covers capabilities that are not crucial to that release. The owner prefers an installable, usable product before making the repository public rather than publishing only plans.
 
-The intended pre-public experience includes owner setup; additional members signing up through invitation links created and shared by the owner; the installation CLI for servers and local workspaces; a desktop app that can also run a local workspace; web, desktop, and PWA workspace clients; at least one installed independent app; a way for developers to create, integrate, and install more apps; and access for external agents. Only the owner installs or removes apps in the first public release. The first release targets users who can install Docker Desktop and the Your Space desktop app for a local workspace, or install Docker and follow a guided CLI for a server.
+The intended pre-public experience includes owner setup; additional members signing up through invitation links created and shared by the owner; the installation CLI for servers and local workspaces; a desktop app that can also run a local workspace; web, desktop, and PWA workspace clients; at least one installed independent app; a way for developers to create, integrate, and install more apps; and access for external agents. Only the owner installs or removes apps in the first public release. The first release targets users who can install Docker Desktop and the Your Space desktop app for a local workspace, or install Docker and follow a guided CLI for a server or a local workspace.
 
 This is a developing release roadmap, not a complete acceptance specification or a claim of implementation. Additional requirements may emerge during the interview. These future capabilities do not expand the owner-only first feature. The agreed sequence remains manual Compose and owner access first, then a separate CLI specification and implementation; no further feature order is established.
 
@@ -349,9 +360,10 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Database configuration | PostgreSQL and Drizzle are selected; versions, migration execution and recovery, and connection configuration need planning. |
 | Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
 | Initial deployment details | macOS and Linux with manual Docker Compose are selected; exact OS/CPU support, versions, transport, networking, and configuration need planning. |
-| Desktop app | Electron is selected for macOS, Windows, and Linux. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates through the CLI; backup, restore, and migration to a server are post-open-source. Packaging, code signing, and self-update need a specification. |
+| Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates through the CLI; backup, restore, and migration to a server are post-open-source. Packaging, code signing, and self-update need a specification. |
 | CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. Its minimum operations are install, start, stop, status, logs, update Your Space, and owner password recovery. A separate follow-up specification will define packaging, command names, prerequisite automation, and management behavior over the established Compose deployment. |
 | Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup and restore are post-open-source; remote CLI authentication, restore into a broken or fresh installation, and backup format and protection remain open. |
+| Member password recovery | Invited members need a recovery path that doesn't require an email service or the owner acting on every reset. Approaches need exploration before the members specification. |
 | Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |

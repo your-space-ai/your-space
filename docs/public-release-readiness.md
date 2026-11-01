@@ -120,6 +120,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     blockers, and document accepted risks and how updates are monitored.
   - [ ] Publish a private vulnerability reporting channel and a realistic response policy, including
     how users can report security issues without exposing them publicly.
+  - [ ] Complete a security hardening pass on the boundaries between apps and the workspace: review
+    them, enforce them, test them, and protect users as far as Your Space reasonably can.
 
 - [ ] **Prepare a usable project and contributor experience**
   - [ ] Write a README that explains the product, release maturity, supported capabilities and
@@ -171,13 +173,15 @@ belong in their own specifications; the scope remains subject to the ongoing int
 - [ ] **Additional members and signup**
   - [ ] Let the owner create invitation links and share them directly so recipients can sign up and join.
   - [ ] Verify membership and access controls while preserving existing owner, account, and workspace identities.
+  - [ ] Let the owner assign app roles to human members.
   - [ ] Document and test invitation, signup, and recovery paths; detailed invitation and signup rules remain open.
+    Member password recovery without an email service or owner action on every reset needs a chosen approach.
 
 - [ ] **Workspace clients on web, desktop, and PWA**
   - [ ] Provide the same core workspace and installed-app experience on web, desktop, and installable
     PWA clients.
-  - [ ] Ship and test the Electron desktop app on macOS, Windows, and Linux; initially support server
-    hosts on macOS and Linux.
+  - [ ] Ship and test the Electron desktop app on macOS, Windows, and Linux. Support server hosts on
+    macOS and Linux; on Windows, support the desktop app and a local workspace through Docker Desktop.
   - [ ] Verify the desktop app can connect to an existing server by URL, or set up, run, and connect to
     a local Your Space Docker Compose stack on the same machine through the CLI.
   - [ ] In local mode, verify Docker detection with a download link when missing, stack startup when
@@ -217,6 +221,9 @@ belong in their own specifications; the scope remains subject to the ongoing int
     an app-declared database service when needed. Apps integrate with Your Space through APIs.
   - [ ] Isolate apps from host folders, devices, and Docker controls; verify the boundary for the
     supported deployment path and do not assume containers alone make untrusted code safe.
+  - [ ] Warn the owner at installation, and state in the documentation, that an installed app is
+    trusted with its own data; Your Space protects itself and other apps but is not a sandbox for
+    hostile code.
   - [ ] Provide persistent app-specific storage; keep data after uninstall and allow the owner to
     explicitly delete retained data through an administration UI.
   - [ ] Install the Tasks app as the first independent app, exercise its core workflow inside the
