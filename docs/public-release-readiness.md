@@ -196,6 +196,9 @@ belong in their own specifications; the scope remains subject to the ongoing int
     PWA clients.
   - [ ] Ship and test the Electron desktop app on macOS, Windows, and Linux. Support server hosts on
     macOS and Linux; on Windows, support the desktop app and a local workspace through Docker Desktop.
+  - [ ] Verify release builds are signed in CI: macOS with an Apple Developer ID and notarization,
+    Windows through SignPath or Microsoft Artifact Signing. Verify a downloaded macOS build opens with
+    the standard prompt and updates itself.
   - [ ] Verify the desktop app can connect to an existing server by URL, or set up, run, and connect to
     a local Your Space Docker Compose stack on the same machine through the CLI.
   - [ ] In local mode, verify Docker detection with a download link when missing, stack startup when
@@ -208,7 +211,7 @@ belong in their own specifications; the scope remains subject to the ongoing int
     a connection to the server is required.
   - [ ] Define and test supported devices, platforms, installation and accessibility expectations.
 
-  Desktop packaging, code signing, self-update, and PWA offline behavior remain open.
+  Desktop packaging, self-update, and PWA offline behavior remain open.
 
 - [ ] **Independent apps and developer integration**
   - [ ] Specify and implement the versioned app integration and SDK contract needed by the journey;

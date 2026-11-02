@@ -131,6 +131,7 @@ delivery sequence.
   **Source:** [First public-release audience and clients](architecture/decisions.md#first-public-release-audience-and-clients).
 
   - [ ] Ship an Electron desktop app for macOS, Windows, and Linux.
+  - [ ] Sign and notarize macOS builds with an Apple Developer ID, and sign Windows builds through SignPath (Microsoft Artifact Signing as fallback), in CI.
   - [ ] On Windows, support the desktop app and a local workspace through Docker Desktop; Windows is not a supported server host.
   - [ ] On setup, let the user connect to an existing server by URL or run Your Space locally.
   - [ ] In local mode, drive the Your Space CLI to set up and run the Docker Compose stack on the same machine, then connect to it.
@@ -142,8 +143,8 @@ delivery sequence.
   - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off, and state the Docker Desktop license terms.
 
   Streamlined local setup has its own specification and implementation PR, separate from the
-  owner-access feature; it wraps the CLI and setup flow without changing them. Desktop packaging, code signing,
-  and self-update need a specification. Your Space updates go through the CLI and roll back
+  owner-access feature; it wraps the CLI and setup flow without changing them. Desktop packaging and self-update
+  need a specification. Your Space updates go through the CLI and roll back
   automatically if they fail. The desktop app drives the CLI rather than managing Docker itself.
 
 - [ ] **Independent app deployment and lifecycle**
