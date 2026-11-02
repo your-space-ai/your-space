@@ -8,7 +8,7 @@
 
 **Scope**: Project-wide direction, independent of any feature specification
 
-**Delivery view**: [Roadmap](../roadmap.md), derived from this record
+**Delivery view**: [Roadmap](../roadmap.md), derived from this record, and the [spec map](../spec-map.md)
 
 **Related feature**: [Workspace Setup and Owner Access specification (PR #3)](https://github.com/your-space-ai/your-space/pull/3)
 
@@ -68,7 +68,7 @@ Exact supported OS versions, prerequisites, networking, and proxy configuration 
 ### CLI Delivery Sequence
 
 **Decision update (2026-10-29)**: Establish and verify the Compose deployment with the owner-access feature first.
-A separate specification and implementation PR will add a Your Space CLI for installation and management of that deployment (sequence updated 2026-11-02 below: the app UI and sign-in specification comes first).
+A separate specification and implementation PR will add a Your Space CLI for installation and management of that deployment (sequence updated 2026-11-02 below: the app UI and sign-in specification comes first, and is now part of journey 002; see [journey-based specifications](#journey-based-specifications)).
 This replaces the earlier proposed CLI-first ordering: the CLI needs a working deployment to manage.
 
 - The first feature must be installable and operable through documented manual Compose procedures without a standalone Your Space CLI.
@@ -89,7 +89,7 @@ Guided installation remains the product direction. The initial guide and browser
 
 **Decision update (2026-11-01):** The owner-access feature (PR #3) and its manual Compose procedure come first, then the CLI. The minimum CLI operations before publication are install, start, stop, status, logs, update Your Space, and owner password recovery. Backup and restore are not part of the first release (superseded 2026-11-02: backup, restore, and uninstall are required before publication); see [Your Space updates, backup, and restore](#your-space-updates-backup-and-restore).
 
-**Decision update (2026-11-02):** The app UI and sign-in specification comes between the owner-access feature (PR #3) and the CLI specification. It decides app origins and routing, which set the DNS, certificates, and proxy configuration the CLI installs, and clients, apps, SDKs, and agent access all build on it. Settling it before the CLI avoids reworking the CLI's HTTPS setup. The resulting order is PR #3, then the app UI and sign-in specification, then the CLI specification, then the remaining pre-public items.
+**Decision update (2026-11-02):** The app UI and sign-in specification (now part of journey 002 "install an app and use it"; see [journey-based specifications](#journey-based-specifications)) comes between the owner-access feature (PR #3) and the CLI specification. It decides app origins and routing, which set the DNS, certificates, and proxy configuration the CLI installs, and clients, apps, SDKs, and agent access all build on it. Settling it before the CLI avoids reworking the CLI's HTTPS setup. The resulting order is PR #3, then the app UI and sign-in specification, then the CLI specification, then the remaining pre-public items.
 
 **Decision update (2026-11-02):** The CLI provides an uninstall command before publication instead of documented manual removal. Apps run in containers Your Space starts outside the main Compose file, so `docker compose down` alone would leave app containers and data behind; only Your Space knows what it started.
 
@@ -345,7 +345,7 @@ App role authorization controls what users and agents may do within an app. Host
 - UI integration must not require replacing every frontend request with a Your Space-specific SDK call.
 - UI and programmatic access must reach equivalent backend authorization checks.
 - The platform session stays confined to the platform's own host (host-only cookies), so it is never sent to app origins. The owner-access implementation follows this so it does not need rework once app origins are decided.
-- The app UI and sign-in specification comes right after the owner-access feature and before the CLI specification; see the [CLI delivery sequence](#cli-delivery-sequence).
+- The app UI and sign-in specification comes right after the owner-access feature and before the CLI specification; see the [CLI delivery sequence](#cli-delivery-sequence). It is part of journey 002; see [journey-based specifications](#journey-based-specifications).
 
 An iframe, reverse proxy, or controlled UI extension system is not selected by this record.
 Embedding and routing are separate decisions from how an app interprets authenticated identity and roles.
@@ -454,6 +454,20 @@ The intended pre-public experience includes owner setup; additional members sign
 
 This is a developing release roadmap, not a complete acceptance specification or a claim of implementation. Additional requirements may emerge during specification. These future capabilities do not expand the owner-only first feature. The agreed sequence is manual Compose and owner access (PR #3) first, then the app UI and sign-in specification, then the CLI specification and implementation; the remaining pre-public items have no set order beyond their priorities.
 
+### Journey-Based Specifications
+
+**Decision update (2026-11-02):** Pre-public work is specified as eight user journeys rather than one specification per roadmap capability. Each journey follows a person from where they start to a result they can see, so one specification covers many roadmap items and is tested the way people will use it. The [spec map](../spec-map.md) lists the journeys, what each covers, and the build order.
+
+- The build order is 001 set up my space (PR #3), 002 install an app and use it, 003 install and run with the CLI, 004 invite my team, 005 let my agent work for me, 006 keep my space safe over time, then 007 build my own app and 008 use Your Space as an app on my computer in parallel.
+- The app UI and sign-in specification becomes part of 002, which ends with the Tasks app working inside Your Space. It still comes before the CLI, so app origins are settled before the CLI sets up HTTPS. If 002 proves too large, it can split into opening an app inside Your Space and installing an app from a URL.
+- The app contract defines app roles in 002, although only the owner exists then, so 004 adds role assignment without changing the contract.
+- The activity log arrives with agents in 005, since reviewing what agents did is its main purpose. App installs and member changes are logged from then on.
+- The app database moves from Medium to High, because the Tasks app in 002 needs one.
+- Security, privacy, legal, and the final release review stay in the [public release readiness checklist](../public-release-readiness.md) as a release gate rather than becoming a journey.
+- Every specification follows shared rules from the start: simple by default, no telemetry, ARM and Intel images, all durable state in the database or named volumes, the actual actor credited from the first schema, and its own docs and security tests.
+
+This refines the sequence above without changing scope: it groups existing pre-public items into journeys and orders the work after the CLI.
+
 ## Choices Still Open
 
 | Area | Current status |
@@ -468,7 +482,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
 | Public launch scope | A working core experience before publication is the direction. The pre-public scope was settled in the 2026-11-02 interview, and every pre-public roadmap item has a High, Medium, or Low priority; Windows support and PWA installation are Low. Detailed release criteria remain to be defined. See [public release readiness](../public-release-readiness.md). |
-| App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open; they are specified after the owner-access feature and before the CLI. The platform session uses host-only cookies. |
+| App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open; they are specified in journey 002, after the owner-access feature and before the CLI. The platform session uses host-only cookies. |
 | Project license | AGPL-3.0 for Your Space and Apache-2.0 for the SDKs, with a "Your Space" trademark and a contributor license agreement, all in place and reviewed by a lawyer before publication. Trademark filing details and agreement wording remain open. |
 | Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off. Future reporting must be opt-in; opt-out is prohibited. |
 | External apps | Apps can be managed or hosted elsewhere and added by pointing Your Space at them. How an external app is registered, verifies Your Space identity, and is reached through the gateway needs definition in the app integration specification. |

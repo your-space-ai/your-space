@@ -102,8 +102,8 @@ work from the roadmap.
 
 ## Still Open
 
-- Where apps live: their own subdomains or paths under Your Space. This is decided in the app UI
-  and sign-in specification.
+- Where apps live: their own subdomains or paths under Your Space. This is decided in spec 002,
+  "install an app and use it" (see the [spec map](../spec-map.md)).
 - How the secrets store works.
 - How outbound network limits for apps are enforced.
 - Whether the gateway enforces per-action roles declared by apps.

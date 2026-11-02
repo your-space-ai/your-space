@@ -173,7 +173,7 @@ is chosen instead, explicitly decide which items apply and describe what is not 
 ## First Public Product Scope
 
 These areas capture the scope agreed so far for the first public version. Their detailed requirements
-belong in their own specifications. Roadmap priorities decide what moves to post-open-source work first if needed.
+belong in the journey specifications listed in the [spec map](spec-map.md). Roadmap priorities decide what moves to post-open-source work first if needed.
 
 - [ ] **CLI installation and management**
   - [ ] Specify and implement the supported commands and CLI distribution for the established
