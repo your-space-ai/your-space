@@ -15,17 +15,18 @@ Release scope and details may evolve as the remaining questions are resolved. Se
 [public release readiness checklist](public-release-readiness.md) for the publication review.
 
 **Current direction:** Owner access with a manual Compose install comes first (PR #3), followed by
-a CLI that drives Docker Compose for server and local installs. An Electron desktop app for macOS,
-Windows, and Linux connects to a server or drives the CLI to run a local workspace; Windows supports
-the desktop app and local workspaces through Docker Desktop, but not server hosting. Before
-publication, the release also needs invited members; web, desktop, and PWA clients; app installation
-from a pasted Docker Compose deployment file limited to an approved list of settings and exact
-published image versions, with app details in an `x-your-space` section; owner-triggered app and
-Your Space updates that roll back automatically if they fail; built-in backup and restore through
-the CLI for every installation, including moving a local workspace to a server; TypeScript and
-Python SDKs with a small Tasks app as the first app; app roles and external agents; and a security
-hardening pass on app and workspace boundaries. Automatic app updates, building apps from source,
-and alternative deployment-file formats are post-open-source work.
+the app UI and sign-in specification, then a CLI that drives Docker Compose for server and local
+installs. An Electron desktop app for macOS, Windows, and Linux connects to a server or drives the
+CLI to run a local workspace; Windows supports the desktop app and local workspaces through Docker
+Desktop, but not server hosting. Before publication, the release also needs invited members; web,
+desktop, and PWA clients; app installation from a pasted Docker Compose deployment file limited to
+an approved list of settings and exact published image versions, with app details in an
+`x-your-space` section; owner-triggered app and Your Space updates that roll back automatically if
+they fail; built-in backup and restore through the CLI for every installation, including moving a
+local workspace to a server; TypeScript and Python SDKs with a small Tasks app as the first app; app
+roles and external agents; and a security hardening pass on app and workspace boundaries. Automatic
+app updates, building apps from source, and alternative deployment-file formats are post-open-source
+work.
 
 **Next discussion:** Remaining pre-public open questions,
 and whether to reduce the first release's size; then a final consistency review.
@@ -39,9 +40,11 @@ All functionality below is currently unchecked because application implementatio
 
 The first release targets people who can install Docker Desktop and the Your Space desktop app for a
 local workspace, or install Docker and follow a guided CLI for a server or local workspace. The
-[owner-access feature (PR #3)](https://github.com/your-space-ai/your-space/pull/3) is first; the CLI
-follows in a separate specification and implementation PR. The remaining items need their own
-specifications; their order here is not a delivery sequence.
+[owner-access feature (PR #3)](https://github.com/your-space-ai/your-space/pull/3) is first. The app
+UI and sign-in specification follows, because app origins decide what the CLI sets up for HTTPS and
+clients, apps, SDKs, and agents build on it. The CLI follows in a separate specification and
+implementation PR. The remaining items need their own specifications; their order here is not a
+delivery sequence.
 
 - [ ] **Workspace setup and owner access**
 

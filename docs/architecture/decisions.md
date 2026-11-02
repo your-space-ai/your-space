@@ -85,6 +85,8 @@ Guided installation remains the product direction. The initial guide and browser
 
 **Decision update (2026-11-01):** The owner-access feature (PR #3) and its manual Compose procedure come first, then the CLI. The minimum CLI operations before publication are install, start, stop, status, logs, update Your Space, and owner password recovery. Backup and restore are not part of the first release (superseded 2026-11-02: backup and restore are required before publication); see [Your Space updates, backup, and restore](#your-space-updates-backup-and-restore).
 
+**Decision update (2026-11-02):** The app UI and sign-in specification comes between the owner-access feature (PR #3) and the CLI specification. It decides app origins and routing, which set the DNS, certificates, and proxy configuration the CLI installs, and clients, apps, SDKs, and agent access all build on it. Settling it before the CLI avoids reworking the CLI's HTTPS setup. The resulting order is PR #3, then the app UI and sign-in specification, then the CLI specification, then the remaining pre-public items.
+
 ### Server and Database
 
 - Use Node.js and Express for the platform server.
@@ -288,6 +290,8 @@ App role authorization controls what users and agents may do within an app. Host
 - Existing app frontends should continue calling their normal app backend operations.
 - UI integration must not require replacing every frontend request with a Your Space-specific SDK call.
 - UI and programmatic access must reach equivalent backend authorization checks.
+- The platform session stays confined to the platform's own host (host-only cookies), so it is never sent to app origins. The owner-access implementation follows this so it does not need rework once app origins are decided.
+- The app UI and sign-in specification comes right after the owner-access feature and before the CLI specification; see the [CLI delivery sequence](#cli-delivery-sequence).
 
 An iframe, reverse proxy, or controlled UI extension system is not selected by this record.
 Embedding and routing are separate decisions from how an app interprets authenticated identity and roles.
@@ -381,7 +385,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup, restore, and migration between installations are required before publication; remote CLI authentication, restore into a broken or fresh installation, and backup format and protection remain open. |
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
 | Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
-| App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
+| App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open; they are specified after the owner-access feature and before the CLI. The platform session uses host-only cookies. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |
 | App integration | TypeScript and Python SDKs are selected for the first release; other languages are post-open-source. Role registration, authorization compatibility, and revocation mechanics need a later specification. |
 | App deployment file | A Docker Compose file limited to an approved list of settings, declaring published images with exact versions is selected for the first release; source builds and alternative formats are post-open-source. The owner installs by pasting the file's GitHub URL. App details go in an `x-your-space` section. The approved settings list, set when the first app is implemented, the section's contents, supported operations, and backend interpretation need definition. |
