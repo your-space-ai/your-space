@@ -14,6 +14,8 @@ new capabilities need their own specifications and implementation work.
 ## How to Use This Checklist
 
 - Finalize the release scope before treating every item as an agreed gate.
+- Items for Low-priority roadmap work, currently Windows support and PWA installation, stop being
+  gates if that work moves to post-open-source; record the deferral with a decision link.
 - Each parent represents a readiness area, and its children identify concrete work or evidence.
 - Check an item only when completed and verified. Add the date, tested commit or release version,
   and a link to the implementation, review, or test evidence; retain checked items as a record.

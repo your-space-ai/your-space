@@ -46,20 +46,28 @@ clients, apps, SDKs, and agents build on it. The CLI follows in a separate speci
 implementation PR. The remaining items need their own specifications; their order here is not a
 delivery sequence.
 
+Each item has a priority:
+
+- **[High]** The core story (install, invite, install an app, let an agent use it) or the safety and
+  trust it depends on. Publication waits for these.
+- **[Medium]** Required for publication, but built after the High items it depends on.
+- **[Low]** Wanted for the first release and built last. These are the first items to move to
+  post-open-source work if the timeline slips. Windows support and PWA installation are Low.
+
 - [ ] **Workspace setup and owner access**
 
   **Source:** [Accepted foundation decisions](architecture/decisions.md#accepted-foundation-decisions).
 
-  - [ ] Install manually with documented Docker Compose procedures on supported macOS and Linux server hosts.
-  - [ ] Reach browser-guided setup and prove operator authority with a temporary, single-use setup code.
-  - [ ] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct.
-  - [ ] Prevent duplicate claims and close initial registration after setup.
-  - [ ] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation.
-  - [ ] Reach an accurate empty workspace and distinguish unavailable services from empty or unclaimed state.
-  - [ ] Access the same server and workspace from another device through a documented encrypted connection.
-  - [ ] Retain account and workspace identity across restarts and service recreation with durable storage retained.
-  - [ ] Recover the existing owner account through an operator command without requiring email delivery or a standalone CLI.
-  - [ ] Preserve identity and revoke existing sessions after successful password recovery.
+  - [ ] [High] Install manually with documented Docker Compose procedures on supported macOS and Linux server hosts.
+  - [ ] [High] Reach browser-guided setup and prove operator authority with a temporary, single-use setup code.
+  - [ ] [High] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct.
+  - [ ] [High] Prevent duplicate claims and close initial registration after setup.
+  - [ ] [High] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation.
+  - [ ] [High] Reach an accurate empty workspace and distinguish unavailable services from empty or unclaimed state.
+  - [ ] [High] Access the same server and workspace from another device through a documented encrypted connection.
+  - [ ] [High] Retain account and workspace identity across restarts and service recreation with durable storage retained.
+  - [ ] [High] Recover the existing owner account through an operator command without requiring email delivery or a standalone CLI.
+  - [ ] [High] Preserve identity and revoke existing sessions after successful password recovery.
 
   This first feature is owner-only and web-only. Exact host support, remote access, password rules,
   session and credential lifetimes, and failed-attempt behavior still need planning.
@@ -68,14 +76,15 @@ delivery sequence.
 
   **Source:** [CLI delivery sequence](architecture/decisions.md#cli-delivery-sequence).
 
-  - [ ] Guide local and server installation through the Your Space CLI, which drives Docker Compose so users don't run Compose themselves.
-  - [ ] Provide at least install, start, stop, status, logs, update Your Space, owner password recovery, backup, restore, and uninstall.
-  - [ ] Uninstall Your Space and every app container it manages; keep data by default, and require explicit confirmation and offer a backup before deleting it.
-  - [ ] Before updating Your Space, record versions and snapshot its data; if the update fails, roll back automatically.
-  - [ ] Keep the manual Compose procedure documented as an advanced alternative to the CLI.
-  - [ ] Run the CLI on macOS, Windows, and Linux so the desktop app can drive it for local workspaces.
-  - [ ] Set up HTTPS during installation: a reverse proxy in the Compose stack obtains and renews a certificate when the owner gives a domain.
-  - [ ] Let owners with their own reverse proxy or tunnel turn off the built-in proxy, and document a private tunnel such as Tailscale for owners without a domain.
+  - [ ] [High] Guide local and server installation through the Your Space CLI, which drives Docker Compose so users don't run Compose themselves.
+  - [ ] [High] Provide at least install, start, stop, status, logs, update Your Space, owner password recovery, backup, restore, and uninstall.
+  - [ ] [Medium] Uninstall Your Space and every app container it manages; keep data by default, and require explicit confirmation and offer a backup before deleting it.
+  - [ ] [Medium] Before updating Your Space, record versions and snapshot its data; if the update fails, roll back automatically.
+  - [ ] [Low] Keep the manual Compose procedure documented as an advanced alternative to the CLI.
+  - [ ] [High] Run the CLI on macOS and Linux so the desktop app can drive it for local workspaces.
+  - [ ] [Low] Run the CLI on Windows so the desktop app can drive it for local workspaces there.
+  - [ ] [High] Set up HTTPS during installation: a reverse proxy in the Compose stack obtains and renews a certificate when the owner gives a domain.
+  - [ ] [Medium] Let owners with their own reverse proxy or tunnel turn off the built-in proxy, and document a private tunnel such as Tailscale for owners without a domain.
 
   The CLI follows the working, verified manual Compose deployment and owner-access implementation.
   Command names, packaging, prerequisites, and the rest of the management scope remain to be specified.
@@ -85,10 +94,10 @@ delivery sequence.
 
   **Source:** [Your Space updates, backup, and restore](architecture/decisions.md#your-space-updates-backup-and-restore). Moved before publication 2026-11-02.
 
-  - [ ] Back up any installation through the CLI: the Your Space server produces the backup and returns it through its API, wherever the server runs.
-  - [ ] Restore a backup into an installation.
-  - [ ] Move a workspace between installations, such as from a local machine to a server, through backup and restore.
-  - [ ] Back up and restore a local workspace from the desktop app through the same CLI operation.
+  - [ ] [High] Back up any installation through the CLI: the Your Space server produces the backup and returns it through its API, wherever the server runs.
+  - [ ] [High] Restore a backup into an installation.
+  - [ ] [Medium] Move a workspace between installations, such as from a local machine to a server, through backup and restore.
+  - [ ] [Medium] Back up and restore a local workspace from the desktop app through the same CLI operation.
 
   One owner-only implementation serves every installation and builds on the pre-update snapshot
   mechanism. Design the data model and storage so the whole workspace can be captured consistently.
@@ -99,15 +108,15 @@ delivery sequence.
 
   **Source:** [Owner and workspace model](architecture/decisions.md#owner-and-workspace-model).
 
-  - [ ] Let the owner create an invitation link and share it directly with a prospective member.
-  - [ ] Let the recipient sign up and join the workspace through the invitation.
-  - [ ] Let the owner assign app roles to human members.
-  - [ ] Retain existing account, workspace, membership, and ownership identities when adding members.
-  - [ ] Give each member a recovery code at signup that lets them reset their own password.
-  - [ ] Let the owner reset a member's password with a temporary password the member must replace at next sign-in.
-  - [ ] Let the owner remove a member: sign them out everywhere and revoke their app roles and their agents' access.
-  - [ ] Disable a removed member's agents rather than deleting them, and let the owner delete them later.
-  - [ ] Keep past app activity traceable to former members and deleted agents.
+  - [ ] [High] Let the owner create an invitation link and share it directly with a prospective member.
+  - [ ] [High] Let the recipient sign up and join the workspace through the invitation.
+  - [ ] [High] Let the owner assign app roles to human members.
+  - [ ] [High] Retain existing account, workspace, membership, and ownership identities when adding members.
+  - [ ] [Medium] Give each member a recovery code at signup that lets them reset their own password.
+  - [ ] [High] Let the owner reset a member's password with a temporary password the member must replace at next sign-in.
+  - [ ] [High] Let the owner remove a member: sign them out everywhere and revoke their app roles and their agents' access.
+  - [ ] [Medium] Disable a removed member's agents rather than deleting them, and let the owner delete them later.
+  - [ ] [Medium] Keep past app activity traceable to former members and deleted agents.
 
   **Source for removal:** [Member and agent removal](architecture/decisions.md#member-and-agent-removal).
 
@@ -118,10 +127,11 @@ delivery sequence.
 
   **Source:** [UI integration](architecture/decisions.md#ui-integration).
 
-  - [ ] Provide web, desktop, and installable PWA clients with the same core workspace and installed-app experience when connected to the server.
-  - [ ] Open installed apps within the Your Space interface while platform navigation remains available.
-  - [ ] Preserve normal frontend requests to the app backend without requiring each request to be rewritten for Your Space.
-  - [ ] Apply equivalent backend authorization checks to human UI and programmatic access.
+  - [ ] [High] Provide web and desktop clients with the same core workspace and installed-app experience when connected to the server.
+  - [ ] [Low] Provide an installable PWA client with the same experience.
+  - [ ] [High] Open installed apps within the Your Space interface while platform navigation remains available.
+  - [ ] [High] Preserve normal frontend requests to the app backend without requiring each request to be rewritten for Your Space.
+  - [ ] [High] Apply equivalent backend authorization checks to human UI and programmatic access.
 
   The first owner feature uses the web client. PWA offline behavior, embedding, origins, routing,
   isolation, and session bridging remain open.
@@ -130,17 +140,20 @@ delivery sequence.
 
   **Source:** [First public-release audience and clients](architecture/decisions.md#first-public-release-audience-and-clients).
 
-  - [ ] Ship an Electron desktop app for macOS, Windows, and Linux.
-  - [ ] Sign and notarize macOS builds with an Apple Developer ID, and sign Windows builds through SignPath (Microsoft Artifact Signing as fallback), in CI.
-  - [ ] On Windows, support the desktop app and a local workspace through Docker Desktop; Windows is not a supported server host.
-  - [ ] On setup, let the user connect to an existing server by URL or run Your Space locally.
-  - [ ] In local mode, drive the Your Space CLI to set up and run the Docker Compose stack on the same machine, then connect to it.
-  - [ ] Detect Docker and link to the Docker Desktop download when it is missing.
-  - [ ] In local mode, obtain the setup code through the CLI and submit it on the user's behalf, using the same setup flow as every other installation.
-  - [ ] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
-  - [ ] Back up and restore the local workspace, and move it to a server, through the CLI.
-  - [ ] Uninstall the local workspace through the CLI's uninstall command.
-  - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off, and state the Docker Desktop license terms.
+  - [ ] [High] Ship an Electron desktop app for macOS.
+  - [ ] [Medium] Ship the desktop app for Linux.
+  - [ ] [Low] Ship the desktop app for Windows.
+  - [ ] [High] Sign and notarize macOS builds with an Apple Developer ID in CI.
+  - [ ] [Low] Sign Windows builds through SignPath, with Microsoft Artifact Signing as fallback, in CI.
+  - [ ] [Low] On Windows, support the desktop app and a local workspace through Docker Desktop; Windows is not a supported server host.
+  - [ ] [High] On setup, let the user connect to an existing server by URL or run Your Space locally.
+  - [ ] [High] In local mode, drive the Your Space CLI to set up and run the Docker Compose stack on the same machine, then connect to it.
+  - [ ] [High] Detect Docker and link to the Docker Desktop download when it is missing.
+  - [ ] [High] In local mode, obtain the setup code through the CLI and submit it on the user's behalf, using the same setup flow as every other installation.
+  - [ ] [High] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
+  - [ ] [Medium] Back up and restore the local workspace, and move it to a server, through the CLI.
+  - [ ] [Medium] Uninstall the local workspace through the CLI's uninstall command.
+  - [ ] [Medium] Document that a local workspace is unavailable to others while its machine is asleep or off, and state the Docker Desktop license terms.
 
   Streamlined local setup has its own specification and implementation PR, separate from the
   owner-access feature; it wraps the CLI and setup flow without changing them. Desktop packaging and self-update
@@ -151,21 +164,21 @@ delivery sequence.
 
   **Source:** [Platform and independent apps](architecture/decisions.md#platform-and-independent-apps) and [app distribution](architecture/decisions.md#accepted-future-app-distribution-direction).
 
-  - [ ] Let the owner install a compatible app by pasting the GitHub URL of its deployment file in a public repository into the UI.
-  - [ ] Read the deployment file at that URL and record the exact revision used for installation; updates re-read the file from the same URL.
-  - [ ] Download and run published container images using the exact image and version declared in the app's integration files for each container, including database services; validate and retain the installed image identity.
-  - [ ] Start and manage each app's independent container or containers using Docker on the same server as Your Space.
-  - [ ] Run an app-declared database service alongside the app when needed.
-  - [ ] Provide app-specific durable storage that survives restarts and remains after uninstall.
-  - [ ] Let the owner explicitly delete retained app data from the administration UI.
-  - [ ] Restrict app installation and removal to the owner for the first public release.
-  - [ ] Isolate apps from host filesystem access, devices, and Docker controls, and protect platform services and other apps.
-  - [ ] Warn the owner when installing an app that it is trusted with its own data, and state in the documentation that Your Space protects itself and other apps but is not a sandbox for hostile code.
-  - [ ] Preserve app identity, exact source version, provenance, and approved update source or policy; do not silently expand granted access on update.
-  - [ ] Let the owner trigger updates of installed apps, preserving app data and requiring explicit approval for any additional access.
-  - [ ] Back up app data and record image versions before each update; if the update fails, automatically roll back to the previous versions and restore the backup.
-  - [ ] Accept only Compose settings on an approved list in the app's deployment file, rejecting all others, including settings that would break app isolation.
-  - [ ] Read the app's name and requested access from the `x-your-space` section of its Compose file.
+  - [ ] [High] Let the owner install a compatible app by pasting the GitHub URL of its deployment file in a public repository into the UI.
+  - [ ] [High] Read the deployment file at that URL and record the exact revision used for installation; updates re-read the file from the same URL.
+  - [ ] [High] Download and run published container images using the exact image and version declared in the app's integration files for each container, including database services; validate and retain the installed image identity.
+  - [ ] [High] Start and manage each app's independent container or containers using Docker on the same server as Your Space.
+  - [ ] [Medium] Run an app-declared database service alongside the app when needed.
+  - [ ] [High] Provide app-specific durable storage that survives restarts and remains after uninstall.
+  - [ ] [Medium] Let the owner explicitly delete retained app data from the administration UI.
+  - [ ] [High] Restrict app installation and removal to the owner for the first public release.
+  - [ ] [High] Isolate apps from host filesystem access, devices, and Docker controls, and protect platform services and other apps.
+  - [ ] [High] Warn the owner when installing an app that it is trusted with its own data, and state in the documentation that Your Space protects itself and other apps but is not a sandbox for hostile code.
+  - [ ] [Medium] Preserve app identity, exact source version, provenance, and approved update source or policy; do not silently expand granted access on update.
+  - [ ] [Medium] Let the owner trigger updates of installed apps, preserving app data and requiring explicit approval for any additional access.
+  - [ ] [Medium] Back up app data and record image versions before each update; if the update fails, automatically roll back to the previous versions and restore the backup.
+  - [ ] [High] Accept only Compose settings on an approved list in the app's deployment file, rejecting all others, including settings that would break app isolation.
+  - [ ] [High] Read the app's name and requested access from the `x-your-space` section of its Compose file.
 
   Published images are the only first-release installation path; Your Space does not build app source
   during installation. The deployment file is a Docker Compose file limited to an approved list of
@@ -179,11 +192,11 @@ delivery sequence.
 
   **Source:** [Platform and independent apps](architecture/decisions.md#platform-and-independent-apps).
 
-  - [ ] Document versioned public integration contracts for independently built and running apps.
-  - [ ] Publish TypeScript and Python SDKs from this repository for apps in their own repositories, including first-party apps.
-  - [ ] Verify each SDK with a working app.
-  - [ ] Enable developers to create or adapt apps and install them without rebuilding Your Space or including app source in the platform build.
-  - [ ] Provide a small Tasks app as the first independently maintained, installable app and verify the complete installation and usage journey.
+  - [ ] [High] Document versioned public integration contracts for independently built and running apps.
+  - [ ] [High] Publish TypeScript and Python SDKs from this repository for apps in their own repositories, including first-party apps.
+  - [ ] [High] Verify each SDK with a working app.
+  - [ ] [High] Enable developers to create or adapt apps and install them without rebuilding Your Space or including app source in the platform build.
+  - [ ] [High] Provide a small Tasks app as the first independently maintained, installable app and verify the complete installation and usage journey.
 
   A small Tasks app is the first app. SDKs for languages other than TypeScript and Python are
   post-open-source. The app contract and SDK coverage remain open.
@@ -192,10 +205,10 @@ delivery sequence.
 
   **Source:** [Identity and app-owned roles](architecture/decisions.md#identity-and-app-owned-roles).
 
-  - [ ] Supply verified human or agent identity to installed apps.
-  - [ ] Let apps publish stable role identifiers while retaining their own role semantics and resource rules.
-  - [ ] Assign multiple app roles to humans and agents within an app installation and workspace.
-  - [ ] Integrate identity and role assignments at the app's authentication and authorization boundary, reusing existing boundaries where suitable.
+  - [ ] [High] Supply verified human or agent identity to installed apps.
+  - [ ] [High] Let apps publish stable role identifiers while retaining their own role semantics and resource rules.
+  - [ ] [High] Assign multiple app roles to humans and agents within an app installation and workspace.
+  - [ ] [High] Integrate identity and role assignments at the app's authentication and authorization boundary, reusing existing boundaries where suitable.
 
   The identity protocol, role catalog, and compatibility with app authorization semantics remain
   open. Your Space supplies identity and assignments; each app enforces its protected operations.
@@ -204,14 +217,14 @@ delivery sequence.
 
   **Source:** [Delegation by exact role subsets](architecture/decisions.md#delegation-by-exact-role-subsets).
 
-  - [ ] Give external agents distinct identities and non-interactive credentials linked to their delegating human.
-  - [ ] Let a user delegate any exact subset of their assigned role IDs for the same app installation and workspace.
-  - [ ] Remove the corresponding delegated role from affected agents when the human loses that role.
-  - [ ] Apply access removal to existing app sessions and credentials.
-  - [ ] Attribute app actions to the actual actor and retain the delegating-user relationship.
-  - [ ] Verify permitted operations, denied actions, attribution, and revocation against an installed app.
-  - [ ] Route all agent requests to apps through Your Space as the gateway; agents never call apps directly, and app containers publish no network ports of their own.
-  - [ ] Let agents use app actions through the Your Space CLI with their own credentials, for local and remote servers.
+  - [ ] [High] Give external agents distinct identities and non-interactive credentials linked to their delegating human.
+  - [ ] [High] Let a user delegate any exact subset of their assigned role IDs for the same app installation and workspace.
+  - [ ] [High] Remove the corresponding delegated role from affected agents when the human loses that role.
+  - [ ] [High] Apply access removal to existing app sessions and credentials.
+  - [ ] [High] Attribute app actions to the actual actor and retain the delegating-user relationship.
+  - [ ] [High] Verify permitted operations, denied actions, attribution, and revocation against an installed app.
+  - [ ] [High] Route all agent requests to apps through Your Space as the gateway; agents never call apps directly, and app containers publish no network ports of their own.
+  - [ ] [High] Let agents use app actions through the Your Space CLI with their own credentials, for local and remote servers.
 
   **Source for the gateway:** [Agent access through Your Space](architecture/decisions.md#agent-access-through-your-space).
 
@@ -222,14 +235,14 @@ delivery sequence.
 
   **Details:** [Public release readiness checklist](public-release-readiness.md).
 
-  - [ ] Review repository history, GitHub content, and release artifacts for private data and secrets.
-  - [ ] Review publication rights, project and dependency licensing, and required notices.
-  - [ ] License Your Space under AGPL-3.0 and the SDKs under Apache-2.0, file the "Your Space" trademark, and set up a contributor license agreement, all reviewed by a lawyer. **Source:** [Project license and business model](architecture/decisions.md#project-license-and-business-model).
-  - [ ] Review security and isolation, provide safe defaults, and establish private vulnerability reporting.
-  - [ ] Complete a security hardening pass on the boundaries between apps and the workspace, enforcing them and protecting users as far as reasonably possible.
-  - [ ] Document installation, operation, recovery, developer integration, contribution, and project status.
-  - [ ] Verify the core journeys, supported environments, release artifacts, recovery, and maintenance paths.
-  - [ ] Review release evidence, unresolved issues, and GitHub settings before authorizing publication.
+  - [ ] [High] Review repository history, GitHub content, and release artifacts for private data and secrets.
+  - [ ] [High] Review publication rights, project and dependency licensing, and required notices.
+  - [ ] [High] License Your Space under AGPL-3.0 and the SDKs under Apache-2.0, file the "Your Space" trademark, and set up a contributor license agreement, all reviewed by a lawyer. **Source:** [Project license and business model](architecture/decisions.md#project-license-and-business-model).
+  - [ ] [High] Review security and isolation, provide safe defaults, and establish private vulnerability reporting.
+  - [ ] [High] Complete a security hardening pass on the boundaries between apps and the workspace, enforcing them and protecting users as far as reasonably possible.
+  - [ ] [High] Document installation, operation, recovery, developer integration, contribution, and project status.
+  - [ ] [High] Verify the core journeys, supported environments, release artifacts, recovery, and maintenance paths.
+  - [ ] [High] Review release evidence, unresolved issues, and GitHub settings before authorizing publication.
 
 ## Post-public: Later Direction and Enhancements
 
