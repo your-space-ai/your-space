@@ -20,6 +20,10 @@ The [architecture overview](docs/architecture/overview.md) diagrams the running 
 layer. When a decision adds, removes, or moves a component, layer, or request path, update the
 overview in the same change.
 
+The [spec map](docs/spec-map.md) assigns pre-public roadmap items to journey specifications and sets
+their build order. Write new specifications as the journeys listed there, and keep each tree leaf's
+spec number and the spec map in sync with the roadmap.
+
 The roadmap's pre-public section is grouped into layers and opens with an overview tree. Whenever
 a pre-public item is added, removed, moved, re-prioritized, reworded in meaning, or deferred, update
 the tree in the same change so it still maps one-to-one to the checklist and its priority markers
