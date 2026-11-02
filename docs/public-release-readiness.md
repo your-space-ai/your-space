@@ -127,7 +127,7 @@ is chosen instead, explicitly decide which items apply and describe what is not 
   - [ ] Write a README that explains the product, release maturity, supported capabilities and
     environments, prerequisites, installation entry point, and known limitations.
   - [ ] Provide accurate installation, configuration, restart, remote access, troubleshooting,
-    owner recovery, and safe removal guidance for the actual release.
+    owner recovery, and uninstall guidance for the actual release.
   - [ ] Document where durable data lives, and how to back up, restore, and move a workspace
     between installations with the CLI.
   - [ ] Explain local development, tests, contribution and review expectations, issue reporting,
@@ -162,7 +162,9 @@ belong in their own specifications; the scope remains subject to the ongoing int
   - [ ] Specify and implement the supported commands and CLI distribution for the established
     Compose deployment, including installation, prerequisite handling, and management scope. Provide
     at least install, start, stop, status, logs, update Your Space, owner password recovery, backup,
-    and restore.
+    restore, and uninstall.
+  - [ ] Verify uninstall removes Your Space and every app container it manages, keeps data by default,
+    and deletes data only after explicit confirmation with a backup offered first.
   - [ ] Verify a failed Your Space update through the CLI automatically restores the previous
     versions and the pre-update data snapshot.
   - [ ] Verify owner-only backup and restore through the CLI for local and remote installations,

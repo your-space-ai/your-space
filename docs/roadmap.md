@@ -69,7 +69,8 @@ delivery sequence.
   **Source:** [CLI delivery sequence](architecture/decisions.md#cli-delivery-sequence).
 
   - [ ] Guide local and server installation through the Your Space CLI, which drives Docker Compose so users don't run Compose themselves.
-  - [ ] Provide at least install, start, stop, status, logs, update Your Space, owner password recovery, backup, and restore.
+  - [ ] Provide at least install, start, stop, status, logs, update Your Space, owner password recovery, backup, restore, and uninstall.
+  - [ ] Uninstall Your Space and every app container it manages; keep data by default, and require explicit confirmation and offer a backup before deleting it.
   - [ ] Before updating Your Space, record versions and snapshot its data; if the update fails, roll back automatically.
   - [ ] Keep the manual Compose procedure documented as an advanced alternative to the CLI.
   - [ ] Run the CLI on macOS, Windows, and Linux so the desktop app can drive it for local workspaces.
@@ -137,6 +138,7 @@ delivery sequence.
   - [ ] In local mode, obtain the setup code through the CLI and submit it on the user's behalf, using the same setup flow as every other installation.
   - [ ] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
   - [ ] Back up and restore the local workspace, and move it to a server, through the CLI.
+  - [ ] Uninstall the local workspace through the CLI's uninstall command.
   - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off, and state the Docker Desktop license terms.
 
   Streamlined local setup has its own specification and implementation PR, separate from the
