@@ -5,7 +5,8 @@
 This roadmap tracks the functionality we want to build for Your Space: a self-hostable platform
 for independent apps, human users, and agents, with a managed offering planned later.
 
-It is derived from the [architecture and product decisions](architecture/decisions.md).
+It is derived from the [architecture and product decisions](architecture/decisions.md). The
+[architecture overview](architecture/overview.md) shows the resulting system layer by layer.
 That record preserves decisions and rationale; the [constitution](../.specify/memory/constitution.md)
 sets governing principles; feature specifications define scope and acceptance.
 

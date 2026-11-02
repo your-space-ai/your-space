@@ -20,6 +20,7 @@ This is the canonical project-wide record of accepted architecture and product d
 It remains relevant across feature specifications and must not be archived or replaced when an individual feature is completed.
 The constitution establishes governing principles; this record captures shared decisions and open choices; individual specifications define delivery scope and acceptance criteria.
 Open proposals remain candidates, even when they have been discussed in detail.
+The [architecture overview](overview.md) diagrams the resulting system layer by layer.
 
 The first feature establishes manual Docker Compose installation, owner setup, authentication, an empty workspace, persistence, and recovery.
 It does not install independent apps or implement app roles, agents, a marketplace, or an agent execution runtime.

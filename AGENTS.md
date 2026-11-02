@@ -16,6 +16,10 @@ direction, sequencing, or verified delivery status changes, update the affected 
 in the same PR. Preserve the distinction between agreed order, unscheduled direction, and candidates;
 keep rationale in decisions and acceptance criteria in specifications.
 
+The [architecture overview](docs/architecture/overview.md) diagrams the running system layer by
+layer. When a decision adds, removes, or moves a component, layer, or request path, update the
+overview in the same change.
+
 The roadmap's pre-public section is grouped into layers and opens with an overview tree. Whenever
 a pre-public item is added, removed, moved, re-prioritized, reworded in meaning, or deferred, update
 the tree in the same change so it still maps one-to-one to the checklist and its priority markers
