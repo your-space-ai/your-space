@@ -4,13 +4,25 @@
 
 **Created**: 2026-10-28
 
-**Last updated**: 2026-10-29
+**Last updated**: 2026-11-02
 
 **Status**: Draft for PR review; implementation has not started
+
+**Journey**: 001 "Set up my space", the first of eight journeys in the [spec map](../../docs/spec-map.md)
 
 **Input**: Establish an owner-only Your Space installation with manual Docker Compose installation,
 browser-guided setup, a web client, durable workspace state, and account recovery. Preserve the agreed platform, app, and agent
 architecture without adding those later features to this first delivery.
+
+## At a Glance
+
+- **Who:** the operator who installs Your Space and becomes its owner.
+- **Done when:** the operator installs Your Space, claims it, signs in, and can recover the owner account.
+- **Covers:** manual Docker Compose install on macOS and Linux (ARM and Intel/AMD), the setup code and
+  owner claim, sign-in and sessions, an accurate empty workspace, durable state, owner recovery, and
+  access from another device over HTTPS.
+- **Next:** spec 002 (install an app and use it), then spec 003, whose CLI wraps this feature's
+  setup and recovery behavior.
 
 ## Objective and Scope
 
@@ -23,15 +35,18 @@ membership, and ownership remain distinct so later membership can be added witho
 existing identities or reassigning their data.
 
 The first delivery establishes the Compose deployment on supported macOS and Linux hosts,
-with documented manual installation and operator procedures. A separate follow-up specification
-and implementation PR will add a Your Space CLI for installation and management. Completing this
-feature must not depend on that CLI; setup authority and owner recovery remain available through
-the documented deployment procedures.
+with documented manual installation and operator procedures. Spec 003 (install and run with the
+CLI) follows spec 002 and wraps this feature's setup and recovery behavior; its command names and
+mechanics are set there. The desktop app (spec 008) wraps the CLI in turn. Completing this feature must not depend on either; setup
+authority and owner recovery remain available through the documented deployment procedures.
 
 The [project-wide decision record](../../docs/architecture/decisions.md) preserves
 selected technologies, accepted future app and agent design, and choices still open. That shared
 record applies across specifications; its future work is not required to complete this feature. The
-[constitution](../../.specify/memory/constitution.md) remains the governing document.
+[constitution](../../.specify/memory/constitution.md) remains the governing document. The
+[spec map](../../docs/spec-map.md) sets the rules every specification follows; FR-001, FR-022 to
+FR-027, and the cross-cutting scenarios apply them so later specs build on this feature without
+reworking it.
 
 ## User Scenarios & Testing
 
@@ -70,6 +85,9 @@ complete setup with operator-issued authority, and reach one empty workspace as 
    leave a claimed installation without its owner and workspace.
 8. **Given** no email delivery service is configured, **When** the owner completes setup,
    **Then** the email serves as the login identifier, remains unverified, and does not block access.
+9. **Given** an unclaimed installation, **When** a script runs the documented setup-code command,
+   **Then** it receives the code in machine-readable output with a meaningful exit status, and
+   submitting that code goes through the same setup flow as a person entering it.
 
 ### User Story 2 - Sign In and Access the Workspace (Priority: P1)
 
@@ -94,13 +112,16 @@ workspace access from another device, direct protected requests, session expiry,
    invalidated and replaying it cannot access protected resources.
 5. **Given** an expired or invalidated session, **When** the client attempts a protected action,
    **Then** it requires sign-in again and does not report the action as successful.
-6. **Given** a reachable server at its configured address, **When** the owner uses a browser on
-   another device, **Then** the same account and workspace are available without a second setup.
+6. **Given** a server reachable over HTTPS through the documented encrypted path, **When** the
+   owner uses a browser on another device, **Then** the same account and workspace are available
+   without a second setup.
 7. **Given** an installation with no apps or agents, **When** the owner opens the workspace,
    **Then** the interface shows an accurate empty state and available owner/session controls,
    without implying that app installation or agent functionality already exists.
 8. **Given** an unavailable server or rejected request, **When** the client displays the outcome,
    **Then** it distinguishes failure from an empty workspace and provides a recoverable next step.
+9. **Given** an active owner session, **When** the browser makes requests to any other host,
+   including subdomains of the Your Space host, **Then** the session credential is not sent.
 
 ### User Story 3 - Preserve the Workspace Across Restarts (Priority: P1)
 
@@ -117,12 +138,16 @@ then sign in and compare the records.
 1. **Given** a completed setup, **When** the system is restarted through a supported procedure,
    **Then** the same account, workspace, membership, and ownership records remain.
 2. **Given** that restarted installation, **When** the owner signs in, **Then** the workspace is
-   usable without running setup again. Preserving an existing browser session is not required.
+   usable without running setup again. An unexpired, unrevoked session from before the restart
+   remains valid, so restarts such as starting a local workspace or updating do not force sign-in.
 3. **Given** claimed state cannot be read because storage is unavailable, **When** the system
    starts or receives requests, **Then** it reports a storage problem and refuses to treat that
    uncertainty as an unclaimed installation.
 4. **Given** storage becomes available again, **When** the operator follows the documented
    recovery steps, **Then** the existing claim and ownership are recovered without replacement.
+5. **Given** a claimed installation, **When** every Your Space container is removed and recreated
+   from the Compose file, keeping only the documented database and named volumes, **Then** all
+   account, workspace, membership, ownership, and claim state is intact.
 
 ### User Story 4 - Recover Owner Access (Priority: P1)
 
@@ -154,6 +179,9 @@ complete the issued password-reset flow, and verify identity preservation and se
 
 ### Cross-Cutting Verification Scenarios
 
+Scenarios 4 to 8 check the [spec map's](../../docs/spec-map.md) shared rules that are not covered
+by the user stories.
+
 1. **Given** account creation and a completed password reset, **When** credential storage is
    reviewed, **Then** passwords are represented only by salted, one-way password hashes designed
    for password storage, with the selected algorithm and work factor documented in the plan.
@@ -164,6 +192,21 @@ complete the issued password-reset flow, and verify identity preservation and se
 3. **Given** the documented failed-attempt limits for sign-in, setup, and reset validation,
    **When** repeated invalid attempts reach each configured limit, **Then** the documented limiting
    behavior occurs and no protected state changes. Legitimate retry follows the documented policy.
+4. **Given** an ARM host (including Apple Silicon) and an Intel/AMD host, **When** the operator
+   follows the guide on each, **Then** both run Your Space's published images natively and complete
+   User Story 1.
+5. **Given** outbound network traffic is observed, **When** setup, sign-in, failed requests, and
+   recovery are exercised, **Then** Your Space makes no automatic outbound requests.
+6. **Given** the owner reaches the empty workspace, **When** the default interface is reviewed,
+   **Then** it shows only what the owner needs (the workspace, their account, and sign-out), with
+   no configuration, diagnostics, or placeholder controls for future features. Failure and service
+   states required by FR-016 are shown when they occur and are not diagnostics.
+7. **Given** setup and recovery have been exercised, **When** the stored records of those actions
+   are inspected, **Then** each names its actor through a stable actor identity that is not tied to
+   the human-account type.
+8. **Given** an installation created by one build, **When** a newer build with a pending schema
+   migration starts against the same storage, **Then** the recorded schema version advances, the
+   migration applies in place, and all identities, ownership, and claim state are intact.
 
 ### Edge Cases
 
@@ -177,6 +220,8 @@ complete the issued password-reset flow, and verify identity preservation and se
   offering fresh setup over uncertain existing state.
 - The web client loses connectivity, retains a stale session, or reconnects after server restart.
 - Password recovery runs while sessions remain active on other devices.
+- A script runs the setup-code or recovery command when the installation is already claimed,
+  the server is stopped, or storage is unavailable; it gets a clear machine-readable failure.
 - The operator recreates services but retains the documented durable storage. Deliberate storage
   deletion is not a supported restart and must be distinguished in the guide.
 
@@ -191,6 +236,9 @@ complete the issued password-reset flow, and verify identity preservation and se
   Failed prerequisites and startup failures MUST provide actionable feedback.
 - **FR-002**: Initial claim MUST require temporary, single-use setup authority supplied through
   the operator's installation process. Public reachability alone MUST NOT establish that authority.
+  Every installation, local or server, MUST use this one setup flow. The setup-code command MUST
+  support scripted use (machine-readable output and exit status) so the CLI (spec 003), and the
+  desktop app through the CLI (spec 008), can obtain and submit the code without a separate path.
 - **FR-003**: Initial owner setup MUST collect a name, email, and password and validate them
   according to documented account rules before completing the claim.
 - **FR-004**: Claim completion MUST establish one owner account, one workspace, and consistent
@@ -207,6 +255,7 @@ complete the issued password-reset flow, and verify identity preservation and se
   Protected access MUST be enforced by the server even when the interface is bypassed.
 - **FR-009**: Sessions MUST expire and support server-enforced invalidation. Sign-out MUST
   invalidate the current session; an expired or invalidated session MUST NOT authorize later requests.
+  Session state MUST be durable, so an unexpired, unrevoked session survives supported restarts.
 - **FR-010**: Passwords MUST use a salted, one-way hashing scheme designed for password storage;
   the algorithm and work factor belong in the implementation plan. Passwords, reusable session credentials,
   setup codes, and reset credentials MUST NOT appear in ordinary application logs, public error
@@ -222,14 +271,17 @@ complete the issued password-reset flow, and verify identity preservation and se
   with explicit relationships. Existing records MUST NOT depend on a universal hard-coded owner
   identity that would need replacement to support future members.
 - **FR-015**: The web client MUST use a configured server connection that works on the same
-  machine or across machines. Remote access MUST have a documented encrypted connection path;
-  it MUST NOT depend on browser-local authoritative workspace state.
+  machine or across machines, and MUST NOT depend on browser-local authoritative workspace state.
+  Remote access MUST use HTTPS through a documented path, such as the owner's own reverse proxy or
+  a private tunnel. Plain HTTP is supported only on the same machine (localhost), and session
+  credentials MUST NOT be sent over plain HTTP to a remote host.
 - **FR-016**: The initial workspace MUST truthfully represent its empty state and available owner
   access. Authentication, connectivity, and storage failures MUST NOT be presented as successful
   operations or an empty/unclaimed workspace.
 - **FR-017**: An operator recovery command MUST issue a short-lived, single-use reset link for
   the existing owner without email delivery. It MUST NOT create an account or reopen initial setup.
-  The command MUST be available through the documented deployment procedures without the later CLI.
+  The command MUST be available through the documented deployment procedures without the later CLI,
+  and MUST support scripted use (machine-readable output and exit status) so the CLI can wrap it.
 - **FR-018**: Invalid, expired, or consumed reset credentials MUST leave protected account state
   unchanged. Merely issuing a reset link MUST NOT change the owner password or ownership.
 - **FR-019**: A successful password reset MUST preserve account and workspace identity, replace
@@ -238,6 +290,24 @@ complete the issued password-reset flow, and verify identity preservation and se
 - **FR-020**: Denied claim, authentication, recovery, and protected-access requests MUST NOT
   modify protected workspace or ownership state. Error messages MUST be usable without exposing
   secrets or protected data.
+- **FR-021**: The platform session MUST be held in host-only cookies, so it is never sent to other
+  hosts, including subdomains where apps may later live (spec 002).
+- **FR-022**: Your Space MUST publish its images for both ARM (including Apple Silicon) and
+  Intel/AMD machines, and the guide MUST be verified on both.
+- **FR-023**: All durable state MUST live in the database or in named volumes listed in the guide;
+  nothing that must survive may live only in a container's filesystem. The storage layout MUST let
+  the whole workspace be captured and restored consistently, so backup and restore (spec 006) add
+  to it rather than change it.
+- **FR-024**: Stored data MUST carry a schema version and change only through versioned migrations
+  from the first release, so later updates (spec 006) upgrade an installation in place.
+- **FR-025**: Records that identify who performed an action MUST reference a stable actor identity
+  and MUST NOT assume every actor is a human account, so agents (spec 005) can be credited as the
+  actual actor without changing existing records.
+- **FR-026**: Your Space MUST NOT send telemetry or make automatic outbound requests in this
+  feature. Owner-controllable update checks arrive with update features (spec 006, and spec 008
+  for the desktop app).
+- **FR-027**: The default interface MUST show only what the owner needs. Settings, diagnostics, and
+  controls for features that do not exist yet MUST NOT appear in the default experience.
 
 ### Key Entities
 
@@ -254,6 +324,8 @@ These are domain concepts, not prescribed database tables or framework types.
 - **Session**: An authenticated owner session with expiry and invalidation behavior.
 - **Setup authority**: Temporary, single-use authority to claim an unclaimed installation.
 - **Recovery authority**: Short-lived, single-use authority to reset the existing owner's password.
+- **Actor**: Whoever performs an action. Only the owner acts in this feature, but records that name
+  an actor do not assume a human, so agents can be credited later.
 
 ## Success Criteria
 
@@ -268,49 +340,67 @@ These are domain concepts, not prescribed database tables or framework types.
   unauthenticated protected requests reveal no protected data and cause no protected state change.
 - **SC-004**: After sign-out or session expiry, replaying the affected session fails. After a
   successful password reset, all previously active owner sessions fail subsequent protected requests.
-- **SC-005**: Documented restarts and service recreation retain the same account and workspace
-  identifiers, membership, and ownership, and the owner can sign in again without repeating setup.
+- **SC-005**: Documented restarts and service recreation, keeping only the documented database and
+  named volumes, retain the same account and workspace identifiers, membership, and ownership, and
+  the owner can sign in again without repeating setup. Unexpired, unrevoked sessions remain valid.
 - **SC-006**: Storage-failure exercises never reopen setup or overwrite a claim, and restoring
   storage makes the existing account and workspace recoverable.
 - **SC-007**: Owner setup and password recovery both succeed with no email delivery configured,
   while the address remains unverified without separate mailbox proof.
 - **SC-008**: Recovery preserves the existing owner and workspace. Used and expired recovery
   links cannot reset the password, and recovery does not create a replacement owner.
-- **SC-009**: A browser on another device reaches the same server and workspace through the
-  documented encrypted connection path, without creating another account or installation.
+- **SC-009**: A browser on another device reaches the same server and workspace over HTTPS through
+  the documented encrypted path, without creating another account or installation. The session
+  cookie is host-only and is never sent over plain HTTP to a remote host.
 - **SC-010**: The initial workspace, failure states, and guide accurately describe supported
   behavior. Delivery evidence identifies tested versions, environments, procedures, and limitations.
+- **SC-011**: The guide completes User Story 1 on both an ARM host (including Apple Silicon) and an
+  Intel/AMD host using the published images.
+- **SC-012**: The setup-code and recovery commands produce machine-readable output and exit statuses
+  that a script can use for success and each documented failure.
+- **SC-013**: Observed outbound traffic during setup, sign-in, and recovery shows no automatic
+  requests from Your Space.
 
 ## Assumptions
 
 - The operator can install the documented prerequisites and administer the server. A visitor's
   ability to load a page does not imply operator authority.
-- Initial server hosts are macOS and Linux. Exact supported OS versions and CPU architectures
-  must be documented and verified during implementation.
+- Initial server hosts are macOS and Linux on ARM and Intel/AMD. Windows is not a server host.
+  Exact supported OS versions must be documented and verified during implementation.
 - The first delivery is an online web client and one server installation with one human owner
   and one workspace. Offline synchronization, multiple servers in one client, and shared access
   are not required here.
-- Durable storage is retained across supported restarts. Backup/restore automation and upgrades
-  are separate work; installation instructions must make destructive storage deletion recognizable.
-- Browser sessions may require fresh sign-in after a restart; durable account and ownership
-  records must not require recreation.
+- Durable storage is retained across supported restarts. Updates, backup, and restore are spec 006;
+  this feature's storage layout and migrations prepare for them (FR-023, FR-024). Installation
+  instructions must make destructive storage deletion recognizable.
+- The built-in HTTPS proxy with automatic certificates is spec 003. This feature documents an
+  encrypted path through the owner's own reverse proxy or a private tunnel such as Tailscale, and
+  must let the built-in proxy be added in front later without changing setup, sessions, or stored data.
 - Product behavior is specified here. Selected technologies and unresolved implementation
   choices are preserved in the [project decision record](../../docs/architecture/decisions.md),
   rather than silently selected by this PR.
 - Planning must settle the initial host/version support matrix, account validation rules, expiry
-  and attempt limits, and encrypted remote-connection instructions before claiming those paths work.
+  and attempt limits, migration tooling, the operator commands' output format, and encrypted
+  remote-connection instructions before claiming those paths work.
 
 ## Explicitly Out of Scope
 
-- A standalone Your Space CLI or automated installer; a separate follow-up spec and PR will
-  add installation and management commands over this feature's working Compose deployment.
-- Installing or running an independent app, including Tasks; implementing the SDK or app contract.
-- GitHub account connections, repository installation, app updates, or marketplace/catalog services.
-- Registering agents, assigning app roles, role delegation, programmatic agent credentials, or workflows.
-- Additional human accounts, invitations, shared workspaces, membership administration, or ownership transfer.
-- Desktop packaging, mobile-native clients, offline synchronization, or a multi-server client picker.
-- Managed-service provisioning, billing, email delivery, and provider-specific cloud installers.
-- A universal app gateway, embedding mechanism, container orchestration system, or app storage scheme.
+Later journeys in the [spec map](../../docs/spec-map.md) deliver these:
+
+- **Spec 002:** installing or running apps, including Tasks; app UI and sign-in; the app contract,
+  TypeScript SDK, and app roles.
+- **Spec 003:** the Your Space CLI and the built-in HTTPS proxy with automatic certificates.
+- **Spec 004:** invitations, additional members, member recovery, and role assignment.
+- **Spec 005:** agents, delegation, agent credentials, the gateway, and the activity log.
+- **Spec 006:** Your Space and app updates, backup, restore, moving a workspace, and uninstall.
+- **Spec 007:** the public developer kit, Python SDK, and external apps.
+- **Spec 008:** the desktop app, local mode, and the installable PWA, including offline behavior.
+
+Deferred until after the first public release: email delivery, GitHub account connections, app
+catalogs, the managed service, and provider-specific cloud installers.
+
+Not in this feature, and not yet assigned to a spec: ownership transfer, mobile-native clients,
+offline synchronization, and a multi-server client picker.
 
 The accepted direction for these later features is retained in the project-wide decision record.
 Their presence there must not be treated as authorization to implement them in this first slice.

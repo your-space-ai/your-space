@@ -4,11 +4,11 @@
 
 **Created**: 2026-10-28
 
-**Last updated**: 2026-10-29
+**Last updated**: 2026-11-02
 
 **Feature**: [Specification](../spec.md)
 
-**Shared direction**: [Project decision record](../../../docs/architecture/decisions.md)
+**Shared direction**: [Project decision record](../../../docs/architecture/decisions.md) and [spec map](../../../docs/spec-map.md)
 
 **Marker semantics**: Checked items indicate reviewed document quality, not implemented or tested
 product behavior. This checklist is maintained by the Spec Kit specification workflow.
@@ -36,16 +36,31 @@ product behavior. This checklist is maintained by the Spec Kit specification wor
 
 - [x] Manual Docker Compose on macOS/Linux, web-only delivery, Express on Node.js, and PostgreSQL are recorded as selected.
 - [x] React/TypeScript/Vite, Better Auth, and Drizzle are recorded as selected; client supporting libraries remain open.
-- [x] Owner setup and the working Compose deployment precede a separate CLI specification and implementation PR.
+- [x] Owner setup and the working Compose deployment come first; spec 002 (install an app and use it) and then the CLI (spec 003) follow.
 - [x] Setup-code delivery and operator recovery remain available without the later standalone CLI.
+- [x] Every installation uses one setup flow; the operator commands are scriptable so the CLI can wrap them (command names and mechanics are set in spec 003), and the desktop app uses the CLI.
 - [x] Independent apps and the in-repository SDK remain future integration boundaries.
-- [x] Embedded app UI is a product requirement; iframe and other implementation choices remain open.
-- [x] Native app authorization and identity/role adapters replace the earlier universal endpoint-gateway proposal.
+- [x] Embedded app UI is a product requirement; embedding, origins, and routing are decided in spec 002.
+- [x] Your Space is the gateway for agent access (spec 005); apps still enforce their own roles, and endpoint-to-permission manifests remain unselected.
 - [x] Agent delegation uses exact role-ID subsets in the same app installation and workspace, without a hierarchy.
 - [x] Removing a human role removes that role from affected agents; sessions and credentials must respect revocation.
 - [x] Role-ID containment is not misrepresented as universal effective-permission containment.
-- [x] Future apps, agents, members, and managed hosting are not first-spec acceptance criteria.
+- [x] Future apps, agents, members, and managed hosting are not first-spec acceptance criteria; out-of-scope items name the spec that delivers them.
+- [x] Remote access uses HTTPS and plain HTTP is localhost-only; the built-in proxy (spec 003) can be added later without rework.
+- [x] The platform session uses host-only cookies.
 - [x] Documents contain no private application data, credentials, or private implementation history.
+
+## Spec Map Conformance
+
+- [x] The spec covers every roadmap item tagged `[001]`: manual Compose install, durable state, access
+  from another device, ARM and Intel/AMD images, owner setup and sessions, and the web client.
+- [x] Simple by default: the default interface shows only what the owner needs (FR-027).
+- [x] No telemetry: no automatic outbound requests (FR-026).
+- [x] ARM and Intel: images and guide verified on both (FR-022).
+- [x] Known storage: durable state only in the database and named volumes, ready for backup (FR-023).
+- [x] Versioned migrations from the first schema, ready for updates (FR-024).
+- [x] The actual actor: records do not assume every actor is human (FR-025).
+- [x] Docs and security included: the guide (FR-001) and security scenarios ship with the feature.
 
 ## Acceptance Traceability
 
@@ -57,12 +72,24 @@ product behavior. This checklist is maintained by the Spec Kit specification wor
 | FR-012–FR-014 | Stories 1 and 3; Story 4 identity preservation; SC-005–SC-006, SC-008 |
 | FR-015–FR-016 | Story 2 scenarios 6–8; SC-009–SC-010 |
 | FR-017–FR-020 | Story 4; denied-access scenarios across stories; SC-002–SC-004, SC-007–SC-008 |
+| FR-002, FR-017 (scripted use) | Story 1 scenario 9; scripted-command edge case; SC-012 |
+| FR-021 | Story 2 scenario 9; SC-009 |
+| FR-022 | Cross-cutting scenario 4; SC-011 |
+| FR-009 (durable sessions) | Story 3 scenario 2; SC-005 |
+| FR-023 | Story 3 scenario 5; SC-005 |
+| FR-024 | Cross-cutting scenario 8 |
+| FR-025 | Cross-cutting scenario 7; Actor entity |
+| FR-026–FR-027 | Cross-cutting scenarios 5–6; SC-013 |
 
 ## Review Notes
 
 - Independent reviews checked conversation coverage, constitutional consistency, scope, delegation,
   and setup/recovery behavior. Findings on licensing, stable role IDs, password storage, and
   verification coverage were addressed before completing this checklist.
+- 2026-11-02: Updated to conform with the merged roadmap, decision record, and spec map: journey
+  references, host-only cookies, HTTPS-only remote access, ARM and Intel/AMD images, storage layout,
+  versioned migrations, actor identity, no telemetry, simple by default, scriptable operator commands,
+  and sessions that survive restarts. An independent review checked the update against those documents.
 - No runtime tests apply to this documentation-only change. Implementation acceptance scenarios
   have been specified, not executed.
 - The next phase is technical planning with the open implementation choices in the decision record.
