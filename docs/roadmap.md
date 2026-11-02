@@ -1,6 +1,6 @@
 # Your Space Roadmap
 
-**Last updated**: 2026-11-01
+**Last updated**: 2026-11-02
 
 This roadmap tracks the functionality we want to build for Your Space: a self-hostable platform
 for independent apps, human users, and agents, with a managed offering planned later.
@@ -21,10 +21,11 @@ the desktop app and local workspaces through Docker Desktop, but not server host
 publication, the release also needs invited members; web, desktop, and PWA clients; app installation
 from a pasted Docker Compose deployment file limited to an approved list of settings and exact
 published image versions, with app details in an `x-your-space` section; owner-triggered app and
-Your Space updates that roll back automatically if they fail; TypeScript and Python SDKs with a small
-Tasks app as the first app; app roles and external agents; and a security hardening pass on app and
-workspace boundaries. Backup and restore, automatic app updates, building apps from source, and
-alternative deployment-file formats are post-open-source work.
+Your Space updates that roll back automatically if they fail; built-in backup and restore through
+the CLI for every installation, including moving a local workspace to a server; TypeScript and
+Python SDKs with a small Tasks app as the first app; app roles and external agents; and a security
+hardening pass on app and workspace boundaries. Automatic app updates, building apps from source,
+and alternative deployment-file formats are post-open-source work.
 
 **Next discussion:** Remaining pre-public open questions,
 and whether to reduce the first release's size; then a final consistency review.
@@ -65,14 +66,28 @@ specifications; their order here is not a delivery sequence.
   **Source:** [CLI delivery sequence](architecture/decisions.md#cli-delivery-sequence).
 
   - [ ] Guide local and server installation through the Your Space CLI, which drives Docker Compose so users don't run Compose themselves.
-  - [ ] Provide at least install, start, stop, status, logs, update Your Space, and owner password recovery.
+  - [ ] Provide at least install, start, stop, status, logs, update Your Space, owner password recovery, backup, and restore.
   - [ ] Before updating Your Space, record versions and snapshot its data; if the update fails, roll back automatically.
   - [ ] Keep the manual Compose procedure documented as an advanced alternative to the CLI.
   - [ ] Run the CLI on macOS, Windows, and Linux so the desktop app can drive it for local workspaces.
 
   The CLI follows the working, verified manual Compose deployment and owner-access implementation.
   Command names, packaging, prerequisites, and the rest of the management scope remain to be specified.
-  The update rollback uses the same snapshot mechanism as app updates. Backup and restore are post-open-source.
+  The update rollback uses the same snapshot mechanism as app updates, and backup and restore build on it.
+
+- [ ] **Backup, restore, and migration**
+
+  **Source:** [Your Space updates, backup, and restore](architecture/decisions.md#your-space-updates-backup-and-restore). Moved before publication 2026-11-02.
+
+  - [ ] Back up any installation through the CLI: the Your Space server produces the backup and returns it through its API, wherever the server runs.
+  - [ ] Restore a backup into an installation.
+  - [ ] Move a workspace between installations, such as from a local machine to a server, through backup and restore.
+  - [ ] Back up and restore a local workspace from the desktop app through the same CLI operation.
+
+  One owner-only implementation serves every installation and builds on the pre-update snapshot
+  mechanism. Design the data model and storage so the whole workspace can be captured consistently.
+  Remote CLI authentication, restore into a broken or fresh installation, and backup format and
+  protection need a specification.
 
 - [ ] **Additional workspace members**
 
@@ -111,13 +126,13 @@ specifications; their order here is not a delivery sequence.
   - [ ] Detect Docker and link to the Docker Desktop download when it is missing.
   - [ ] In local mode, obtain the setup code through the CLI and submit it on the user's behalf, using the same setup flow as every other installation.
   - [ ] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
+  - [ ] Back up and restore the local workspace, and move it to a server, through the CLI.
   - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off, and state the Docker Desktop license terms.
 
   Streamlined local setup has its own specification and implementation PR, separate from the
   owner-access feature; it wraps the CLI and setup flow without changing them. Desktop packaging, code signing,
   and self-update need a specification. Your Space updates go through the CLI and roll back
-  automatically if they fail. Backup, restore, and moving a local workspace to a server are
-  post-open-source. The desktop app drives the CLI rather than managing Docker itself.
+  automatically if they fail. The desktop app drives the CLI rather than managing Docker itself.
 
 - [ ] **Independent app deployment and lifecycle**
 
@@ -201,18 +216,6 @@ specifications; their order here is not a delivery sequence.
 ## Post-public: Later Direction and Enhancements
 
 These capabilities are not required for the first public release. Their order and timing remain open.
-
-- [ ] **Backup, restore, and migration**
-
-  **Deferred (2026-10-31; broadened to every installation 2026-11-01):** [Your Space updates, backup, and restore](architecture/decisions.md#your-space-updates-backup-and-restore).
-
-  - [ ] Back up any installation through the CLI: the Your Space server produces the backup and returns it through its API, wherever the server runs.
-  - [ ] Restore a backup into an installation.
-  - [ ] Move a workspace between installations, such as from a local machine to a server, through backup and restore.
-  - [ ] Back up and restore a local workspace from the desktop app through the same CLI operation.
-
-  One owner-only implementation serves every installation and builds on the pre-update snapshot
-  mechanism. The first public release uses snapshots only for automatic rollback of failed updates.
 
 - [ ] **Optional owner-configured email**
 

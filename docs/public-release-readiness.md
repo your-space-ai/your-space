@@ -128,8 +128,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     environments, prerequisites, installation entry point, and known limitations.
   - [ ] Provide accurate installation, configuration, restart, remote access, troubleshooting,
     owner recovery, and safe removal guidance for the actual release.
-  - [ ] Document where durable data lives, and state that built-in backup and restore are
-    post-open-source work.
+  - [ ] Document where durable data lives, and how to back up, restore, and move a workspace
+    between installations with the CLI.
   - [ ] Explain local development, tests, contribution and review expectations, issue reporting,
     maintainer support expectations, and where to find the roadmap and security policy.
   - [ ] Decide and publish the project's community participation expectations and contact paths.
@@ -161,9 +161,14 @@ belong in their own specifications; the scope remains subject to the ongoing int
 - [ ] **CLI installation and management**
   - [ ] Specify and implement the supported commands and CLI distribution for the established
     Compose deployment, including installation, prerequisite handling, and management scope. Provide
-    at least install, start, stop, status, logs, update Your Space, and owner password recovery.
+    at least install, start, stop, status, logs, update Your Space, owner password recovery, backup,
+    and restore.
   - [ ] Verify a failed Your Space update through the CLI automatically restores the previous
     versions and the pre-update data snapshot.
+  - [ ] Verify owner-only backup and restore through the CLI for local and remote installations,
+    including members' accounts, credentials, and app data, and restore into a fresh installation.
+  - [ ] Verify moving a local workspace to a server through backup and restore, and that the desktop
+    app backs up and restores a local workspace through the same CLI operation.
   - [ ] Verify the CLI drives Docker Compose for both local and server installations on macOS,
     Windows, and Linux, and that the desktop app drives it in local mode.
   - [ ] Test the CLI on each claimed host for initial setup, repeat invocation, failures, and
@@ -195,8 +200,7 @@ belong in their own specifications; the scope remains subject to the ongoing int
     a connection to the server is required.
   - [ ] Define and test supported devices, platforms, installation and accessibility expectations.
 
-  Backup, restore, and moving a local workspace to a server are post-open-source. Desktop
-  packaging, code signing, self-update, and PWA offline behavior remain open.
+  Desktop packaging, code signing, self-update, and PWA offline behavior remain open.
 
 - [ ] **Independent apps and developer integration**
   - [ ] Specify and implement the versioned app integration and SDK contract needed by the journey;
