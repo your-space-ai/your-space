@@ -174,8 +174,9 @@ belong in their own specifications; the scope remains subject to the ongoing int
   - [ ] Let the owner create invitation links and share them directly so recipients can sign up and join.
   - [ ] Verify membership and access controls while preserving existing owner, account, and workspace identities.
   - [ ] Let the owner assign app roles to human members.
+  - [ ] Verify member password recovery with the signup recovery code, and with an owner-issued
+    temporary password that must be replaced at next sign-in; both revoke existing sessions.
   - [ ] Document and test invitation, signup, and recovery paths; detailed invitation and signup rules remain open.
-    Member password recovery without an email service or owner action on every reset needs a chosen approach.
 
 - [ ] **Workspace clients on web, desktop, and PWA**
   - [ ] Provide the same core workspace and installed-app experience on web, desktop, and installable

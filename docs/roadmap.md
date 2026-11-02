@@ -26,7 +26,7 @@ Tasks app as the first app; app roles and external agents; and a security harden
 workspace boundaries. Backup and restore, automatic app updates, building apps from source, and
 alternative deployment-file formats are post-open-source work.
 
-**Next discussion:** Member password recovery without email, remaining pre-public open questions,
+**Next discussion:** Remaining pre-public open questions,
 and whether to reduce the first release's size; then a final consistency review.
 
 Each parent checkbox represents a capability; its nested checkboxes track specific functionality.
@@ -82,10 +82,11 @@ specifications; their order here is not a delivery sequence.
   - [ ] Let the recipient sign up and join the workspace through the invitation.
   - [ ] Let the owner assign app roles to human members.
   - [ ] Retain existing account, workspace, membership, and ownership identities when adding members.
+  - [ ] Give each member a recovery code at signup that lets them reset their own password.
+  - [ ] Let the owner reset a member's password with a temporary password the member must replace at next sign-in.
 
-  Invitation and membership details require their own specification. Member password recovery without
-  email or owner action on every reset is open and needs exploration. Workspace roles, such as an
-  administrator, may come later.
+  Invitation, membership, and recovery-code details require their own specification. Workspace roles,
+  such as an administrator, may come later.
 
 - [ ] **Workspace clients**
 

@@ -140,7 +140,13 @@ Future email delivery can send reset links to verified addresses through the sam
 A managed service can provide that delivery without introducing a second authentication system.
 Token lifetimes, operator command mechanics, session storage, and revocation implementation remain technical planning choices.
 
-Password recovery for invited members is unresolved. Requiring an email service, or requiring the owner to act on every reset, are both poor fits for the first release; alternatives need exploration before the members specification.
+Invited members recover their passwords without email in the first release:
+
+- A member receives a recovery code at signup and can use it to reset their own password.
+- As a fallback, the owner can reset a member's password and give them a temporary password. The member must replace it the next time they sign in.
+- Like owner recovery, a member password reset preserves identity and revokes existing sessions.
+
+**Decision update (2026-11-02):** Member recovery uses a recovery code issued at signup, with an owner-issued temporary password as the fallback. Requiring an email service, or requiring the owner for every reset, were both rejected for the first release. How many codes are issued, whether a used code is replaced, and temporary-password lifetime belong in the members specification.
 
 **Decision update (2026-11-02):** Optional owner-configured email is post-open-source work. The owner can add their own email (SMTP) settings to enable verified email addresses and email password resets through the existing recovery mechanism. No installation requires email, so the first release still needs a recovery path that works without it.
 
@@ -365,7 +371,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates through the CLI; backup, restore, and migration to a server are post-open-source. Packaging, code signing, and self-update need a specification. |
 | CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. Its minimum operations are install, start, stop, status, logs, update Your Space, and owner password recovery. A separate follow-up specification will define packaging, command names, prerequisite automation, and management behavior over the established Compose deployment. |
 | Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup and restore are post-open-source; remote CLI authentication, restore into a broken or fresh installation, and backup format and protection remain open. |
-| Member password recovery | Invited members need a recovery path that doesn't require an email service or the owner acting on every reset. Approaches need exploration before the members specification. Optional owner-configured email resets are post-open-source. |
+| Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
 | Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |
