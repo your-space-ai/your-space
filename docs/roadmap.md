@@ -104,8 +104,13 @@ delivery sequence.
   - [ ] Retain existing account, workspace, membership, and ownership identities when adding members.
   - [ ] Give each member a recovery code at signup that lets them reset their own password.
   - [ ] Let the owner reset a member's password with a temporary password the member must replace at next sign-in.
+  - [ ] Let the owner remove a member: sign them out everywhere and revoke their app roles and their agents' access.
+  - [ ] Disable a removed member's agents rather than deleting them, and let the owner delete them later.
+  - [ ] Keep past app activity traceable to former members and deleted agents.
 
-  Invitation, membership, and recovery-code details require their own specification. Workspace roles,
+  **Source for removal:** [Member and agent removal](architecture/decisions.md#member-and-agent-removal).
+
+  Invitation, membership, removal, and recovery-code details require their own specification. Workspace roles,
   such as an administrator, may come later.
 
 - [ ] **Workspace clients**

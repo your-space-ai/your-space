@@ -184,6 +184,9 @@ belong in their own specifications; the scope remains subject to the ongoing int
   - [ ] Let the owner assign app roles to human members.
   - [ ] Verify member password recovery with the signup recovery code, and with an owner-issued
     temporary password that must be replaced at next sign-in; both revoke existing sessions.
+  - [ ] Verify removing a member immediately revokes their sessions, app roles, and their agents'
+    access, including existing app sessions and credentials; their agents are disabled, not deleted.
+  - [ ] Verify past app activity still identifies former members and deleted agents.
   - [ ] Document and test invitation, signup, and recovery paths; detailed invitation and signup rules remain open.
 
 - [ ] **Workspace clients on web, desktop, and PWA**

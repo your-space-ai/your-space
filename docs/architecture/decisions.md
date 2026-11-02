@@ -334,6 +334,16 @@ Some app authorization systems use deny roles, role combinations, or contextual 
 Compatibility with those semantics remains unresolved and must be addressed in the app contract before claiming bounded effective authority.
 The app remains authoritative for resource-level rules, including workspace ownership of its records.
 
+### Member and Agent Removal
+
+- Removing a member signs them out everywhere and revokes their app roles, including existing app sessions and credentials.
+- Removing a member also revokes access for agents that act on their behalf.
+- The member's agents are disabled, not deleted. The owner can delete them later.
+- Deleting an agent never makes past app activity untraceable. Your Space keeps a minimal record of the deleted agent, including its name and the member it acted for, and never reuses its identifier.
+- A removed member's data in apps stays with the app. Your Space keeps the member's identity as a former member so history still shows who did what; apps decide what happens to their own records.
+
+**Decision update (2026-11-02):** Member removal is part of the first release. It revokes the member's and their agents' access immediately, disables rather than deletes their agents, and preserves attribution for past activity even after agents are deleted. Removal flow, the retained record's contents, and whether a removed member can be re-invited under the same identity belong in the members specification.
+
 ### Responsibility and Trust Boundary
 
 Your Space supplies verified identities, role assignments, delegation rules, and revocation state.
@@ -383,6 +393,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates, backup, and restore through the CLI, and migration to a server. Packaging, code signing, and self-update need a specification. |
 | CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. Its minimum operations are install, start, stop, status, logs, update Your Space, owner password recovery, backup, and restore. A separate follow-up specification will define packaging, command names, prerequisite automation, and management behavior over the established Compose deployment. |
 | Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup, restore, and migration between installations are required before publication; remote CLI authentication, restore into a broken or fresh installation, and backup format and protection remain open. |
+| Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
 | Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open; they are specified after the owner-access feature and before the CLI. The platform session uses host-only cookies. |
