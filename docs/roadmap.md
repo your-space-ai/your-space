@@ -224,6 +224,7 @@ delivery sequence.
 
   - [ ] Review repository history, GitHub content, and release artifacts for private data and secrets.
   - [ ] Review publication rights, project and dependency licensing, and required notices.
+  - [ ] License Your Space under AGPL-3.0 and the SDKs under Apache-2.0, file the "Your Space" trademark, and set up a contributor license agreement, all reviewed by a lawyer. **Source:** [Project license and business model](architecture/decisions.md#project-license-and-business-model).
   - [ ] Review security and isolation, provide safe defaults, and establish private vulnerability reporting.
   - [ ] Complete a security hardening pass on the boundaries between apps and the workspace, enforcing them and protecting users as far as reasonably possible.
   - [ ] Document installation, operation, recovery, developer integration, contribution, and project status.

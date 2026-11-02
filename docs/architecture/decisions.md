@@ -231,11 +231,23 @@ Existing app authorization should be reusable where it has a suitable integratio
 - Provide platform-specific installation guides and deployment adapters for supported environments.
 - Keep provider-specific storage, networking, and provisioning details within those deployment boundaries.
 - Preserve compatible, versioned app contracts between self-hosted and managed installations.
-- Dependencies must permit the intended commercial distribution and managed hosting. Prefer permissive open-source licenses; MIT is preferred but not mandatory.
+- Dependencies must permit the intended commercial distribution and managed hosting, and be compatible with the project licenses below. Prefer permissive open-source licenses.
 
 A future Cloudflare, VPS, or other cloud pathway must demonstrate persistence and lifecycle behavior in that environment.
 Provider neutrality does not mean every runtime already supports the same executable or deployment configuration.
 Dependency selection must consider actual licenses, including bundled components and distribution-specific terms.
+
+### Project License and Business Model
+
+- The business maintains the open-source core and offers a managed service for people who don't want to self-host.
+- Your Space itself (server, web client, CLI, and desktop app) is licensed under AGPL-3.0. Anyone may self-host and modify it; anyone who runs a modified version as a network service must publish their changes.
+- The SDKs are licensed under Apache-2.0, so apps can use any license. Apps are separate programs that integrate through APIs and are not covered by the core's license.
+- "Your Space" is protected as a trademark, so others cannot offer services under the name. getyourspace.ai is the project domain.
+- Outside contributions require a contributor license agreement that lets the project use contributions under other terms, so the managed service and future licensing stay possible.
+- Code specific to the managed service, such as billing, provisioning, and multi-tenant operations, lives in a separate private repository and integrates with the core through its APIs.
+- The license, trademark, and contributor agreement are in place before publication, after review by a lawyer.
+
+**Decision update (2026-11-02):** AGPL-3.0 for Your Space and Apache-2.0 for the SDKs replace the earlier MIT preference. AGPL keeps the core open source while preventing closed hosted forks; the trademark and maintainership protect the managed offering. Source-available licenses such as FSL were considered and rejected because the business depends on an open-source core.
 
 ### Telemetry and Outbound Connections
 
@@ -423,6 +435,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
 | Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open; they are specified after the owner-access feature and before the CLI. The platform session uses host-only cookies. |
+| Project license | AGPL-3.0 for Your Space and Apache-2.0 for the SDKs, with a "Your Space" trademark and a contributor license agreement, all in place and reviewed by a lawyer before publication. Trademark filing details and agreement wording remain open. |
 | Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off. Future reporting must be opt-in; opt-out is prohibited. |
 | Agent access | Agents reach apps only through the Your Space gateway, using the CLI in the first release; a workspace MCP endpoint is post-open-source. Gateway request format, how apps declare actions for the CLI, and whether the gateway enforces per-action roles need definition. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |

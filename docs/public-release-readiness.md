@@ -51,8 +51,8 @@ release plan. These checks are a proposed minimum for that alternative, not a pr
   - [ ] Review repository history, branches, tags, commit identities, issues, PRs, logs, artifacts,
     and other potentially public material for private data and secrets; remediate findings and
     rotate or revoke exposed credentials where needed.
-  - [ ] Confirm publication rights for existing material, choose an open-source project license
-    compatible with the intended business, and meet applicable third-party license and notice obligations.
+  - [ ] Confirm publication rights for existing material, add the selected project licenses, and meet
+    applicable third-party license and notice obligations.
   - [ ] Explain the project's purpose, current state, unimplemented functionality, and participation
     expectations in the README, with links to the roadmap and relevant development instructions.
   - [ ] Review the security and safe-use implications of any runnable code and provide a private
@@ -99,8 +99,15 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     [GitHub's visibility guidance](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility).
 
 - [ ] **Establish project rights and licensing**
-  - [ ] Select and add an open-source license compatible with the intended self-hosted and commercial
-    managed offering; MIT is preferred but the license choice remains to be approved.
+  - [ ] Add AGPL-3.0 for Your Space (server, web client, CLI, and desktop app) and Apache-2.0 for the
+    SDKs, with license files and headers where needed.
+  - [ ] Have a lawyer review the license setup, trademark, and contributor agreement before publication.
+  - [ ] Clear and file the "Your Space" trademark, and publish a short trademark policy for forks.
+  - [ ] Set up a contributor license agreement, enforced on pull requests, before accepting outside
+    contributions.
+  - [ ] Verify every shipped dependency's license is compatible with AGPL-3.0 distribution, and the SDKs'
+    dependencies with Apache-2.0.
+  - [ ] Keep managed-service code in a separate private repository that integrates through the core's APIs.
   - [ ] Review ownership and permission to publish project code, documentation, assets, and generated
     material, including contributions and any imported material.
   - [ ] Inventory shipped dependencies, container images, and imported, vendored, or generated
