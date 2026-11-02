@@ -166,6 +166,7 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     test supported paths and document unsupported transitions. The first release must include the
     owner-triggered app update path and the CLI's Your Space update path, both with automatic rollback
     of failed updates.
+  - [ ] Verify Your Space images run on ARM (including Apple Silicon) and Intel/AMD hosts.
   - [ ] Record test evidence, outstanding issues, accepted limitations, and any unsupported paths for
     the exact release candidate.
 
@@ -228,8 +229,12 @@ belong in their own specifications. Roadmap priorities decide what moves to post
   - [ ] Verify supported clients connect to the same workspace and handle authentication and failures;
     a connection to the server is required.
   - [ ] Define and test supported devices, platforms, installation and accessibility expectations.
+  - [ ] Verify the desktop app updates itself from GitHub releases, and that mismatched app, CLI, and
+    server versions show a clear message about what to update.
+  - [ ] Review the default experience against the simple-by-default principle: beginners see only
+    what they need, and advanced settings stay behind power-user controls.
 
-  Desktop packaging, self-update, and PWA offline behavior remain open.
+  Desktop packaging, self-update mechanics, and PWA offline behavior remain open.
 
 - [ ] **Independent apps and developer integration**
   - [ ] Specify and implement the versioned app integration and SDK contract needed by the journey;
@@ -258,6 +263,16 @@ belong in their own specifications. Roadmap priorities decide what moves to post
   - [ ] Warn the owner at installation, and state in the documentation, that an installed app is
     trusted with its own data; Your Space protects itself and other apps but is not a sandbox for
     hostile code.
+  - [ ] Verify the owner can provide and change app settings and secrets, and that secrets are not
+    exposed in logs, errors, or the deployment file.
+  - [ ] Verify apps have no outbound network access beyond what they declared and the owner approved,
+    and that an update asking for more needs new approval.
+  - [ ] Verify memory and CPU limits contain a misbehaving app, and that the owner can see app status
+    and logs.
+  - [ ] Verify installation on ARM and Intel/AMD hosts, and a clear error when an app has no image for
+    the machine.
+  - [ ] Verify an external app hosted elsewhere can be added, uses Your Space identity and the gateway,
+    and rejects requests without identity verified by Your Space.
   - [ ] Provide persistent app-specific storage; keep data after uninstall and allow the owner to
     explicitly delete retained data through an administration UI.
   - [ ] Install the Tasks app as the first independent app, exercise its core workflow inside the
@@ -287,6 +302,10 @@ belong in their own specifications. Roadmap priorities decide what moves to post
   - [ ] Verify denied actions through UI and programmatic access, and removal of delegated roles and
     access through existing app sessions and credentials.
   - [ ] Review and test agent credential handling and revocation for the supported integration.
+  - [ ] Verify people can create, view, revoke, and rotate their agents' credentials in the app, and
+    that revoking one credential leaves the agent's roles unchanged.
+  - [ ] Verify the activity log records installs, role and member changes, delegations, and agent
+    requests with the actual actor, and that the owner can review it.
   - [ ] Verify agents reach apps only through the Your Space gateway: app containers are not reachable
     directly, and the gateway rejects unauthenticated, undelegated, and revoked requests.
   - [ ] Verify an agent can use the installed app's actions through the Your Space CLI against local

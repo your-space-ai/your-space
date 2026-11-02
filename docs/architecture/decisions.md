@@ -51,6 +51,7 @@ The repository README and agent guidance link here so future planning can find t
 - Use persistent storage so supported restarts retain identity, ownership, and workspace state.
 - Document prerequisites, setup, storage, restart, remote client access, and owner recovery.
 - Keep Kubernetes and kind outside the initial installation requirements.
+- Your Space publishes its images for both ARM (including Apple Silicon) and Intel/AMD machines.
 - Remote access uses HTTPS. The Compose stack includes a reverse proxy that obtains and renews a certificate automatically when the owner provides a domain during installation; this needs the domain and inbound ports 80 and 443.
 - Owners who already run their own reverse proxy or tunnel can turn off the built-in proxy and terminate HTTPS themselves.
 - Owners without a domain get documented guidance for a private tunnel such as Tailscale. Plain HTTP is supported only on the same machine (localhost), because browsers require HTTPS for PWA installation and secure session cookies.
@@ -191,8 +192,12 @@ What counts as a failed Your Space update, snapshot contents and storage, how th
 - The SDKs are developed in this repository and published for use by independent app projects.
 - First-party apps use the same public integration surface as other apps.
 - The first public release publishes TypeScript and Python SDKs. SDKs for other languages are post-open-source work.
+- An app can be managed or external. Your Space deploys and runs a managed app from its deployment file. An external app is hosted anywhere; the owner adds it to the workspace by pointing Your Space at the running instance. Both use the same public integration contract, so the contract must not assume Your Space runs the app.
+- External apps are outside Your Space's container isolation, outbound network limits, resource limits, and backups; whoever hosts them is responsible for those. They still integrate through Your Space identity and the gateway, and accept only requests that carry identity verified by Your Space.
 
 **Decision update (2026-10-31):** TypeScript and Python SDKs are required before publication. Together they cover two common stacks: a TypeScript frontend with a Python backend, and TypeScript on both frontend and backend. Developers using other languages can still integrate through the documented public contracts.
+
+**Decision update (2026-11-02):** Apps can be external as well as managed. Your Space managing deployment makes self-hosting apps quick, while power users and larger deployments can host an app elsewhere and add it to the workspace by pointing Your Space at it. The integration surface between Your Space and apps is designed for both from the start.
 
 **Decision update (2026-11-02):** Deferring the Python SDK to reduce first-release size was considered and rejected; both SDKs remain required.
 
@@ -214,6 +219,8 @@ Existing app authorization should be reusable where it has a suitable integratio
 - Before publication, the owner can back up and restore local and server installations alike, and move a local workspace to a server, through the CLI; the desktop app uses the same operation in local mode. Owner-triggered Your Space updates in local mode go through the CLI and roll back automatically if they fail.
 - A local workspace is unavailable to other people and remote agents while its machine is asleep or off. Install documentation must state this and the Docker Desktop license terms.
 - PWA offline support remains open. The first owner-access feature remains web-only.
+- The desktop app updates itself. Its update check goes to GitHub, consistent with the no-telemetry rule.
+- Your Space defines which desktop app, CLI, and server versions work together. On a mismatch, clients show a clear message saying whether to update the app or the server.
 - Windows support (the desktop app, the CLI, local workspaces, and Windows signing) and PWA installation are low priority: built last, and the first work to move to post-open-source if the timeline slips. The [roadmap](../roadmap.md) assigns a priority to every pre-public item.
 
 **Decision update (2026-10-31):** Desktop clients move from the first public release to post-open-source work. They need a separate build for each operating system, code signing including Apple notarization, and their own update mechanism, while the installable PWA already opens in its own app window on macOS, Windows, and Linux. (Superseded below: desktop clients return to the first public release.)
@@ -253,6 +260,13 @@ Dependency selection must consider actual licenses, including bundled components
 - The license, trademark, and contributor agreement are in place before publication, after review by a lawyer.
 
 **Decision update (2026-11-02):** AGPL-3.0 for Your Space and Apache-2.0 for the SDKs replace the earlier MIT preference. AGPL keeps the core open source while preventing closed hosted forks; the trademark and maintainership protect the managed offering. Source-available licenses such as FSL were considered and rejected because the business depends on an open-source core.
+
+### Product Experience Principles
+
+- Simple by default. Show people only what they need to see, and avoid filling the interface with settings and configuration that can overwhelm beginners.
+- Deeper controls are available for power users, but they stay out of the default experience.
+
+**Decision update (2026-11-02):** Simplicity by default is a product principle for every client and feature. New settings, logs, and configuration go behind advanced controls unless most users need them.
 
 ### Telemetry and Outbound Connections
 
@@ -300,6 +314,12 @@ Deployment-file contents, packaging, release verification, installation executio
 - The approved list is not defined in advance. It starts with the settings the first app needs when that app is implemented, and grows as later apps need more.
 - The app describes itself to Your Space, such as its name and the access it needs, in a dedicated `x-your-space` section of the same Compose file.
 - Alternative deployment-file formats are post-open-source work, explored only if a real need surfaces, such as app details the Compose file cannot express.
+- The owner provides app settings and secrets, such as API keys, at installation and can change them later. A component in the Your Space Compose stack stores and supplies them; the mechanism is decided in the app specification.
+- App images must be published for both ARM and Intel/AMD machines. Installation fails with a clear message if no image matches the machine.
+- Apps have no outbound network access by default. Each app declares the outbound access it needs in its `x-your-space` section, and the owner approves it at installation; an update that asks for more needs new approval.
+- Each managed app runs with memory and CPU limits so one app cannot take down the host. The owner can see each app's status and logs.
+
+**Decision update (2026-11-02):** App settings and secrets, multi-architecture images, declared and limited outbound network access, and resource limits with app status and logs are required before publication. The settings and secrets mechanism, how outbound access is declared and enforced, and default limits are decided in the app specification.
 
 **Decision update (2026-10-30):** Published images with exact declared image versions are required for the first release. This resolves the previously open image-pull-versus-source-build choice. Developers publish their images; Your Space downloads and runs the declared versions. Deferring source builds keeps build execution and its operation outside the initial installation scope.
 
@@ -396,12 +416,20 @@ Platform isolation must protect platform services and other apps; SDK checks alo
 ### Agent Access Through Your Space
 
 - Agents never call apps directly. Your Space is the API gateway between agents and apps, so every agent request passes its permission checks.
-- App containers are reachable only through Your Space and do not publish their own network ports.
+- App containers are reachable only through Your Space and do not publish their own network ports. External apps keep the same guarantee by accepting only requests that carry identity verified by Your Space.
+- People create, view, revoke, and rotate their agents' credentials in the app. Revoking one leaked credential does not change the agent's roles.
 - For each agent request, Your Space verifies the agent's credential, confirms the agent holds an active delegation for that app installation, applies revocation immediately, and forwards the request with the verified identity and delegated roles. The app still enforces its own role and domain rules.
 - In the first public release, agents use apps through the Your Space CLI with their own credentials. The CLI talks to the gateway, wherever the server runs.
 - A workspace MCP endpoint is post-open-source work. It uses the same gateway and permission checks, so off-the-shelf agents can connect with a URL and sign-in.
 
 **Decision update (2026-11-02):** Your Space is the gateway for all agent access to apps, selecting the gateway that the trust boundary above left optional. Agents use the CLI before publication; MCP follows after publication on the same gateway. Whether the gateway also enforces per-action role requirements declared by apps, beyond identity, delegation, and revocation, is decided in the app integration specification; mandatory endpoint-to-permission manifests remain unselected until then.
+
+### Activity Log
+
+- Your Space records workspace activity: app installs, removals, and updates; role changes and delegations; member changes; and every agent request through the gateway, with the actual actor.
+- The owner can review the log. It stays available but out of the way, following the [simple-by-default principle](#product-experience-principles).
+
+**Decision update (2026-11-02):** An activity log is part of the first release, so the owner can see what happened in the workspace and what agents did. Retention, detail level, and who besides the owner can view entries are decided in a specification.
 
 ## Later Candidate Journeys
 
@@ -433,7 +461,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Database configuration | PostgreSQL and Drizzle are selected; versions, migration execution and recovery, and connection configuration need planning. |
 | Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
 | Initial deployment details | macOS and Linux with manual Docker Compose are selected. HTTPS comes from a reverse proxy in the Compose stack with automatic certificates for an owner-provided domain, a bring-your-own-proxy option, and documented tunnel guidance; plain HTTP is supported only on localhost. Exact OS/CPU support, versions, proxy choice, networking, and configuration need planning. |
-| Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates, backup, restore, migration to a server, and uninstall, all through the CLI. Windows support is low priority. Releases are signed before publication: Apple Developer ID with notarization on macOS, SignPath's open-source program on Windows with Microsoft Artifact Signing as the fallback, all in CI. Packaging and self-update need a specification. |
+| Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates, backup, restore, migration to a server, and uninstall, all through the CLI. Windows support is low priority. Releases are signed before publication: Apple Developer ID with notarization on macOS, SignPath's open-source program on Windows with Microsoft Artifact Signing as the fallback, all in CI. Self-update is required; packaging and self-update mechanics need a specification. |
 | CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. Its minimum operations are install, start, stop, status, logs, update Your Space, owner password recovery, backup, restore, and uninstall; uninstall removes managed app containers and keeps data unless the owner confirms deletion. A separate follow-up specification will define packaging, command names, prerequisite automation, and management behavior over the established Compose deployment. |
 | Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup, restore, and migration between installations are required before publication; remote CLI authentication, restore into a broken or fresh installation, and backup format and protection remain open. |
 | Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |
@@ -442,6 +470,10 @@ This is a developing release roadmap, not a complete acceptance specification or
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open; they are specified after the owner-access feature and before the CLI. The platform session uses host-only cookies. |
 | Project license | AGPL-3.0 for Your Space and Apache-2.0 for the SDKs, with a "Your Space" trademark and a contributor license agreement, all in place and reviewed by a lawyer before publication. Trademark filing details and agreement wording remain open. |
 | Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off. Future reporting must be opt-in; opt-out is prohibited. |
+| External apps | Apps can be managed or hosted elsewhere and added by pointing Your Space at them. How an external app is registered, verifies Your Space identity, and is reached through the gateway needs definition in the app integration specification. |
+| App settings, egress, and limits | A Compose stack component stores app settings and secrets; apps declare outbound access for owner approval; managed apps have resource limits, status, and logs. Mechanisms and defaults need definition in the app specification. |
+| Activity log | Records installs, role and member changes, delegations, and agent requests. Retention, detail, and viewers need definition. |
+| Version compatibility | Supported desktop app, CLI, and server version combinations and the mismatch message need definition. |
 | Agent access | Agents reach apps only through the Your Space gateway, using the CLI in the first release; a workspace MCP endpoint is post-open-source. Gateway request format, how apps declare actions for the CLI, and whether the gateway enforces per-action roles need definition. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |
 | App integration | TypeScript and Python SDKs are selected for the first release; other languages are post-open-source. Role registration, authorization compatibility, and revocation mechanics need a later specification. |

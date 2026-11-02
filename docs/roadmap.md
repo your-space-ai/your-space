@@ -71,6 +71,7 @@ Your Space: first public release
 │   │   ├── Manual Docker Compose install on macOS and Linux (PR #3)
 │   │   ├── Identity and data survive restarts and recreation
 │   │   ├── Encrypted access from another device
+│   │   ├── Images for ARM (Apple Silicon) and Intel/AMD
 │   │   └── Manual Compose guide kept as an advanced option (L)
 │   ├── HTTPS
 │   │   ├── Built-in proxy with automatic certificates; plain HTTP on localhost only
@@ -100,21 +101,30 @@ Your Space: first public release
 │   │   ├── Verified identity supplied to apps
 │   │   ├── Apps publish role IDs; owner assigns them; multiple per person
 │   │   └── Integrated at the app's own auth boundary
-│   └── Agent identities and delegation
-│       ├── Own identity and credentials, linked to their human
-│       ├── Delegate an exact subset of your roles; removal propagates, incl. live sessions
-│       ├── Actions credited to the actual actor
-│       └── A removed member's agents are disabled, not deleted (M)
+│   ├── Agent identities and delegation
+│   │   ├── Own identity and credentials, linked to their human
+│   │   ├── Delegate an exact subset of your roles; removal propagates, incl. live sessions
+│   │   ├── Actions credited to the actual actor
+│   │   ├── A removed member's agents are disabled, not deleted (M)
+│   │   └── Create, view, revoke, and rotate agent credentials in the app
+│   └── Activity log (M)
+│       ├── Installs, role and member changes, delegations, agent requests
+│       └── Owner can review it; out of the way by default
 │
 ├── 3. Apps
 │   ├── Installation
 │   │   ├── Owner pastes the deployment file's GitHub URL; revision recorded
 │   │   ├── Exact published images; approved Compose settings; `x-your-space` section
-│   │   └── Owner-only install and removal, with a trust warning
+│   │   ├── Owner-only install and removal, with a trust warning
+│   │   ├── App settings and secrets, stored by a Compose stack component
+│   │   ├── Images for ARM and Intel/AMD required; clear error if none match
+│   │   └── Add an external app hosted elsewhere (M)
 │   ├── Runtime and isolation
 │   │   ├── Own containers on the same server; app database if declared (M)
 │   │   ├── Durable app storage, kept after uninstall; owner can delete it (M)
-│   │   └── Isolated from host folders, devices, Docker, Your Space, and other apps
+│   │   ├── Isolated from host folders, devices, Docker, Your Space, and other apps
+│   │   ├── No outbound network by default; declared access approved by the owner
+│   │   └── Memory and CPU limits; app status and logs for the owner (M)
 │   ├── Updates (M)
 │   │   ├── Owner-triggered; new access needs approval; provenance kept
 │   │   └── Backup first, automatic rollback on failure
@@ -122,7 +132,7 @@ Your Space: first public release
 │   │   ├── Apps open in the UI with navigation; normal frontend requests work
 │   │   └── Same backend checks for UI and programmatic access
 │   └── Developer kit
-│       ├── Versioned public contracts
+│       ├── Versioned public contracts, same for managed and external apps
 │       ├── TypeScript + Python SDKs, each verified with a working app
 │       ├── Build and install apps without rebuilding Your Space
 │       └── Tasks app as the first app
@@ -136,11 +146,14 @@ Your Space: first public release
 ├── 5. Clients
 │   ├── Workspace clients
 │   │   ├── Web and desktop with the same experience
-│   │   └── Installable PWA (L)
+│   │   ├── Installable PWA (L)
+│   │   ├── Simple by default; advanced controls for power users
+│   │   └── Clear message when app, CLI, and server versions don't match (M)
 │   ├── Desktop app
 │   │   ├── macOS · Linux (M) · Windows with a local workspace (L)
 │   │   ├── Signed: macOS Developer ID + notarization · Windows (L)
-│   │   └── Connect to a server by URL, or run locally
+│   │   ├── Connect to a server by URL, or run locally
+│   │   └── Updates itself from GitHub releases (M)
 │   └── Desktop local mode (wraps the CLI)
 │       ├── Detect Docker, set up, submit the setup code, start with the app, update
 │       ├── Backup, restore, move to a server, uninstall (M)
@@ -163,6 +176,7 @@ Your Space: first public release
   - [ ] [High] Retain account and workspace identity across restarts and service recreation with durable storage retained.
   - [ ] [High] Access the same server and workspace from another device through a documented encrypted connection.
   - [ ] [Low] Keep the manual Compose procedure documented as an advanced alternative to the CLI.
+  - [ ] [High] Publish Your Space images for both ARM (including Apple Silicon) and Intel/AMD machines.
 
   The manual install is part of the owner-access feature (PR #3). Exact host support and remote
   access details still need planning.
@@ -258,9 +272,21 @@ Your Space: first public release
   - [ ] [High] Apply access removal to existing app sessions and credentials.
   - [ ] [High] Attribute app actions to the actual actor and retain the delegating-user relationship.
   - [ ] [Medium] Disable a removed member's agents rather than deleting them, and let the owner delete them later.
+  - [ ] [High] Let people create, view, revoke, and rotate their agents' credentials in the app; revoking one credential does not change the agent's roles.
+
+  **Source for credentials:** [Agent access through Your Space](architecture/decisions.md#agent-access-through-your-space).
 
   Credential issuance, revocation guarantees, and refresh behavior remain open. External agents
   precede platform-hosted agent execution.
+
+- [ ] **Activity log**
+
+  **Source:** [Activity log](architecture/decisions.md#activity-log).
+
+  - [ ] [Medium] Record app installs, removals, and updates; role changes and delegations; member changes; and every agent request through the gateway, with the actual actor.
+  - [ ] [Medium] Let the owner review the log, available but out of the way by default.
+
+  Retention, detail level, and who besides the owner can view entries need a specification.
 
 ### 3. Apps
 
@@ -273,12 +299,17 @@ Your Space: first public release
   - [ ] [High] Download and run published container images using the exact image and version declared in the app's integration files for each container, including database services; validate and retain the installed image identity.
   - [ ] [High] Accept only Compose settings on an approved list in the app's deployment file, rejecting all others, including settings that would break app isolation.
   - [ ] [High] Read the app's name and requested access from the `x-your-space` section of its Compose file.
+  - [ ] [High] Let the owner provide app settings and secrets at installation and change them later, stored and supplied by a component in the Your Space Compose stack.
+  - [ ] [High] Require app images for both ARM and Intel/AMD machines; fail installation with a clear message if no image matches the machine.
+  - [ ] [Medium] Let the owner add an external app, hosted elsewhere, by pointing Your Space at its running instance instead of deploying it.
   - [ ] [High] Restrict app installation and removal to the owner for the first public release.
   - [ ] [High] Warn the owner when installing an app that it is trusted with its own data, and state in the documentation that Your Space protects itself and other apps but is not a sandbox for hostile code.
 
   Published images are the only first-release installation path; Your Space does not build app source
   during installation. The approved list of Compose settings starts with what the first app needs.
-  The contents of the `x-your-space` section and image identity validation need definition.
+  The contents of the `x-your-space` section, image identity validation, the settings and secrets
+  mechanism, and how external apps are registered need definition. External apps are outside Your
+  Space's isolation, network limits, resource limits, and backups.
 
 - [ ] **App runtime and isolation**
 
@@ -289,6 +320,9 @@ Your Space: first public release
   - [ ] [High] Provide app-specific durable storage that survives restarts and remains after uninstall.
   - [ ] [Medium] Let the owner explicitly delete retained app data from the administration UI.
   - [ ] [High] Isolate apps from host filesystem access, devices, and Docker controls, and protect platform services and other apps.
+  - [ ] [High] Block app outbound network access by default; each app declares the access it needs in its `x-your-space` section, and the owner approves it at installation.
+  - [ ] [Medium] Run each managed app with memory and CPU limits so one app cannot take down the host.
+  - [ ] [Medium] Show the owner each app's status and logs.
 
   A deployment file does not itself guarantee isolation; resource and isolation enforcement and
   lifecycle need design and verification.
@@ -320,6 +354,7 @@ Your Space: first public release
   **Source:** [Platform and independent apps](architecture/decisions.md#platform-and-independent-apps).
 
   - [ ] [High] Document versioned public integration contracts for independently built and running apps.
+  - [ ] [High] Design the contract so it works the same whether Your Space runs the app or the app is hosted elsewhere.
   - [ ] [High] Publish TypeScript and Python SDKs from this repository for apps in their own repositories, including first-party apps.
   - [ ] [High] Verify each SDK with a working app.
   - [ ] [High] Enable developers to create or adapt apps and install them without rebuilding Your Space or including app source in the platform build.
@@ -349,6 +384,10 @@ Your Space: first public release
 
   - [ ] [High] Provide web and desktop clients with the same core workspace and installed-app experience when connected to the server.
   - [ ] [Low] Provide an installable PWA client with the same experience.
+  - [ ] [High] Keep the default experience simple: show people only what they need, and put advanced settings and configuration behind power-user controls.
+  - [ ] [Medium] Define which desktop app, CLI, and server versions work together, and show a clear "update the app" or "update the server" message on a mismatch.
+
+  **Source for simplicity:** [Product experience principles](architecture/decisions.md#product-experience-principles).
 
   The owner-access feature uses the web client. PWA offline behavior remains open.
 
@@ -362,8 +401,9 @@ Your Space: first public release
   - [ ] [High] Sign and notarize macOS builds with an Apple Developer ID in CI.
   - [ ] [Low] Sign Windows builds through SignPath, with Microsoft Artifact Signing as fallback, in CI.
   - [ ] [High] On setup, let the user connect to an existing server by URL or run Your Space locally.
+  - [ ] [Medium] Update the desktop app itself, checking GitHub for new releases.
 
-  Desktop packaging and self-update need a specification.
+  Desktop packaging and self-update mechanics need a specification.
 
 - [ ] **Desktop local mode**
 
