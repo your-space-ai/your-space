@@ -15,14 +15,15 @@ the repository. The post-public checklist captures later direction and possible 
 Release scope and details may evolve as the remaining questions are resolved. See the
 [public release readiness checklist](public-release-readiness.md) for the publication review.
 
-**Current direction:** Owner access with a manual Compose install comes first (PR #3), followed by
-the app UI and sign-in specification, then the CLI, then the remaining pre-public work by priority.
+**Current direction:** Pre-public work is delivered through eight journey specifications, listed with
+their build order in the [spec map](spec-map.md). Owner access with a manual Compose install comes
+first (PR #3), then installing and using an app (which includes app UI and sign-in), then the CLI.
 The [overview tree](#overview) summarizes the full pre-public scope by layer, and the
 [architecture overview](architecture/overview.md) shows the resulting system. Automatic app updates,
 building apps from source, alternative deployment-file formats, and a workspace MCP endpoint are
 post-open-source work.
 
-**Next step:** Review and merge PR #3, then write the app UI and sign-in specification. Every
+**Next step:** Review and merge PR #3, then write spec 002, "install an app and use it". Every
 pre-public item below has a priority; Low items move to post-open-source work first if the timeline
 slips.
 
@@ -36,11 +37,11 @@ All functionality below is currently unchecked because application implementatio
 
 The first release targets people who can install Docker Desktop and the Your Space desktop app for a
 local workspace, or install Docker and follow a guided CLI for a server or local workspace. The
-[owner-access feature (PR #3)](https://github.com/your-space-ai/your-space/pull/3) is first. The app
-UI and sign-in specification follows, because app origins decide what the CLI sets up for HTTPS and
-clients, apps, SDKs, and agents build on it. The CLI follows in a separate specification and
-implementation PR. The remaining items need their own specifications; their order here is not a
-delivery sequence.
+[owner-access feature (PR #3)](https://github.com/your-space-ai/your-space/pull/3) is first. Spec 002,
+"install an app and use it", follows and includes app UI and sign-in, because app origins decide
+what the CLI sets up for HTTPS and clients, apps, SDKs, and agents build on it. The CLI follows in
+spec 003. The [spec map](spec-map.md) assigns every item below to a journey specification and sets
+the build order; the order of items here is not a delivery sequence.
 
 Each item has a priority:
 
@@ -53,7 +54,8 @@ Each item has a priority:
 ### Overview
 
 This tree summarizes everything below by layer. Unmarked leaves are High priority; `(M)` is Medium
-and `(L)` is Low. It is a view of the checklist, not a separate source of scope: when you add,
+and `(L)` is Low. The number in brackets is the [journey specification](spec-map.md) that delivers
+the item; `[all]` applies to every spec, and `[gate]` is the release gate. It is a view of the checklist, not a separate source of scope: when you add,
 remove, move, re-prioritize, or reword a pre-public item, update the tree in the same change. See
 [Maintaining the checklist](#maintaining-the-checklist).
 
@@ -62,106 +64,106 @@ Your Space: first public release
 │
 ├── 1. Install and operate
 │   ├── Server stack
-│   │   ├── Manual Docker Compose install on macOS and Linux (PR #3)
-│   │   ├── Identity and data survive restarts and recreation
-│   │   ├── Encrypted access from another device
-│   │   ├── Images for ARM (Apple Silicon) and Intel/AMD
-│   │   └── Manual Compose guide kept as an advanced option (L)
+│   │   ├── [001] Manual Docker Compose install on macOS and Linux (PR #3)
+│   │   ├── [001] Identity and data survive restarts and recreation
+│   │   ├── [001] Encrypted access from another device
+│   │   ├── [001] Images for ARM (Apple Silicon) and Intel/AMD
+│   │   └── [003] Manual Compose guide kept as an advanced option (L)
 │   ├── HTTPS
-│   │   ├── Built-in proxy with automatic certificates; plain HTTP on localhost only
-│   │   └── Bring your own proxy or tunnel (M)
+│   │   ├── [003] Built-in proxy with automatic certificates; plain HTTP on localhost only
+│   │   └── [003] Bring your own proxy or tunnel (M)
 │   ├── CLI (drives Compose for you)
-│   │   ├── Guided local and server install
-│   │   ├── install · start · stop · status · logs · update · owner recovery
-│   │   ├── Automatic rollback of failed Your Space updates (M)
-│   │   ├── Uninstall: removes app containers, keeps data by default (M)
-│   │   └── macOS + Linux · Windows (L)
+│   │   ├── [003] Guided local and server install
+│   │   ├── [003 006] install · start · stop · status · logs · update · owner recovery
+│   │   ├── [006] Automatic rollback of failed Your Space updates (M)
+│   │   ├── [006] Uninstall: removes app containers, keeps data by default (M)
+│   │   └── [003] macOS + Linux · Windows (L)
 │   └── Backup, restore, and migration
-│       ├── Backup and restore, produced by the server, driven by the CLI
-│       └── Move a workspace, e.g. local → server (M)
+│       ├── [006] Backup and restore, produced by the server, driven by the CLI
+│       └── [006] Move a workspace, e.g. local → server (M)
 │
 ├── 2. Identity and access
 │   ├── Owner setup and sessions
-│   │   ├── One-time setup code, one owner, no duplicate claims
-│   │   ├── Accurate empty workspace and service states
-│   │   ├── Sign in/out, expiry and revocation, host-only session cookie
-│   │   └── Owner recovery by server command, sessions revoked
+│   │   ├── [001] One-time setup code, one owner, no duplicate claims
+│   │   ├── [001] Accurate empty workspace and service states
+│   │   ├── [001] Sign in/out, expiry and revocation, host-only session cookie
+│   │   └── [001] Owner recovery by server command, sessions revoked
 │   ├── Workspace members
-│   │   ├── Invite link → sign up → join, identities preserved
-│   │   ├── Recovery code at signup · temporary password from the owner
-│   │   ├── Remove a member: sign out everywhere, revoke roles and agents
-│   │   └── Former members and deleted agents stay traceable (M)
+│   │   ├── [004] Invite link → sign up → join, identities preserved
+│   │   ├── [004] Recovery code at signup · temporary password from the owner
+│   │   ├── [004] Remove a member: sign out everywhere, revoke roles and agents
+│   │   └── [004] Former members and deleted agents stay traceable (M)
 │   ├── App roles
-│   │   ├── Verified identity supplied to apps
-│   │   ├── Apps publish role IDs; owner assigns them; multiple per person
-│   │   └── Integrated at the app's own auth boundary
+│   │   ├── [002] Verified identity supplied to apps
+│   │   ├── [002 004] Apps publish role IDs; owner assigns them; multiple per person
+│   │   └── [002] Integrated at the app's own auth boundary
 │   ├── Agent identities and delegation
-│   │   ├── Own identity and credentials, linked to their human
-│   │   ├── Delegate an exact subset of your roles
-│   │   ├── Removing a role removes it from agents, including live sessions
-│   │   ├── Actions credited to the actual actor
-│   │   ├── A removed member's agents are disabled, not deleted (M)
-│   │   └── Create, view, revoke, and rotate agent credentials in the app
+│   │   ├── [005] Own identity and credentials, linked to their human
+│   │   ├── [005] Delegate an exact subset of your roles
+│   │   ├── [005] Removing a role removes it from agents, including live sessions
+│   │   ├── [005] Actions credited to the actual actor
+│   │   ├── [005] A removed member's agents are disabled, not deleted (M)
+│   │   └── [005] Create, view, revoke, and rotate agent credentials in the app
 │   └── Activity log (M)
-│       ├── Installs, role and member changes, delegations, agent requests
-│       └── Owner can review it; out of the way by default
+│       ├── [005] Installs, role and member changes, delegations, agent requests
+│       └── [005] Owner can review it; out of the way by default
 │
 ├── 3. Apps
 │   ├── Installation
-│   │   ├── Owner pastes the deployment file's GitHub URL; revision recorded
-│   │   ├── Exact published images; approved Compose settings; `x-your-space` section
-│   │   ├── Owner-only install and removal, with a trust warning
-│   │   ├── App settings and secrets, stored by a Compose stack component
-│   │   ├── Images for ARM and Intel/AMD required; clear error if none match
-│   │   └── Add an external app hosted elsewhere (M)
+│   │   ├── [002] Owner pastes the deployment file's GitHub URL; revision recorded
+│   │   ├── [002] Exact published images; approved Compose settings; `x-your-space` section
+│   │   ├── [002] Owner-only install and removal, with a trust warning
+│   │   ├── [002] App settings and secrets, stored by a Compose stack component
+│   │   ├── [002] Images for ARM and Intel/AMD required; clear error if none match
+│   │   └── [007] Add an external app hosted elsewhere (M)
 │   ├── Runtime and isolation
-│   │   ├── Own containers on the same server
-│   │   ├── App database if declared (M)
-│   │   ├── Durable app storage, kept after uninstall
-│   │   ├── Owner can delete retained app data (M)
-│   │   ├── Isolated from host folders, devices, Docker, Your Space, and other apps
-│   │   ├── No outbound network by default; declared access approved by the owner
-│   │   └── Memory and CPU limits; app status and logs for the owner (M)
+│   │   ├── [002] Own containers on the same server
+│   │   ├── [002] App database if declared
+│   │   ├── [002] Durable app storage, kept after uninstall
+│   │   ├── [002] Owner can delete retained app data (M)
+│   │   ├── [002] Isolated from host folders, devices, Docker, Your Space, and other apps
+│   │   ├── [002] No outbound network by default; declared access approved by the owner
+│   │   └── [002] Memory and CPU limits; app status and logs for the owner (M)
 │   ├── Updates (M)
-│   │   ├── Owner-triggered; new access needs approval; provenance kept
-│   │   └── Backup first, automatic rollback on failure
+│   │   ├── [006] Owner-triggered; new access needs approval; provenance kept
+│   │   └── [006] Backup first, automatic rollback on failure
 │   ├── Apps inside Your Space
-│   │   ├── Apps open in the UI with navigation; normal frontend requests work
-│   │   └── Same backend checks for UI and programmatic access
+│   │   ├── [002] Apps open in the UI with navigation; normal frontend requests work
+│   │   └── [002] Same backend checks for UI and programmatic access
 │   └── Developer kit
-│       ├── Versioned public contracts, same for managed and external apps
-│       ├── TypeScript + Python SDKs, each verified with a working app
-│       ├── Build and install apps without rebuilding Your Space
-│       └── Tasks app as the first app
+│       ├── [002 007] Versioned public contracts, same for managed and external apps
+│       ├── [002 007] TypeScript + Python SDKs, each verified with a working app
+│       ├── [007] Build and install apps without rebuilding Your Space
+│       └── [002] Tasks app as the first app
 │
 ├── 4. Agents
 │   └── Agent access through Your Space
-│       ├── Your Space is the gateway; apps expose no ports of their own
-│       ├── Agents use apps through the Your Space CLI, locally or remotely
-│       └── Permitted, denied, attributed, and revoked actions verified
+│       ├── [005] Your Space is the gateway; apps expose no ports of their own
+│       ├── [005] Agents use apps through the Your Space CLI, locally or remotely
+│       └── [005] Permitted, denied, attributed, and revoked actions verified
 │
 ├── 5. Clients
 │   ├── Workspace clients
-│   │   ├── Web and desktop with the same experience
-│   │   ├── Installable PWA (L)
-│   │   ├── Simple by default; advanced controls for power users
-│   │   └── Clear message when app, CLI, and server versions don't match (M)
+│   │   ├── [001 008] Web and desktop with the same experience
+│   │   ├── [008] Installable PWA (L)
+│   │   ├── [all] Simple by default; advanced controls for power users
+│   │   └── [008] Clear message when app, CLI, and server versions don't match (M)
 │   ├── Desktop app
-│   │   ├── macOS · Linux (M) · Windows with a local workspace (L)
-│   │   ├── Signed: macOS Developer ID + notarization · Windows (L)
-│   │   ├── Connect to a server by URL, or run locally
-│   │   └── Updates itself from GitHub releases (M)
+│   │   ├── [008] macOS · Linux (M) · Windows with a local workspace (L)
+│   │   ├── [008] Signed: macOS Developer ID + notarization · Windows (L)
+│   │   ├── [008] Connect to a server by URL, or run locally
+│   │   └── [008] Updates itself from GitHub releases (M)
 │   └── Desktop local mode (wraps the CLI)
-│       ├── Detect Docker, set up, submit the setup code, start with the app, update
-│       ├── Backup, restore, move to a server, uninstall (M)
-│       └── Sleep/off availability and Docker Desktop license documented (M)
+│       ├── [008] Detect Docker, set up, submit the setup code, start with the app, update
+│       ├── [008] Backup, restore, move to a server, uninstall (M)
+│       └── [008] Sleep/off availability and Docker Desktop license documented (M)
 │
 └── 6. Trust and release
-    ├── Security: review, safe defaults, vulnerability reporting, hardening pass
-    ├── Privacy: no telemetry; only GitHub update checks, which can be turned off
-    ├── Legal: rights and notices; AGPL core, Apache SDKs, trademark, CLA,
-    │   lawyer review
-    └── Release: secrets review, docs, core journeys verified, release evidence
+    ├── [gate] Security: review, safe defaults, vulnerability reporting, hardening pass
+    ├── [gate] Privacy: no telemetry; only GitHub update checks, which can be turned off
+    ├── [gate] Legal: rights and notices; AGPL core, Apache SDKs, trademark, CLA,
+    │          lawyer review
+    └── [gate] Release: secrets review, docs, core journeys verified, release evidence
 ```
 
 ### 1. Install and Operate
@@ -197,7 +199,7 @@ Your Space: first public release
   - [ ] [High] Run the CLI on macOS and Linux so the desktop app can drive it for local workspaces.
   - [ ] [Low] Run the CLI on Windows so the desktop app can drive it for local workspaces there.
 
-  The CLI follows the owner-access feature and the app UI and sign-in specification. Command names,
+  The CLI (spec 003) follows the owner-access feature and spec 002. Command names,
   packaging, prerequisites, and the rest of the management scope remain to be specified. The update
   rollback uses the same snapshot mechanism as app updates, and backup and restore build on it.
 
@@ -314,7 +316,9 @@ Your Space: first public release
   **Source:** [Responsibility and trust boundary](architecture/decisions.md#responsibility-and-trust-boundary).
 
   - [ ] [High] Start and manage each app's independent container or containers using Docker on the same server as Your Space.
-  - [ ] [Medium] Run an app-declared database service alongside the app when needed.
+  - [ ] [High] Run an app-declared database service alongside the app when needed.
+
+    **Raised to High (2026-11-02):** the Tasks app in spec 002 needs a database; see [journey-based specifications](architecture/decisions.md#journey-based-specifications).
   - [ ] [High] Provide app-specific durable storage that survives restarts and remains after uninstall.
   - [ ] [Medium] Let the owner explicitly delete retained app data from the administration UI.
   - [ ] [High] Isolate apps from host filesystem access, devices, and Docker controls, and protect platform services and other apps.
@@ -344,8 +348,8 @@ Your Space: first public release
   - [ ] [High] Preserve normal frontend requests to the app backend without requiring each request to be rewritten for Your Space.
   - [ ] [High] Apply equivalent backend authorization checks to human UI and programmatic access.
 
-  Embedding, origins, routing, isolation, and session bridging are decided in the app UI and sign-in
-  specification.
+  Embedding, origins, routing, isolation, and session bridging are decided in spec 002, "install an
+  app and use it".
 
 - [ ] **Developer kit**
 
@@ -584,6 +588,8 @@ These capabilities are not required for the first public release. Their order an
   If agreed scope grows later, add the new children and reopen the parent while retaining completed children.
 - Record deferrals, cancellations, or replacements explicitly with a date and decision link. Do not
   delete an item to hide unfinished work or check it off because it was dropped.
+- Give every pre-public tree leaf the number of the [journey specification](spec-map.md) that
+  delivers it, and update the spec map in the same change when an item is added or moved.
 - Record changed direction in the decision record first, then update this checklist in the same PR.
   Keep rationale in decisions and acceptance criteria in specifications.
 - Update statuses and links as specifications and implementation evidence become available. Preserve
