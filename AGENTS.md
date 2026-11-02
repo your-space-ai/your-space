@@ -16,6 +16,11 @@ direction, sequencing, or verified delivery status changes, update the affected 
 in the same PR. Preserve the distinction between agreed order, unscheduled direction, and candidates;
 keep rationale in decisions and acceptance criteria in specifications.
 
+The roadmap's pre-public section is grouped into layers and opens with an overview tree. Whenever
+a pre-public item is added, removed, moved, re-prioritized, reworded in meaning, or deferred, update
+the tree in the same change so it still maps one-to-one to the checklist and its priority markers
+match. See "Maintaining the Checklist" in the roadmap.
+
 Structure the roadmap as nested checklists: high-level capabilities contain specific functionality.
 Check off only delivered, verified work; retain completed entries with a completion date and
 implementation PR or release link. A parent is complete only when its in-scope children and the
