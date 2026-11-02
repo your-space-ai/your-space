@@ -78,6 +78,7 @@ This replaces the earlier proposed CLI-first ordering: the CLI needs a working d
 - Before publication the CLI provides at least these operations: install, start, stop, status, logs, update Your Space, owner password recovery, backup, restore, and uninstall.
 - Uninstall removes Your Space and every app container it manages, not only the main Compose stack. It keeps data by default; deleting data requires explicit confirmation and offers a backup first. The desktop app uses the same command for local workspaces.
 - Updating Your Space through the CLI rolls back automatically if the update fails; see [Your Space updates, backup, and restore](#your-space-updates-backup-and-restore).
+- The CLI also gives agents their first-release way to use apps: agent commands call app actions through Your Space with the agent's own credential. See [Agent access through Your Space](#agent-access-through-your-space).
 - CLI command names, packaging, prerequisite automation, and the rest of its management scope belong in its separate specification.
 
 Guided installation remains the product direction. The initial guide and browser setup establish the working pathway that the CLI will automate.
@@ -367,6 +368,16 @@ Platform isolation must protect platform services and other apps; SDK checks alo
 
 **Decision update (2026-11-01):** Add install-time warnings, documentation disclaimers, and a pre-publication security hardening pass on app and workspace boundaries, so the isolation work is not mistaken for a sandbox for untrusted code.
 
+### Agent Access Through Your Space
+
+- Agents never call apps directly. Your Space is the API gateway between agents and apps, so every agent request passes its permission checks.
+- App containers are reachable only through Your Space and do not publish their own network ports.
+- For each agent request, Your Space verifies the agent's credential, confirms the agent holds an active delegation for that app installation, applies revocation immediately, and forwards the request with the verified identity and delegated roles. The app still enforces its own role and domain rules.
+- In the first public release, agents use apps through the Your Space CLI with their own credentials. The CLI talks to the gateway, wherever the server runs.
+- A workspace MCP endpoint is post-open-source work. It uses the same gateway and permission checks, so off-the-shelf agents can connect with a URL and sign-in.
+
+**Decision update (2026-11-02):** Your Space is the gateway for all agent access to apps, selecting the gateway that the trust boundary above left optional. Agents use the CLI before publication; MCP follows after publication on the same gateway. Whether the gateway also enforces per-action role requirements declared by apps, beyond identity, delegation, and revocation, is decided in the app integration specification; mandatory endpoint-to-permission manifests remain unselected until then.
+
 ## Later Candidate Journeys
 
 After the owner-access feature and an agreed app contract, a small Tasks app is the first app and the end-to-end integration slice.
@@ -404,6 +415,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
 | Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open; they are specified after the owner-access feature and before the CLI. The platform session uses host-only cookies. |
+| Agent access | Agents reach apps only through the Your Space gateway, using the CLI in the first release; a workspace MCP endpoint is post-open-source. Gateway request format, how apps declare actions for the CLI, and whether the gateway enforces per-action roles need definition. |
 | App identity protocol | OAuth/OIDC or another concrete protocol has not been selected. |
 | App integration | TypeScript and Python SDKs are selected for the first release; other languages are post-open-source. Role registration, authorization compatibility, and revocation mechanics need a later specification. |
 | App deployment file | A Docker Compose file limited to an approved list of settings, declaring published images with exact versions is selected for the first release; source builds and alternative formats are post-open-source. The owner installs by pasting the file's GitHub URL. App details go in an `x-your-space` section. The approved settings list, set when the first app is implemented, the section's contents, supported operations, and backend interpretation need definition. |

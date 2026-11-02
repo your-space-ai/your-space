@@ -269,6 +269,10 @@ belong in their own specifications; the scope remains subject to the ongoing int
   - [ ] Verify denied actions through UI and programmatic access, and removal of delegated roles and
     access through existing app sessions and credentials.
   - [ ] Review and test agent credential handling and revocation for the supported integration.
+  - [ ] Verify agents reach apps only through the Your Space gateway: app containers are not reachable
+    directly, and the gateway rejects unauthenticated, undelegated, and revoked requests.
+  - [ ] Verify an agent can use the installed app's actions through the Your Space CLI against local
+    and remote servers.
 
 ## Product Release Decision
 

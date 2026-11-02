@@ -210,6 +210,10 @@ delivery sequence.
   - [ ] Apply access removal to existing app sessions and credentials.
   - [ ] Attribute app actions to the actual actor and retain the delegating-user relationship.
   - [ ] Verify permitted operations, denied actions, attribution, and revocation against an installed app.
+  - [ ] Route all agent requests to apps through Your Space as the gateway; agents never call apps directly, and app containers publish no network ports of their own.
+  - [ ] Let agents use app actions through the Your Space CLI with their own credentials, for local and remote servers.
+
+  **Source for the gateway:** [Agent access through Your Space](architecture/decisions.md#agent-access-through-your-space).
 
   Credential issuance, revocation guarantees, refresh behavior, and compatibility with app role
   semantics remain open. External agents precede platform-hosted agent execution.
@@ -298,6 +302,16 @@ These capabilities are not required for the first public release. Their order an
   - [ ] Keep direct installation available without using an official curated listing.
 
   Catalog implementation remains open.
+
+- [ ] **Workspace MCP endpoint**
+
+  **Deferred (2026-11-02):** [Agent access through Your Space](architecture/decisions.md#agent-access-through-your-space).
+
+  - [ ] Serve one MCP endpoint per workspace through the Your Space gateway.
+  - [ ] Let off-the-shelf agents connect with the endpoint URL and an OAuth sign-in approved by their human.
+  - [ ] Show each agent only the app actions its delegated roles allow, using the same checks as the CLI.
+
+  The first public release gives agents the CLI.
 
 - [ ] **Platform-hosted agents and workflows**
 
