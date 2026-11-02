@@ -174,6 +174,9 @@ belong in their own specifications; the scope remains subject to the ongoing int
   - [ ] Test the CLI on each claimed host for initial setup, repeat invocation, failures, and
     preservation of existing configuration and data; document manual alternatives and limitations.
   - [ ] Verify the guided installation is usable by someone comfortable installing Docker and following a CLI.
+  - [ ] Verify HTTPS through the built-in proxy with automatic certificates for a domain, the
+    bring-your-own-proxy option, and the documented tunnel path; verify PWA installation and secure
+    session cookies work on each.
 
 - [ ] **Additional members and signup**
   - [ ] Let the owner create invitation links and share them directly so recipients can sign up and join.

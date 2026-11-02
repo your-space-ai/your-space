@@ -70,6 +70,8 @@ specifications; their order here is not a delivery sequence.
   - [ ] Before updating Your Space, record versions and snapshot its data; if the update fails, roll back automatically.
   - [ ] Keep the manual Compose procedure documented as an advanced alternative to the CLI.
   - [ ] Run the CLI on macOS, Windows, and Linux so the desktop app can drive it for local workspaces.
+  - [ ] Set up HTTPS during installation: a reverse proxy in the Compose stack obtains and renews a certificate when the owner gives a domain.
+  - [ ] Let owners with their own reverse proxy or tunnel turn off the built-in proxy, and document a private tunnel such as Tailscale for owners without a domain.
 
   The CLI follows the working, verified manual Compose deployment and owner-access implementation.
   Command names, packaging, prerequisites, and the rest of the management scope remain to be specified.

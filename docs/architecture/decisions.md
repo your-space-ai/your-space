@@ -51,6 +51,11 @@ The repository README and agent guidance link here so future planning can find t
 - Use persistent storage so supported restarts retain identity, ownership, and workspace state.
 - Document prerequisites, setup, storage, restart, remote client access, and owner recovery.
 - Keep Kubernetes and kind outside the initial installation requirements.
+- Remote access uses HTTPS. The Compose stack includes a reverse proxy that obtains and renews a certificate automatically when the owner provides a domain during installation; this needs the domain and inbound ports 80 and 443.
+- Owners who already run their own reverse proxy or tunnel can turn off the built-in proxy and terminate HTTPS themselves.
+- Owners without a domain get documented guidance for a private tunnel such as Tailscale. Plain HTTP is supported only on the same machine (localhost), because browsers require HTTPS for PWA installation and secure session cookies.
+
+**Decision update (2026-11-02):** HTTPS for remote access is built in rather than left to the owner: a reverse proxy in the Compose stack provides automatic certificates for a domain, with a bring-your-own-proxy option and documented tunnel guidance for owners without a domain. The proxy implementation (for example, Caddy) is chosen in the CLI specification.
 
 Docker Compose provides a concrete first installation target without requiring Kubernetes administration.
 This choice does not commit every future deployment to Compose or promise identical deployment configuration everywhere.
@@ -370,7 +375,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Client supporting libraries | Router, query/state tooling, styling, and component library remain open. |
 | Database configuration | PostgreSQL and Drizzle are selected; versions, migration execution and recovery, and connection configuration need planning. |
 | Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
-| Initial deployment details | macOS and Linux with manual Docker Compose are selected; exact OS/CPU support, versions, transport, networking, and configuration need planning. |
+| Initial deployment details | macOS and Linux with manual Docker Compose are selected. HTTPS comes from a reverse proxy in the Compose stack with automatic certificates for an owner-provided domain, a bring-your-own-proxy option, and documented tunnel guidance. Exact OS/CPU support, versions, proxy choice, networking, and configuration need planning. |
 | Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates, backup, and restore through the CLI, and migration to a server. Packaging, code signing, and self-update need a specification. |
 | CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. Its minimum operations are install, start, stop, status, logs, update Your Space, owner password recovery, backup, and restore. A separate follow-up specification will define packaging, command names, prerequisite automation, and management behavior over the established Compose deployment. |
 | Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup, restore, and migration between installations are required before publication; remote CLI authentication, restore into a broken or fresh installation, and backup format and protection remain open. |
