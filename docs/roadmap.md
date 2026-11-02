@@ -213,6 +213,16 @@ These capabilities are not required for the first public release. Their order an
   One owner-only implementation serves every installation and builds on the pre-update snapshot
   mechanism. The first public release uses snapshots only for automatic rollback of failed updates.
 
+- [ ] **Optional owner-configured email**
+
+  **Deferred (2026-11-02):** [Sessions, persistence, and recovery](architecture/decisions.md#sessions-persistence-and-recovery).
+
+  - [ ] Let the owner add their own email (SMTP) settings to enable email delivery.
+  - [ ] Verify member email addresses when email is configured.
+  - [ ] Send password-reset links to verified addresses through the existing recovery mechanism.
+
+  No installation requires email. The first public release needs a member recovery path that works without it.
+
 - [ ] **Automatic app updates**
 
   **Deferred (2026-10-30):** [App update decision](architecture/decisions.md#accepted-future-app-distribution-direction).
