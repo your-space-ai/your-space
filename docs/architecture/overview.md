@@ -49,7 +49,7 @@ work from the roadmap.
 └───────┬───────────────────────────────────────────────┬──────────────────────┘
         │ data                                          │ identity + requests
 ┌───────▼───────────────────────┐ ┌─────────────────────▼──────────────────────┐
-│ 5. PLATFORM DATA              │ │ 6. APPS (each uses the TS or Python SDK)   │
+│ 5. PLATFORM DATA              │ │ 6. APPS (SDKs or public contracts)         │
 │  PostgreSQL (Drizzle)         │ │ ┌──────────────────────┐ ┌───────────────┐ │
 │  Secrets store (spec)         │ │ │ MANAGED              │ │ EXTERNAL      │ │
 │  Backups and snapshots        │ │ │ Your Space runs it:  │ │ hosted        │ │

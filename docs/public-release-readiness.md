@@ -37,14 +37,14 @@ new capabilities need their own specifications and implementation work.
     CPU architectures, browsers, Docker/Compose versions, and local or remote deployment paths.
   - [ ] Define release blockers and who will accept remaining known limitations.
 
-**First public version:** Owner setup, invited member signup and removal, the CLI for servers and
-local workspaces, a desktop app that drives the CLI to run a local workspace, web, desktop, and PWA
-workspace clients, at least one independently installed app, developer ability to create and install
-additional apps, and external-agent access through the Your Space gateway. It also includes built-in
-HTTPS, built-in backup, restore, and moving a workspace between installations, owner-triggered Your
-Space and app updates that roll back automatically if they fail, uninstall, and signed desktop
-releases. Windows support and PWA installation are low priority. A small Tasks app is the first app. This scope does not change the owner-only first
-specification.
+**First public version:** owner setup; invited member signup and removal; the CLI for servers and
+local workspaces; a desktop app that drives the CLI to run a local workspace; web, desktop, and PWA
+workspace clients; at least one independently installed app; developer ability to create and install
+additional apps; and external-agent access through the Your Space gateway. It also includes built-in
+HTTPS; built-in backup, restore, and moving a workspace between installations; owner-triggered Your
+Space and app updates that roll back automatically if they fail; an activity log; uninstall; and
+signed desktop releases. Windows support and PWA installation are low priority. A small Tasks app is
+the first app. This scope does not change the owner-only first specification.
 
 ## Early Source Publication: Building in Public
 
@@ -211,11 +211,11 @@ belong in their own specifications. Roadmap priorities decide what moves to post
 - [ ] **Workspace clients on web, desktop, and PWA**
   - [ ] Provide the same core workspace and installed-app experience on web, desktop, and installable
     PWA clients.
-  - [ ] Ship and test the Electron desktop app on macOS, Linux, and Windows (low priority). Support
-    server hosts on macOS and Linux; on Windows, support the desktop app and a local workspace through
-    Docker Desktop.
+  - [ ] Ship and test the Electron desktop app on macOS, Linux, and Windows; Windows is low priority.
+    Support server hosts on macOS and Linux; on Windows, support the desktop app and a local workspace
+    through Docker Desktop.
   - [ ] Verify release builds are signed in CI: macOS with an Apple Developer ID and notarization,
-    Windows through SignPath or Microsoft Artifact Signing. Verify a downloaded macOS build opens with
+    and Windows (low priority) through SignPath or Microsoft Artifact Signing. Verify a downloaded macOS build opens with
     the standard prompt and updates itself.
   - [ ] Verify the desktop app can connect to an existing server by URL, or set up, run, and connect to
     a local Your Space Docker Compose stack on the same machine through the CLI.

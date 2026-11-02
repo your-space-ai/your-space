@@ -16,18 +16,11 @@ Release scope and details may evolve as the remaining questions are resolved. Se
 [public release readiness checklist](public-release-readiness.md) for the publication review.
 
 **Current direction:** Owner access with a manual Compose install comes first (PR #3), followed by
-the app UI and sign-in specification, then a CLI that drives Docker Compose for server and local
-installs. An Electron desktop app for macOS, Windows, and Linux connects to a server or drives the
-CLI to run a local workspace; Windows supports the desktop app and local workspaces through Docker
-Desktop, but not server hosting. Before publication, the release also needs invited members; web,
-desktop, and PWA clients; app installation from a pasted Docker Compose deployment file limited to
-an approved list of settings and exact published image versions, with app details in an
-`x-your-space` section; owner-triggered app and Your Space updates that roll back automatically if
-they fail; built-in backup and restore through the CLI for every installation, including moving a
-local workspace to a server; TypeScript and Python SDKs with a small Tasks app as the first app; app
-roles and external agents; and a security hardening pass on app and workspace boundaries. Automatic
-app updates, building apps from source, and alternative deployment-file formats are post-open-source
-work.
+the app UI and sign-in specification, then the CLI, then the remaining pre-public work by priority.
+The [overview tree](#overview) summarizes the full pre-public scope by layer, and the
+[architecture overview](architecture/overview.md) shows the resulting system. Automatic app updates,
+building apps from source, alternative deployment-file formats, and a workspace MCP endpoint are
+post-open-source work.
 
 **Next step:** Review and merge PR #3, then write the app UI and sign-in specification. Every
 pre-public item below has a priority; Low items move to post-open-source work first if the timeline
@@ -59,9 +52,9 @@ Each item has a priority:
 
 ### Overview
 
-This tree summarizes everything below by layer. Unmarked leaves are High priority; `(M)` is Medium and
-`(L)` is Low. It is a view of the checklist, not a separate source of scope: when you add, remove,
-move, re-prioritize, or reword a pre-public item, update the tree in the same change. See
+This tree summarizes everything below by layer. Unmarked leaves are High priority; `(M)` is Medium
+and `(L)` is Low. It is a view of the checklist, not a separate source of scope: when you add,
+remove, move, re-prioritize, or reword a pre-public item, update the tree in the same change. See
 [Maintaining the checklist](#maintaining-the-checklist).
 
 ```text
@@ -79,8 +72,8 @@ Your Space: first public release
 │   │   └── Bring your own proxy or tunnel (M)
 │   ├── CLI (drives Compose for you)
 │   │   ├── Guided local and server install
-│   │   ├── install · start · stop · status · logs · owner password recovery
-│   │   ├── Update Your Space with automatic rollback (M)
+│   │   ├── install · start · stop · status · logs · update · owner recovery
+│   │   ├── Automatic rollback of failed Your Space updates (M)
 │   │   ├── Uninstall: removes app containers, keeps data by default (M)
 │   │   └── macOS + Linux · Windows (L)
 │   └── Backup, restore, and migration
@@ -104,7 +97,8 @@ Your Space: first public release
 │   │   └── Integrated at the app's own auth boundary
 │   ├── Agent identities and delegation
 │   │   ├── Own identity and credentials, linked to their human
-│   │   ├── Delegate an exact subset of your roles; removal propagates, incl. live sessions
+│   │   ├── Delegate an exact subset of your roles
+│   │   ├── Removing a role removes it from agents, including live sessions
 │   │   ├── Actions credited to the actual actor
 │   │   ├── A removed member's agents are disabled, not deleted (M)
 │   │   └── Create, view, revoke, and rotate agent credentials in the app
@@ -121,8 +115,10 @@ Your Space: first public release
 │   │   ├── Images for ARM and Intel/AMD required; clear error if none match
 │   │   └── Add an external app hosted elsewhere (M)
 │   ├── Runtime and isolation
-│   │   ├── Own containers on the same server; app database if declared (M)
-│   │   ├── Durable app storage, kept after uninstall; owner can delete it (M)
+│   │   ├── Own containers on the same server
+│   │   ├── App database if declared (M)
+│   │   ├── Durable app storage, kept after uninstall
+│   │   ├── Owner can delete retained app data (M)
 │   │   ├── Isolated from host folders, devices, Docker, Your Space, and other apps
 │   │   ├── No outbound network by default; declared access approved by the owner
 │   │   └── Memory and CPU limits; app status and logs for the owner (M)
@@ -163,8 +159,9 @@ Your Space: first public release
 └── 6. Trust and release
     ├── Security: review, safe defaults, vulnerability reporting, hardening pass
     ├── Privacy: no telemetry; only GitHub update checks, which can be turned off
-    ├── Legal: rights and notices; AGPL core · Apache SDKs · trademark · CLA · lawyer review
-    └── Release: history and secrets review, docs, core journey verification, release evidence
+    ├── Legal: rights and notices; AGPL core, Apache SDKs, trademark, CLA,
+    │   lawyer review
+    └── Release: secrets review, docs, core journeys verified, release evidence
 ```
 
 ### 1. Install and Operate
@@ -530,7 +527,7 @@ These capabilities are not required for the first public release. Their order an
   **Deferred (2026-11-02):** [Agent access through Your Space](architecture/decisions.md#agent-access-through-your-space).
 
   - [ ] Serve one MCP endpoint per workspace through the Your Space gateway.
-  - [ ] Let off-the-shelf agents connect with the endpoint URL and an OAuth sign-in approved by their human.
+  - [ ] Let off-the-shelf agents connect with the endpoint URL and a sign-in approved by their human.
   - [ ] Show each agent only the app actions its delegated roles allow, using the same checks as the CLI.
 
   The first public release gives agents the CLI.
@@ -579,7 +576,6 @@ These capabilities are not required for the first public release. Their order an
 - Place new pre-public capabilities in the layer they belong to (install and operate, identity and
   access, apps, agents, clients, or trust and release). Add a layer only when a capability fits none
   of them, and add it to the tree at the same time.
-
 - Keep high-level functionality as parent checkboxes and specific functionality as nested checkboxes.
   Add detail as specifications are agreed rather than inventing functionality to fill out future items.
 - Check an item only after its scoped behavior is delivered and verified. Add the completion date
