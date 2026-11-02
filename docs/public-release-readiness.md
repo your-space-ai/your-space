@@ -116,6 +116,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     and safe handling of secrets in ordinary logs, configuration, and public errors.
   - [ ] Review default network exposure, access to operator commands and setup credentials, encrypted
     remote access, and the documented deployment's configuration for supported environments.
+  - [ ] Verify the server, CLI, and desktop app send no telemetry, make no automatic outbound
+    requests other than update checks, and stop update checks when the owner turns them off.
   - [ ] Review dependencies and container images for known vulnerabilities, remediate release
     blockers, and document accepted risks and how updates are monitored.
   - [ ] Publish a private vulnerability reporting channel and a realistic response policy, including
@@ -125,7 +127,9 @@ is chosen instead, explicitly decide which items apply and describe what is not 
 
 - [ ] **Prepare a usable project and contributor experience**
   - [ ] Write a README that explains the product, release maturity, supported capabilities and
-    environments, prerequisites, installation entry point, and known limitations.
+    environments, prerequisites, installation entry point, and known limitations. State that Your
+    Space collects no telemetry and that update checks to GitHub are its only automatic outbound
+    requests.
   - [ ] Provide accurate installation, configuration, restart, remote access, troubleshooting,
     owner recovery, and uninstall guidance for the actual release.
   - [ ] Document where durable data lives, and how to back up, restore, and move a workspace
