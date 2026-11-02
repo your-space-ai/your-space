@@ -28,8 +28,9 @@ roles and external agents; and a security hardening pass on app and workspace bo
 app updates, building apps from source, and alternative deployment-file formats are post-open-source
 work.
 
-**Next discussion:** Remaining pre-public open questions,
-and whether to reduce the first release's size; then a final consistency review.
+**Next step:** Review and merge PR #3, then write the app UI and sign-in specification. Every
+pre-public item below has a priority; Low items move to post-open-source work first if the timeline
+slips.
 
 Each parent checkbox represents a capability; its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
@@ -63,6 +64,7 @@ Each item has a priority:
   - [ ] [High] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct.
   - [ ] [High] Prevent duplicate claims and close initial registration after setup.
   - [ ] [High] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation.
+  - [ ] [High] Keep the platform session in host-only cookies so it is never sent to app origins.
   - [ ] [High] Reach an accurate empty workspace and distinguish unavailable services from empty or unclaimed state.
   - [ ] [High] Access the same server and workspace from another device through a documented encrypted connection.
   - [ ] [High] Retain account and workspace identity across restarts and service recreation with durable storage retained.
@@ -77,13 +79,13 @@ Each item has a priority:
   **Source:** [CLI delivery sequence](architecture/decisions.md#cli-delivery-sequence).
 
   - [ ] [High] Guide local and server installation through the Your Space CLI, which drives Docker Compose so users don't run Compose themselves.
-  - [ ] [High] Provide at least install, start, stop, status, logs, update Your Space, owner password recovery, backup, restore, and uninstall.
+  - [ ] [High] Provide at least install, start, stop, status, logs, update Your Space, and owner password recovery, plus the backup, restore, and uninstall commands covered by their own items.
   - [ ] [Medium] Uninstall Your Space and every app container it manages; keep data by default, and require explicit confirmation and offer a backup before deleting it.
   - [ ] [Medium] Before updating Your Space, record versions and snapshot its data; if the update fails, roll back automatically.
   - [ ] [Low] Keep the manual Compose procedure documented as an advanced alternative to the CLI.
   - [ ] [High] Run the CLI on macOS and Linux so the desktop app can drive it for local workspaces.
   - [ ] [Low] Run the CLI on Windows so the desktop app can drive it for local workspaces there.
-  - [ ] [High] Set up HTTPS during installation: a reverse proxy in the Compose stack obtains and renews a certificate when the owner gives a domain.
+  - [ ] [High] Set up HTTPS during installation: a reverse proxy in the Compose stack obtains and renews a certificate when the owner gives a domain. Plain HTTP is supported only on localhost.
   - [ ] [Medium] Let owners with their own reverse proxy or tunnel turn off the built-in proxy, and document a private tunnel such as Tailscale for owners without a domain.
 
   The CLI follows the working, verified manual Compose deployment and owner-access implementation.
@@ -97,10 +99,9 @@ Each item has a priority:
   - [ ] [High] Back up any installation through the CLI: the Your Space server produces the backup and returns it through its API, wherever the server runs.
   - [ ] [High] Restore a backup into an installation.
   - [ ] [Medium] Move a workspace between installations, such as from a local machine to a server, through backup and restore.
-  - [ ] [Medium] Back up and restore a local workspace from the desktop app through the same CLI operation.
 
   One owner-only implementation serves every installation and builds on the pre-update snapshot
-  mechanism. Design the data model and storage so the whole workspace can be captured consistently.
+  mechanism. The desktop app uses the same operation; see Desktop app and local workspaces. Design the data model and storage so the whole workspace can be captured consistently.
   Remote CLI authentication, restore into a broken or fresh installation, and backup format and
   protection need a specification.
 
@@ -112,7 +113,7 @@ Each item has a priority:
   - [ ] [High] Let the recipient sign up and join the workspace through the invitation.
   - [ ] [High] Let the owner assign app roles to human members.
   - [ ] [High] Retain existing account, workspace, membership, and ownership identities when adding members.
-  - [ ] [Medium] Give each member a recovery code at signup that lets them reset their own password.
+  - [ ] [High] Give each member a recovery code at signup that lets them reset their own password.
   - [ ] [High] Let the owner reset a member's password with a temporary password the member must replace at next sign-in.
   - [ ] [High] Let the owner remove a member: sign them out everywhere and revoke their app roles and their agents' access.
   - [ ] [Medium] Disable a removed member's agents rather than deleting them, and let the owner delete them later.
@@ -142,7 +143,6 @@ Each item has a priority:
 
   - [ ] [High] Ship an Electron desktop app for macOS.
   - [ ] [Medium] Ship the desktop app for Linux.
-  - [ ] [Low] Ship the desktop app for Windows.
   - [ ] [High] Sign and notarize macOS builds with an Apple Developer ID in CI.
   - [ ] [Low] Sign Windows builds through SignPath, with Microsoft Artifact Signing as fallback, in CI.
   - [ ] [Low] On Windows, support the desktop app and a local workspace through Docker Desktop; Windows is not a supported server host.
@@ -239,6 +239,7 @@ Each item has a priority:
   - [ ] [High] Review publication rights, project and dependency licensing, and required notices.
   - [ ] [High] License Your Space under AGPL-3.0 and the SDKs under Apache-2.0, file the "Your Space" trademark, and set up a contributor license agreement, all reviewed by a lawyer. **Source:** [Project license and business model](architecture/decisions.md#project-license-and-business-model).
   - [ ] [High] Review security and isolation, provide safe defaults, and establish private vulnerability reporting.
+  - [ ] [High] Send no telemetry; the only automatic outbound requests are GitHub update checks, which the owner can turn off. **Source:** [Telemetry and outbound connections](architecture/decisions.md#telemetry-and-outbound-connections).
   - [ ] [High] Complete a security hardening pass on the boundaries between apps and the workspace, enforcing them and protecting users as far as reasonably possible.
   - [ ] [High] Document installation, operation, recovery, developer integration, contribution, and project status.
   - [ ] [High] Verify the core journeys, supported environments, release artifacts, recovery, and maintenance paths.
@@ -356,8 +357,9 @@ These capabilities are not required for the first public release. Their order an
   - [ ] Provide hosted Your Space for users who do not want to operate a server.
   - [ ] Preserve compatible app contracts between self-hosted and managed deployments.
   - [ ] Use the same server-managed authentication model across deployment modes.
+  - [ ] Keep managed-service code, such as billing, provisioning, and multi-tenant operations, in a separate private repository that integrates through the core's APIs.
 
-  Provisioning, operations, billing, and email delivery require future planning.
+  Provisioning, operations, billing, and email delivery require future planning. See [project license and business model](architecture/decisions.md#project-license-and-business-model).
 
 ## Maintaining the Checklist
 

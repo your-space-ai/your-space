@@ -4,7 +4,7 @@
 
 **Recorded**: 2026-10-28
 
-**Last updated**: 2026-11-01
+**Last updated**: 2026-11-02
 
 **Scope**: Project-wide direction, independent of any feature specification
 
@@ -184,11 +184,11 @@ What counts as a failed Your Space update, snapshot contents and storage, how th
 
 - The platform is self-hostable first, with a managed offering planned later.
 - Guided installation remains part of the product direction.
-- This repository contains the platform server, client, SDK, and public integration contracts.
+- This repository contains the platform server, web client, CLI, desktop app, SDKs, and public integration contracts.
 - Installable apps, including first-party apps, live in separate repositories with their own builds and releases.
 - Apps run independently and integrate through documented, versioned public contracts.
 - Installing a compatible app does not require rebuilding the platform or including app source in its build.
-- The SDK is developed in this repository and published for use by independent app projects.
+- The SDKs are developed in this repository and published for use by independent app projects.
 - First-party apps use the same public integration surface as other apps.
 - The first public release publishes TypeScript and Python SDKs. SDKs for other languages are post-open-source work.
 
@@ -216,7 +216,7 @@ Existing app authorization should be reusable where it has a suitable integratio
 - PWA offline support remains open. The first owner-access feature remains web-only.
 - Windows support (the desktop app, the CLI, local workspaces, and Windows signing) and PWA installation are low priority: built last, and the first work to move to post-open-source if the timeline slips. The [roadmap](../roadmap.md) assigns a priority to every pre-public item.
 
-**Decision update (2026-10-31):** Desktop clients move from the first public release to post-open-source work. They need a separate build for each operating system, code signing including Apple notarization, and their own update mechanism, while the installable PWA already opens in its own app window on macOS, Windows, and Linux.
+**Decision update (2026-10-31):** Desktop clients move from the first public release to post-open-source work. They need a separate build for each operating system, code signing including Apple notarization, and their own update mechanism, while the installable PWA already opens in its own app window on macOS, Windows, and Linux. (Superseded below: desktop clients return to the first public release.)
 
 **Decision update (2026-10-31):** Desktop clients return to the first public release, superseding the deferral above, so that less technical users can run their own workspace. The desktop app can connect to an existing server or set up and run a local Docker Compose stack. The CLI stays for server deployment (superseded by the [CLI delivery sequence](#cli-delivery-sequence): the CLI handles local and server installations). Electron is selected, shipping for macOS, Windows, and Linux, which accepts the per-OS build, signing, and update costs.
 
@@ -247,7 +247,7 @@ Dependency selection must consider actual licenses, including bundled components
 - The business maintains the open-source core and offers a managed service for people who don't want to self-host.
 - Your Space itself (server, web client, CLI, and desktop app) is licensed under AGPL-3.0. Anyone may self-host and modify it; anyone who runs a modified version as a network service must publish their changes.
 - The SDKs are licensed under Apache-2.0, so apps can use any license. Apps are separate programs that integrate through APIs and are not covered by the core's license.
-- "Your Space" is protected as a trademark, so others cannot offer services under the name. getyourspace.ai is the project domain.
+- "Your Space" is protected as a trademark, so others cannot offer services under the name. A short trademark policy explains how forks may and may not use the name. getyourspace.ai is the project domain.
 - Outside contributions require a contributor license agreement that lets the project use contributions under other terms, so the managed service and future licensing stay possible.
 - Code specific to the managed service, such as billing, provisioning, and multi-tenant operations, lives in a separate private repository and integrates with the core through its APIs.
 - The license, trademark, and contributor agreement are in place before publication, after review by a lawyer.
@@ -408,7 +408,7 @@ Platform isolation must protect platform services and other apps; SDK checks alo
 After the owner-access feature and an agreed app contract, a small Tasks app is the first app and the end-to-end integration slice.
 That journey would install the independent app, create and view a task, retain it after restart, and expose permitted operations to an agent.
 Verification would cover identity attribution, denied operations, and revocation across UI and programmatic access.
-It follows the planned CLI follow-up and an agreed app contract and is not an app implementation included in the current feature.
+It follows the app UI and sign-in specification, the CLI, and an agreed app contract, and is not an app implementation included in the current feature.
 
 **Decision update (2026-10-31):** The small Tasks app is selected as the first app, replacing its candidate status. It is small, needs a database, and exercises roles (viewing and editing tasks) and agent access (an agent creating tasks), covering each part of the first-release app journey. Its needs set the initial approved list of Compose settings.
 
@@ -421,9 +421,9 @@ No hosted workflow engine or model-provider integration is selected here.
 
 **Decision update (2026-10-29)**: Plan the roadmap in pre-public and post-public sections. The pre-public section covers the core experience and a working first version; post-public covers capabilities that are not crucial to that release. The owner prefers an installable, usable product before making the repository public rather than publishing only plans.
 
-The intended pre-public experience includes owner setup; additional members signing up through invitation links created and shared by the owner; the installation CLI for servers and local workspaces; a desktop app that can also run a local workspace; web, desktop, and PWA workspace clients; at least one installed independent app; a way for developers to create, integrate, and install more apps; and access for external agents. Only the owner installs or removes apps in the first public release. The first release targets users who can install Docker Desktop and the Your Space desktop app for a local workspace, or install Docker and follow a guided CLI for a server or a local workspace.
+The intended pre-public experience includes owner setup; additional members signing up through invitation links created and shared by the owner; the installation CLI for servers and local workspaces; a desktop app that can also run a local workspace; web, desktop, and PWA workspace clients; at least one installed independent app; a way for developers to create, integrate, and install more apps; and access for external agents through the Your Space gateway and CLI. It also includes built-in backup, restore, and moving a workspace between installations; owner-triggered Your Space and app updates that roll back automatically if they fail; app roles; member removal; built-in HTTPS; uninstall; and signed desktop releases. Only the owner installs or removes apps in the first public release. The first release targets users who can install Docker Desktop and the Your Space desktop app for a local workspace, or install Docker and follow a guided CLI for a server or a local workspace.
 
-This is a developing release roadmap, not a complete acceptance specification or a claim of implementation. Additional requirements may emerge during the interview. These future capabilities do not expand the owner-only first feature. The agreed sequence remains manual Compose and owner access first, then a separate CLI specification and implementation; no further feature order is established.
+This is a developing release roadmap, not a complete acceptance specification or a claim of implementation. Additional requirements may emerge during specification. These future capabilities do not expand the owner-only first feature. The agreed sequence is manual Compose and owner access (PR #3) first, then the app UI and sign-in specification, then the CLI specification and implementation; the remaining pre-public items have no set order beyond their priorities.
 
 ## Choices Still Open
 
@@ -432,13 +432,13 @@ This is a developing release roadmap, not a complete acceptance specification or
 | Client supporting libraries | Router, query/state tooling, styling, and component library remain open. |
 | Database configuration | PostgreSQL and Drizzle are selected; versions, migration execution and recovery, and connection configuration need planning. |
 | Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
-| Initial deployment details | macOS and Linux with manual Docker Compose are selected. HTTPS comes from a reverse proxy in the Compose stack with automatic certificates for an owner-provided domain, a bring-your-own-proxy option, and documented tunnel guidance. Exact OS/CPU support, versions, proxy choice, networking, and configuration need planning. |
-| Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates, backup, and restore through the CLI, and migration to a server. Releases are signed before publication: Apple Developer ID with notarization on macOS, SignPath's open-source program on Windows with Microsoft Artifact Signing as the fallback, all in CI. Packaging and self-update need a specification. |
+| Initial deployment details | macOS and Linux with manual Docker Compose are selected. HTTPS comes from a reverse proxy in the Compose stack with automatic certificates for an owner-provided domain, a bring-your-own-proxy option, and documented tunnel guidance; plain HTTP is supported only on localhost. Exact OS/CPU support, versions, proxy choice, networking, and configuration need planning. |
+| Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates, backup, restore, migration to a server, and uninstall, all through the CLI. Windows support is low priority. Releases are signed before publication: Apple Developer ID with notarization on macOS, SignPath's open-source program on Windows with Microsoft Artifact Signing as the fallback, all in CI. Packaging and self-update need a specification. |
 | CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. Its minimum operations are install, start, stop, status, logs, update Your Space, owner password recovery, backup, restore, and uninstall; uninstall removes managed app containers and keeps data unless the owner confirms deletion. A separate follow-up specification will define packaging, command names, prerequisite automation, and management behavior over the established Compose deployment. |
 | Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup, restore, and migration between installations are required before publication; remote CLI authentication, restore into a broken or fresh installation, and backup format and protection remain open. |
 | Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
-| Public launch scope | A working core experience before publication is the direction; detailed release criteria and remaining pre-public versus post-public decisions are still being interviewed. See [public release readiness](../public-release-readiness.md). |
+| Public launch scope | A working core experience before publication is the direction. The pre-public scope was settled in the 2026-11-02 interview, and every pre-public roadmap item has a High, Medium, or Low priority; Windows support and PWA installation are Low. Detailed release criteria remain to be defined. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open; they are specified after the owner-access feature and before the CLI. The platform session uses host-only cookies. |
 | Project license | AGPL-3.0 for Your Space and Apache-2.0 for the SDKs, with a "Your Space" trademark and a contributor license agreement, all in place and reviewed by a lawyer before publication. Trademark filing details and agreement wording remain open. |
 | Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off. Future reporting must be opt-in; opt-out is prohibited. |

@@ -1,6 +1,6 @@
 # Public Open-Source Release Readiness
 
-**Status:** Working checklist; the public-release interview and detailed readiness bar are in progress.
+**Status:** Working checklist. The first-release scope was settled in the 2026-11-02 interview; the detailed readiness bar is still being defined.
 
 The current direction is to make the repository public with an installable first version that
 demonstrates the core experience. This checklist captures work to implement, prove, and polish
@@ -37,11 +37,13 @@ new capabilities need their own specifications and implementation work.
     CPU architectures, browsers, Docker/Compose versions, and local or remote deployment paths.
   - [ ] Define release blockers and who will accept remaining known limitations.
 
-**First public version:** Owner setup, invited member signup, the CLI for servers and local
-workspaces, a desktop app that drives the CLI to run a local workspace, web, desktop, and PWA
+**First public version:** Owner setup, invited member signup and removal, the CLI for servers and
+local workspaces, a desktop app that drives the CLI to run a local workspace, web, desktop, and PWA
 workspace clients, at least one independently installed app, developer ability to create and install
-additional apps, and external-agent access. The interview is ongoing, so additional requirements may
-emerge. A small Tasks app is the first app. This scope does not change the owner-only first
+additional apps, and external-agent access through the Your Space gateway. It also includes built-in
+HTTPS, built-in backup, restore, and moving a workspace between installations, owner-triggered Your
+Space and app updates that roll back automatically if they fail, uninstall, and signed desktop
+releases. Windows support and PWA installation are low priority. A small Tasks app is the first app. This scope does not change the owner-only first
 specification.
 
 ## Early Source Publication: Building in Public
@@ -76,6 +78,7 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     retry handling, and denial of unauthorized or duplicate claims.
   - [ ] Verify protected requests are denied without valid authentication, including direct API
     requests; test session expiry, sign-out, and invalidation.
+  - [ ] Verify the platform session uses host-only cookies that are not sent to app origins.
   - [ ] Verify owner and workspace identity survive documented restart and service recreation
     with storage retained, and storage failure cannot reopen setup or appear as an empty workspace.
   - [ ] Verify operator recovery without email delivery preserves ownership and identity, rejects
@@ -105,8 +108,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     SDKs, with license files and headers where needed.
   - [ ] Have a lawyer review the license setup, trademark, and contributor agreement before publication.
   - [ ] Clear and file the "Your Space" trademark, and publish a short trademark policy for forks.
-  - [ ] Set up a contributor license agreement, enforced on pull requests, before accepting outside
-    contributions.
+  - [ ] Set up a contributor license agreement before publication, enforced on pull requests from
+    outside contributors.
   - [ ] Verify every shipped dependency's license is compatible with AGPL-3.0 distribution, and the SDKs'
     dependencies with Apache-2.0.
   - [ ] Keep managed-service code in a separate private repository that integrates through the core's APIs.
@@ -169,7 +172,7 @@ is chosen instead, explicitly decide which items apply and describe what is not 
 ## First Public Product Scope
 
 These areas capture the scope agreed so far for the first public version. Their detailed requirements
-belong in their own specifications; the scope remains subject to the ongoing interview.
+belong in their own specifications. Roadmap priorities decide what moves to post-open-source work first if needed.
 
 - [ ] **CLI installation and management**
   - [ ] Specify and implement the supported commands and CLI distribution for the established
@@ -184,8 +187,8 @@ belong in their own specifications; the scope remains subject to the ongoing int
     including members' accounts, credentials, and app data, and restore into a fresh installation.
   - [ ] Verify moving a local workspace to a server through backup and restore, and that the desktop
     app backs up and restores a local workspace through the same CLI operation.
-  - [ ] Verify the CLI drives Docker Compose for both local and server installations on macOS,
-    Windows, and Linux, and that the desktop app drives it in local mode.
+  - [ ] Verify the CLI drives Docker Compose for server and local installations on macOS and Linux,
+    and for local installations on Windows, and that the desktop app drives it in local mode.
   - [ ] Test the CLI on each claimed host for initial setup, repeat invocation, failures, and
     preservation of existing configuration and data; document manual alternatives and limitations.
   - [ ] Verify the guided installation is usable by someone comfortable installing Docker and following a CLI.
@@ -207,8 +210,9 @@ belong in their own specifications; the scope remains subject to the ongoing int
 - [ ] **Workspace clients on web, desktop, and PWA**
   - [ ] Provide the same core workspace and installed-app experience on web, desktop, and installable
     PWA clients.
-  - [ ] Ship and test the Electron desktop app on macOS, Windows, and Linux. Support server hosts on
-    macOS and Linux; on Windows, support the desktop app and a local workspace through Docker Desktop.
+  - [ ] Ship and test the Electron desktop app on macOS, Linux, and Windows (low priority). Support
+    server hosts on macOS and Linux; on Windows, support the desktop app and a local workspace through
+    Docker Desktop.
   - [ ] Verify release builds are signed in CI: macOS with an Apple Developer ID and notarization,
     Windows through SignPath or Microsoft Artifact Signing. Verify a downloaded macOS build opens with
     the standard prompt and updates itself.
@@ -216,6 +220,7 @@ belong in their own specifications; the scope remains subject to the ongoing int
     a local Your Space Docker Compose stack on the same machine through the CLI.
   - [ ] In local mode, verify Docker detection with a download link when missing, stack startup when
     the app opens, and owner-triggered Your Space updates.
+  - [ ] Verify the desktop app uninstalls a local workspace through the CLI's uninstall command.
   - [ ] Verify the desktop app completes local-mode owner setup by submitting the setup code from the
     CLI on the user's behalf, through the same setup flow as every other installation.
   - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off,
