@@ -97,3 +97,4 @@ Rules:
   URL fragment (`#token=`). Browsers never send fragments to the server, so the token cannot appear in
   proxy or server logs or in a `Referer` header. The reset page posts it in the request body.
 - The command records a `recovery.link_issued` event credited to the operator actor.
+- It also clears the owner account's sign-in limits, so a locked-out owner can always get back in.

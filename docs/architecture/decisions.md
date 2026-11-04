@@ -198,6 +198,8 @@ Governed by [constitution principle VII](../../.specify/memory/constitution.md#v
   check whether a selected library already provides it.
 - Use selected libraries' native features as intended rather than wrapping or reimplementing them.
   Custom code fills only the gaps they leave.
+- Use each library only for the purpose it was built for. Don't stretch an available feature into
+  a general system for the app; pick a library made for that job.
 - Keep dependencies few and trusted. Not every small need gets a dependency: add one only when it
   replaces substantial custom code, and prefer one library that covers several needs over several
   narrow ones. Keep integrations thin.
@@ -210,6 +212,11 @@ and documented by the project, and mature libraries already solve most of it; ev
 adds supply-chain and upgrade cost. Dependencies still follow the licensing rule in
 [deployment boundaries and licensing](#deployment-boundaries-and-licensing). Added to the
 constitution as principle VII (version 1.1.0).
+
+**Decision update (2026-11-03):** Reuse means using libraries for what they were built for. Better
+Auth's rate limiter protects Better Auth's own routes, so it is not the app's rate limiter: Your
+Space uses a dedicated rate-limiting library that can count per account and cover its own routes.
+Clarified in constitution principle VII (version 1.1.1).
 
 ## Accepted Product and Repository Direction
 

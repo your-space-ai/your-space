@@ -10,7 +10,11 @@ serves the web client for every other path. Bodies are JSON. Errors use one shap
 ```
 
 Error messages never include passwords, codes, tokens, session values, or stack traces (FR-010,
-FR-020). This API is internal to Your Space's own clients in this feature; it is not yet a public,
+FR-020).
+
+Any endpoint can answer `429 { "error": "rate_limited", "retryAfter": <seconds> }` with a
+`Retry-After` header when a limit in [research R7](../research.md#r7-failed-attempt-limits-fr-011) is reached.
+Nothing changes when a request is limited. This API is internal to Your Space's own clients in this feature; it is not yet a public,
 versioned app contract (those start in spec 002).
 
 ## Custom Endpoints (Your Space code)
@@ -61,7 +65,7 @@ Account rules (FR-003): name 1 to 100 characters after trimming; a syntactically
 to 254 characters, stored lowercase; password 12 to 128 characters.
 
 Each wrong code increments that code's failed-attempt count. At 10 the code is locked
-(FR-011).
+(FR-011). Claim attempts are also limited to 10 per 15 minutes per IP.
 
 The workspace is named "&lt;name&gt;'s space" at setup. Renaming it is not part of this feature.
 

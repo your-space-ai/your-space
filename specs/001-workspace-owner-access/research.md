@@ -49,6 +49,7 @@ that settled each question.
   - `emailAndPassword`: enabled, `minPasswordLength: 12`, `maxPasswordLength: 128`,
     `autoSignIn: false`, `revokeSessionsOnPasswordReset: true`, `resetPasswordTokenExpiresIn: 1800`,
     and `sendResetPassword` set to the operator command's print callback.
+  - `rateLimit.enabled: false`; the app's own limiter covers auth routes ([R7](#r7-failed-attempt-limits-fr-011)).
   - Session: database-backed, 7-day expiry, refreshed daily (the library defaults), `cookieCache`
     off.
   - `baseURL` set to `YS_PUBLIC_URL`; `advanced.database.generateId: "uuid"`.
@@ -77,7 +78,7 @@ that settled each question.
   - Argon2 through a custom `password.hash`: Better Auth supports it, but it needs a native
     dependency and the scrypt default is adequate.
   - Raising scrypt's cost to OWASP's recommended N=2^17 would need a custom hash function. The
-    default costs about 32 MiB per hash, and the sign-in rate limit makes guessing slow. This is
+    default costs about 32 MiB per hash, and the sign-in limits make guessing slow. This is
     worth revisiting before publication.
 
 ## R4. Blocking Account and Workspace Creation After Setup
@@ -141,25 +142,52 @@ that settled each question.
 
 ## R7. Failed-Attempt Limits (FR-011)
 
-- **Decision:**
-  - Better Auth's rate limiter, enabled explicitly, with `storage: "database"`.
-  - Built-in special rules: sign-in allows 3 attempts per 10 seconds per IP address. Reset
-    password gets a custom rule of 5 per 60 seconds.
-  - The setup code is limited per code (R6).
+- **Decision:** one rate-limiting system for the whole app, using **rate-limiter-flexible** with its
+  Drizzle store. Better Auth's built-in limiter is turned off (`rateLimit.enabled: false`).
+
+  | Limit | Key | Rule |
+  | --- | --- | --- |
+  | Every `/api` request | IP | 300 per minute |
+  | Sign-in failures | account + IP | 5 in a row blocks that pair for 15 minutes; a success clears it |
+  | Sign-in failures | account, from any IP | 50 per hour blocks the account's sign-in for 1 hour |
+  | Sign-in failures | IP | 100 per day blocks that IP for 1 day |
+  | Claim attempts | IP | 10 per 15 minutes, plus the per-code lock in [R6](#r6-setup-code) |
+  | Password reset submissions | IP | 5 per minute |
+
 - **Rationale:**
-  - The limiter is on only in production by default, so enabling it explicitly keeps tests and
-    production the same.
-  - Database storage keeps counters across restarts.
+  - **Library used for its purpose:** Better Auth's limiter exists to protect Better Auth's own
+    routes. It cannot count per account, and it cannot cover Your Space's routes, such as the claim
+    now and the gateway later. Stretching it into the app's limiter would use it for something it
+    wasn't built for. The decision record and constitution principle VII now say this explicitly.
+  - **Purpose-built library:** rate-limiter-flexible counts any key, so it can count per account,
+    per IP, or per account and IP. Its docs include a login-protection recipe for exactly this table
+    ([login endpoint protection](https://github.com/animir/node-rate-limiter-flexible/wiki/Overall-example#login-endpoint-protection)).
+  - **Fits the stack:** it ships a Drizzle store (`RateLimiterDrizzle`) that uses a table we define in
+    our Drizzle schema, so its table goes through our migrations (FR-024) and counters survive
+    restarts. Version 11.2.4, ISC license, no runtime dependencies, about 4.6 million weekly
+    downloads.
+- **How it is wired:**
+  - The general and claim limits are Express middleware.
+  - Sign-in and reset limits use Better Auth's documented `hooks`:
+    - a `before` hook checks whether the account or IP is blocked and returns 429;
+    - an `after` hook records failures and clears the account and IP pair on success.
+  - Better Auth runs `after` hooks for failed requests too, with the error in
+    `ctx.context.returned` (`api/dispatch.mjs` in 1.7.16).
+- **Locking out the owner:**
+  - A stranger who knows the owner's email could trigger the per-account limit and block the owner's
+    sign-in for up to an hour. The account and IP pair is limited first, so a single attacker hits
+    their own limit long before that.
+  - Running `reset-link` clears the account's sign-in limits, so the operator always has a way back
+    in.
 - **IP address behind Caddy:**
-  - Better Auth reads `X-Forwarded-For`. Without `trustedProxies`, it rejects a header holding
-    several addresses; then every client shares one rate-limit bucket (`core/src/utils/ip.ts`).
-  - The Caddyfile therefore sets `header_up X-Forwarded-For {client_ip}`, which is always a single
-    address.
-  - Caddy's `trusted_proxies` decides `{client_ip}`. It is empty by default and is set through the
-    environment for operators who run their own proxy or Tailscale in front of Caddy.
-- **Limitation (documented):** limits are per IP address, so they slow guessing but do not lock the
-  account. Better Auth has no built-in per-account lockout. The 12-character minimum and scrypt make
-  guessing impractical at these rates.
+  - Caddy sets `X-Forwarded-For` to `{client_ip}`, a single address.
+  - Express's `trust proxy` is set to one hop, so `req.ip` and the hooks see the real client.
+  - Caddy's `trusted_proxies` is set through the environment when the operator runs their own proxy
+    or Tailscale in front of Caddy.
+- **Alternatives:**
+  - `express-rate-limit`: very widely used, but it counts requests per route. Counting failures per
+    account would need custom code, and its Postgres store is a separate community package.
+  - Better Auth's limiter: rejected for the reasons above.
 
 ## R8. Owner Recovery Link
 
