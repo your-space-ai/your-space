@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-28
 
-**Last updated**: 2026-11-02
+**Last updated**: 2026-11-03
 
 **Status**: Draft for PR review; implementation has not started
 
@@ -376,6 +376,9 @@ These are domain concepts, not prescribed database tables or framework types.
 - The built-in HTTPS proxy with automatic certificates is spec 003. This feature documents an
   encrypted path through the owner's own reverse proxy or a private tunnel such as Tailscale, and
   must let the built-in proxy be added in front later without changing setup, sessions, or stored data.
+- The web client's screens are deliberately plain and functional. No visual design or approved
+  mockups are required before implementation; layout and styling only need to meet this
+  feature's requirements. A later spec designs the interface, starting from what it should show.
 - Product behavior is specified here. Selected technologies and unresolved implementation
   choices are preserved in the [project decision record](../../docs/architecture/decisions.md),
   rather than silently selected by this PR.
@@ -399,8 +402,8 @@ Later journeys in the [spec map](../../docs/spec-map.md) deliver these:
 Deferred until after the first public release: email delivery, GitHub account connections, app
 catalogs, the managed service, and provider-specific cloud installers.
 
-Not in this feature, and not yet assigned to a spec: ownership transfer, mobile-native clients,
-offline synchronization, and a multi-server client picker.
+Not in this feature, and not yet assigned to a spec: the interface's visual design, ownership
+transfer, mobile-native clients, offline synchronization, and a multi-server client picker.
 
 The accepted direction for these later features is retained in the project-wide decision record.
 Their presence there must not be treated as authorization to implement them in this first slice.
