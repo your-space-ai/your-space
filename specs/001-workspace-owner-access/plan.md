@@ -20,8 +20,7 @@ The stack is three containers:
 - **PostgreSQL** stores all state.
 
 Better Auth supplies accounts, sessions, password hashing, and password reset. Its
-organization plugin supplies the workspace, membership, and owner role. rate-limiter-flexible limits
-failed attempts per account and per IP across the whole app. Custom code is limited to
+organization plugin supplies the workspace, membership, and owner role. Custom code is limited to
 the setup code and claim, setup status, the two operator commands, and a small actor and event
 record.
 
@@ -37,17 +36,16 @@ The web client is built by Vite 8.
 | --- | --- | --- |
 | Server | Express 5 (MIT) | HTTP routing for the API |
 | Auth | Better Auth 1.7 (MIT) with its organization plugin | Accounts, scrypt hashing, sessions, host-only cookies, password reset, workspace, membership, owner role |
-| Rate limits | rate-limiter-flexible 11 (ISC) with its Drizzle store | Per-account, per-IP, and per-route limits for the whole app |
 | Database | Drizzle ORM 0.45 (Apache-2.0), `pg` 8 (MIT) | Queries, schema, runtime migrations |
 | Web | React 19, Vite 8, TanStack Router 1, TanStack Query 5 (all MIT) | UI, build, routes with redirects, server state |
 | Proxy | Caddy 2.11 (Apache-2.0) | Automatic HTTPS, static files, routing `/api` |
 | Dev only | Drizzle Kit, Better Auth CLI (`auth`), TypeScript, Vitest 5, Playwright 1.64 | Migrations, schema generation, type checks, tests |
 
-That is 9 runtime npm packages: `express`, `better-auth`, `rate-limiter-flexible`, `drizzle-orm`, and `pg` on the server, and
+That is 8 runtime npm packages: `express`, `better-auth`, `drizzle-orm`, and `pg` on the server, and
 `react`, `react-dom`, `@tanstack/react-router`, and `@tanstack/react-query` in the web client.
 Caddy and PostgreSQL ship as their official images. The decision record already selects Express,
-Better Auth, Drizzle, PostgreSQL, React, Vite, and Caddy. The TanStack libraries and
-rate-limiter-flexible were chosen in this PR's review and are recorded here.
+Better Auth, Drizzle, PostgreSQL, React, Vite, and Caddy. The TanStack libraries were chosen in
+this PR's review and are recorded here.
 
 **Storage**: PostgreSQL 18 (official image) on the `ys-postgres` named volume. Caddy's certificates
 are on the `ys-caddy-data` named volume. Nothing durable lives in a container filesystem (FR-023).
@@ -56,7 +54,7 @@ The tables are in [data-model.md](data-model.md).
 **Testing**:
 
 - Vitest server tests run against a real PostgreSQL. They cover the claim's concurrency, retries,
-  and interruption; storage failure; rate limits; and log scanning for secrets.
+  and interruption; storage failure; closed sign-up; and log scanning for secrets.
 - Playwright runs the four stories in Chromium, Firefox, and WebKit against the full Compose stack,
   including restart and recreation.
 - [quickstart.md](quickstart.md) is the manual check on real hosts.
@@ -102,14 +100,14 @@ reset password), plus error states.
 
 **Post-design re-check (after Phase 1)**: Pass. The design added no dependencies.
 
-Better Auth constraints changed three choices:
+Two Better Auth details shaped the design:
 
-- an allowlist instead of `disabledPaths`;
-- `signUpEmail` with an allowlist instead of `disableSignUp`;
-- a reset link that keeps the token in the URL fragment.
+- `disableSignUp` also blocks server-side sign-up, so the claim uses a server-only instance with
+  sign-up on ([R4](research.md#r4-owner-first-then-invite-only)).
+- Better Auth's reset link puts the token in the URL path and query, so the link puts it in the URL
+  fragment instead ([R8](research.md#r8-owner-recovery-link)).
 
-All three keep using Better Auth's own features ([R4](research.md#r4-blocking-account-and-workspace-creation-after-setup),
-[R8](research.md#r8-owner-recovery-link)).
+Both use only documented options. Nothing sits in front of Better Auth and no hooks are added.
 
 ### Requirement to Library Feature (principle VII)
 
@@ -117,10 +115,11 @@ All three keep using Better Auth's own features ([R4](research.md#r4-blocking-ac
 | --- | --- |
 | FR-003 account rules | Better Auth `minPasswordLength`/`maxPasswordLength` + HTML form validation |
 | FR-004 owner, workspace, membership | `auth.api.signUpEmail`; organization plugin `auth.api.createOrganization` (creator gets `owner`) |
+| FR-005 closed registration | Better Auth `disableSignUp`; organization plugin `allowUserToCreateOrganization: false` |
 | FR-006, FR-008 one auth system, sign-in/out | Better Auth email and password, sessions |
 | FR-009 expiry, revocation, durable sessions | Better Auth database sessions (7 days, refreshed daily), sign-out deletes the row |
 | FR-010 password hashing | Better Auth scrypt (N=16384, r=16, p=1, 64-byte key, 16-byte salt) |
-| FR-011 attempt limits | rate-limiter-flexible (Drizzle store), wired into sign-in and reset through Better Auth `hooks`; per-code limit for setup |
+| FR-011 attempt limits | Better Auth's built-in sign-in limits (defaults); setup codes and reset tokens are too long to guess |
 | FR-012, FR-023 durability | PostgreSQL on a named volume; Caddy data volume |
 | FR-015, FR-021 HTTPS-only remote cookies, host-only | Better Auth cookie defaults with an `https` `baseURL` |
 | FR-017 to FR-019 recovery | `auth.api.requestPasswordReset`, `sendResetPassword`, single-use tokens, `revokeSessionsOnPasswordReset` |
@@ -138,9 +137,7 @@ All three keep using Better Auth's own features ([R4](research.md#r4-blocking-ac
 | Claim endpoint | Medium | Creates the account and workspace together and survives double-clicks and crashes (FR-004). Better Auth has no "first owner" flow. [R5](research.md#r5-the-claim-atomic-enough-without-custom-transactions-across-libraries) |
 | Setup status and health endpoints | Small | Tells "unclaimed" apart from "storage down" (FR-013). |
 | `reset-link` command | Small | Thin glue: finds the owner, calls `requestPasswordReset`, prints the link (FR-017). |
-| Better Auth allowlist and two hooks | Small | Keeps FR-005's "no other account or membership path" true across library upgrades. |
 | `actor` and `event` tables | Small | Credits actions to a non-human-specific actor (FR-025). The full activity log is spec 005. |
-| Limiter wiring | Small | Express middleware plus two Better Auth hooks that call rate-limiter-flexible; the counting is the library's ([R7](research.md#r7-failed-attempt-limits-fr-011)). |
 | JSON log helper | Tiny | One line per event, with no request bodies or credentials. |
 
 ## Project Structure
@@ -155,7 +152,7 @@ specs/001-workspace-owner-access/
 ├── data-model.md              # Phase 1: tables and the claim sequence
 ├── quickstart.md              # Phase 1: end-to-end validation on real hosts
 ├── contracts/
-│   ├── http-api.md            # Custom endpoints and allowlisted Better Auth routes
+│   ├── http-api.md            # Custom endpoints and the Better Auth routes used
 │   └── operator-commands.md   # setup-code and reset-link: output and exit codes
 ├── checklists/requirements.md
 └── tasks.md                   # Phase 2 ($speckit-tasks), not created by this command
@@ -172,16 +169,15 @@ server/
 ├── bin/                     # setup-code, reset-link (on PATH in the image)
 ├── src/
 │   ├── index.ts             # start: migrate, then listen
-│   ├── app.ts               # Express app: allowlist + Better Auth, then JSON routes
+│   ├── app.ts               # Express app: Better Auth handler, then JSON routes
 │   ├── config.ts            # environment variables, validated at startup
-│   ├── auth.ts              # Better Auth configuration and hooks
+│   ├── auth.ts              # Better Auth config: public instance + server-only instance
 │   ├── db/
 │   │   ├── client.ts
 │   │   ├── auth-schema.ts   # generated by the Better Auth CLI
-│   │   └── schema.ts        # installation, setup_code, actor, event, rate_limit
+│   │   └── schema.ts        # installation, setup_code, actor, event
 │   ├── setup/               # code issue/check, claim, status
 │   ├── recovery/            # reset-link logic
-│   ├── limits.ts            # rate-limiter-flexible limiters and their wiring
 │   ├── commands/            # CLI entry points for bin/
 │   └── log.ts
 └── tests/                   # Vitest, against real PostgreSQL
@@ -218,10 +214,10 @@ These are the exact settings the spec left to the plan.
 | Password | 12 to 128 characters; scrypt N=16384, r=16, p=1 |
 | Name / email | 1 to 100 characters / valid address up to 254 characters, stored lowercase |
 | Session | 7 days, extended daily while used; database-backed; no cookie cache |
-| Setup code | about 120 bits, 60 minutes, single use, locked after 10 wrong attempts |
+| Setup code | about 120 bits, 60 minutes, single use |
 | Reset link | 30 minutes, single use, token in the URL fragment, revokes all sessions |
-| Sign-in limits | 5 failures in a row per account and IP (15-minute block); 50 per hour per account (1-hour block); 100 per day per IP |
-| Other limits | 300 API requests per minute per IP; claim 10 per 15 minutes per IP; reset 5 per minute per IP |
+| Sign-in limit | Better Auth default: 3 attempts per 10 seconds per IP |
+| Sign-up | Off after setup; new people join by owner invitation (spec 004) |
 | Operator commands | human text by default, `--json` for scripts, exit codes 0 to 4 ([contract](contracts/operator-commands.md)) |
 | Remote HTTPS paths | Caddy with your domain; your own proxy; Tailscale `serve` |
 

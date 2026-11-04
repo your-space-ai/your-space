@@ -195,9 +195,10 @@ by the user stories.
    application logs and public errors are inspected, **Then** they contain no passwords, reusable
    session credentials, setup codes, or reset credentials. Intentional operator-only delivery of
    setup and recovery authority is assessed separately from ordinary logs.
-3. **Given** the documented failed-attempt limits for sign-in, setup, and reset validation,
-   **When** repeated invalid attempts reach each configured limit, **Then** the documented limiting
-   behavior occurs and no protected state changes. Legitimate retry follows the documented policy.
+3. **Given** the documented sign-in limit, **When** repeated invalid sign-in attempts reach it,
+   **Then** the documented limiting behavior occurs and no protected state changes. Legitimate retry
+   follows the documented policy. Setup codes and reset credentials have the documented length and
+   randomness.
 4. **Given** an ARM host (including Apple Silicon) and an Intel/AMD host, **When** the operator
    follows the guide on each, **Then** both run Your Space's published images natively and complete
    User Story 1.
@@ -222,7 +223,7 @@ by the user stories.
 - The process stops between preparing initial records and declaring setup complete.
 - The owner loses the setup code before a claim; documented operator recovery must preserve
   completed claims and must not allow a network visitor to obtain replacement authority.
-- Repeated failed authentication or claim attempts exceed configured limits.
+- Repeated failed sign-in attempts exceed the configured limit.
 - Storage is temporarily unavailable or inconsistent; the system fails closed rather than
   offering fresh setup over uncertain existing state.
 - The web client loses connectivity, retains a stale session, or reconnects after server restart.
@@ -270,9 +271,10 @@ by the user stories.
   the algorithm and work factor belong in the implementation plan. Passwords, reusable session credentials,
   setup codes, and reset credentials MUST NOT appear in ordinary application logs, public error
   responses, or committed configuration. Operator-only delivery of setup/reset authority is intentional.
-- **FR-011**: Sign-in, setup-code validation, and reset-token validation MUST limit repeated failed
-  attempts. Their configured limits, credential lifetimes, and observable rejection behavior MUST
-  be documented and verified; exact settings belong in the implementation plan.
+- **FR-011**: Sign-in MUST limit repeated failed attempts. Setup codes and reset credentials MUST be
+  random values long enough that guessing them is impractical. Limits, credential lifetimes, and
+  observable rejection behavior MUST be documented and verified; exact settings belong in the
+  implementation plan.
 - **FR-012**: Account, workspace, membership, ownership, and claim state MUST survive documented
   restarts and service recreation when durable storage is retained.
 - **FR-013**: Unavailable or unreadable persisted state MUST NOT be interpreted as an unclaimed

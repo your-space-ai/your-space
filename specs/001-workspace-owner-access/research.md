@@ -46,10 +46,11 @@ that settled each question.
 ## R3. Authentication With Better Auth
 
 - **Decision:** use Better Auth's built-in features for everything except the claim. Configuration:
-  - `emailAndPassword`: enabled, `minPasswordLength: 12`, `maxPasswordLength: 128`,
-    `autoSignIn: false`, `revokeSessionsOnPasswordReset: true`, `resetPasswordTokenExpiresIn: 1800`,
-    and `sendResetPassword` set to the operator command's print callback.
-  - `rateLimit.enabled: false`; the app's own limiter covers auth routes ([R7](#r7-failed-attempt-limits-fr-011)).
+  - `emailAndPassword`: enabled, `disableSignUp: true`, `minPasswordLength: 12`,
+    `maxPasswordLength: 128`, `autoSignIn: false`, `revokeSessionsOnPasswordReset: true`,
+    `resetPasswordTokenExpiresIn: 1800`. See [R4](#r4-owner-first-then-invite-only) for sign-up and
+    `sendResetPassword`.
+  - Rate limiting: Better Auth's built-in defaults, unchanged ([R7](#r7-failed-attempt-limits-fr-011)).
   - Session: database-backed, 7-day expiry, refreshed daily (the library defaults), `cookieCache`
     off.
   - `baseURL` set to `YS_PUBLIC_URL`; `advanced.database.generateId: "uuid"`.
@@ -75,32 +76,46 @@ that settled each question.
   - **Password length:** 12 characters rather than the default 8, because the owner account
     controls the whole installation.
 - **Alternatives:**
-  - Argon2 through a custom `password.hash`: Better Auth supports it, but it needs a native
-    dependency and the scrypt default is adequate.
-  - Raising scrypt's cost to OWASP's recommended N=2^17 would need a custom hash function. The
-    default costs about 32 MiB per hash, and the sign-in limits make guessing slow. This is
-    worth revisiting before publication.
+  - Argon2id, or scrypt at OWASP's recommended cost (N=2^17, r=8, p=1), through Better Auth's
+    `password.hash/verify` option. Rejected for now to keep the library default.
+  - **What that choice risks:** hash strength matters only if someone steals the database or a
+    backup and guesses passwords offline. The library default costs about a quarter of OWASP's
+    minimum, so such guessing runs roughly 4 times faster. A strong password (12 or more random
+    characters, or a long passphrase) stays out of reach either way. A common or leaked password
+    falls quickly either way. Only passwords in between are affected. Revisit if backups (spec 006)
+    or members (spec 004) change that picture.
 
-## R4. Blocking Account and Workspace Creation After Setup
+## R4. Owner First, Then Invite Only
 
-- **Decision:** mount Better Auth behind an **Express allowlist** of the exact routes the web
-  client uses ([HTTP API contract](contracts/http-api.md)). Two Better Auth hooks back it up:
-  - a `before` hook refuses sign-in while unclaimed;
-  - `databaseHooks.user.create.before` refuses any user creation after the claim.
+- **Decision:**
+  - Regular sign-up is always off: the Better Auth instance that serves `/api/auth` has
+    `disableSignUp: true`.
+  - The setup step creates the owner through a second, server-only Better Auth instance with the
+    same configuration except that sign-up is on and `sendResetPassword` prints the link. The
+    `reset-link` command uses this instance too. It is never mounted on HTTP, so the network can't
+    reach it.
+  - After setup, new people join only when the owner invites them (spec 004). Open sign-up can be
+    a later feature.
 - **Rationale:**
-  - The organization plugin adds 35 `/organization/*` routes in 1.7.16, including invitations and
-    member management. FR-005 says no membership path may exist in this feature.
-  - Better Auth's `disabledPaths` matches exact paths only and is checked only by the HTTP router
-    (`api/index.ts`). A blocklist would need every route listed, and a library upgrade could add new
-    ones silently. An allowlist fails safe instead.
-  - Server-side `auth.api.*` calls bypass the HTTP router, so the claim can still call
-    `signUpEmail` and `createOrganization` directly.
+  - Better Auth's `disableSignUp` is a fixed configuration value, not a switch that flips at
+    runtime. It also blocks server-side `auth.api.signUpEmail` calls (`api/routes/sign-up.ts`). A
+    server-only instance with sign-up on lets setup create the owner while public sign-up stays off,
+    using only documented options. There are no hooks and nothing in front of Better Auth.
+  - **No one else can join in 001:**
+    - Sign-up is off.
+    - The organization plugin's add-member function is server-only.
+    - Accepting an invitation needs an existing account, and only the owner has one.
+    - `allowUserToCreateOrganization: false` stops a second workspace.
+    - The `installation.workspace_id` foreign key is `on delete restrict`, so the workspace can't be
+      deleted out from under a claimed installation.
+  - **"Email me a reset link":** the public instance has no `sendResetPassword`, so Better Auth
+    refuses `/request-password-reset` itself (`RESET_PASSWORD_DISABLED`, `api/routes/password.ts`).
+    Completing a reset with a token still works.
 - **Alternatives:**
-  - `disableSignUp: true`: it also blocks the server-side `auth.api.signUpEmail`
-    (`api/routes/sign-up.ts`), which the claim needs.
-  - The admin plugin's `createUser`: it adds admin routes and user columns that this feature
-    doesn't otherwise need.
-  - Calling `internalAdapter` directly: not a documented public API.
+  - Our own allowlist in front of Better Auth, or `before` hooks: rejected in review as custom
+    machinery.
+  - The admin plugin's `createUser`: adds admin routes and user columns that this feature doesn't
+    need.
 
 ## R5. The Claim: Atomic Enough Without Custom Transactions Across Libraries
 
@@ -127,67 +142,35 @@ that settled each question.
 - **Decision:**
   - 24 characters from Crockford's base32 alphabet (about 120 bits), generated with
     `crypto.randomBytes`, shown in groups of four.
-  - Stored as a SHA-256 hash, valid for 60 minutes, locked after 10 failed attempts. A new code
-    replaces the old one.
+  - Stored as a SHA-256 hash, valid for 60 minutes, single use. A new code replaces the old one.
 - **Rationale:**
   - At 120 bits, guessing is infeasible, so a fast hash is enough; slow password hashing is for
     low-entropy secrets.
-  - The per-code attempt limit meets FR-011 without a rate-limit library. The claim is an Express
-    route, outside Better Auth's rate limiter.
+  - At 120 bits, no attempt limit is needed.
   - Crockford's alphabet avoids look-alike characters (I, L, O, U), which helps when the code is
     typed by hand.
-- **Alternatives:**
-  - `express-rate-limit`: a dependency for one route, when a counter on the code row is stronger.
-  - A shorter code: shorter codes need slow hashing and stricter lockout.
+- **Alternatives:** a shorter code, which would need slow hashing and an attempt limit.
 
 ## R7. Failed-Attempt Limits (FR-011)
 
-- **Decision:** one rate-limiting system for the whole app, using **rate-limiter-flexible** with its
-  Drizzle store. Better Auth's built-in limiter is turned off (`rateLimit.enabled: false`).
-
-  | Limit | Key | Rule |
-  | --- | --- | --- |
-  | Every `/api` request | IP | 300 per minute |
-  | Sign-in failures | account + IP | 5 in a row blocks that pair for 15 minutes; a success clears it |
-  | Sign-in failures | account, from any IP | 50 per hour blocks the account's sign-in for 1 hour |
-  | Sign-in failures | IP | 100 per day blocks that IP for 1 day |
-  | Claim attempts | IP | 10 per 15 minutes, plus the per-code lock in [R6](#r6-setup-code) |
-  | Password reset submissions | IP | 5 per minute |
-
+- **Decision:** 001 adds no rate limiting of its own. Better Auth's built-in limiter stays on its own
+  routes with its defaults; no configuration or code is involved.
+- **Defaults** (on in production, per IP; `api/rate-limiter/index.ts` in 1.7.16):
+  - sign-in: 3 attempts per 10 seconds;
+  - all other auth routes: 100 per 10 seconds.
 - **Rationale:**
-  - **Library used for its purpose:** Better Auth's limiter exists to protect Better Auth's own
-    routes. It cannot count per account, and it cannot cover Your Space's routes, such as the claim
-    now and the gateway later. Stretching it into the app's limiter would use it for something it
-    wasn't built for. The decision record and constitution principle VII now say this explicitly.
-  - **Purpose-built library:** rate-limiter-flexible counts any key, so it can count per account,
-    per IP, or per account and IP. Its docs include a login-protection recipe for exactly this table
-    ([login endpoint protection](https://github.com/animir/node-rate-limiter-flexible/wiki/Overall-example#login-endpoint-protection)).
-  - **Fits the stack:** it ships a Drizzle store (`RateLimiterDrizzle`) that uses a table we define in
-    our Drizzle schema, so its table goes through our migrations (FR-024) and counters survive
-    restarts. Version 11.2.4, ISC license, no runtime dependencies, about 4.6 million weekly
-    downloads.
-- **How it is wired:**
-  - The general and claim limits are Express middleware.
-  - Sign-in and reset limits use Better Auth's documented `hooks`:
-    - a `before` hook checks whether the account or IP is blocked and returns 429;
-    - an `after` hook records failures and clears the account and IP pair on success.
-  - Better Auth runs `after` hooks for failed requests too, with the error in
-    `ctx.context.returned` (`api/dispatch.mjs` in 1.7.16).
-- **Locking out the owner:**
-  - A stranger who knows the owner's email could trigger the per-account limit and block the owner's
-    sign-in for up to an hour. The account and IP pair is limited first, so a single attacker hits
-    their own limit long before that.
-  - Running `reset-link` clears the account's sign-in limits, so the operator always has a way back
-    in.
-- **IP address behind Caddy:**
-  - Caddy sets `X-Forwarded-For` to `{client_ip}`, a single address.
-  - Express's `trust proxy` is set to one hop, so `req.ip` and the hooks see the real client.
-  - Caddy's `trusted_proxies` is set through the environment when the operator runs their own proxy
-    or Tailscale in front of Caddy.
-- **Alternatives:**
-  - `express-rate-limit`: very widely used, but it counts requests per route. Counting failures per
-    account would need custom code, and its Postgres store is a separate community package.
-  - Better Auth's limiter: rejected for the reasons above.
+  - The setup code (about 120 bits) and Better Auth's reset tokens are random values too long to
+    guess, so they need no limit.
+  - Sign-in is the only guessable secret, and Better Auth already protects it for its intended
+    purpose: its own routes.
+  - Per-account limits and a rate limiter for the whole app wait until a spec needs them, for
+    example the gateway in spec 005. Under constitution principle VII, that would be a dedicated
+    library, not Better Auth's limiter.
+- **IP address behind Caddy:** Caddy replaces any `X-Forwarded-For` from an untrusted client with
+  the single client address, which is the form Better Auth reads by default. No configuration is
+  needed.
+- **Limitation (documented):** limits are per IP address, so they slow guessing but do not lock the
+  account.
 
 ## R8. Owner Recovery Link
 
@@ -294,8 +277,8 @@ that settled each question.
 ## R13. Server
 
 - **Decision:**
-  - Express 5 mounts Better Auth with `toNodeHandler` at `/api/auth/*splat`, behind the allowlist
-    and before `express.json()`.
+  - Express 5 mounts Better Auth with `toNodeHandler` at `/api/auth/*splat`, before
+    `express.json()`.
   - The database driver is `pg` (node-postgres) with Drizzle.
   - Logs are one JSON line per event through a small wrapper over `console`. Logs never include
     request bodies, cookies, or `Authorization` headers.

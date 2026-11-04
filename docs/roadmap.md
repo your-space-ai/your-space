@@ -479,6 +479,14 @@ These capabilities are not required for the first public release. Their order an
 
   No installation requires email. The first public release needs a member recovery path that works without it.
 
+- [ ] **Optional open sign-up**
+
+  **Deferred (2026-11-03):** [Authentication and initial claim](architecture/decisions.md#authentication-and-initial-claim).
+
+  - [ ] Let the owner choose to allow people to sign up without an invitation.
+
+  Until then, new people join only when the owner invites them.
+
 - [ ] **Automatic app updates**
 
   **Deferred (2026-10-30):** [App update decision](architecture/decisions.md#accepted-future-app-distribution-direction).

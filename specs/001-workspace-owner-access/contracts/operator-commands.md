@@ -56,10 +56,9 @@ Failure, `--json`, exit 2 or 3:
 Rules:
 
 - The code is printed only to the operator's terminal. It is never written to logs.
-- Only a hash of the code is stored, with its expiry and failed-attempt count.
+- Only a hash of the code is stored, with its expiry.
 - The code is 24 random characters from a 32-symbol alphabet without look-alikes (about 120 bits),
-  shown in groups of four. It is valid for 60 minutes. After 10 failed claim attempts it stops
-  working and the operator issues a new one.
+  shown in groups of four. It is valid for 60 minutes and works once.
 
 ## `reset-link`
 
@@ -90,11 +89,11 @@ Failure, `--json`, exit 2 or 3:
 
 Rules:
 
-- The command calls Better Auth's `auth.api.requestPasswordReset` for the owner's email. Better
+- The command calls `auth.api.requestPasswordReset` for the owner's email on the server-only Better
+  Auth instance, the only one configured with `sendResetPassword`. Better
   Auth creates the token and calls the `sendResetPassword` callback, which in this process prints the
   link instead of emailing it.
 - The link is built from the configured public address (`YS_PUBLIC_URL`) and puts the token in the
   URL fragment (`#token=`). Browsers never send fragments to the server, so the token cannot appear in
   proxy or server logs or in a `Referer` header. The reset page posts it in the request body.
 - The command records a `recovery.link_issued` event credited to the operator actor.
-- It also clears the owner account's sign-in limits, so a locked-out owner can always get back in.

@@ -34,7 +34,7 @@ Expected:
 - Running `setup-code` again exits 2 with `already_claimed`. Reloading `/setup` goes to sign-in.
 
 Negative checks: a wrong code is refused and creates no account; double-clicking submit creates one
-owner; 10 wrong codes lock that code.
+owner; `POST /api/auth/sign-up/email` is refused after setup.
 
 ## 2. HTTPS With a Domain (Story 1, scenario 10)
 

@@ -12,9 +12,7 @@ serves the web client for every other path. Bodies are JSON. Errors use one shap
 Error messages never include passwords, codes, tokens, session values, or stack traces (FR-010,
 FR-020).
 
-Any endpoint can answer `429 { "error": "rate_limited", "retryAfter": <seconds> }` with a
-`Retry-After` header when a limit in [research R7](../research.md#r7-failed-attempt-limits-fr-011) is reached.
-Nothing changes when a request is limited. This API is internal to Your Space's own clients in this feature; it is not yet a public,
+This API is internal to Your Space's own clients in this feature; it is not yet a public,
 versioned app contract (those start in spec 002).
 
 ## Custom Endpoints (Your Space code)
@@ -64,8 +62,8 @@ The code is accepted with or without dashes and in any letter case.
 Account rules (FR-003): name 1 to 100 characters after trimming; a syntactically valid email of up
 to 254 characters, stored lowercase; password 12 to 128 characters.
 
-Each wrong code increments that code's failed-attempt count. At 10 the code is locked
-(FR-011). Claim attempts are also limited to 10 per 15 minutes per IP.
+The code has about 120 bits of randomness, so guessing it is not practical and no attempt limit
+applies ([research R6](../research.md#r6-setup-code)).
 
 The workspace is named "&lt;name&gt;'s space" at setup. Renaming it is not part of this feature.
 
@@ -81,17 +79,19 @@ Your Space uses these unchanged. The web client calls them through Better Auth's
 | `POST /api/auth/reset-password` | Sets the new password; the token is sent in the request body (Story 4) |
 | `GET /api/auth/organization/list` | The owner's workspace, for the home screen |
 
-Only the routes in this table are reachable. The server mounts Better Auth behind an allowlist of
-exactly these paths, and every other `/api/auth/*` path answers 404 (FR-005). That blocks email
-sign-up, password-reset requests, and the organization plugin's routes for creating workspaces,
-inviting, adding members, and changing roles. An allowlist is used instead of Better Auth's
-`disabledPaths`, because `disabledPaths` needs every blocked path listed exactly and a library
-upgrade can add new ones. Server code still calls the blocked functions directly through
-`auth.api`, which the allowlist does not affect.
+Better Auth's other routes stay as the library ships them. Its configuration keeps them from
+creating accounts or adding people (FR-005; [research R4](../research.md#r4-owner-first-then-invite-only)):
 
-Sign-in is refused while the installation is unclaimed (a Better Auth `before` hook), and no user
-can be created after the claim (a `databaseHooks.user.create.before` hook). Both are defense in
-depth behind the allowlist.
+- `POST /api/auth/sign-up/email` is refused because `disableSignUp` is on. The owner is created by
+  the claim through a server-only instance that is not reachable over HTTP.
+- `POST /api/auth/request-password-reset` is refused because the public instance has no
+  `sendResetPassword`. Only the `reset-link` command issues reset links.
+- Organization routes cannot add anyone. Adding a member is server-only in the plugin, accepting an
+  invitation needs an account that can't be created, and creating another organization is off
+  (`allowUserToCreateOrganization: false`).
+
+Sign-in is limited by Better Auth's built-in defaults (3 attempts per 10 seconds per IP), and a
+limited request gets `429`.
 
 ## Protected Requests
 

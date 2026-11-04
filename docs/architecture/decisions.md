@@ -141,6 +141,8 @@ These concepts do not prescribe a specific database schema.
 - A temporary, single-use setup code supplied through the operator-only installation procedure establishes authority to claim an installation.
 - Network access to an unclaimed server alone is insufficient authority to create its owner.
 - Successful setup creates the initial owner and workspace, then closes initial registration.
+- After setup, sign-up stays closed: new people join only when the owner invites them. Open sign-up
+  may be offered later as an optional feature.
 - Concurrent or retried setup must not create duplicate owners or replace an existing owner.
 
 The setup code proves installation authority. It does not prove control of the supplied email address.
@@ -214,9 +216,11 @@ adds supply-chain and upgrade cost. Dependencies still follow the licensing rule
 constitution as principle VII (version 1.1.0).
 
 **Decision update (2026-11-03):** Reuse means using libraries for what they were built for. Better
-Auth's rate limiter protects Better Auth's own routes, so it is not the app's rate limiter: Your
-Space uses a dedicated rate-limiting library that can count per account and cover its own routes.
-Clarified in constitution principle VII (version 1.1.1).
+Auth's rate limiter protects Better Auth's own routes, so it is not the app's rate limiter. The
+owner-access feature adds no rate limiting of its own and keeps Better Auth's defaults on its own
+routes. When a spec needs app-wide or per-account limits, it adds a dedicated rate-limiting library.
+Clarified in constitution principle VII (version 1.1.1). Simplicity also governs: libraries and
+custom code are added only when a requirement needs them.
 
 ## Accepted Product and Repository Direction
 

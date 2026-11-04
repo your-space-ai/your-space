@@ -4,7 +4,8 @@ Sync Impact Report (2026-11-03): 1.1.0 -> 1.1.1 (patch: clarification)
   built for, rather than stretching an available feature into a general system for the app.
 - Rationale: in the 001 plan review, Better Auth's rate limiter was proposed as the app's rate
   limiter; it only protects Better Auth's own routes and cannot count per account.
-- Impact: the 001 plan uses a dedicated rate-limiting library; no implementations exist yet.
+- Impact: the 001 plan keeps Better Auth's limiter on Better Auth's own routes and adds no app-wide
+  rate limiting yet; no implementations exist yet.
 
 Sync Impact Report (2026-11-03): 1.0.0 -> 1.1.0 (minor: new principle)
 - Added: VII. Reuse Before Building, With Few Trusted Dependencies
