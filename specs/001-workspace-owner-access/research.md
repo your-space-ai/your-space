@@ -198,13 +198,19 @@ that settled each question.
 
 ## R9. HTTPS and the Caddy Configuration
 
-- **Decision:** one Caddyfile, configured by `YS_SITE_ADDRESS`:
+- **Decision:** one setting in `.env`, `YS_PUBLIC_URL`, is the address people use. Caddy uses it as
+  its site address, because Caddy accepts a full URL there, and Better Auth uses it as `baseURL`.
+  Only the own-proxy and Tailscale mode needs a second setting, `YS_SITE_ADDRESS`, which Compose
+  otherwise fills in from `YS_PUBLIC_URL`.
 
-  | Mode | `YS_SITE_ADDRESS` | Result |
+  | Mode | `.env` | Result |
   | --- | --- | --- |
-  | Own domain | `space.example.com` | Automatic certificate, HTTP redirected to HTTPS, HTTP/3 |
-  | Same machine | `http://localhost` | Plain HTTP on localhost only |
-  | Own proxy or Tailscale | `http://:8080` bound to `127.0.0.1` | Caddy serves plain HTTP to the local proxy, which terminates HTTPS |
+  | Own domain | `YS_PUBLIC_URL=https://space.example.com` | Caddy gets and renews a Let's Encrypt certificate and redirects HTTP to HTTPS. Needs DNS pointing at the server and ports 80 and 443 open |
+  | Same machine (default) | `YS_PUBLIC_URL=http://localhost` | Plain HTTP, no certificate, reachable only from that machine |
+  | Own proxy or Tailscale | `YS_PUBLIC_URL=https://<proxy address>` and `YS_SITE_ADDRESS=http://:8080` | Caddy serves plain HTTP on `127.0.0.1:8080`; the proxy or `tailscale serve` handles HTTPS |
+
+  Other devices on the local network can't use plain `http://<LAN IP>`, because session cookies
+  never travel over plain HTTP to another machine (FR-015). They use Tailscale or a domain.
 
   The site block serves the web files with `try_files {path} /index.html`, compresses responses,
   and sends `/api/*` to `server:3000`. Caddy's access log stays off.

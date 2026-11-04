@@ -196,7 +196,7 @@ e2e/                         # Playwright journeys against the Compose stack
 deploy/
 ├── compose.yaml             # caddy (web image), server, postgres; named volumes
 ├── Caddyfile                # copied into the web image
-└── .env.example             # YS_PUBLIC_URL, YS_SITE_ADDRESS, secrets
+└── .env.example             # YS_PUBLIC_URL (+ YS_SITE_ADDRESS for own proxy), secrets
 docs/install/                # the installation guide (FR-001)
 .github/workflows/           # typecheck, tests, multi-arch image publishing
 ```
