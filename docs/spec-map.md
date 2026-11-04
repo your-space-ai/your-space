@@ -13,7 +13,7 @@ Why: [journey-based specifications](architecture/decisions.md#journey-based-spec
 
 | Spec | Journey | Done when |
 | --- | --- | --- |
-| 001 | **Set up my space** | The operator installs Your Space, claims it, signs in, and can recover the owner account. |
+| 001 | **Set up my space** | The operator installs Your Space, creates the owner, signs in, and can recover the owner account. |
 | 002 | **Install an app and use it** | The owner installs the Tasks app from its URL and uses it inside Your Space. |
 | 003 | **Install and run with the CLI** | One guided install on a server or laptop gives a working HTTPS space. |
 | 004 | **Invite my team** | A member joins by invitation, gets app roles, and can recover their password. The owner can remove them. |
@@ -45,7 +45,7 @@ Roadmap layers: [1 Install and operate](roadmap.md#1-install-and-operate) ·
 **001 Set up my space** ([PR #3](https://github.com/your-space-ai/your-space/pull/3))
 - Manual Compose install, data that survives restarts, access from another device, ARM and Intel images.
 - HTTPS: built-in proxy with automatic certificates, or your own proxy or tunnel.
-- Owner setup and sessions: setup code, sign-in, host-only session cookie, recovery.
+- Owner setup and sessions: owner command with a set-password link, sign-in, host-only session cookie, recovery.
 - The web client.
 
 **002 Install an app and use it**

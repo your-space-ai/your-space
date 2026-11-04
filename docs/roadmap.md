@@ -84,7 +84,7 @@ Your Space: first public release
 │
 ├── 2. Identity and access
 │   ├── Owner setup and sessions
-│   │   ├── [001] One-time setup code, one owner, no duplicate claims
+│   │   ├── [001] Owner created by a server command; sign-up closed
 │   │   ├── [001] Accurate empty workspace and service states
 │   │   ├── [001] Sign in/out, expiry and revocation, host-only session cookie
 │   │   └── [001] Owner recovery by server command, sessions revoked
@@ -158,7 +158,7 @@ Your Space: first public release
 │   │   ├── [008] Apps in native views instead of iframes
 │   │   └── [008] Updates itself from GitHub releases (M)
 │   └── Desktop local mode (wraps the CLI)
-│       ├── [008] Detect Docker, set up, submit the setup code, start with the app, update
+│       ├── [008] Detect Docker, set up, create the owner, start with the app, update
 │       ├── [008] Backup, restore, move to a server, uninstall (M)
 │       └── [008] Sleep/off availability and Docker Desktop license documented (M)
 │
@@ -228,9 +228,9 @@ Your Space: first public release
 
   **Source:** [Authentication and initial claim](architecture/decisions.md#authentication-and-initial-claim) and [sessions, persistence, and recovery](architecture/decisions.md#sessions-persistence-and-recovery).
 
-  - [ ] [High] Reach browser-guided setup and prove operator authority with a temporary, single-use setup code.
+  - [ ] [High] Create the owner with a server command that prints a single-use set-password link; the network alone can never create an account or the owner.
   - [ ] [High] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct.
-  - [ ] [High] Prevent duplicate claims and close initial registration after setup.
+  - [ ] [High] Prevent duplicate owners and keep sign-up closed; new people join only by invitation.
   - [ ] [High] Reach an accurate empty workspace and distinguish unavailable services from empty or unclaimed state.
   - [ ] [High] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation.
   - [ ] [High] Keep the platform session in host-only cookies so it is never sent to app origins.
@@ -425,7 +425,7 @@ Your Space: first public release
 
   - [ ] [High] In local mode, drive the Your Space CLI to set up and run the Docker Compose stack on the same machine, then connect to it.
   - [ ] [High] Detect Docker and link to the Docker Desktop download when it is missing.
-  - [ ] [High] In local mode, obtain the setup code through the CLI and submit it on the user's behalf, using the same setup flow as every other installation.
+  - [ ] [High] In local mode, create the owner through the CLI and set the password on the user's behalf, using the same owner command as every other installation.
   - [ ] [High] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
   - [ ] [Medium] Back up and restore the local workspace, and move it to a server, through the CLI.
   - [ ] [Medium] Uninstall the local workspace through the CLI's uninstall command.

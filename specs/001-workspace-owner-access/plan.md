@@ -8,10 +8,11 @@
 
 ## Summary
 
-The operator installs Your Space with Docker Compose, gets a setup code from a server command, and
-claims the installation in the browser. That creates the owner account, one workspace, and the
-owner membership. The owner signs in over HTTPS from any device, sessions survive restarts, and a
-second server command prints a single-use password reset link.
+The operator installs Your Space with Docker Compose and runs `create-owner` on the server with a
+name and email. That creates the owner account, one workspace, and the owner membership, and prints
+a single-use link where the owner sets their password. The owner signs in over HTTPS from any
+device, sessions survive restarts, and `reset-link` prints a new link if the password is lost.
+Sign-up is always off; there is no setup page.
 
 The stack is three containers:
 
@@ -21,8 +22,7 @@ The stack is three containers:
 
 Better Auth supplies accounts, sessions, password hashing, and password reset. Its
 organization plugin supplies the workspace, membership, and owner role. Custom code is limited to
-the setup code and claim, setup status, the two operator commands, and a small actor and event
-record.
+the two operator commands, a status endpoint, and a small actor and event record.
 
 ## Technical Context
 
@@ -53,8 +53,8 @@ The tables are in [data-model.md](data-model.md).
 
 **Testing**:
 
-- Vitest server tests run against a real PostgreSQL. They cover the claim's concurrency, retries,
-  and interruption; storage failure; closed sign-up; and log scanning for secrets.
+- Vitest server tests run against a real PostgreSQL. They cover owner creation and its reruns,
+  storage failure, closed sign-up, and log scanning for secrets.
 - Playwright runs the four stories in Chromium, Firefox, and WebKit against the full Compose stack,
   including restart and recreation.
 - [quickstart.md](quickstart.md) is the manual check on real hosts.
@@ -81,8 +81,8 @@ Only verified combinations are claimed in the guide ([R15](research.md#r15-suppo
 - Plain HTTP only on localhost.
 - No secrets in logs.
 
-**Scale/Scope**: one installation, one owner, one workspace, and 4 screens (setup, sign-in, home,
-reset password), plus error states.
+**Scale/Scope**: one installation, one owner, one workspace, and 3 screens (sign-in, home, set or
+reset password), plus the "no owner yet" and error states.
 
 ## Constitution Check
 
@@ -95,14 +95,14 @@ reset password), plus error states.
 | III. Identity, permissions, ownership explicit | Pass | Account, workspace, membership, and ownership are separate tables or roles. Actions are credited to an `actor`. Denied requests change nothing. |
 | IV. Apps directly installable | N/A | No apps in this feature (spec 002). |
 | V. Protect private data | Pass | Secrets come from `.env`, which is not committed. Codes and tokens are stored hashed or by Better Auth. Logs exclude credentials. Tests use synthetic data. |
-| VI. Proportionate discipline | Pass | Auth, claim, and data-integrity behavior gets automated tests plus the quickstart run on real hosts. Rationale is recorded in research.md. |
+| VI. Proportionate discipline | Pass | Auth, owner creation, and data-integrity behavior gets automated tests plus the quickstart run on real hosts. Rationale is recorded in research.md. |
 | VII. Reuse before building | Pass | Each requirement maps to a library feature (below). The custom code is listed and justified. No new dependency beyond the decision record and this review's choices. |
 
 **Post-design re-check (after Phase 1)**: Pass. The design added no dependencies.
 
 Two Better Auth details shaped the design:
 
-- `disableSignUp` also blocks server-side sign-up, so the claim uses a server-only instance with
+- `disableSignUp` also blocks server-side sign-up, so `create-owner` uses its own instance with
   sign-up on ([R4](research.md#r4-owner-first-then-invite-only)).
 - Better Auth's reset link puts the token in the URL path and query, so the link puts it in the URL
   fragment instead ([R8](research.md#r8-owner-recovery-link)).
@@ -114,12 +114,13 @@ Both use only documented options. Nothing sits in front of Better Auth and no ho
 | Requirement | Native feature used |
 | --- | --- |
 | FR-003 account rules | Better Auth `minPasswordLength`/`maxPasswordLength` + HTML form validation |
+| FR-002, FR-003 owner from a server command; first password | `auth.api.signUpEmail` in the command's own instance; Better Auth reset flow for the first password |
 | FR-004 owner, workspace, membership | `auth.api.signUpEmail`; organization plugin `auth.api.createOrganization` (creator gets `owner`) |
 | FR-005 closed registration | Better Auth `disableSignUp`; organization plugin `allowUserToCreateOrganization: false` |
 | FR-006, FR-008 one auth system, sign-in/out | Better Auth email and password, sessions |
 | FR-009 expiry, revocation, durable sessions | Better Auth database sessions (7 days, refreshed daily), sign-out deletes the row |
 | FR-010 password hashing | Better Auth scrypt (N=16384, r=16, p=1, 64-byte key, 16-byte salt) |
-| FR-011 attempt limits | Better Auth's built-in sign-in limits (defaults); setup codes and reset tokens are too long to guess |
+| FR-011 attempt limits | Better Auth's built-in sign-in limits (defaults); set-password and reset tokens are too long to guess |
 | FR-012, FR-023 durability | PostgreSQL on a named volume; Caddy data volume |
 | FR-015, FR-021 HTTPS-only remote cookies, host-only | Better Auth cookie defaults with an `https` `baseURL` |
 | FR-017 to FR-019 recovery | `auth.api.requestPasswordReset`, `sendResetPassword`, single-use tokens, `revokeSessionsOnPasswordReset` |
@@ -133,9 +134,8 @@ Both use only documented options. Nothing sits in front of Better Auth and no ho
 
 | Custom code | Size | Why it is needed |
 | --- | --- | --- |
-| `setup-code` command | Small | Setup authority from the operator channel is specific to Your Space (FR-002). It uses `crypto`, `util.parseArgs`, and Drizzle. |
-| Claim endpoint | Medium | Creates the account and workspace together and survives double-clicks and crashes (FR-004). Better Auth has no "first owner" flow. [R5](research.md#r5-the-claim-atomic-enough-without-custom-transactions-across-libraries) |
-| Setup status and health endpoints | Small | Tells "unclaimed" apart from "storage down" (FR-013). |
+| `create-owner` command | Small | Creates the owner from the server, the only authority that can't be hijacked over the network (FR-002 to FR-004). Calls Better Auth and the organization plugin, writes the actor and event, and prints the link. [R5](research.md#r5-creating-the-owner-with-a-server-command) |
+| Status and health endpoints | Small | Tells "no owner yet" apart from "storage down" (FR-013). |
 | `reset-link` command | Small | Thin glue: finds the owner, calls `requestPasswordReset`, prints the link (FR-017). |
 | `actor` and `event` tables | Small | Credits actions to a non-human-specific actor (FR-025). The full activity log is spec 005. |
 | JSON log helper | Tiny | One line per event, with no request bodies or credentials. |
@@ -149,11 +149,11 @@ specs/001-workspace-owner-access/
 ├── spec.md
 ├── plan.md                    # This file
 ├── research.md                # Phase 0: decisions and verified library behavior
-├── data-model.md              # Phase 1: tables and the claim sequence
+├── data-model.md              # Phase 1: tables and owner creation
 ├── quickstart.md              # Phase 1: end-to-end validation on real hosts
 ├── contracts/
 │   ├── http-api.md            # Custom endpoints and the Better Auth routes used
-│   └── operator-commands.md   # setup-code and reset-link: output and exit codes
+│   └── operator-commands.md   # create-owner and reset-link: output and exit codes
 ├── checklists/requirements.md
 └── tasks.md                   # Phase 2 ($speckit-tasks), not created by this command
 ```
@@ -166,7 +166,7 @@ server/
 ├── Dockerfile               # node:26-slim; runs src/index.ts directly
 ├── drizzle.config.ts
 ├── drizzle/                 # generated SQL migrations (committed)
-├── bin/                     # setup-code, reset-link (on PATH in the image)
+├── bin/                     # create-owner, reset-link (on PATH in the image)
 ├── src/
 │   ├── index.ts             # start: migrate, then listen
 │   ├── app.ts               # Express app: Better Auth handler, then JSON routes
@@ -175,8 +175,8 @@ server/
 │   ├── db/
 │   │   ├── client.ts
 │   │   ├── auth-schema.ts   # generated by the Better Auth CLI
-│   │   └── schema.ts        # installation, setup_code, actor, event
-│   ├── setup/               # code issue/check, claim, status
+│   │   └── schema.ts        # installation, actor, event
+│   ├── owner/               # create-owner logic and the status endpoint
 │   ├── recovery/            # reset-link logic
 │   ├── commands/            # CLI entry points for bin/
 │   └── log.ts
@@ -186,10 +186,10 @@ web/
 ├── index.html
 └── src/
     ├── main.tsx
-    ├── router.tsx           # 4 routes, beforeLoad redirects
+    ├── router.tsx           # 3 routes, beforeLoad redirects
     ├── auth-client.ts       # Better Auth React client + organizationClient
     ├── queries.ts           # TanStack Query: status, session, workspace
-    ├── pages/               # Setup, SignIn, Home, ResetPassword
+    ├── pages/               # NoOwnerYet, SignIn, Home, ResetPassword
     ├── components/          # ErrorState, Form fields
     └── styles.css
 e2e/                         # Playwright journeys against the Compose stack
@@ -214,10 +214,10 @@ These are the exact settings the spec left to the plan.
 | Password | 12 to 128 characters; scrypt N=16384, r=16, p=1 |
 | Name / email | 1 to 100 characters / valid address up to 254 characters, stored lowercase |
 | Session | 7 days, extended daily while used; database-backed; no cookie cache |
-| Setup code | about 120 bits, 60 minutes, single use |
+| Owner creation | `create-owner --email --name`; prints a set-password link (30 minutes, single use) |
 | Reset link | 30 minutes, single use, token in the URL fragment, revokes all sessions |
 | Sign-in limit | Better Auth default: 3 attempts per 10 seconds per IP |
-| Sign-up | Off after setup; new people join by owner invitation (spec 004) |
+| Sign-up | Always off; new people join by owner invitation (spec 004) |
 | Operator commands | human text by default, `--json` for scripts, exit codes 0 to 4 ([contract](contracts/operator-commands.md)) |
 | Remote HTTPS paths | Caddy with your domain; your own proxy; Tailscale `serve` |
 

@@ -42,7 +42,7 @@ The repository README and agent guidance link here so future planning can find t
 
 ### Installation and Hosting
 
-- Begin with a documented, manual Docker Compose installation and browser-guided owner setup.
+- Begin with a documented, manual Docker Compose installation. The owner is created with a server command and sets their password in the browser.
 - Initially support macOS and Linux server hosts. Users on other operating systems can access a supported server through the web client.
 - The desktop app can also run a local workspace on the same machine on macOS, Windows, and Linux, through the Your Space CLI. The CLI therefore runs on all three.
 - On Windows, people can use the desktop app and run a local workspace through Docker Desktop. Windows is not a supported server host.
@@ -80,7 +80,7 @@ A separate specification and implementation PR will add a Your Space CLI for ins
 This replaces the earlier proposed CLI-first ordering: the CLI needs a working deployment to manage.
 
 - The first feature must be installable and operable through documented manual Compose procedures without a standalone Your Space CLI.
-- Setup authority and owner recovery remain part of the first feature, with documented operator commands available through the deployment.
+- Owner creation and owner recovery remain part of the first feature, with documented operator commands available through the deployment.
 - The CLI drives Docker Compose on the user's behalf for both local and server installations, so installation and management are a managed experience rather than users running Compose themselves.
 - The desktop app's local mode drives the CLI for the user. People can also run the CLI themselves to set up a local workspace.
 - There is one installation and setup behavior. The CLI behaves the same for local and server installations, and wrappers such as the desktop app simplify the experience without changing the CLI or setup behavior.
@@ -135,18 +135,19 @@ These concepts do not prescribe a specific database schema.
 - Your Space defines and operates one server-managed authentication system across deployment modes.
 - Use Better Auth as the authentication library within that system.
 - Authentication must not depend on an external identity provider.
-- Initial account creation collects a name, email address, and password.
+- Initial account creation collects a name and email address; the owner then sets a password.
 - Email serves as a login identifier and is not treated as verified without mailbox verification.
 - Initial self-hosted setup does not require SMTP or another email-delivery service.
-- A temporary, single-use setup code supplied through the operator-only installation procedure establishes authority to claim an installation.
-- Network access to an unclaimed server alone is insufficient authority to create its owner.
-- Successful setup creates the initial owner and workspace, then closes initial registration.
+- A server command run by the operator creates the owner account and workspace and prints a short-lived, single-use set-password link. Access to the server is the authority to create the owner.
+- Network access alone can never create an account or the owner: before an owner exists there is no setup page, and sign-up is always off.
 - After setup, sign-up stays closed: new people join only when the owner invites them. Open sign-up
   may be offered later as an optional feature.
-- Concurrent or retried setup must not create duplicate owners or replace an existing owner.
+- A rerun of the owner command must not create duplicate owners or replace an existing owner.
 
-The setup code proves installation authority. It does not prove control of the supplied email address.
-Every installation uses the same setup-code flow. In desktop local mode, the desktop app obtains the setup code through the CLI and submits it on the user's behalf, so the user never has to enter it; the setup flow itself does not change.
+Server access proves installation authority. It does not prove control of the supplied email address.
+Every installation uses the same owner command. In desktop local mode, the desktop app asks for the name, email, and password, runs the command through the CLI, and sets the password through the printed link on the user's behalf; the flow itself does not change.
+
+**Decision update (2026-11-03):** The owner is created by a server command that prints a set-password link, replacing the setup code and browser claim form. Bots watch public certificate logs and complete the setup pages of new sites within minutes, so a fresh install must not be claimable over the network. A server command closes that hole with the fewest parts: no setup code, no claim endpoint, and no setup page. The set-password link reuses Better Auth's password-reset flow, so no temporary password exists. Better Auth has no "change password on first sign-in" feature, so a temporary password would need custom code. Sign-up stays off on the running server; the command creates the owner from its own process. This supersedes the setup-code decisions above.
 The same account model serves local and remote installations; deployment configuration may govern email delivery and verification policy.
 Separate local-only and hosted authentication implementations are not part of the direction.
 
@@ -259,7 +260,7 @@ Existing app authorization should be reusable where it has a suitable integratio
 - When setting up the desktop app, the user either connects to an existing server by URL or runs Your Space locally. In local mode, the desktop app uses the Your Space CLI to set up and run the Docker Compose stack on that machine, then connects to it.
 - The CLI is part of the first public release for setting up Your Space on a server or locally; desktop, web, and PWA clients can connect to a server it sets up.
 - Before publication, local mode detects Docker and links to the Docker Desktop download when it is missing, sets up the Your Space stack, starts it when the desktop app opens, and updates Your Space when the owner chooses.
-- Every installation, local or server, uses one setup flow with the setup code. In local mode the desktop app obtains the setup code through the CLI and submits it for the user, so the user never has to enter it. Streamlined local setup in the desktop app gets its own specification and implementation PR, separate from the owner-access feature.
+- Every installation, local or server, uses one setup flow: the owner command. In local mode the desktop app runs it through the CLI and sets the password for the user, so the user only fills in one form. Streamlined local setup in the desktop app gets its own specification and implementation PR, separate from the owner-access feature.
 - Before publication, the owner can back up and restore local and server installations alike, and move a local workspace to a server, through the CLI; the desktop app uses the same operation in local mode. Owner-triggered Your Space updates in local mode go through the CLI and roll back automatically if they fail.
 - A local workspace is unavailable to other people and remote agents while its machine is asleep or off. Install documentation must state this and the Docker Desktop license terms.
 - PWA offline support remains open. The first owner-access feature remains web-only.
@@ -275,7 +276,7 @@ Existing app authorization should be reusable where it has a suitable integratio
 
 **Decision update (2026-10-31):** Local mode skips the setup code: the desktop app sets up the stack and supplies setup authority itself, so network access alone still cannot claim a local workspace. Server installations keep the setup code from the owner-access feature. Streamlined local setup is specified and implemented in its own PR, separate from the owner-access feature. (Superseded below: one setup flow for every installation.)
 
-**Decision update (2026-10-31):** Supersedes the setup-code exception above. There is one setup flow for every installation, and the CLI behaves the same for local and server installations. The desktop app wraps the CLI and handles the setup code on the user's behalf; it does not skip or replace setup authority.
+**Decision update (2026-10-31):** (The setup code was later replaced by the owner command; see [authentication and initial claim](#authentication-and-initial-claim).) Supersedes the setup-code exception above. There is one setup flow for every installation, and the CLI behaves the same for local and server installations. The desktop app wraps the CLI and handles the setup code on the user's behalf; it does not skip or replace setup authority.
 
 **Decision update (2026-11-02):** Pre-public roadmap items carry High, Medium, or Low priority. Windows support and PWA installation are Low: they remain first-release goals, built last, and are the first to move to post-open-source work if the timeline slips.
 
@@ -534,7 +535,7 @@ This refines the sequence above without changing scope: it groups existing pre-p
 | Database configuration | PostgreSQL 18 with Drizzle and `pg`; Drizzle Kit migrations applied at server startup. Settled in the [001 plan](../../specs/001-workspace-owner-access/plan.md). Recovery from a failed migration belongs with update rollback in spec 006. |
 | Authentication configuration | Better Auth with its organization plugin; password rules, lifetimes, attempt limits, and adapter configuration are settled in the [001 plan](../../specs/001-workspace-owner-access/plan.md). |
 | Initial deployment details | macOS and Linux with manual Docker Compose are selected. HTTPS comes from a Caddy reverse proxy in the Compose stack, delivered in the owner-access feature, with automatic certificates for an owner-provided domain, a bring-your-own-proxy option, and documented tunnel guidance; plain HTTP is supported only on localhost. Exact OS versions, networking, and proxy configuration need planning. |
-| Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates, backup, restore, migration to a server, and uninstall, all through the CLI. Windows support is low priority. Releases are signed before publication: Apple Developer ID with notarization on macOS, SignPath's open-source program on Windows with Microsoft Artifact Signing as the fallback, all in CI. Self-update is required; packaging and self-update mechanics need a specification. |
+| Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app running the owner command and setting the password for the user, and owner-triggered Your Space updates, backup, restore, migration to a server, and uninstall, all through the CLI. Windows support is low priority. Releases are signed before publication: Apple Developer ID with notarization on macOS, SignPath's open-source program on Windows with Microsoft Artifact Signing as the fallback, all in CI. Self-update is required; packaging and self-update mechanics need a specification. |
 | CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. Its minimum operations are install, start, stop, status, logs, update Your Space, owner password recovery, backup, restore, and uninstall; uninstall removes managed app containers and keeps data unless the owner confirms deletion. A separate follow-up specification will define packaging, command names, prerequisite automation, and management behavior over the established Compose deployment. |
 | Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup, restore, and migration between installations are required before publication; remote CLI authentication, restore into a broken or fresh installation, and backup format and protection remain open. |
 | Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |

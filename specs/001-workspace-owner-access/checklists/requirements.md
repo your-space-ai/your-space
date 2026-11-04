@@ -25,7 +25,7 @@ product behavior. This checklist is maintained by the Spec Kit specification wor
 - [x] No unresolved product-scope clarification blocks the owner-only specification.
 - [x] Functional requirements are testable and linked to acceptance scenarios.
 - [x] Success criteria are measurable without invented performance targets.
-- [x] Setup authority, duplicate claims, interruptions, and replay are covered.
+- [x] Operator-only owner creation, duplicates, interruptions, and link replay are covered.
 - [x] Sign-in, direct protected access, sign-out, expiry, and remote browser access are covered.
 - [x] Persistence, storage failure, and recovery preserve existing identity and ownership.
 - [x] Email as a login identifier is distinct from mailbox verification and email delivery.
@@ -37,7 +37,7 @@ product behavior. This checklist is maintained by the Spec Kit specification wor
 - [x] Manual Docker Compose on macOS/Linux, web-only delivery, Express on Node.js, and PostgreSQL are recorded as selected.
 - [x] React/TypeScript/Vite, Better Auth, and Drizzle are recorded as selected; client supporting libraries remain open.
 - [x] Owner setup and the working Compose deployment come first; spec 002 (install an app and use it) and then the CLI (spec 003) follow.
-- [x] Setup-code delivery and operator recovery remain available without the later standalone CLI.
+- [x] Owner creation and operator recovery remain available without the later standalone CLI.
 - [x] Every installation uses one setup flow; the operator commands are scriptable so the CLI can wrap them (command names and mechanics are set in spec 003), and the desktop app uses the CLI.
 - [x] Independent apps and the in-repository SDK remain future integration boundaries.
 - [x] Embedded app UI is a product requirement; embedding, origins, and routing are decided in spec 002.

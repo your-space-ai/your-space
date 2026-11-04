@@ -13,7 +13,7 @@ automated tests and the evidence for SC-010. Endpoint and command details are in
 - For the HTTPS scenario: a domain whose DNS points at the host, with inbound ports 80 and 443 open.
 - A second device with a browser, for remote access.
 
-## 1. Install and Claim (Story 1)
+## 1. Install and Create the Owner (Story 1)
 
 ```sh
 mkdir your-space && cd your-space
@@ -26,17 +26,22 @@ docker compose ps           # every service healthy
 
 Expected:
 
-- `http://localhost` (or your domain) shows the setup page, which asks for a setup code and does not
-  reveal one.
-- `docker compose exec server setup-code` prints a code; `--json` prints it as JSON with exit 0.
-- Entering the code with a name, email, and password lands on the home screen. It shows
+- `http://localhost` (or your domain) says there is no owner yet and explains `create-owner`. It has
+  no form.
+- `docker compose exec server create-owner --email you@example.com --name "Sam Rivera"` prints a
+  set-password link. With `--json`, it prints JSON, including the link and token, and exits 0.
+- Opening the link and setting a password signs you in to the home screen. It shows
   "&lt;name&gt;'s space", your name and email, and sign out, and nothing else.
-- Running `setup-code` again exits 2 with `already_claimed`. Reloading `/setup` goes to sign-in.
+- Running `create-owner` again exits 2 with `owner_exists`.
 
-Negative checks: a wrong code is refused and creates no account; double-clicking submit creates one
-owner; `POST /api/auth/sign-up/email` is refused after setup.
+Negative checks:
 
-## 2. HTTPS With a Domain (Story 1, scenario 10)
+- `POST /api/auth/sign-up/email` is refused before and after the owner exists.
+- Opening the same link a second time fails.
+- Killing `create-owner` partway, then rerunning it with the same email, gives one owner and one
+  workspace.
+
+## 2. HTTPS With a Domain (Story 1, scenario 9)
 
 Set `YS_PUBLIC_URL=https://space.example.com` in `.env` and run `docker compose up -d`.
 
@@ -47,7 +52,7 @@ elsewhere, the Caddy log names the failure and nothing is served over plain HTTP
 ## 3. Sign In, Remote Access, Sign Out (Story 2)
 
 - Sign out, then sign in with the wrong password (refused) and the right one (home screen).
-- Open the HTTPS address on a second device and sign in: same workspace, no setup.
+- Open the HTTPS address on a second device and sign in: same workspace, nothing to set up.
 - `curl -i https://space.example.com/api/auth/get-session` without a cookie returns no session.
 - In browser dev tools, the session cookie has no `Domain` attribute (host-only) and is `Secure`.
 - Copy the session cookie, sign out, then replay it with curl: no session.
@@ -60,10 +65,10 @@ docker compose down && docker compose up -d     # recreates containers, keeps vo
 ```
 
 Expected: after each, the same account and workspace IDs exist, an existing browser session still
-works, and setup stays closed.
+works, and `create-owner` still reports `owner_exists`.
 
 Storage failure: `docker compose stop postgres`, then load the app. It shows "storage unavailable",
-not setup. `/api/setup/status` returns 503. `setup-code` exits 3. Start Postgres again and
+not "no owner yet". `/api/status` returns 503. `create-owner` and `reset-link` exit 3. Start Postgres again and
 everything returns unchanged.
 
 Never run `docker compose down -v`: `-v` deletes the volumes and the workspace with them.
@@ -80,9 +85,9 @@ again fails. A link older than 30 minutes fails.
 
 ## 6. Cross-Cutting Checks
 
-- `docker compose logs` contains no passwords, setup codes, reset tokens, or session values.
+- `docker compose logs` contains no passwords, set-password or reset tokens, or session values.
 - `docker compose exec postgres psql -U yourspace -c 'select type, actor_id from event'` shows
-  `setup.claimed` and `recovery.*` rows pointing at actor IDs.
+  `owner.created` and `recovery.*` rows pointing at actor IDs.
 - On both an ARM host and an Intel/AMD host, `docker compose up` pulls native images and
   section 1 passes.
 - With outbound traffic captured during sections 1, 3, and 5, the only outbound connections are

@@ -45,7 +45,7 @@ that settled each question.
 
 ## R3. Authentication With Better Auth
 
-- **Decision:** use Better Auth's built-in features for everything except the claim. Configuration:
+- **Decision:** use Better Auth's built-in features for everything except creating the owner. Configuration:
   - `emailAndPassword`: enabled, `disableSignUp: true`, `minPasswordLength: 12`,
     `maxPasswordLength: 128`, `autoSignIn: false`, `revokeSessionsOnPasswordReset: true`,
     `resetPasswordTokenExpiresIn: 1800`. See [R4](#r4-owner-first-then-invite-only) for sign-up and
@@ -90,16 +90,15 @@ that settled each question.
 - **Decision:**
   - Regular sign-up is always off: the Better Auth instance that serves `/api/auth` has
     `disableSignUp: true`.
-  - The setup step creates the owner through a second, server-only Better Auth instance with the
-    same configuration except that sign-up is on and `sendResetPassword` prints the link. The
-    `reset-link` command uses this instance too. It is never mounted on HTTP, so the network can't
-    reach it.
-  - After setup, new people join only when the owner invites them (spec 004). Open sign-up can be
-    a later feature.
+  - The `create-owner` and `reset-link` commands use their own Better Auth instance, inside the
+    command's process. It has the same configuration except that sign-up is on and
+    `sendResetPassword` prints the link. It is never mounted on HTTP, so the network can't reach it.
+  - After the owner exists, new people join only when the owner invites them (spec 004). Open
+    sign-up can be a later feature.
 - **Rationale:**
   - Better Auth's `disableSignUp` is a fixed configuration value, not a switch that flips at
     runtime. It also blocks server-side `auth.api.signUpEmail` calls (`api/routes/sign-up.ts`). A
-    server-only instance with sign-up on lets setup create the owner while public sign-up stays off,
+    command-only instance with sign-up on lets `create-owner` make the owner while public sign-up stays off,
     using only documented options. There are no hooks and nothing in front of Better Auth.
   - **No one else can join in 001:**
     - Sign-up is off.
@@ -117,39 +116,48 @@ that settled each question.
   - The admin plugin's `createUser`: adds admin routes and user columns that this feature doesn't
     need.
 
-## R5. The Claim: Atomic Enough Without Custom Transactions Across Libraries
-
-- **Decision:** a resumable claim, run under a PostgreSQL advisory lock, that ends in one small
-  commit transaction. The steps are in [data-model.md](data-model.md#claim-sequence).
-- **Rationale:**
-  - Better Auth's `signUpEmail` and `createOrganization` each commit on their own, so the account
-    and workspace cannot be created in a single transaction without going around the library.
-  - Instead, everything before the commit point can be thrown away. Before the claim, any user row
-    can only be a leftover from an interrupted attempt, so a retry deletes leftovers and starts
-    again.
-  - The `installation` row flips to `claimed` in the same transaction that creates the actor and
-    event and marks the code used. A claimed installation therefore always has its owner and
-    workspace, enforced by a check constraint (FR-004).
-  - The advisory lock makes double-clicks and concurrent claims run one after another; the second
-    one sees `claimed`.
-- **Alternatives:**
-  - Wrapping everything in one transaction through Better Auth's internal adapter: undocumented API.
-  - A `claiming` state with step-by-step resumption: more states for no benefit, since restarting
-    the claim from scratch is safe.
-
-## R6. Setup Code
+## R5. Creating the Owner With a Server Command
 
 - **Decision:**
-  - 24 characters from Crockford's base32 alphabet (about 120 bits), generated with
-    `crypto.randomBytes`, shown in groups of four.
-  - Stored as a SHA-256 hash, valid for 60 minutes, single use. A new code replaces the old one.
+  - The operator runs `create-owner --email --name`. It creates the account, workspace, and owner
+    membership, marks the installation as having an owner, and prints a set-password link.
+  - There is no setup code, no claim endpoint, and no setup page. Before an owner exists, the web
+    client only explains how to run the command.
 - **Rationale:**
-  - At 120 bits, guessing is infeasible, so a fast hash is enough; slow password hashing is for
-    low-entropy secrets.
-  - At 120 bits, no attempt limit is needed.
-  - Crockford's alphabet avoids look-alike characters (I, L, O, U), which helps when the code is
-    typed by hand.
-- **Alternatives:** a shorter code, which would need slow hashing and an attempt limit.
+  - **The proven risk:** bots watch public Certificate Transparency logs and complete the setup
+    pages of newly certified sites within minutes. This was demonstrated against WordPress and other
+    installers at DEF CON 25 (Hanno Böck, 2017). Caddy requests a certificate as soon as the stack
+    starts, so a new install is announced right away. With no setup page, the network has nothing
+    to claim.
+  - **Fewest parts:** a server command closes that hole with less code than a setup code plus a
+    browser form, which would need the code itself, the claim endpoint, and the form.
+  - **Fits the wrappers:** spec 003's CLI asks for the email during install. Spec 008's desktop app
+    asks for name, email, and password on one screen, runs the command, and sets the password with
+    the returned token. Both use the same command.
+  - **Reruns:** each step reuses what an earlier, interrupted run created, so rerunning finishes the
+    job. The installation is marked as having an owner only in the last step, in the same
+    transaction as the actor and event, and a check constraint requires the workspace (FR-004).
+    There are no locks: concurrent runs by the operator aren't a scenario this feature needs to
+    handle, and the unique email prevents duplicate accounts.
+- **Alternatives:**
+  - First visitor becomes owner: no code, but exactly the risk above.
+  - A setup code and browser form: same protection, more parts. It was the earlier design in this
+    PR.
+  - A temporary password that must be changed at first sign-in: Better Auth has no such feature
+    (none in the 1.7.16 source), so it would need a custom flag and enforcement.
+
+## R6. First Password Through Better Auth's Reset Flow
+
+- **Decision:** the owner sets their first password with the same single-use link used for recovery
+  ([R8](#r8-owner-recovery-link)). `create-owner` gives the account a random password that is never
+  shown, then issues the link.
+- **Rationale:**
+  - Better Auth's reset flow handles token creation, expiry, single use, and signing out other
+    sessions, so first-password setup needs no code of its own.
+  - The random initial password means the account is never usable until the owner sets a password.
+    `auth.api.signUpEmail` requires a password, so this is the documented way to create the account.
+    Better Auth's reset also creates the password credential if one is missing
+    (`resetCredentialPassword` in `utils/password.mjs`).
 
 ## R7. Failed-Attempt Limits (FR-011)
 
@@ -159,7 +167,7 @@ that settled each question.
   - sign-in: 3 attempts per 10 seconds;
   - all other auth routes: 100 per 10 seconds.
 - **Rationale:**
-  - The setup code (about 120 bits) and Better Auth's reset tokens are random values too long to
+  - Better Auth's set-password and reset tokens (24 random characters) are too long to
     guess, so they need no limit.
   - Sign-in is the only guessable secret, and Better Auth already protects it for its intended
     purpose: its own routes.
@@ -226,7 +234,7 @@ that settled each question.
 - **Decision:** the first migration inserts the `installation` row with `state = 'unclaimed'`.
   Status queries read that row:
   - if the query fails or the row is missing, the API answers `storage_unavailable` (503);
-  - the web client shows a storage error screen, never setup;
+  - the web client shows a storage error screen, never the "no owner yet" page;
   - the operator commands exit 3.
 - **Rationale:** unclaimed is a fact stored in the database, so it cannot be confused with "the
   database didn't answer".
@@ -258,17 +266,18 @@ that settled each question.
   - React 19, Vite 8, TanStack Router with code-based routes, TanStack Query, and Better Auth's React
     client (`createAuthClient` with `organizationClient`).
   - Styling is one plain CSS file, and forms use native HTML validation.
-  - Routes: `/setup`, `/sign-in`, `/` (home), and `/reset-password`. Storage, connection, and
-    session failures are shown as states, not separate routes.
+  - Routes: `/sign-in`, `/` (home), and `/reset-password`, which also sets the first password.
+    "No owner yet" and storage, connection, and session failures are shown as states, not separate
+    routes.
 - **Rationale:**
-  - **Redirects:** the root route's `beforeLoad` reads setup status and the session through
-    TanStack Query, then redirects: unclaimed to setup, signed out to sign-in, storage unavailable
-    to the error state.
+  - **Redirects:** the root route's `beforeLoad` reads `/api/status` and the session through
+    TanStack Query. With no owner it shows the "no owner yet" state, which explains `create-owner`
+    and has no form. Signed out goes to sign-in, and storage unavailable shows the error state.
   - **Queries:** Better Auth's client returns `{ data, error }`, and query functions unwrap it.
     Better Auth's docs show `getSession()` used with TanStack Query
     ([basic usage](https://www.better-auth.com/docs/basic-usage)). One cache and one error model
     serve FR-016's error states.
-  - **Code-based routes:** with four routes, they avoid the router's Vite plugin.
+  - **Code-based routes:** with three routes, they avoid the router's Vite plugin.
 - **Alternatives:**
   - React Router: replaced at review in favor of TanStack.
   - TanStack Form: not needed for four small forms.
@@ -296,7 +305,7 @@ that settled each question.
 
 - **Decision:**
   - Vitest for server tests, run against a real PostgreSQL service container in CI. There are no
-    database mocks, because claim concurrency and storage failure need a real database.
+    database mocks, because owner creation and storage failure need a real database.
   - Playwright for browser journeys, run against the full Compose stack, including restart and
     `down`/`up` recreation.
   - Docker Buildx with QEMU publishes `linux/amd64` and `linux/arm64` images to GitHub Container

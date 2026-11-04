@@ -11,15 +11,15 @@
 **Journey**: 001 "Set up my space", the first of eight journeys in the [spec map](../../docs/spec-map.md)
 
 **Input**: Establish an owner-only Your Space installation with manual Docker Compose installation,
-browser-guided setup, a web client, durable workspace state, and account recovery. Preserve the agreed platform, app, and agent
+owner creation by a server command, a web client, durable workspace state, and account recovery. Preserve the agreed platform, app, and agent
 architecture without adding those later features to this first delivery.
 
 ## At a Glance
 
 - **Who:** the operator who installs Your Space and becomes its owner.
-- **Done when:** the operator installs Your Space, claims it, signs in, and can recover the owner account.
-- **Covers:** manual Docker Compose install on macOS and Linux (ARM and Intel/AMD), the setup code and
-  owner claim, sign-in and sessions, an accurate empty workspace, durable state, owner recovery,
+- **Done when:** the operator installs Your Space, creates the owner, signs in, and can recover the owner account.
+- **Covers:** manual Docker Compose install on macOS and Linux (ARM and Intel/AMD), creating the
+  owner with a server command, sign-in and sessions, an accurate empty workspace, durable state, owner recovery,
   built-in HTTPS with automatic certificates, and access from another device.
 - **Next:** spec 002 (install an app and use it), then spec 003, whose CLI wraps this feature's
   setup and recovery behavior.
@@ -28,7 +28,8 @@ architecture without adding those later features to this first delivery.
 
 An operator can install Your Space, establish the initial human owner, sign in to an empty
 workspace, recover access if the password is lost, and retain the same account and workspace
-after a supported restart. Being able to reach the server is not sufficient authority to claim it.
+after a supported restart. Being able to reach the server over the network is never enough to
+create an account or become the owner.
 
 This feature supports exactly one human owner and one workspace. Account identity, workspace
 membership, and ownership remain distinct so later membership can be added without replacing
@@ -54,46 +55,45 @@ reworking it.
 
 ### User Story 1 - Install and Establish the Owner (Priority: P1)
 
-As the operator of a new installation, I can follow the manual Docker Compose guide and establish
-my account as the owner of its first workspace.
+As the operator of a new installation, I can follow the manual Docker Compose guide, create the
+owner account with a server command, and set its password in the browser.
 
 **Why this priority**: Every subsequent capability depends on a usable installation with an
-unambiguous owner and a protected claim process.
+unambiguous owner, created only by someone with access to the server.
 
-**Independent Test**: Start from a clean supported environment, follow the published guide,
-complete setup with operator-issued authority, and reach one empty workspace as its owner.
+**Independent Test**: Start from a clean supported environment, follow the published guide, run the
+owner-creation command, set the password through the printed link, and reach one empty workspace as
+its owner.
 
 **Acceptance Scenarios**:
 
 1. **Given** a documented supported environment, **When** the operator follows the manual Compose
-   installation guide, **Then** the system starts and the web client can reach setup without a
-   standalone Your Space CLI. Missing prerequisites produce actionable instructions rather than
-   an apparent successful installation.
-2. **Given** an unclaimed installation, **When** the operator follows the documented setup-code
-   procedure, **Then** the system supplies a temporary, single-use setup code through an
-   operator-only channel.
-   Visiting the public setup page does not reveal that authority.
-3. **Given** a valid setup code and valid name, email, and password, **When** setup succeeds,
-   **Then** exactly one account, one workspace, and their ownership and membership relationships
-   exist, and the owner reaches that workspace.
-4. **Given** someone can reach setup but lacks a valid code, **When** they attempt to claim the
-   installation, **Then** the request is denied and no account or ownership is created.
-5. **Given** the installation is already claimed, **When** anyone repeats initial setup or tries
-   initial registration, **Then** they cannot create another account or replace the owner.
-6. **Given** simultaneous valid claim attempts or a repeated submission, **When** they complete,
-   **Then** there is at most one initial owner and workspace, with no contradictory claim state.
-7. **Given** setup is interrupted, **When** the operator retries, **Then** the system either resumes
-   a valid unclaimed setup or recognizes the completed claim; it does not create duplicates or
-   leave a claimed installation without its owner and workspace.
-8. **Given** no email delivery service is configured, **When** the owner completes setup,
-   **Then** the email serves as the login identifier, remains unverified, and does not block access.
-9. **Given** an unclaimed installation, **When** a script runs the documented setup-code command,
-   **Then** it receives the code in machine-readable output with a meaningful exit status, and
-   submitting that code goes through the same setup flow as a person entering it.
-10. **Given** the operator configures a domain that resolves to the host and ports 80 and 443 are
-    reachable, **When** the stack starts, **Then** the built-in proxy obtains a certificate
-    automatically and serves Your Space over HTTPS, and plain HTTP requests to that domain are
-    redirected to HTTPS.
+   installation guide, **Then** the system starts and the web client is reachable without a
+   standalone Your Space CLI. Before an owner exists, it says how to create one and offers no way to
+   create an account. Missing prerequisites produce actionable instructions rather than an apparent
+   successful installation.
+2. **Given** an installation without an owner, **When** the operator runs the documented
+   owner-creation command with a valid name and email, **Then** exactly one account, one workspace,
+   and their ownership and membership relationships exist, and the command prints a short-lived,
+   single-use set-password link to the operator.
+3. **Given** a valid set-password link, **When** the owner sets a valid password, **Then** they can
+   sign in and reach their workspace.
+4. **Given** someone can reach the server only over the network, **When** they try to create an
+   account or become the owner, **Then** nothing is created.
+5. **Given** an owner already exists, **When** anyone runs the owner-creation command again or tries
+   to register, **Then** no account is created and the owner is not replaced.
+6. **Given** the owner-creation command was interrupted, **When** the operator runs it again with the
+   same details, **Then** it finishes creating that owner without duplicates, and an installation is
+   never marked as having an owner without its account and workspace.
+7. **Given** no email delivery service is configured, **When** the owner is created, **Then** the
+   email serves as the login identifier, remains unverified, and does not block access.
+8. **Given** a script runs the owner-creation command, **When** it completes or fails, **Then** the
+   script receives machine-readable output, including the set-password link, and a meaningful exit
+   status, so the CLI and desktop app can set the password on the user's behalf.
+9. **Given** the operator configures a domain that resolves to the host and ports 80 and 443 are
+   reachable, **When** the stack starts, **Then** the built-in proxy obtains a certificate
+   automatically and serves Your Space over HTTPS, and plain HTTP requests to that domain are
+   redirected to HTTPS.
 
 ### User Story 2 - Sign In and Access the Workspace (Priority: P1)
 
@@ -193,11 +193,11 @@ by the user stories.
    for password storage, with the selected algorithm and work factor documented in the plan.
 2. **Given** setup, sign-in, failed requests, and recovery have been exercised, **When** ordinary
    application logs and public errors are inspected, **Then** they contain no passwords, reusable
-   session credentials, setup codes, or reset credentials. Intentional operator-only delivery of
-   setup and recovery authority is assessed separately from ordinary logs.
+   session credentials, or set-password and reset links. Intentional operator-only delivery of those
+   links is assessed separately from ordinary logs.
 3. **Given** the documented sign-in limit, **When** repeated invalid sign-in attempts reach it,
    **Then** the documented limiting behavior occurs and no protected state changes. Legitimate retry
-   follows the documented policy. Setup codes and reset credentials have the documented length and
+   follows the documented policy. Set-password and reset links have the documented length and
    randomness.
 4. **Given** an ARM host (including Apple Silicon) and an Intel/AMD host, **When** the operator
    follows the guide on each, **Then** both run Your Space's published images natively and complete
@@ -209,7 +209,7 @@ by the user stories.
    **Then** it shows only what the owner needs (the workspace, their account, and sign-out), with
    no configuration, diagnostics, or placeholder controls for future features. Failure and service
    states required by FR-016 are shown when they occur and are not diagnostics.
-7. **Given** setup and recovery have been exercised, **When** the stored records of those actions
+7. **Given** owner creation and recovery have been exercised, **When** the stored records of those actions
    are inspected, **Then** each names its actor through a stable actor identity that is not tied to
    the human-account type.
 8. **Given** an installation created by one build, **When** a newer build with a pending schema
@@ -218,18 +218,17 @@ by the user stories.
 
 ### Edge Cases
 
-- Setup codes and reset links are missing, malformed, expired, replayed, or submitted concurrently.
-- The browser retries a claim after a timeout, including when the server already committed it.
-- The process stops between preparing initial records and declaring setup complete.
-- The owner loses the setup code before a claim; documented operator recovery must preserve
-  completed claims and must not allow a network visitor to obtain replacement authority.
+- Set-password and reset links are missing, malformed, expired, replayed, or submitted concurrently.
+- The owner-creation command stops between creating the account and marking the owner as created.
+- The set-password link expires before the owner uses it; the operator issues a new one with the
+  recovery command, and a network visitor cannot obtain one.
 - Repeated failed sign-in attempts exceed the configured limit.
 - Storage is temporarily unavailable or inconsistent; the system fails closed rather than
   offering fresh setup over uncertain existing state.
 - The web client loses connectivity, retains a stale session, or reconnects after server restart.
 - Password recovery runs while sessions remain active on other devices.
-- A script runs the setup-code or recovery command when the installation is already claimed,
-  the server is stopped, or storage is unavailable; it gets a clear machine-readable failure.
+- A script runs the owner-creation or recovery command when an owner already exists (or doesn't
+  yet), the server is stopped, or storage is unavailable; it gets a clear machine-readable failure.
 - The built-in proxy cannot obtain or renew a certificate (the domain does not resolve to the host,
   or ports 80 and 443 are blocked); the operator sees the cause instead of a silent fallback to
   plain HTTP.
@@ -241,22 +240,25 @@ by the user stories.
 ### Functional Requirements
 
 - **FR-001**: The installation guide MUST identify supported prerequisites, how to start and
-  reach setup, where durable state lives, safe restart procedures, and owner recovery steps.
+  create the owner, where durable state lives, safe restart procedures, and owner recovery steps.
   It MUST provide a manual Docker Compose pathway on supported macOS and Linux hosts, including
-  configuration and setup-code delivery, without requiring a standalone Your Space CLI.
+  configuration and owner creation, without requiring a standalone Your Space CLI.
   Failed prerequisites and startup failures MUST provide actionable feedback.
-- **FR-002**: Initial claim MUST require temporary, single-use setup authority supplied through
-  the operator's installation process. Public reachability alone MUST NOT establish that authority.
-  Every installation, local or server, MUST use this one setup flow. The setup-code command MUST
-  support scripted use (machine-readable output and exit status) so the CLI (spec 003), and the
-  desktop app through the CLI (spec 008), can obtain and submit the code without a separate path.
-- **FR-003**: Initial owner setup MUST collect a name, email, and password and validate them
-  according to documented account rules before completing the claim.
-- **FR-004**: Claim completion MUST establish one owner account, one workspace, and consistent
-  membership and ownership together. Concurrent requests, retries, and interruptions MUST NOT
-  produce multiple initial owners or a claimed installation lacking its required records.
-- **FR-005**: A completed claim MUST close initial registration and setup. This feature MUST NOT
-  provide another account-creation, membership, or owner-replacement path.
+- **FR-002**: Creating the owner MUST require operator access to the server, through a documented
+  owner-creation command. Reaching the server over the network MUST NOT allow creating an account or
+  becoming the owner. Every installation, local or server, MUST use this one command. It MUST support
+  scripted use (machine-readable output and exit status) so the CLI (spec 003), and the desktop app
+  through the CLI (spec 008), can wrap it without a separate path.
+- **FR-003**: The owner-creation command MUST take a name and email and validate them according to
+  documented account rules. The owner MUST set their password through a short-lived, single-use
+  set-password link that the command prints; password rules MUST be documented.
+- **FR-004**: Owner creation MUST establish one owner account, one workspace, and consistent
+  membership and ownership. Rerunning the command after an interruption MUST finish the same owner
+  without duplicates, and an installation MUST NOT be marked as having an owner without its required
+  records.
+- **FR-005**: Once the owner exists, sign-up MUST stay closed. This feature MUST NOT provide another
+  account-creation, membership, or owner-replacement path. New people join only by the owner's
+  invitation (spec 004).
 - **FR-006**: Your Space MUST provide one server-managed authentication and session system for
   local and remote access. Initial self-hosted operation MUST NOT require an external identity
   service or a separately implemented local authentication mode.
@@ -269,9 +271,9 @@ by the user stories.
   Session state MUST be durable, so an unexpired, unrevoked session survives supported restarts.
 - **FR-010**: Passwords MUST use a salted, one-way hashing scheme designed for password storage;
   the algorithm and work factor belong in the implementation plan. Passwords, reusable session credentials,
-  setup codes, and reset credentials MUST NOT appear in ordinary application logs, public error
+  and set-password or reset links MUST NOT appear in ordinary application logs, public error
   responses, or committed configuration. Operator-only delivery of setup/reset authority is intentional.
-- **FR-011**: Sign-in MUST limit repeated failed attempts. Setup codes and reset credentials MUST be
+- **FR-011**: Sign-in MUST limit repeated failed attempts. Set-password and reset links MUST be
   random values long enough that guessing them is impractical. Limits, credential lifetimes, and
   observable rejection behavior MUST be documented and verified; exact settings belong in the
   implementation plan.
@@ -290,7 +292,7 @@ by the user stories.
   access. Authentication, connectivity, and storage failures MUST NOT be presented as successful
   operations or an empty/unclaimed workspace.
 - **FR-017**: An operator recovery command MUST issue a short-lived, single-use reset link for
-  the existing owner without email delivery. It MUST NOT create an account or reopen initial setup.
+  the existing owner without email delivery. It MUST NOT create an account or replace the owner.
   The command MUST be available through the documented deployment procedures without the later CLI,
   and MUST support scripted use (machine-readable output and exit status) so the CLI can wrap it.
 - **FR-018**: Invalid, expired, or consumed reset credentials MUST leave protected account state
@@ -298,7 +300,7 @@ by the user stories.
 - **FR-019**: A successful password reset MUST preserve account and workspace identity, replace
   the password, revoke existing owner sessions, and require normal sign-in afterward. Subsequent
   use of revoked sessions MUST be denied.
-- **FR-020**: Denied claim, authentication, recovery, and protected-access requests MUST NOT
+- **FR-020**: Denied account-creation, authentication, recovery, and protected-access requests MUST NOT
   modify protected workspace or ownership state. Error messages MUST be usable without exposing
   secrets or protected data.
 - **FR-021**: The platform session MUST be held in host-only cookies, so it is never sent to other
@@ -330,8 +332,9 @@ by the user stories.
 
 These are domain concepts, not prescribed database tables or framework types.
 
-- **Installation**: A running deployment with claim state, durable configuration, and a server
-  address. Its claim state must not be inferred from whether storage happens to respond.
+- **Installation**: A running deployment with claim state (whether its owner exists), durable
+  configuration, and a server address. Its claim state must not be inferred from whether storage
+  happens to respond.
 - **Owner account**: The human identity with name, email, verification state, and authentication
   credentials. Its stable identity survives password changes and recovery.
 - **Workspace**: The durable context owned by that account; distinct from both account and deployment.
@@ -339,8 +342,8 @@ These are domain concepts, not prescribed database tables or framework types.
   creates only the owner's membership; additional members are future work.
 - **Ownership**: The authority relationship identifying the workspace's owner. Recovery preserves it.
 - **Session**: An authenticated owner session with expiry and invalidation behavior.
-- **Setup authority**: Temporary, single-use authority to claim an unclaimed installation.
-- **Recovery authority**: Short-lived, single-use authority to reset the existing owner's password.
+- **Set-password and recovery links**: Short-lived, single-use links, issued only by server commands,
+  that let the owner set their first password or reset a lost one. Both use one mechanism.
 - **Actor**: Whoever performs an action. Only the owner acts in this feature, but records that name
   an actor do not assume a human, so agents can be credited later.
 
@@ -351,8 +354,9 @@ These are domain concepts, not prescribed database tables or framework types.
 - **SC-001**: On each environment claimed as supported, following the installation guide from a
   clean state using manual Docker Compose procedures produces exactly one usable owner account
   and workspace without a standalone Your Space CLI or manual database edits.
-- **SC-002**: Every acceptance case involving an invalid, expired, missing, or replayed setup
-  credential is denied. Concurrent claims and retries produce at most one complete initial claim.
+- **SC-002**: Every attempt to create an account or become the owner without operator access is
+  denied, and every invalid, expired, or replayed set-password link is refused. Rerunning the
+  owner-creation command produces at most one owner and workspace.
 - **SC-003**: Valid owner sign-in reaches the existing workspace; invalid credentials and direct
   unauthenticated protected requests reveal no protected data and cause no protected state change.
 - **SC-004**: After sign-out or session expiry, replaying the affected session fails. After a
@@ -374,7 +378,7 @@ These are domain concepts, not prescribed database tables or framework types.
   behavior. Delivery evidence identifies tested versions, environments, procedures, and limitations.
 - **SC-011**: The guide completes User Story 1 on both an ARM host (including Apple Silicon) and an
   Intel/AMD host using the published images.
-- **SC-012**: The setup-code and recovery commands produce machine-readable output and exit statuses
+- **SC-012**: The owner-creation and recovery commands produce machine-readable output and exit statuses
   that a script can use for success and each documented failure.
 - **SC-013**: Observed outbound traffic during setup, sign-in, and recovery shows no automatic
   requests from Your Space other than certificate requests for an operator-configured domain.
