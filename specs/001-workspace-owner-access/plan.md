@@ -155,7 +155,7 @@ specs/001-workspace-owner-access/
 │   ├── http-api.md            # Custom endpoints and the Better Auth routes used
 │   └── operator-commands.md   # create-owner and reset-link: output and exit codes
 ├── checklists/requirements.md
-└── tasks.md                   # Phase 2 ($speckit-tasks), not created by this command
+└── tasks.md                   # Phase 2 ($speckit-tasks): 57 tasks by user story
 ```
 
 ### Source Code (repository root)

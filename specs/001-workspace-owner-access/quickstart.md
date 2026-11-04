@@ -30,8 +30,8 @@ Expected:
   no form.
 - `docker compose exec server create-owner --email you@example.com --name "Sam Rivera"` prints a
   set-password link. With `--json`, it prints JSON, including the link and token, and exits 0.
-- Opening the link and setting a password signs you in to the home screen. It shows
-  "&lt;name&gt;'s space", your name and email, and sign out, and nothing else.
+- Opening the link and setting a password takes you to sign-in. After signing in, the home screen
+  shows "&lt;name&gt;'s space", your name and email, and sign out, and nothing else.
 - Running `create-owner` again exits 2 with `owner_exists`.
 
 Negative checks:

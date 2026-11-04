@@ -527,6 +527,8 @@ This is a developing release roadmap, not a complete acceptance specification or
 
 This refines the sequence above without changing scope: it groups existing pre-public items into journeys and orders the work after the CLI.
 
+**Decision update (2026-11-03):** Each journey ships as one pull request that contains its specification, supporting documents (plan, research, contracts, and the task list), and the implementation. Reviewers see what was specified next to what was built, and a spec doesn't land on `main` claiming work that doesn't exist yet. PR #3 carries journey 001 this way.
+
 ## Choices Still Open
 
 | Area | Current status |
