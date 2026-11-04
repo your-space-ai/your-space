@@ -4,7 +4,7 @@
 
 **Recorded**: 2026-10-28
 
-**Last updated**: 2026-11-02
+**Last updated**: 2026-11-03
 
 **Scope**: Project-wide direction, independent of any feature specification
 
@@ -179,6 +179,21 @@ Invited members recover their passwords without email in the first release:
 **Decision update (2026-11-02):** Backup, restore, and moving a workspace between installations are required before publication, superseding their deferral. Without them, a lost disk or a bad change loses the workspace, including members' accounts and app data, and early users will put real data in the first release. A documented manual procedure, such as copying Docker volumes, was rejected in favor of the built-in implementation. Designing the data model and storage for consistent capture from the start keeps the work small.
 
 What counts as a failed Your Space update, snapshot contents and storage, how the CLI authenticates to a remote server, how a restore reaches a broken or fresh installation, and backup format and protection remain open.
+
+### Reuse Before Building
+
+- Prefer established open-source libraries and tools over custom code. Before building something,
+  check whether a selected library already provides it.
+- Use selected libraries' native features as intended rather than wrapping or reimplementing them.
+  Custom code fills only the gaps they leave.
+- Keep integrations few and thin. Add a dependency only when it removes more custom code than it
+  adds, and prefer one library that covers several needs over several narrow ones.
+- Technical plans name the library feature each requirement relies on and justify any custom code.
+
+**Decision update (2026-11-03):** Reuse before building is a project-wide principle. Custom code is
+code the project must maintain, secure, and document, and mature libraries already solve most of
+it. Dependencies still follow the licensing rule in
+[deployment boundaries and licensing](#deployment-boundaries-and-licensing).
 
 ## Accepted Product and Repository Direction
 

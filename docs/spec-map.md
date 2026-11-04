@@ -1,6 +1,6 @@
 # Spec Map
 
-**Last updated**: 2026-11-02
+**Last updated**: 2026-11-03
 
 The pre-public [roadmap](roadmap.md) is delivered through eight specifications. Each one follows a
 person through one complete journey, from where they start to a result they can see, and covers
@@ -97,6 +97,8 @@ These apply from the first spec, so later specs don't have to retrofit them:
 - **Known storage.** All durable state lives in the database or named volumes, so backup has one
   clear thing to capture.
 - **The actual actor.** Records credit the real actor, human or agent, from the first database schema.
+- **Reuse before building.** Use open-source libraries and their native features before writing
+  custom code, and keep integrations few and thin.
 - **Docs and security included.** Each spec ships its own docs and tests its own security boundaries.
 
 ## Release Gate (Not a Spec)
