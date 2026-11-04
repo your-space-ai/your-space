@@ -29,8 +29,8 @@ Why: [journey-based specifications](architecture/decisions.md#journey-based-spec
                                                                                           └─► 008 Desktop
 ```
 
-- **002 before 003:** 002 decides where apps live (subdomains or paths), which sets the domains and
-  certificates the CLI configures on the proxy from 001.
+- **002 before 003:** 002 decides each app's origin (a subdomain by default, a port as the
+  fallback), which sets the domains and certificates the CLI configures on the proxy from 001.
 - **006 after 004 and 005:** backup and restore must cover members, agents, and app data.
 - **008 last:** the desktop app wraps the CLI's finished commands without changing them.
 - **007 and 008** can run in parallel.
@@ -49,7 +49,8 @@ Roadmap layers: [1 Install and operate](roadmap.md#1-install-and-operate) ·
 - The web client.
 
 **002 Install an app and use it**
-- App UI and sign-in: where apps live, opening them inside Your Space, verified identity for apps.
+- App UI and sign-in: each app on its own origin, opened in panes inside Your Space (iframes on the
+  web, several side by side on larger screens), verified identity for apps.
 - Installing from a URL: deployment file, exact images, approved Compose settings, `x-your-space`,
   settings and secrets, trust warning.
 - Running apps: containers, database, storage, isolation, outbound access approval, limits, status
@@ -84,7 +85,8 @@ Roadmap layers: [1 Install and operate](roadmap.md#1-install-and-operate) ·
 - Adding an external app hosted elsewhere.
 
 **008 Use Your Space as an app on my computer**
-- Desktop app on macOS, Linux, and Windows (L), signed and self-updating.
+- Desktop app on macOS, Linux, and Windows (L), signed and self-updating; the intended primary client.
+- Installed apps in native views instead of iframes.
 - Local mode: detect Docker, set up through the CLI, start with the app, update, back up, uninstall.
 - A clear message when app, CLI, and server versions don't match; the installable PWA (L).
 

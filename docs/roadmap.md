@@ -129,7 +129,10 @@ Your Space: first public release
 │   │   └── [006] Backup first, automatic rollback on failure
 │   ├── Apps inside Your Space
 │   │   ├── [002] Apps open in the UI with navigation; normal frontend requests work
-│   │   └── [002] Same backend checks for UI and programmatic access
+│   │   ├── [002] Same backend checks for UI and programmatic access
+│   │   ├── [002] Each app on its own origin, in an iframe on the web
+│   │   ├── [002] Several apps side by side on larger screens (M)
+│   │   └── [002] Open any app in its own tab or window (M)
 │   └── Developer kit
 │       ├── [002 007] Versioned public contracts, same for managed and external apps
 │       ├── [002 007] TypeScript + Python SDKs, each verified with a working app
@@ -152,6 +155,7 @@ Your Space: first public release
 │   │   ├── [008] macOS · Linux (M) · Windows with a local workspace (L)
 │   │   ├── [008] Signed: macOS Developer ID + notarization · Windows (L)
 │   │   ├── [008] Connect to a server by URL, or run locally
+│   │   ├── [008] Apps in native views instead of iframes
 │   │   └── [008] Updates itself from GitHub releases (M)
 │   └── Desktop local mode (wraps the CLI)
 │       ├── [008] Detect Docker, set up, submit the setup code, start with the app, update
@@ -349,8 +353,12 @@ Your Space: first public release
   - [ ] [High] Open installed apps within the Your Space interface while platform navigation remains available.
   - [ ] [High] Preserve normal frontend requests to the app backend without requiring each request to be rewritten for Your Space.
   - [ ] [High] Apply equivalent backend authorization checks to human UI and programmatic access.
+  - [ ] [High] Run each app's interface on its own origin, isolated from Your Space and other apps, in a cross-origin iframe in the web client.
+  - [ ] [Medium] Open several apps side by side in one layout on larger screens; show one app at a time on phones.
+  - [ ] [Medium] Open any app in its own browser tab or window when it cannot run in a pane.
 
-  Embedding, origins, routing, isolation, and session bridging are decided in spec 002, "install an
+  Origins default to a subdomain per app, with a port per app as the fallback. Framing permission,
+  shell-to-app messages, sign-in inside a pane, and routing are decided in spec 002, "install an
   app and use it".
 
 - [ ] **Developer kit**
@@ -393,7 +401,8 @@ Your Space: first public release
 
   **Source for simplicity:** [Product experience principles](architecture/decisions.md#product-experience-principles).
 
-  The owner-access feature uses the web client. PWA offline behavior remains open.
+  The desktop app is the intended primary client; web and PWA stay full clients. The owner-access
+  feature uses the web client. PWA offline behavior remains open.
 
 - [ ] **Desktop app**
 
@@ -405,6 +414,7 @@ Your Space: first public release
   - [ ] [High] Sign and notarize macOS builds with an Apple Developer ID in CI.
   - [ ] [Low] Sign Windows builds through SignPath, with Microsoft Artifact Signing as fallback, in CI.
   - [ ] [High] On setup, let the user connect to an existing server by URL or run Your Space locally.
+  - [ ] [High] Show installed apps in native views, one per app, instead of iframes.
   - [ ] [Medium] Update the desktop app itself, checking GitHub for new releases.
 
   Desktop packaging and self-update mechanics need a specification.

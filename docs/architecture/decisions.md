@@ -240,6 +240,7 @@ Existing app authorization should be reusable where it has a suitable integratio
 - The first public release targets two groups: people who can install Docker Desktop and the Your Space desktop app to run a local workspace, and people who can install Docker and follow a guided CLI to deploy a server or a local workspace, both without one-on-one assistance.
 - The web, desktop, and PWA clients provide the same core workspace and installed-app experience while connected to a Your Space server; a local network connection is sufficient.
 - The desktop app uses Electron and ships for macOS, Windows, and Linux.
+- The desktop app is the intended primary way people use Your Space. The web client and PWA stay full clients with the same core experience, so the workspace also works in a browser and on phones.
 - Desktop releases are signed before publication. macOS builds are signed with an Apple Developer ID and notarized, so people see the standard "downloaded from the Internet" prompt rather than a block, and the app can update itself. Windows builds are signed through the SignPath Foundation's free open-source program, with Microsoft Artifact Signing as the fallback. Linux builds need no signing.
 - Signing runs in CI with keys held as CI secrets, never on a personal machine.
 - When setting up the desktop app, the user either connects to an existing server by URL or runs Your Space locally. In local mode, the desktop app uses the Your Space CLI to set up and run the Docker Compose stack on that machine, then connects to it.
@@ -266,6 +267,8 @@ Existing app authorization should be reusable where it has a suitable integratio
 **Decision update (2026-11-02):** Pre-public roadmap items carry High, Medium, or Low priority. Windows support and PWA installation are Low: they remain first-release goals, built last, and are the first to move to post-open-source work if the timeline slips.
 
 **Decision update (2026-11-02):** Signed desktop releases are required before publication. An unsigned macOS app is blocked with a malware-verification warning and cannot update itself, which is too rough for the less technical audience. The Apple Developer Program ($99/year) covers macOS. Windows uses SignPath's free open-source signing, which needs a public repository and an OSI-approved license and lists SignPath Foundation as the publisher; Microsoft Artifact Signing (about $10/month) is the fallback if approval timing or the publisher name is a problem. New Windows apps may still show a SmartScreen warning until they build download reputation.
+
+**Decision update (2026-11-03):** The desktop app is the intended primary client. It can show installed apps in native views instead of iframes (see [UI integration](#ui-integration)), which gives the best in-app experience. The web client and PWA remain full clients, so people can use Your Space from a browser or phone. This does not change the build order: the desktop app is still built in journey 008.
 
 ### Deployment Boundaries and Licensing
 
@@ -374,9 +377,22 @@ App role authorization controls what users and agents may do within an app. Host
 - UI integration must not require replacing every frontend request with a Your Space-specific SDK call.
 - UI and programmatic access must reach equivalent backend authorization checks.
 - The platform session stays confined to the platform's own host (host-only cookies), so it is never sent to app origins. The owner-access implementation follows this so it does not need rework once app origins are decided.
+- Apps open in panes inside the Your Space interface. Several apps can be open side by side in one layout on larger screens; phones show one app at a time.
+- Each app's interface runs on its own origin, separate from Your Space and from other apps, so the browser isolates them from each other. A subdomain per app is the default; a port per app is the fallback where wildcard DNS is unavailable. Spec 002 settles the mechanism.
+- In the web client and PWA, each pane is a cross-origin iframe. In the desktop app, each pane is a native view (for example, Electron's `WebContentsView`), not an iframe.
+- Any app can also open in its own browser tab or window, for apps that cannot run in a pane.
 - The app UI and sign-in specification comes right after the owner-access feature and before the CLI specification; see the [CLI delivery sequence](#cli-delivery-sequence). It is part of journey 002; see [journey-based specifications](#journey-based-specifications).
 
-An iframe, reverse proxy, or controlled UI extension system is not selected by this record.
+**Decision update (2026-11-03):** Selects cross-origin panes for app interfaces: iframes in the web client and PWA, and native views in the desktop app. This supersedes the earlier statement that no iframe, reverse proxy, or UI extension system was selected. Rationale:
+
+- Only cross-origin panes run existing apps from any stack unchanged while keeping them isolated from Your Space and from each other. That keeps apps stack-agnostic.
+- Serving apps under paths on the Your Space origin was rejected. App code would share the origin, so it could call the Your Space API as the user, read platform storage, and reach other panes. Many frameworks also assume they own the root path.
+- Micro-frontends (apps shipping components that load into the Your Space page) were rejected. They run app code with the user's Your Space session and require apps to be built as JavaScript components.
+- Declarative UI (apps describe their interface and Your Space draws it) was rejected for full apps, because every app would have to rewrite its interface. Server-side composition of app HTML was rejected because it breaks most apps' scripts and routing.
+- The desktop app uses native views instead of iframes because it is the intended primary client and native views give each app its own process.
+
+Spec 002 still defines framing permission, the optional messages between Your Space and an app (such as navigation, deep links, and theme), sign-in inside a pane, and the fallback for hosts without wildcard DNS, such as Tailscale `ts.net` names. Small native pieces drawn by Your Space from app-provided descriptions (such as dashboard cards) were discussed as a possible later developer-kit contract and are not decided.
+
 Embedding and routing are separate decisions from how an app interprets authenticated identity and roles.
 Frontend controls may reflect granted access, but hiding a control is not authorization enforcement.
 
@@ -511,7 +527,7 @@ This refines the sequence above without changing scope: it groups existing pre-p
 | Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
 | Public launch scope | A working core experience before publication is the direction. The pre-public scope was settled in the 2026-11-02 interview, and every pre-public roadmap item has a High, Medium, or Low priority; Windows support and PWA installation are Low. Detailed release criteria remain to be defined. See [public release readiness](../public-release-readiness.md). |
-| App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open; they are specified in journey 002, after the owner-access feature and before the CLI. The platform session uses host-only cookies. |
+| App UI execution | Apps open in panes, side by side on larger screens: cross-origin iframes in the web client and PWA, native views in the desktop app. Each app runs on its own origin, a subdomain by default with a port as the fallback. Framing permission, shell-to-app messages, sign-in inside a pane, and the no-wildcard-DNS fallback are specified in journey 002, after the owner-access feature and before the CLI. The platform session uses host-only cookies. |
 | Project license | AGPL-3.0 for Your Space and Apache-2.0 for the SDKs, with a "Your Space" trademark and a contributor license agreement, all in place and reviewed by a lawyer before publication. Trademark filing details and agreement wording remain open. |
 | Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off. Future reporting must be opt-in; opt-out is prohibited. |
 | External apps | Apps can be managed or hosted elsewhere and added by pointing Your Space at them. How an external app is registered, verifies Your Space identity, and is reached through the gateway needs definition in the app integration specification. |
