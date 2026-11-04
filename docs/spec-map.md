@@ -98,7 +98,7 @@ These apply from the first spec, so later specs don't have to retrofit them:
   clear thing to capture.
 - **The actual actor.** Records credit the real actor, human or agent, from the first database schema.
 - **Reuse before building.** Use open-source libraries and their native features before writing
-  custom code, and keep integrations few and thin.
+  custom code, while keeping dependencies few and trusted and integrations thin.
 - **Docs and security included.** Each spec ships its own docs and tests its own security boundaries.
 
 ## Release Gate (Not a Spec)

@@ -182,18 +182,24 @@ What counts as a failed Your Space update, snapshot contents and storage, how th
 
 ### Reuse Before Building
 
+Governed by [constitution principle VII](../../.specify/memory/constitution.md#vii-reuse-before-building-with-few-trusted-dependencies).
+
 - Prefer established open-source libraries and tools over custom code. Before building something,
   check whether a selected library already provides it.
 - Use selected libraries' native features as intended rather than wrapping or reimplementing them.
   Custom code fills only the gaps they leave.
-- Keep integrations few and thin. Add a dependency only when it removes more custom code than it
-  adds, and prefer one library that covers several needs over several narrow ones.
-- Technical plans name the library feature each requirement relies on and justify any custom code.
+- Keep dependencies few and trusted. Not every small need gets a dependency: add one only when it
+  replaces substantial custom code, and prefer one library that covers several needs over several
+  narrow ones. Keep integrations thin.
+- Technical plans name the library feature each requirement relies on and justify each new
+  dependency and any custom code.
 
-**Decision update (2026-11-03):** Reuse before building is a project-wide principle. Custom code is
-code the project must maintain, secure, and document, and mature libraries already solve most of
-it. Dependencies still follow the licensing rule in
-[deployment boundaries and licensing](#deployment-boundaries-and-licensing).
+**Decision update (2026-11-03):** Reuse before building is a project-wide principle, balanced
+against keeping as few trusted dependencies as possible. Custom code must be maintained, secured,
+and documented by the project, and mature libraries already solve most of it; every dependency also
+adds supply-chain and upgrade cost. Dependencies still follow the licensing rule in
+[deployment boundaries and licensing](#deployment-boundaries-and-licensing). Added to the
+constitution as principle VII (version 1.1.0).
 
 ## Accepted Product and Repository Direction
 

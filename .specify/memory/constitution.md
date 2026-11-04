@@ -1,3 +1,10 @@
+<!--
+Sync Impact Report (2026-11-03): 1.0.0 -> 1.1.0 (minor: new principle)
+- Added: VII. Reuse Before Building, With Few Trusted Dependencies
+- Rationale: custom code must be maintained, secured, and documented by the project; proven
+  libraries already solve most of it, while every dependency adds supply-chain and upgrade cost.
+- Impact: no existing plans or implementations; decision record and spec map updated to match.
+-->
 # Your Space Constitution
 
 ## Core Principles
@@ -84,6 +91,21 @@ behaviors.
 
 Completion claims must accurately describe what was verified and any known limitations.
 
+### VII. Reuse Before Building, With Few Trusted Dependencies
+
+Do not reinvent the wheel. Prefer proven open-source libraries and tools to custom code, and use
+their native features as intended rather than wrapping or reimplementing them. Custom code fills
+only the gaps they leave.
+
+Keep the set of dependencies small and trusted. A dependency must be actively maintained, widely
+used, and license-compatible, and must earn its place by replacing substantial custom code or
+providing a capability the project should not own. Small, simple needs are written directly rather
+than imported. Prefer one dependency that covers several needs over several narrow ones, and keep
+integrations thin.
+
+Technical plans name the dependency or native feature each requirement relies on, and justify each
+new dependency and each piece of custom machinery.
+
 ## Data and Compatibility
 
 User data must survive supported restarts and upgrades. Changes affecting stored data or public
@@ -121,4 +143,4 @@ clarifications and other non-semantic changes.
 When a proposal conflicts with the constitution, resolve the conflict explicitly by revising the
 proposal or amending the relevant principle.
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-10-28
+**Version**: 1.1.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-11-03
