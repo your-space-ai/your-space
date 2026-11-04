@@ -65,6 +65,14 @@ Exact supported OS versions, prerequisites, networking, and proxy configuration 
 
 **Decision update (2026-11-02):** HTTPS for remote access is built in rather than left to the owner: a reverse proxy in the Compose stack provides automatic certificates for a domain, with a bring-your-own-proxy option and documented tunnel guidance for owners without a domain. The proxy implementation (for example, Caddy) is chosen in the CLI specification.
 
+**Decision update (2026-11-03):** The built-in proxy moves from the CLI specification into the
+owner-access feature (PR #3), and Caddy is selected. Caddy obtains and renews certificates natively,
+so HTTPS needs configuration rather than custom code ([constitution principle VII](../../.specify/memory/constitution.md#vii-reuse-before-building-with-few-trusted-dependencies)).
+Shipping it with the first Compose stack means remote access is HTTPS from the first install instead
+of relying only on the owner's own proxy or tunnel. Spec 002 adds app routing to the same proxy,
+and the CLI asks for the domain during installation. This supersedes the 2026-11-02 note that the
+proxy is chosen in the CLI specification.
+
 ### CLI Delivery Sequence
 
 **Decision update (2026-10-29)**: Establish and verify the Compose deployment with the owner-access feature first.
@@ -293,7 +301,7 @@ Dependency selection must consider actual licenses, including bundled components
 ### Telemetry and Outbound Connections
 
 - Your Space collects no telemetry. Neither the server, the CLI, nor the desktop app reports usage, errors, or any other data to the project.
-- The only automatic outbound requests are update checks that ask GitHub for the latest release. The owner can turn them off. Actions the owner starts, such as installing or updating an app, contact the sources they name.
+- The only automatic outbound requests are update checks that ask GitHub for the latest release. The owner can turn them off. Certificate requests the built-in proxy makes for an owner-configured domain are part of HTTPS setup, not reporting. Actions the owner starts, such as installing or updating an app, contact the sources they name.
 - Opt-in reporting, off until the owner turns it on, is the only acceptable future extension. Opt-out telemetry is prohibited.
 
 **Decision update (2026-11-02):** No telemetry in the first release. Any future reporting must be opt-in; opt-out collection is an anti-pattern and is ruled out permanently.
@@ -496,7 +504,7 @@ This refines the sequence above without changing scope: it groups existing pre-p
 | Client supporting libraries | Router, query/state tooling, styling, and component library remain open. |
 | Database configuration | PostgreSQL and Drizzle are selected; versions, migration execution and recovery, and connection configuration need planning. |
 | Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
-| Initial deployment details | macOS and Linux with manual Docker Compose are selected. HTTPS comes from a reverse proxy in the Compose stack with automatic certificates for an owner-provided domain, a bring-your-own-proxy option, and documented tunnel guidance; plain HTTP is supported only on localhost. Exact OS versions, proxy choice, networking, and configuration need planning. |
+| Initial deployment details | macOS and Linux with manual Docker Compose are selected. HTTPS comes from a Caddy reverse proxy in the Compose stack, delivered in the owner-access feature, with automatic certificates for an owner-provided domain, a bring-your-own-proxy option, and documented tunnel guidance; plain HTTP is supported only on localhost. Exact OS versions, networking, and proxy configuration need planning. |
 | Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates, backup, restore, migration to a server, and uninstall, all through the CLI. Windows support is low priority. Releases are signed before publication: Apple Developer ID with notarization on macOS, SignPath's open-source program on Windows with Microsoft Artifact Signing as the fallback, all in CI. Self-update is required; packaging and self-update mechanics need a specification. |
 | CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. Its minimum operations are install, start, stop, status, logs, update Your Space, owner password recovery, backup, restore, and uninstall; uninstall removes managed app containers and keeps data unless the owner confirms deletion. A separate follow-up specification will define packaging, command names, prerequisite automation, and management behavior over the established Compose deployment. |
 | Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup, restore, and migration between installations are required before publication; remote CLI authentication, restore into a broken or fresh installation, and backup format and protection remain open. |

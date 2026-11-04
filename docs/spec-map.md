@@ -30,7 +30,7 @@ Why: [journey-based specifications](architecture/decisions.md#journey-based-spec
 ```
 
 - **002 before 003:** 002 decides where apps live (subdomains or paths), which sets the domains and
-  certificates the CLI installs.
+  certificates the CLI configures on the proxy from 001.
 - **006 after 004 and 005:** backup and restore must cover members, agents, and app data.
 - **008 last:** the desktop app wraps the CLI's finished commands without changing them.
 - **007 and 008** can run in parallel.
@@ -44,6 +44,7 @@ Roadmap layers: [1 Install and operate](roadmap.md#1-install-and-operate) ·
 
 **001 Set up my space** ([PR #3](https://github.com/your-space-ai/your-space/pull/3))
 - Manual Compose install, data that survives restarts, access from another device, ARM and Intel images.
+- HTTPS: built-in proxy with automatic certificates, or your own proxy or tunnel.
 - Owner setup and sessions: setup code, sign-in, host-only session cookie, recovery.
 - The web client.
 
@@ -58,7 +59,7 @@ Roadmap layers: [1 Install and operate](roadmap.md#1-install-and-operate) ·
 **003 Install and run with the CLI**
 - Guided install for servers and local machines on macOS and Linux, and Windows (L).
 - Commands: install, start, stop, status, logs, owner recovery.
-- HTTPS: built-in proxy with automatic certificates, or your own proxy or tunnel.
+- Asking for the domain during install, so HTTPS is set up for you.
 - The manual Compose guide, kept as an advanced option (L).
 
 **004 Invite my team**

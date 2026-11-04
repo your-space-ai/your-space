@@ -19,8 +19,8 @@ architecture without adding those later features to this first delivery.
 - **Who:** the operator who installs Your Space and becomes its owner.
 - **Done when:** the operator installs Your Space, claims it, signs in, and can recover the owner account.
 - **Covers:** manual Docker Compose install on macOS and Linux (ARM and Intel/AMD), the setup code and
-  owner claim, sign-in and sessions, an accurate empty workspace, durable state, owner recovery, and
-  access from another device over HTTPS.
+  owner claim, sign-in and sessions, an accurate empty workspace, durable state, owner recovery,
+  built-in HTTPS with automatic certificates, and access from another device.
 - **Next:** spec 002 (install an app and use it), then spec 003, whose CLI wraps this feature's
   setup and recovery behavior.
 
@@ -35,7 +35,9 @@ membership, and ownership remain distinct so later membership can be added witho
 existing identities or reassigning their data.
 
 The first delivery establishes the Compose deployment on supported macOS and Linux hosts,
-with documented manual installation and operator procedures. Spec 003 (install and run with the
+with documented manual installation and operator procedures. The Compose stack includes a reverse
+proxy that serves Your Space over HTTPS with an automatically obtained certificate when the
+operator provides a domain. Spec 003 (install and run with the
 CLI) follows spec 002 and wraps this feature's setup and recovery behavior; its command names and
 mechanics are set there. The desktop app (spec 008) wraps the CLI in turn. Completing this feature must not depend on either; setup
 authority and owner recovery remain available through the documented deployment procedures.
@@ -88,6 +90,10 @@ complete setup with operator-issued authority, and reach one empty workspace as 
 9. **Given** an unclaimed installation, **When** a script runs the documented setup-code command,
    **Then** it receives the code in machine-readable output with a meaningful exit status, and
    submitting that code goes through the same setup flow as a person entering it.
+10. **Given** the operator configures a domain that resolves to the host and ports 80 and 443 are
+    reachable, **When** the stack starts, **Then** the built-in proxy obtains a certificate
+    automatically and serves Your Space over HTTPS, and plain HTTP requests to that domain are
+    redirected to HTTPS.
 
 ### User Story 2 - Sign In and Access the Workspace (Priority: P1)
 
@@ -196,7 +202,8 @@ by the user stories.
    follows the guide on each, **Then** both run Your Space's published images natively and complete
    User Story 1.
 5. **Given** outbound network traffic is observed, **When** setup, sign-in, failed requests, and
-   recovery are exercised, **Then** Your Space makes no automatic outbound requests.
+   recovery are exercised, **Then** Your Space makes no automatic outbound requests other than
+   certificate requests for an operator-configured domain.
 6. **Given** the owner reaches the empty workspace, **When** the default interface is reviewed,
    **Then** it shows only what the owner needs (the workspace, their account, and sign-out), with
    no configuration, diagnostics, or placeholder controls for future features. Failure and service
@@ -222,6 +229,9 @@ by the user stories.
 - Password recovery runs while sessions remain active on other devices.
 - A script runs the setup-code or recovery command when the installation is already claimed,
   the server is stopped, or storage is unavailable; it gets a clear machine-readable failure.
+- The built-in proxy cannot obtain or renew a certificate (the domain does not resolve to the host,
+  or ports 80 and 443 are blocked); the operator sees the cause instead of a silent fallback to
+  plain HTTP.
 - The operator recreates services but retains the documented durable storage. Deliberate storage
   deletion is not a supported restart and must be distinguished in the guide.
 
@@ -272,9 +282,8 @@ by the user stories.
   identity that would need replacement to support future members.
 - **FR-015**: The web client MUST use a configured server connection that works on the same
   machine or across machines, and MUST NOT depend on browser-local authoritative workspace state.
-  Remote access MUST use HTTPS through a documented path, such as the owner's own reverse proxy or
-  a private tunnel. Plain HTTP is supported only on the same machine (localhost), and session
-  credentials MUST NOT be sent over plain HTTP to a remote host.
+  Remote access MUST use HTTPS (FR-028). Plain HTTP is supported only on the same machine
+  (localhost), and session credentials MUST NOT be sent over plain HTTP to a remote host.
 - **FR-016**: The initial workspace MUST truthfully represent its empty state and available owner
   access. Authentication, connectivity, and storage failures MUST NOT be presented as successful
   operations or an empty/unclaimed workspace.
@@ -304,10 +313,16 @@ by the user stories.
   and MUST NOT assume every actor is a human account, so agents (spec 005) can be credited as the
   actual actor without changing existing records.
 - **FR-026**: Your Space MUST NOT send telemetry or make automatic outbound requests in this
-  feature. Owner-controllable update checks arrive with update features (spec 006, and spec 008
+  feature, other than the certificate requests the built-in proxy makes to its certificate
+  authority after the operator configures a domain. Owner-controllable update checks arrive with update features (spec 006, and spec 008
   for the desktop app).
 - **FR-027**: The default interface MUST show only what the owner needs. Settings, diagnostics, and
   controls for features that do not exist yet MUST NOT appear in the default experience.
+- **FR-028**: The Compose stack MUST include a reverse proxy that obtains and renews a certificate
+  automatically when the operator provides a domain, and serves Your Space over HTTPS. Operators
+  with their own reverse proxy or tunnel MUST be able to turn off its certificate handling and
+  terminate HTTPS themselves. Operators without a domain MUST have documented private-tunnel
+  guidance, such as Tailscale.
 
 ### Key Entities
 
@@ -349,8 +364,9 @@ These are domain concepts, not prescribed database tables or framework types.
   while the address remains unverified without separate mailbox proof.
 - **SC-008**: Recovery preserves the existing owner and workspace. Used and expired recovery
   links cannot reset the password, and recovery does not create a replacement owner.
-- **SC-009**: A browser on another device reaches the same server and workspace over HTTPS through
-  the documented encrypted path, without creating another account or installation. The session
+- **SC-009**: A browser on another device reaches the same server and workspace over HTTPS, through
+  the built-in proxy with an automatically obtained certificate or through the documented
+  own-proxy or tunnel path, without creating another account or installation. The session
   cookie is host-only and is never sent over plain HTTP to a remote host.
 - **SC-010**: The initial workspace, failure states, and guide accurately describe supported
   behavior. Delivery evidence identifies tested versions, environments, procedures, and limitations.
@@ -359,7 +375,7 @@ These are domain concepts, not prescribed database tables or framework types.
 - **SC-012**: The setup-code and recovery commands produce machine-readable output and exit statuses
   that a script can use for success and each documented failure.
 - **SC-013**: Observed outbound traffic during setup, sign-in, and recovery shows no automatic
-  requests from Your Space.
+  requests from Your Space other than certificate requests for an operator-configured domain.
 
 ## Assumptions
 
@@ -373,9 +389,9 @@ These are domain concepts, not prescribed database tables or framework types.
 - Durable storage is retained across supported restarts. Updates, backup, and restore are spec 006;
   this feature's storage layout and migrations prepare for them (FR-023, FR-024). Installation
   instructions must make destructive storage deletion recognizable.
-- The built-in HTTPS proxy with automatic certificates is spec 003. This feature documents an
-  encrypted path through the owner's own reverse proxy or a private tunnel such as Tailscale, and
-  must let the built-in proxy be added in front later without changing setup, sessions, or stored data.
+- Automatic certificates need a domain that resolves to the host and inbound ports 80 and 443.
+  Spec 002 adds app routing to the same proxy, and spec 003's CLI asks for the domain during
+  installation; neither changes setup, sessions, or stored data.
 - The web client's screens are deliberately plain and functional. No visual design or approved
   mockups are required before implementation; layout and styling only need to meet this
   feature's requirements. A later spec designs the interface, starting from what it should show.
@@ -392,7 +408,7 @@ Later journeys in the [spec map](../../docs/spec-map.md) deliver these:
 
 - **Spec 002:** installing or running apps, including Tasks; app UI and sign-in; the app contract,
   TypeScript SDK, and app roles.
-- **Spec 003:** the Your Space CLI and the built-in HTTPS proxy with automatic certificates.
+- **Spec 003:** the Your Space CLI, including asking for the domain during guided installation.
 - **Spec 004:** invitations, additional members, member recovery, and role assignment.
 - **Spec 005:** agents, delegation, agent credentials, the gateway, and the activity log.
 - **Spec 006:** Your Space and app updates, backup, restore, moving a workspace, and uninstall.

@@ -1,6 +1,6 @@
 # Your Space Roadmap
 
-**Last updated**: 2026-11-02
+**Last updated**: 2026-11-03
 
 This roadmap tracks the functionality we want to build for Your Space: a self-hostable platform
 for independent apps, human users, and agents, with a managed offering planned later.
@@ -70,8 +70,8 @@ Your Space: first public release
 │   │   ├── [001] Images for ARM (Apple Silicon) and Intel/AMD
 │   │   └── [003] Manual Compose guide kept as an advanced option (L)
 │   ├── HTTPS
-│   │   ├── [003] Built-in proxy with automatic certificates; plain HTTP on localhost only
-│   │   └── [003] Bring your own proxy or tunnel (M)
+│   │   ├── [001] Built-in proxy with automatic certificates; plain HTTP on localhost only
+│   │   └── [001] Bring your own proxy or tunnel (M)
 │   ├── CLI (drives Compose for you)
 │   │   ├── [003] Guided local and server install
 │   │   ├── [003 006] install · start · stop · status · logs · update · owner recovery
@@ -184,6 +184,8 @@ Your Space: first public release
 - [ ] **HTTPS**
 
   **Source:** [Installation and hosting](architecture/decisions.md#installation-and-hosting).
+
+  Part of the owner-access feature (PR #3); the CLI later asks for the domain during installation.
 
   - [ ] [High] Set up HTTPS during installation: a reverse proxy in the Compose stack obtains and renews a certificate when the owner gives a domain. Plain HTTP is supported only on localhost.
   - [ ] [Medium] Let owners with their own reverse proxy or tunnel turn off the built-in proxy, and document a private tunnel such as Tailscale for owners without a domain.

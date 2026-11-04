@@ -46,7 +46,7 @@ product behavior. This checklist is maintained by the Spec Kit specification wor
 - [x] Removing a human role removes that role from affected agents; sessions and credentials must respect revocation.
 - [x] Role-ID containment is not misrepresented as universal effective-permission containment.
 - [x] Future apps, agents, members, and managed hosting are not first-spec acceptance criteria; out-of-scope items name the spec that delivers them.
-- [x] Remote access uses HTTPS and plain HTTP is localhost-only; the built-in proxy (spec 003) can be added later without rework.
+- [x] Remote access uses HTTPS and plain HTTP is localhost-only; the built-in proxy with automatic certificates is part of this feature, with an own-proxy or tunnel option (FR-028).
 - [x] The platform session uses host-only cookies.
 - [x] Documents contain no private application data, credentials, or private implementation history.
 
@@ -80,6 +80,7 @@ product behavior. This checklist is maintained by the Spec Kit specification wor
 | FR-024 | Cross-cutting scenario 8 |
 | FR-025 | Cross-cutting scenario 7; Actor entity |
 | FR-026–FR-027 | Cross-cutting scenarios 5–6; SC-013 |
+| FR-028 | Story 1 scenario 10; proxy certificate edge case; SC-009 |
 
 ## Review Notes
 

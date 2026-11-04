@@ -1,6 +1,6 @@
 # Your Space Architecture Overview
 
-**Last updated**: 2026-11-02
+**Last updated**: 2026-11-03
 
 This is a picture of Your Space as a running system for the first public release, layer by layer.
 It is a view of the [architecture and product decisions](decisions.md), not a separate source of
@@ -25,7 +25,7 @@ work from the roadmap.
 └────────────────┬────────────────────────────┘ └────────────┬─────────────────┘
                  └────────────────────┬──────────────────────┘
 ┌─────────────────────────────────────▼────────────────────────────────────────┐
-│ 3. EDGE: reverse proxy in the Compose stack                                  │
+│ 3. EDGE: Caddy reverse proxy in the Compose stack                            │
 │    HTTPS with automatic certificates · or your own proxy/tunnel · HTTP only  │
 │    on localhost · routes to Your Space and app origins (spec)                │
 └─────────────────────────────────────┬────────────────────────────────────────┘
@@ -76,7 +76,7 @@ work from the roadmap.
    See [first public-release audience and clients](decisions.md#first-public-release-audience-and-clients),
    [CLI delivery sequence](decisions.md#cli-delivery-sequence), and
    [product experience principles](decisions.md#product-experience-principles).
-3. **Edge.** A reverse proxy in the Compose stack provides HTTPS with automatic certificates, unless
+3. **Edge.** A Caddy reverse proxy in the Compose stack provides HTTPS with automatic certificates, unless
    the owner brings their own proxy or tunnel. See [installation and hosting](decisions.md#installation-and-hosting).
 4. **Your Space core.** Identity and sessions, roles and delegation, the gateway for agent requests,
    app management, operations (backup, restore, updates), and the activity log. See
