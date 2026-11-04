@@ -1,0 +1,226 @@
+# Implementation Plan: Workspace Setup and Owner Access
+
+**Branch**: `codex/001-workspace-owner-access` | **Date**: 2026-11-03 | **Spec**: [spec.md](spec.md)
+
+**Input**: Feature specification from `/specs/001-workspace-owner-access/spec.md`
+
+**Note**: This template is filled in by the `$speckit-plan` command; its definition describes the execution workflow.
+
+## Summary
+
+The operator installs Your Space with Docker Compose, gets a setup code from a server command, and
+claims the installation in the browser. That creates the owner account, one workspace, and the
+owner membership. The owner signs in over HTTPS from any device, sessions survive restarts, and a
+second server command prints a single-use password reset link.
+
+The stack is three containers:
+
+- **Caddy** handles HTTPS and serves the web client.
+- **The Node.js/Express server** is the API.
+- **PostgreSQL** stores all state.
+
+Better Auth supplies accounts, sessions, password hashing, rate limits, and password reset. Its
+organization plugin supplies the workspace, membership, and owner role. Custom code is limited to
+the setup code and claim, setup status, the two operator commands, and a small actor and event
+record.
+
+## Technical Context
+
+**Language/Version**: TypeScript 7 on Node.js 26 LTS. The server runs `.ts` files directly through
+Node's stable type stripping, so it has no build step ([R1](research.md#r1-runtime-and-language-versions)).
+The web client is built by Vite 8.
+
+**Primary Dependencies**:
+
+| Area | Dependency (license) | What it provides here |
+| --- | --- | --- |
+| Server | Express 5 (MIT) | HTTP routing for the API |
+| Auth | Better Auth 1.7 (MIT) with its organization plugin | Accounts, scrypt hashing, sessions, host-only cookies, rate limits, password reset, workspace, membership, owner role |
+| Database | Drizzle ORM 0.45 (Apache-2.0), `pg` 8 (MIT) | Queries, schema, runtime migrations |
+| Web | React 19, Vite 8, TanStack Router 1, TanStack Query 5 (all MIT) | UI, build, routes with redirects, server state |
+| Proxy | Caddy 2.11 (Apache-2.0) | Automatic HTTPS, static files, routing `/api` |
+| Dev only | Drizzle Kit, Better Auth CLI (`auth`), TypeScript, Vitest 5, Playwright 1.64 | Migrations, schema generation, type checks, tests |
+
+That is 8 runtime npm packages: `express`, `better-auth`, `drizzle-orm`, and `pg` on the server, and
+`react`, `react-dom`, `@tanstack/react-router`, and `@tanstack/react-query` in the web client.
+Caddy and PostgreSQL ship as their official images. The decision record already selects Express,
+Better Auth, Drizzle, PostgreSQL, React, Vite, and Caddy. The TanStack libraries were chosen in this
+PR's review and are recorded here.
+
+**Storage**: PostgreSQL 18 (official image) on the `ys-postgres` named volume. Caddy's certificates
+are on the `ys-caddy-data` named volume. Nothing durable lives in a container filesystem (FR-023).
+The tables are in [data-model.md](data-model.md).
+
+**Testing**:
+
+- Vitest server tests run against a real PostgreSQL. They cover the claim's concurrency, retries,
+  and interruption; storage failure; rate limits; and log scanning for secrets.
+- Playwright runs the four stories in Chromium, Firefox, and WebKit against the full Compose stack,
+  including restart and recreation.
+- [quickstart.md](quickstart.md) is the manual check on real hosts.
+
+**Target Platform**:
+
+- Server hosts: macOS 15 and 26 with Docker Desktop, and Ubuntu 24.04 LTS and Debian 13 with Docker
+  Engine 28 or newer. Each runs on ARM and Intel/AMD.
+- Browsers: the current and previous versions of Chrome, Edge, Firefox, and Safari, including iOS.
+
+Only verified combinations are claimed in the guide ([R15](research.md#r15-supported-hosts-and-browsers)).
+
+**Project Type**: Web service with a single-page web client, shipped as a Docker Compose stack.
+
+**Performance Goals**:
+
+- The web client's first screen is interactive within 2 seconds on a local network.
+- API responses take under 200 ms at the 95th percentile, except password hashing.
+
+**Constraints**:
+
+- The idle stack uses under 512 MB of memory, so it fits small servers and laptops.
+- No outbound requests except ACME certificate requests (FR-026).
+- Plain HTTP only on localhost.
+- No secrets in logs.
+
+**Scale/Scope**: one installation, one owner, one workspace, and 4 screens (setup, sign-in, home,
+reset password), plus error states.
+
+## Constitution Check
+
+*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+
+| Principle | Status | How this plan meets it |
+| --- | --- | --- |
+| I. Platform and apps independent | Pass | No app code. The host-only session cookie keeps the platform session away from future app origins (FR-021). |
+| II. User control and hosting choice | Pass | Self-hosted Compose with a guide. Server-managed accounts with no external identity service. Recovery works without email. |
+| III. Identity, permissions, ownership explicit | Pass | Account, workspace, membership, and ownership are separate tables or roles. Actions are credited to an `actor`. Denied requests change nothing. |
+| IV. Apps directly installable | N/A | No apps in this feature (spec 002). |
+| V. Protect private data | Pass | Secrets come from `.env`, which is not committed. Codes and tokens are stored hashed or by Better Auth. Logs exclude credentials. Tests use synthetic data. |
+| VI. Proportionate discipline | Pass | Auth, claim, and data-integrity behavior gets automated tests plus the quickstart run on real hosts. Rationale is recorded in research.md. |
+| VII. Reuse before building | Pass | Each requirement maps to a library feature (below). The custom code is listed and justified. No new dependency beyond the decision record and this review's choices. |
+
+**Post-design re-check (after Phase 1)**: Pass. The design added no dependencies.
+
+Better Auth constraints changed three choices:
+
+- an allowlist instead of `disabledPaths`;
+- `signUpEmail` with an allowlist instead of `disableSignUp`;
+- a reset link that keeps the token in the URL fragment.
+
+All three keep using Better Auth's own features ([R4](research.md#r4-blocking-account-and-workspace-creation-after-setup),
+[R8](research.md#r8-owner-recovery-link)).
+
+### Requirement to Library Feature (principle VII)
+
+| Requirement | Native feature used |
+| --- | --- |
+| FR-003 account rules | Better Auth `minPasswordLength`/`maxPasswordLength` + HTML form validation |
+| FR-004 owner, workspace, membership | `auth.api.signUpEmail`; organization plugin `auth.api.createOrganization` (creator gets `owner`) |
+| FR-006, FR-008 one auth system, sign-in/out | Better Auth email and password, sessions |
+| FR-009 expiry, revocation, durable sessions | Better Auth database sessions (7 days, refreshed daily), sign-out deletes the row |
+| FR-010 password hashing | Better Auth scrypt (N=16384, r=16, p=1, 64-byte key, 16-byte salt) |
+| FR-011 attempt limits | Better Auth rate limiter with database storage; per-code limit for setup |
+| FR-012, FR-023 durability | PostgreSQL on a named volume; Caddy data volume |
+| FR-015, FR-021 HTTPS-only remote cookies, host-only | Better Auth cookie defaults with an `https` `baseURL` |
+| FR-017 to FR-019 recovery | `auth.api.requestPasswordReset`, `sendResetPassword`, single-use tokens, `revokeSessionsOnPasswordReset` |
+| FR-022 ARM and Intel images | Docker Buildx multi-platform builds |
+| FR-024 schema version | Drizzle Kit migrations, `drizzle-orm` `migrate()`, `__drizzle_migrations` |
+| FR-028 HTTPS | Caddy automatic HTTPS and HTTP→HTTPS redirect |
+| Web routing and redirects | TanStack Router `beforeLoad` |
+| Web server state and errors | TanStack Query wrapping Better Auth's React client |
+
+### Custom Code and Why No Library Covers It
+
+| Custom code | Size | Why it is needed |
+| --- | --- | --- |
+| `setup-code` command | Small | Setup authority from the operator channel is specific to Your Space (FR-002). It uses `crypto`, `util.parseArgs`, and Drizzle. |
+| Claim endpoint | Medium | Creates the account and workspace together and survives double-clicks and crashes (FR-004). Better Auth has no "first owner" flow. [R5](research.md#r5-the-claim-atomic-enough-without-custom-transactions-across-libraries) |
+| Setup status and health endpoints | Small | Tells "unclaimed" apart from "storage down" (FR-013). |
+| `reset-link` command | Small | Thin glue: finds the owner, calls `requestPasswordReset`, prints the link (FR-017). |
+| Better Auth allowlist and two hooks | Small | Keeps FR-005's "no other account or membership path" true across library upgrades. |
+| `actor` and `event` tables | Small | Credits actions to a non-human-specific actor (FR-025). The full activity log is spec 005. |
+| JSON log helper | Tiny | One line per event, with no request bodies or credentials. |
+
+## Project Structure
+
+### Documentation (this feature)
+
+```text
+specs/001-workspace-owner-access/
+├── spec.md
+├── plan.md                    # This file
+├── research.md                # Phase 0: decisions and verified library behavior
+├── data-model.md              # Phase 1: tables and the claim sequence
+├── quickstart.md              # Phase 1: end-to-end validation on real hosts
+├── contracts/
+│   ├── http-api.md            # Custom endpoints and allowlisted Better Auth routes
+│   └── operator-commands.md   # setup-code and reset-link: output and exit codes
+├── checklists/requirements.md
+└── tasks.md                   # Phase 2 ($speckit-tasks), not created by this command
+```
+
+### Source Code (repository root)
+
+```text
+package.json                 # npm workspaces: server, web, e2e
+server/
+├── Dockerfile               # node:26-slim; runs src/index.ts directly
+├── drizzle.config.ts
+├── drizzle/                 # generated SQL migrations (committed)
+├── bin/                     # setup-code, reset-link (on PATH in the image)
+├── src/
+│   ├── index.ts             # start: migrate, then listen
+│   ├── app.ts               # Express app: allowlist + Better Auth, then JSON routes
+│   ├── config.ts            # environment variables, validated at startup
+│   ├── auth.ts              # Better Auth configuration and hooks
+│   ├── db/
+│   │   ├── client.ts
+│   │   ├── auth-schema.ts   # generated by the Better Auth CLI
+│   │   └── schema.ts        # installation, setup_code, actor, event
+│   ├── setup/               # code issue/check, claim, status
+│   ├── recovery/            # reset-link logic
+│   ├── commands/            # CLI entry points for bin/
+│   └── log.ts
+└── tests/                   # Vitest, against real PostgreSQL
+web/
+├── Dockerfile               # builds with Vite, then caddy:2.11 + dist + Caddyfile
+├── index.html
+└── src/
+    ├── main.tsx
+    ├── router.tsx           # 4 routes, beforeLoad redirects
+    ├── auth-client.ts       # Better Auth React client + organizationClient
+    ├── queries.ts           # TanStack Query: status, session, workspace
+    ├── pages/               # Setup, SignIn, Home, ResetPassword
+    ├── components/          # ErrorState, Form fields
+    └── styles.css
+e2e/                         # Playwright journeys against the Compose stack
+deploy/
+├── compose.yaml             # caddy (web image), server, postgres; named volumes
+├── Caddyfile                # copied into the web image
+└── .env.example             # YS_PUBLIC_URL, YS_SITE_ADDRESS, secrets
+docs/install/                # the installation guide (FR-001)
+.github/workflows/           # typecheck, tests, multi-arch image publishing
+```
+
+**Structure Decision**: one repository with npm workspaces for `server`, `web`, and `e2e`, and two
+published images ([R2](research.md#r2-repository-layout-and-packaging)). The CLI (spec 003),
+desktop app (spec 008), and SDKs (spec 002) will be added as further workspaces.
+
+## Settled Values
+
+These are the exact settings the spec left to the plan.
+
+| Setting | Value |
+| --- | --- |
+| Password | 12 to 128 characters; scrypt N=16384, r=16, p=1 |
+| Name / email | 1 to 100 characters / valid address up to 254 characters, stored lowercase |
+| Session | 7 days, extended daily while used; database-backed; no cookie cache |
+| Setup code | about 120 bits, 60 minutes, single use, locked after 10 wrong attempts |
+| Reset link | 30 minutes, single use, token in the URL fragment, revokes all sessions |
+| Sign-in limit | 3 attempts per 10 seconds per IP (Better Auth default) |
+| Reset limit | 5 attempts per 60 seconds per IP |
+| Operator commands | human text by default, `--json` for scripts, exit codes 0 to 4 ([contract](contracts/operator-commands.md)) |
+| Remote HTTPS paths | Caddy with your domain; your own proxy; Tailscale `serve` |
+
+## Complexity Tracking
+
+No constitution violations to justify.

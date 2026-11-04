@@ -30,7 +30,8 @@ work from the roadmap.
 ┌─────────────────────────────────────▼────────────────────────────────────────┐
 │ 3. EDGE: Caddy reverse proxy in the Compose stack                            │
 │    HTTPS with automatic certificates · or your own proxy/tunnel · HTTP only  │
-│    on localhost · routes to Your Space and app origins (spec)                │
+│    on localhost · serves the web client · routes /api to the server and to   │
+│    app origins (spec)                                                        │
 └─────────────────────────────────────┬────────────────────────────────────────┘
 ┌─────────────────────────────────────▼────────────────────────────────────────┐
 │ 4. YOUR SPACE CORE (Node.js · Express)                                       │
@@ -83,7 +84,8 @@ work from the roadmap.
    [CLI delivery sequence](decisions.md#cli-delivery-sequence), and
    [product experience principles](decisions.md#product-experience-principles).
 3. **Edge.** A Caddy reverse proxy in the Compose stack provides HTTPS with automatic certificates, unless
-   the owner brings their own proxy or tunnel. See [installation and hosting](decisions.md#installation-and-hosting).
+   the owner brings their own proxy or tunnel. It also serves the web client's static files and
+   forwards `/api` to the server, so both share one origin. See [installation and hosting](decisions.md#installation-and-hosting).
 4. **Your Space core.** Identity and sessions, roles and delegation, the gateway for agent requests,
    app management, operations (backup, restore, updates), and the activity log. See
    [agent access through Your Space](decisions.md#agent-access-through-your-space),
