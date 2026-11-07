@@ -39,12 +39,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
-          # Releases get their version and `latest`, which deploy/compose.yaml uses by default.
-          # Pushes to main get `edge`. Every build also gets its commit SHA.
+          # Releases get their version, and full releases also `latest`. Pushes to main get `edge`.
+          # Every build also gets its commit SHA.
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
             type=edge,branch=main
             type=sha
       - uses: docker/build-push-action@v6
@@ -66,10 +66,13 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
-      # GitHub renames release files that start with a dot, so the template is published as env.example.
+      # Each release's compose.yaml runs that release's images by default. GitHub renames release
+      # files that start with a dot, so the template is published as env.example.
       - run: |
+          sed "s/\${YS_VERSION:-latest}/\${YS_VERSION:-${TAG#v}}/g" deploy/compose.yaml > compose.yaml
+          grep -q "YS_VERSION:-${TAG#v}}" compose.yaml
           cp deploy/.env.example env.example
-          gh release upload "$TAG" deploy/compose.yaml env.example --clobber
+          gh release upload "$TAG" compose.yaml env.example --clobber
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}

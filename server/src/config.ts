@@ -42,6 +42,10 @@ function checkPublicUrl(value: string | undefined, problems: string[]): string {
   }
   if (url.pathname !== "/" || url.search || url.hash || url.username || url.password) {
     problems.push("YS_PUBLIC_URL must be just the address, with no path, query, or credentials.");
+  } else if (value !== url.origin) {
+    // Caddy uses the same text as its site address, where a trailing slash or a written-out
+    // default port changes what it matches.
+    problems.push(`YS_PUBLIC_URL must be written exactly as ${url.origin} (no trailing slash or default port).`);
   }
   return url.origin;
 }

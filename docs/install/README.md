@@ -25,10 +25,11 @@ You need:
 
 Windows is not supported as a server.
 
-**Checked so far:** this guide has been run end to end only on Linux on Intel/AMD (x86_64) with
-Docker Engine 29, in Chromium, Firefox, and WebKit. macOS, ARM machines such as Apple Silicon, and
-HTTPS with a real domain or Tailscale have not been checked yet. [VERIFICATION.md](VERIFICATION.md)
-lists exactly what was tested, with versions.
+**Checked so far:** steps 2 to 5 and the later sections were checked only with locally built
+images on Linux on Intel/AMD (x86_64) with Docker Engine 29, in Chromium, Firefox, and WebKit.
+Downloading from a release, the published images, macOS, ARM machines such as Apple Silicon, IPv6,
+and HTTPS with a real domain or Tailscale have not been checked yet.
+[VERIFICATION.md](VERIFICATION.md) lists exactly what was tested, with versions.
 
 Check Docker before you go on:
 
@@ -71,7 +72,7 @@ commit it or share it.
 | You want | Set in `.env` | What happens |
 | --- | --- | --- |
 | Use it on this machine only (the default) | `YS_PUBLIC_URL=http://localhost` | Plain HTTP, reachable only from this machine |
-| Use your own domain | `YS_PUBLIC_URL=https://space.example.com` | Caddy gets and renews a Let's Encrypt certificate and redirects HTTP to HTTPS. The domain's DNS must point at this server, with ports 80 and 443 open to the internet |
+| Use your own domain | `YS_PUBLIC_URL=https://space.example.com` and `YS_BIND_ADDRESS=0.0.0.0` | Caddy gets and renews a Let's Encrypt certificate and redirects HTTP to HTTPS. The domain's DNS must point at this server, with ports 80 and 443 open to the internet |
 | Use your own proxy or Tailscale | `YS_PUBLIC_URL=https://<the proxy's address>`, `YS_SITE_ADDRESS=http://:8080`, and `YS_TRUSTED_PROXIES=private_ranges` | Caddy serves plain HTTP on `127.0.0.1:8080`; your proxy or Tailscale handles HTTPS. See [Use Your Space From Other Devices](#use-your-space-from-other-devices) |
 
 `YS_PUBLIC_URL` must be just the address: no path and no trailing slash. Plain `http://` works only
@@ -92,7 +93,7 @@ all three services running, with `server` and `postgres` marked `healthy`. If th
 | --- | --- |
 | `required variable ... is missing a value` | A setting in `.env` is empty. Fill it in as in step 2 |
 | `server` keeps restarting | Run `docker compose logs server`. An `Invalid configuration` message names the setting to fix |
-| `Bind for 0.0.0.0:80 failed: port is already allocated` | Another program uses port 80 or 443. Stop it, or use [your own proxy](#use-your-own-reverse-proxy) |
+| `address already in use` or `port is already allocated`, for port 80 or 443 | Another program uses the port. Stop it, or use [your own proxy](#use-your-own-reverse-proxy) |
 | `server` is `unhealthy` | Run `docker compose logs server postgres` and see [When the Database Is Down](#when-the-database-is-down) |
 
 Open your address (for example `http://localhost`). It says Your Space has no owner yet and shows
@@ -163,7 +164,8 @@ docker compose logs caddy
 
 If the certificate isn't issued, the log names the reason. The usual causes:
 
-- **The domain doesn't point at this server.** Check the DNS `A` (and `AAAA`) records.
+- **The domain doesn't point at this server.** Check the DNS `A` record.
+- **`YS_BIND_ADDRESS=0.0.0.0` is missing from `.env`.** Without it, only this machine can connect.
 - **Ports 80 or 443 are blocked.** Let's Encrypt must reach this server on both, from the internet.
   Check the firewall and any router port forwarding.
 
@@ -190,13 +192,16 @@ is nothing to set up again.
 
 ### Use Your Own Domain
 
-1. Point the domain's DNS `A` record (and `AAAA`, if the server has IPv6) at this server.
+1. Point the domain's DNS `A` record at this server. IPv6 isn't supported yet, so don't add an
+   `AAAA` record.
 2. Open ports 80 and 443 to the internet, in the firewall and any router port forwarding. Let's
    Encrypt reaches the server through them to issue the certificate.
-3. In `.env`, set the address and leave `YS_SITE_ADDRESS` and `YS_TRUSTED_PROXIES` unset:
+3. In `.env`, set the address, let the network reach ports 80 and 443, and leave
+   `YS_SITE_ADDRESS` and `YS_TRUSTED_PROXIES` unset:
 
    ```sh
    YS_PUBLIC_URL=https://space.example.com
+   YS_BIND_ADDRESS=0.0.0.0
    ```
 
 4. Run `docker compose up -d`.
@@ -302,8 +307,9 @@ For devices on your own network, use [Tailscale](#use-tailscale): it needs no do
 - **Too many attempts:** after 3 sign-in attempts from one network address, each within 10 seconds
   of the one before and whether or not the password is right, Your Space refuses further attempts
   with "Too many sign-in attempts" until 10 seconds pass without an accepted attempt. Refused
-  attempts don't extend the wait. (For IPv6, one address means one `/64` network.) This slows
-  password guessing but never locks your account: once the wait is over, the right password works.
+  attempts don't extend the wait. This slows password guessing but never locks your account: once
+  the wait is over, the right password works. If Your Space can't see visitors' own addresses, for
+  example behind a proxy that doesn't pass them on, all visitors share one limit.
 - **Passwords** are 12 to 128 characters. Your Space stores only a salted, one-way scrypt hash of
   each password (Better Auth's default: N=16384, r=16, p=1, a 64-byte key, and a random 16-byte salt
   per password), never the password itself.
