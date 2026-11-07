@@ -1,4 +1,15 @@
 <!--
+Sync Impact Report (2026-11-07): 1.1.1 -> 1.2.0 (minor: materially expanded principle)
+- Expanded: II. Preserve User Control and Hosting Choice now requires configuration to be optional:
+  safe defaults that suit most installations, an owner's configuration that starts empty and holds
+  only what they change, derived values instead of extra settings, and generated secrets.
+- Rationale: in the 001 implementation review, the owner asked that configuration work like editor
+  settings: nothing to fill in by default, one line per change. Every required setting is a chance
+  to get an install wrong, and defaults the project owns can improve without owners editing files.
+- Impact: the 001 plan and implementation require YS_PUBLIC_URL and two secrets in .env, and a
+  YS_BIND_ADDRESS line for own-domain installs. Bringing 001 in line is proposed in PR #6. Later
+  plans name the default and the derivation for every setting they add.
+
 Sync Impact Report (2026-11-03): 1.1.0 -> 1.1.1 (patch: clarification)
 - Clarified: VII. Reuse Before Building now says to use each library only for the purpose it was
   built for, rather than stretching an available feature into a general system for the app.
@@ -36,6 +47,12 @@ execution runtime.
 
 Your Space must support self-hosting with guided installation and understandable recovery from
 setup failures.
+
+Configuration is optional. Every setting has a safe default that suits most installations, so an
+owner's configuration starts empty and holds only the lines they change. Values that follow from
+other settings are derived rather than asked for, wherever the tooling can derive them, and
+secrets are generated when none are given. A default never exposes more than the most common setup
+needs: anything reachable from the network is opened by an explicit choice.
 
 Your Space defines the authentication model and provides server-managed user accounts and
 sessions. Authentication must not require an external identity service.
@@ -155,4 +172,4 @@ clarifications and other non-semantic changes.
 When a proposal conflicts with the constitution, resolve the conflict explicitly by revising the
 proposal or amending the relevant principle.
 
-**Version**: 1.1.1 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-11-03
+**Version**: 1.2.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-11-07

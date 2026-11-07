@@ -315,6 +315,10 @@ Dependency selection must consider actual licenses, including bundled components
 
 **Decision update (2026-11-02):** Simplicity by default is a product principle for every client and feature. New settings, logs, and configuration go behind advanced controls unless most users need them.
 
+- Configuration works like editor settings: the defaults live in Your Space, the owner's file starts empty, and each line in it overrides one default. Every setting needs a safe default that suits most installations; a value that follows from other settings is derived, not asked for; secrets are generated when the owner doesn't supply them.
+
+**Decision update (2026-11-07):** Configuration is optional, now part of [constitution principle II](../../.specify/memory/constitution.md#ii-preserve-user-control-and-hosting-choice). Required settings are each a chance to get an install wrong, and they freeze today's choice into every owner's file, so a better default later reaches nobody. Plans name each setting's default and how it is derived, and the documentation lists the defaults so an owner can see what a line would change. Where a tool can't derive a value (for example, Docker Compose can't choose a port binding from the public address), the setting stays, and the CLI (spec 003) derives it.
+
 ### Telemetry and Outbound Connections
 
 - Your Space collects no telemetry. Neither the server, the CLI, nor the desktop app reports usage, errors, or any other data to the project.
