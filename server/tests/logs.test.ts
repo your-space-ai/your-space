@@ -1,6 +1,8 @@
 // T051 (server half): after setup, sign-in, failures, and recovery, the server's logs and the
 // commands' stderr hold no passwords, tokens, links, or session values (cross-cutting scenario 2,
 // FR-010). The commands' stdout delivers the link to the operator on purpose and is not a log.
+// Both commands also run once in each mode on success; create-owner's human run uses a second
+// database so the first keeps its single owner.
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { createServer, type AddressInfo } from "node:net";
@@ -35,6 +37,7 @@ const IP = {
 };
 
 let t: TestDatabase;
+let humanDb: TestDatabase;
 let child: ChildProcess | undefined;
 let baseUrl: string;
 let publicUrl: string;
@@ -67,9 +70,12 @@ async function freePort(): Promise<number> {
 beforeAll(async () => {
   // The server applies the migrations itself, so its migration logs are covered too.
   t = await createTestDatabase({ migrate: false });
+  humanDb = await createTestDatabase();
   const db = new URL(t.url);
-  secret("database password", db.password);
+  // The synthetic password is also the user name, so a hit on it may only be the user name.
+  secret(db.password === db.username ? "database password (same as the user name)" : "database password", db.password);
   secret("database URL", t.url);
+  secret("second database URL", humanDb.url);
   secret("BETTER_AUTH_SECRET", TEST_SECRET);
 
   const port = await freePort();
@@ -98,17 +104,22 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (child && child.exitCode === null) {
-    child.kill("SIGKILL");
-    await once(child, "exit");
+  try {
+    // A server killed by a signal has a signalCode and no exitCode; it will not exit again.
+    if (child && child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+      await once(child, "exit");
+    }
+  } finally {
+    await Promise.all([t?.destroy(), humanDb?.destroy()]);
   }
-  await t?.destroy();
 });
 
 interface Reply {
   status: number;
   body: any;
   cookie: string;
+  location: string;
 }
 
 /** A request as a browser on the public URL behind Caddy would send it. Error bodies are kept for the scan. */
@@ -150,11 +161,17 @@ async function call(
   } catch {
     parsed = undefined;
   }
-  return { status: response.status, body: parsed, cookie: pairs.join("; ") };
+  const location = response.headers.get("location") ?? "";
+  return { status: response.status, body: parsed, cookie: pairs.join("; "), location };
 }
 
-async function command(label: string, name: "create-owner" | "reset-link", args: string[]): Promise<CommandResult> {
-  const result = await runCommand(name, args, { databaseUrl: t.url, publicUrl });
+async function command(
+  label: string,
+  name: "create-owner" | "reset-link",
+  args: string[],
+  databaseUrl = t.url,
+): Promise<CommandResult> {
+  const result = await runCommand(name, args, { databaseUrl, publicUrl });
   commandStderr[label] = result.stderr;
   if (args.includes("--json")) jsonRuns.push(result);
   return result;
@@ -169,6 +186,21 @@ const signIn = (password: string, ip: string) =>
 
 const resetPassword = (token: string, newPassword: string) =>
   call("/api/auth/reset-password", { body: { token, newPassword } });
+
+/** The link line a command prints for a person. */
+const linkLine = (stdout: string) => stdout.split("\n").find((line) => line.includes("/reset-password#token="))?.trim();
+
+/** Fails unless the line is one JSON log entry with time, level, and event. */
+function expectLogLine(line: string): void {
+  let entry: any;
+  expect(() => (entry = JSON.parse(line)), line).not.toThrow();
+  expect(typeof entry.time, line).toBe("string");
+  expect(Number.isNaN(Date.parse(entry.time)), line).toBe(false);
+  expect(["debug", "info", "warn", "error"], line).toContain(entry.level);
+  expect(typeof entry.event === "string" && entry.event.length > 0, line).toBe(true);
+}
+
+const nonEmptyLines = (text: string) => text.split("\n").filter((line) => line.trim() !== "");
 
 describe("logs (cross-cutting scenario 2)", () => {
   it("exercises setup, sign-in, failures, and recovery against the real server", async () => {
@@ -188,6 +220,19 @@ describe("logs (cross-cutting scenario 2)", () => {
 
     const again = await command("create-owner (owner exists)", "create-owner", ["--email", OWNER.email, "--name", OWNER.name]);
     expect(again.code).toBe(2);
+
+    // The human-mode success, on the second database.
+    const humanOwner = await command(
+      "create-owner",
+      "create-owner",
+      ["--email", OWNER.email, "--name", OWNER.name],
+      humanDb.url,
+    );
+    expect(humanOwner.code).toBe(0);
+    const humanOwnerLink = linkLine(humanOwner.stdout);
+    expect(humanOwnerLink).toBeDefined();
+    secret("create-owner link (human output)", humanOwnerLink);
+    secret("create-owner token (human output)", humanOwnerLink?.split("#token=")[1]);
 
     expect((await resetPassword(created.json.token, PASSWORDS.short)).status).toBe(400);
     expect((await resetPassword(created.json.token, PASSWORDS.first)).status).toBe(200);
@@ -229,9 +274,10 @@ describe("logs (cross-cutting scenario 2)", () => {
     // Recovery: one link printed for a person, one as JSON; the JSON one is used.
     const human = await command("reset-link", "reset-link", []);
     expect(human.code).toBe(0);
-    const humanLink = human.stdout.split("\n").find((line) => line.includes("/reset-password#token="));
-    secret("reset-link link (human output)", humanLink?.trim());
-    secret("reset-link token (human output)", humanLink?.split("#token=")[1]?.trim());
+    const humanLink = linkLine(human.stdout);
+    expect(humanLink).toBeDefined();
+    secret("reset-link link (human output)", humanLink);
+    secret("reset-link token (human output)", humanLink?.split("#token=")[1]);
 
     const recovery = await command("reset-link --json", "reset-link", ["--json"]);
     expect(recovery.code).toBe(0);
@@ -240,9 +286,12 @@ describe("logs (cross-cutting scenario 2)", () => {
 
     expect((await resetPassword(recovery.json.token, PASSWORDS.recovered)).status).toBe(200);
     expect((await resetPassword(recovery.json.token, PASSWORDS.recovered)).status).toBe(400);
-    // The callback route carries the token in the URL path; a used token is redirected with an error.
+    // The callback route carries the token in the URL path; a used token is redirected with an
+    // error and without the token.
     const callback = await call(`/api/auth/reset-password/${recovery.json.token}?callbackURL=%2Freset-password`);
-    expect(callback.status).toBeGreaterThanOrEqual(300);
+    expect(callback.status).toBe(302);
+    expect(callback.location).toContain("error=INVALID_TOKEN");
+    expect(callback.location).not.toContain(recovery.json.token);
 
     expect((await call("/api/auth/get-session", { cookie: second.cookie })).body).toBeNull();
     const recovered = await signIn(PASSWORDS.recovered, IP.recovered);
@@ -265,8 +314,9 @@ describe("logs (cross-cutting scenario 2)", () => {
     const malformedApp = await call("/api/status", { method: "POST", raw: truncated });
     expect(malformedApp).toMatchObject({ status: 400, body: { error: "bad_request" } });
 
+    // 'close' fires once the output pipes are drained, so the shutdown lines are in serverOut.
     child!.kill("SIGTERM");
-    const [code] = await once(child!, "exit");
+    const [code] = await once(child!, "close");
     expect(code).toBe(0);
   });
 
@@ -279,7 +329,18 @@ describe("logs (cross-cutting scenario 2)", () => {
     const all = forbidden();
     // Every step above ran, so every kind of value is on the list.
     expect([...all.keys()].filter((label) => label.startsWith("session token from"))).toHaveLength(3);
-    expect(all.has("reset-link token") && all.has("create-owner token")).toBe(true);
+    const required = [
+      "create-owner token",
+      "create-owner link",
+      "create-owner token (human output)",
+      "create-owner link (human output)",
+      "reset-link token",
+      "reset-link link",
+      "reset-link token (human output)",
+      "reset-link link (human output)",
+      "get-session token",
+    ];
+    expect(required.filter((label) => !all.has(label))).toEqual([]);
     expect(serverOut.stdout).toContain('"event":"server.stopping"');
 
     const leaks: string[] = [];
@@ -294,26 +355,24 @@ describe("logs (cross-cutting scenario 2)", () => {
   });
 
   it("writes JSON log lines with time, level, and event", () => {
-    const text = [serverOut.stdout, serverOut.stderr, ...Object.values(commandStderr)].join("\n");
-    const lines = text.split("\n").filter((line) => line.trim().startsWith("{"));
-    expect(lines.length).toBeGreaterThan(0);
-    for (const line of lines) {
-      let entry: any;
-      expect(() => (entry = JSON.parse(line)), line).not.toThrow();
-      expect(typeof entry.time, line).toBe("string");
-      expect(Number.isNaN(Date.parse(entry.time)), line).toBe(false);
-      expect(["debug", "info", "warn", "error"], line).toContain(entry.level);
-      expect(typeof entry.event === "string" && entry.event.length > 0, line).toBe(true);
+    // Every line the server writes is a log line.
+    const serverLines = nonEmptyLines(`${serverOut.stdout}\n${serverOut.stderr}`);
+    expect(serverLines.length).toBeGreaterThan(0);
+    for (const line of serverLines) expectLogLine(line);
+    // The commands' human-mode messages on stderr are plain text by design; only their log lines are JSON.
+    for (const line of nonEmptyLines(Object.values(commandStderr).join("\n"))) {
+      if (line.trim().startsWith("{")) expectLogLine(line);
     }
   });
 
   it("prints only the one JSON object on stdout with --json", () => {
     expect(jsonRuns.length).toBe(2);
     for (const run of jsonRuns) {
-      const lines = run.stdout.split("\n").filter((line) => line.trim() !== "");
+      const lines = nonEmptyLines(run.stdout);
       expect(lines).toHaveLength(1);
       expect(JSON.parse(lines[0]!)).toEqual(run.json);
-      expect(run.stderr).toBe("");
+      // Log lines may go to stderr (contracts/operator-commands.md), but nothing else.
+      for (const line of nonEmptyLines(run.stderr)) expectLogLine(line);
     }
   });
 

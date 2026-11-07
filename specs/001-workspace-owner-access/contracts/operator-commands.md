@@ -30,6 +30,17 @@ command's own process ([research R4](../research.md#r4-owner-first-then-invite-o
 If the `server` container is not running, `docker compose exec` itself fails with a non-zero exit
 code before either command starts. The guide documents this case.
 
+With `--json`, every failure is one JSON object on stdout with `"ok": false` and an `error` code. Two
+codes apply to both commands:
+
+```json
+{ "ok": false, "error": "usage", "message": "Unknown option '--x'. Usage: …" }
+{ "ok": false, "error": "unexpected", "message": "Something unexpected went wrong. Nothing was reported as done." }
+```
+
+`usage` comes with exit 1 and `unexpected` with exit 4. Log lines, if any, go to stderr, so stdout
+holds only that object.
+
 ## Set-Password and Reset Links
 
 Both commands print the same kind of link: `${YS_PUBLIC_URL}/reset-password#token=<token>`.

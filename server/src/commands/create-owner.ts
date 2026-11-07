@@ -64,13 +64,9 @@ async function main(argv: string[]): Promise<number> {
         return EXIT.notApplicable;
       }
       case "storage_unavailable": {
-        const message = result.ownerCreated
-          ? "The owner was created, but the database stopped answering before the set-password link was issued. " +
-            "When it is back, run: docker compose exec server reset-link"
-          : STORAGE_MESSAGE;
         out.failure(
-          { ok: false, error: "storage_unavailable", message },
-          result.ownerCreated ? message : `${message} Nothing was changed. Check the database with: docker compose ps`,
+          { ok: false, error: "storage_unavailable", message: STORAGE_MESSAGE },
+          `${STORAGE_MESSAGE} Nothing was changed. Check the database with: docker compose ps`,
         );
         return EXIT.storage;
       }

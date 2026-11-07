@@ -156,15 +156,46 @@ describe("reset-link", () => {
     });
 
     it("prints the human-readable output by default", async () => {
+      const before = Date.now();
       const result = await resetLink([]);
+      expect(result.stderr).toBe("");
       expect(result.code).toBe(0);
       const lines = result.stdout.trim().split("\n");
       expect(lines).toHaveLength(3);
-      expect(lines[0]).toMatch(
-        /^Password reset link for sam@example\.com \(expires \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ, works once\):$/,
+      const heading = lines[0]!.match(
+        /^Password reset link for sam@example\.com \(expires (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ), works once\):$/,
       );
-      expect(lines[1]).toMatch(new RegExp(`^${server.publicUrl}/reset-password#token=[A-Za-z0-9]{24}$`));
+      expect(heading, lines[0]).not.toBeNull();
+      const link = lines[1]!.match(new RegExp(`^${server.publicUrl}/reset-password#token=([A-Za-z0-9]{24})$`));
+      expect(link, lines[1]).not.toBeNull();
       expect(lines[2]).toBe("Using it signs out every existing session.");
+
+      // The printed link and expiry are the stored token's, as in the JSON output.
+      const expires = Date.parse(heading![1]!);
+      expect(expires).toBeGreaterThanOrEqual(before + 29 * 60_000);
+      expect(expires).toBeLessThanOrEqual(Date.now() + 30 * 60_000);
+      const rows = await tokenRows(link![1]!);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.value).toBe(ownerId);
+      expect(Math.abs(rows[0]!.expiresAt.getTime() - expires)).toBeLessThan(2_000);
+    });
+
+    it("exits 1 on an unknown option or argument, and issues nothing", async () => {
+      const before = { counts: await counts(t.db), tokens: await t.db.select().from(verification) };
+
+      for (const args of [["--bogus", "--json"], ["extra", "--json"]]) {
+        const result = await resetLink(args);
+        expect(result.code, args[0]).toBe(1);
+        expect(result.json).toMatchObject({ ok: false, error: "usage" });
+        expect(result.json.message).toContain("Usage: reset-link [--json]");
+      }
+      const human = await resetLink(["--bogus"]);
+      expect(human.code).toBe(1);
+      expect(human.stdout).toBe("");
+      expect(human.stderr).toContain("Usage: reset-link [--json]");
+
+      expect(await counts(t.db)).toEqual(before.counts);
+      expect(await t.db.select().from(verification)).toEqual(before.tokens);
     });
 
     it("changes nothing by issuing a link alone", async () => {
@@ -204,7 +235,10 @@ describe("reset-link", () => {
       const before = await snapshot(t.db);
 
       const link = await issue();
-      expect((await reset(link.token)).status).toBe(200);
+      const response = await reset(link.token);
+      expect(response.status).toBe(200);
+      // FR-019: the reset itself signs nobody in.
+      expect(cookieHeader(response)).toBe("");
 
       // SC-004: the old sessions no longer work for anything.
       for (const cookie of [phone, laptop]) {
@@ -351,6 +385,7 @@ describe("reset-link", () => {
 
     it("refuses requesting a reset link over HTTP and creates no token", async () => {
       const before = { counts: await counts(t.db), tokens: await t.db.select().from(verification) };
+      const bodies: string[] = [];
       for (const email of [OWNER.email, "visitor@example.com"]) {
         const response = await server.request("/api/auth/request-password-reset", {
           method: "POST",
@@ -360,7 +395,10 @@ describe("reset-link", () => {
         const text = await response.text();
         expect(JSON.parse(text)).toMatchObject({ code: "RESET_PASSWORD_DISABLED" });
         expect(text).not.toContain(ownerId);
+        bodies.push(text);
       }
+      // The owner's email and an unknown one get the same answer, so it reveals no account (FR-020).
+      expect(bodies[1]).toBe(bodies[0]);
       expect(await t.db.select().from(verification)).toEqual(before.tokens);
       expect(await counts(t.db)).toEqual(before.counts);
     });

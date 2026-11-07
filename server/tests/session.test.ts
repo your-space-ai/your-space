@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { account, session, user } from "../src/db/auth-schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_SECRET } from "./helpers/env.ts";
@@ -44,19 +44,32 @@ async function getSession(s: TestServer, cookie?: string) {
 const listWorkspaces = (s: TestServer, cookie: string) =>
   s.request("/api/auth/organization/list", { headers: { cookie } });
 
-/** The session cookie from a response's Set-Cookie headers, with its attributes keyed in lower case. */
-function sessionCookie(response: Response) {
-  const raw = response.headers.getSetCookie().find((c) => c.split("=")[0]!.endsWith("better-auth.session_token"));
-  if (!raw) return undefined;
-  const [pair, ...rest] = raw.split(";").map((part) => part.trim());
-  const attributes = new Map(
-    rest.map((part) => {
-      const i = part.indexOf("=");
-      return i === -1 ? [part.toLowerCase(), ""] : [part.slice(0, i).toLowerCase(), part.slice(i + 1)];
-    }),
-  );
-  return { name: pair!.slice(0, pair!.indexOf("=")), value: pair!.slice(pair!.indexOf("=") + 1), attributes };
+/** Every cookie in a response's Set-Cookie headers, with its attributes keyed in lower case. */
+function setCookies(response: Response) {
+  return response.headers.getSetCookie().map((raw) => {
+    const [pair, ...rest] = raw.split(";").map((part) => part.trim());
+    const attributes = new Map(
+      rest.map((part) => {
+        const i = part.indexOf("=");
+        return i === -1 ? [part.toLowerCase(), ""] : [part.slice(0, i).toLowerCase(), part.slice(i + 1)];
+      }),
+    );
+    return { name: pair!.slice(0, pair!.indexOf("=")), value: pair!.slice(pair!.indexOf("=") + 1), attributes };
+  });
 }
+
+/** The session cookie from a response's Set-Cookie headers. */
+const sessionCookie = (response: Response) =>
+  setCookies(response).find((c) => c.name.endsWith("better-auth.session_token"));
+
+/** The names of cookies that set a Domain attribute, which would make them reach subdomains. */
+const cookiesWithDomain = (response: Response) =>
+  setCookies(response)
+    .filter((c) => c.attributes.has("domain"))
+    .map((c) => c.name);
+
+/** Sessions last 7 days (plan). */
+const SESSION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
 async function sessionsFor(token: string) {
   return t.db.select().from(session).where(eq(session.token, token));
@@ -78,7 +91,7 @@ describe("sign-in", () => {
     const rows = await sessionsFor(body.token);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.userId).toBe(ownerId);
-    expect(rows[0]!.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    expect(Math.abs(rows[0]!.expiresAt.getTime() - (Date.now() + SESSION_LIFETIME_MS))).toBeLessThan(60_000);
 
     // The cookie authorizes the owner's session and workspace.
     const current = await getSession(server, cookieHeader(response));
@@ -98,7 +111,7 @@ describe("sign-in", () => {
     for (const key of ["user", "session", "token"]) expect(body).not.toHaveProperty(key);
     expect(text).not.toContain(ownerId);
     expect(text).not.toContain(OWNER.name);
-    expect(sessionCookie(response)).toBeUndefined();
+    expect(response.headers.getSetCookie()).toEqual([]);
 
     expect(await counts(t.db)).toEqual(before.counts);
     expect(await snapshot(t.db)).toEqual(before.owner);
@@ -137,7 +150,13 @@ describe("sessions", () => {
     expect(workspaces.status).toBe(200);
     expect(await json(workspaces)).toMatchObject([{ name: "Sam Rivera's space" }]);
 
-    await t.db.execute(sql`update session set expires_at = now() - interval '1 minute' where token = ${token}`);
+    // Written through Drizzle as the app writes dates (UTC), so the database time zone does not matter.
+    const expired = await t.db
+      .update(session)
+      .set({ expiresAt: new Date(Date.now() - 60_000) })
+      .where(eq(session.token, token))
+      .returning();
+    expect(expired).toHaveLength(1);
 
     expect(await getSession(server, cookie)).toEqual({ status: 200, body: null });
     const refused = await listWorkspaces(server, cookie);
@@ -159,6 +178,7 @@ describe("session cookie", () => {
       expect(cookie.attributes.has("secure")).toBe(true);
       expect(cookie.attributes.has("httponly")).toBe(true);
       expect(cookie.attributes.has("domain")).toBe(false);
+      expect(cookiesWithDomain(response)).toEqual([]);
       expect((await getSession(https, cookieHeader(response))).body.user.id).toBe(ownerId);
     } finally {
       await https.close();
@@ -171,6 +191,7 @@ describe("session cookie", () => {
     const cookie = sessionCookie(response)!;
     expect(cookie.attributes.has("httponly")).toBe(true);
     expect(cookie.attributes.has("domain")).toBe(false);
+    expect(cookiesWithDomain(response)).toEqual([]);
   });
 });
 
@@ -211,7 +232,7 @@ describe("sign-in limit in production", () => {
 
     const deadline = Date.now() + 30_000;
     for (;;) {
-      if (child.exitCode !== null) throw new Error(`server exited early:\n${output}`);
+      if (child.exitCode !== null || child.signalCode !== null) throw new Error(`server exited early:\n${output}`);
       const ok = await fetch(`${base}/api/health`).then((r) => r.ok, () => false);
       if (ok) break;
       if (Date.now() > deadline) throw new Error(`server did not become healthy:\n${output}`);
@@ -220,7 +241,8 @@ describe("sign-in limit in production", () => {
   });
 
   afterAll(async () => {
-    if (!child || child.exitCode !== null) return;
+    // A process killed by a signal has signalCode set and exitCode null, and has already exited.
+    if (!child || child.exitCode !== null || child.signalCode !== null) return;
     const exited = new Promise((resolve) => child!.once("exit", resolve));
     child.kill("SIGTERM");
     const timer = setTimeout(() => child!.kill("SIGKILL"), 5_000);
@@ -228,14 +250,15 @@ describe("sign-in limit in production", () => {
     clearTimeout(timer);
   });
 
-  const attempt = (password: string) =>
+  // Caddy sends the client address as a single X-Forwarded-For value.
+  const attempt = (password: string, ip = "203.0.113.7") =>
     fetch(`${base}/api/auth/sign-in/email`, {
       method: "POST",
-      headers: { "content-type": "application/json", origin: publicUrl, "x-forwarded-for": "203.0.113.7" },
+      headers: { "content-type": "application/json", origin: publicUrl, "x-forwarded-for": ip },
       body: JSON.stringify({ email: OWNER.email, password }),
     });
 
-  it("refuses the 4th sign-in within 10 seconds with 429, even with the right password, and changes nothing", async () => {
+  it("refuses the 4th sign-in from one address within 10 seconds with 429, even with the right password, and changes nothing", async () => {
     const before = await counts(t.db);
     for (let i = 0; i < 3; i++) {
       const response = await attempt("not the right password at all");
@@ -244,10 +267,18 @@ describe("sign-in limit in production", () => {
 
     const limited = await attempt(OWNER.password);
     expect(limited.status).toBe(429);
+    // Better Auth's limiter always says when to retry.
+    expect(Number(limited.headers.get("x-retry-after"))).toBeGreaterThan(0);
     const body = await json(limited);
     for (const key of ["user", "session", "token"]) expect(body).not.toHaveProperty(key);
-    expect(sessionCookie(limited)).toBeUndefined();
+    expect(limited.headers.getSetCookie()).toEqual([]);
+    expect(await counts(t.db)).toEqual(before);
 
+    // The limit is per address. If X-Forwarded-For were ignored, Better Auth would put every client
+    // in one shared bucket and this would get 429 too.
+    const other = await attempt("not the right password at all", "203.0.113.8");
+    expect(other.status).toBe(401);
+    expect(other.headers.getSetCookie()).toEqual([]);
     expect(await counts(t.db)).toEqual(before);
   });
 });

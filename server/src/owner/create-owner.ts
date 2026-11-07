@@ -1,6 +1,7 @@
 // Creates the owner from the server (T027; data-model.md "Creating the Owner"; research R5, R6).
 // Each step reuses what an interrupted earlier run created, so rerunning finishes the job. The
-// installation is marked as having an owner only in the last step's transaction.
+// installation is marked as having an owner only in the last step's transaction, after the
+// set-password link exists, so any failure leaves it unclaimed and a rerun finishes the job.
 import { randomBytes } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { createCommandAuth, type AuthDeps, type IssuedLink } from "../auth.ts";
@@ -15,7 +16,7 @@ export type CreateOwnerResult =
   | { ok: true; name: string; email: string; url: string; token: string; expiresAt: Date }
   | { ok: false; error: "invalid_input"; fields: FieldErrors }
   | { ok: false; error: "owner_exists" }
-  | { ok: false; error: "storage_unavailable"; ownerCreated?: boolean };
+  | { ok: false; error: "storage_unavailable" };
 
 export async function createOwner(deps: AuthDeps, input: Partial<OwnerInput>): Promise<CreateOwnerResult> {
   const valid = validateOwnerInput(input);
@@ -54,34 +55,32 @@ export async function createOwner(deps: AuthDeps, input: Partial<OwnerInput>): P
     // 3. The workspace and the owner membership. The plugin makes the creator its `owner`.
     const workspaceId = await ensureWorkspace(deps, auth, owner.id, `${owner.name}'s space`);
 
-    // 4. In one transaction: the owner's actor, the event, and the claim.
-    const claimed = await db.transaction(async (tx) => {
-      await ensureHumanActor(tx, owner.id);
-      await recordEvent(tx, "owner.created", await operatorActorId(tx), owner.id);
-      const updated = await tx
-        .update(installation)
-        .set({ state: "claimed", workspaceId, claimedAt: sql`now()` })
-        .where(and(eq(installation.id, 1), eq(installation.state, "unclaimed")))
-        .returning({ id: installation.id });
-      if (updated.length === 0) {
-        tx.rollback();
-      }
-      return true;
-    }).catch((error: unknown) => {
-      if (error instanceof Error && error.name === "TransactionRollbackError") return false;
-      throw error;
-    });
+    // 4. The set-password link, through Better Auth's reset flow. It is printed only if the claim
+    // below succeeds; otherwise nobody holds it and it expires unused.
+    await auth.api.requestPasswordReset({ body: { email: owner.email } });
+    if (!link) throw new Error("Better Auth did not issue a set-password link.");
+    const issued: IssuedLink = link;
+
+    // 5. In one transaction: the owner's actor, the event, and the claim.
+    const claimed = await db
+      .transaction(async (tx) => {
+        await ensureHumanActor(tx, owner.id);
+        await recordEvent(tx, "owner.created", await operatorActorId(tx), owner.id);
+        const updated = await tx
+          .update(installation)
+          .set({ state: "claimed", workspaceId, claimedAt: sql`now()` })
+          .where(and(eq(installation.id, 1), eq(installation.state, "unclaimed")))
+          .returning({ id: installation.id });
+        if (updated.length === 0) tx.rollback();
+        return true;
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "TransactionRollbackError") return false;
+        throw error;
+      });
     if (!claimed) return { ok: false, error: "owner_exists" };
 
-    // 5. The set-password link, through Better Auth's reset flow.
-    try {
-      await auth.api.requestPasswordReset({ body: { email: owner.email } });
-    } catch (error) {
-      if (isStorageError(error)) return { ok: false, error: "storage_unavailable", ownerCreated: true };
-      throw error;
-    }
-    if (!link) throw new Error("Better Auth did not issue a set-password link.");
-    return { ok: true, name: owner.name, email: owner.email, url: link.url, token: link.token, expiresAt: link.expiresAt };
+    return { ok: true, name: owner.name, email: owner.email, url: issued.url, token: issued.token, expiresAt: issued.expiresAt };
   } catch (error) {
     if (error instanceof StorageUnavailable || isStorageError(error)) return { ok: false, error: "storage_unavailable" };
     throw error;

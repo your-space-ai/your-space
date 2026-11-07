@@ -2,6 +2,7 @@
 import { fileURLToPath } from "node:url";
 import type pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { log } from "./log.ts";
 
@@ -32,7 +33,8 @@ export async function runMigrations(pool: pg.Pool, migrationsFolder: string = MI
     await client.query("select pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
     try {
       const from = await schemaVersion(client);
-      log("info", "db.migrate.start", { schemaVersion: from });
+      const target = readMigrationFiles({ migrationsFolder }).length;
+      log("info", "db.migrate.start", { fromSchemaVersion: from, toSchemaVersion: target });
       await migrate(drizzle({ client }), {
         migrationsFolder,
         migrationsSchema: MIGRATIONS_SCHEMA,

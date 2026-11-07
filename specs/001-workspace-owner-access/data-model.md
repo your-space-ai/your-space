@@ -109,9 +109,12 @@ Events never store codes, tokens, passwords, or session values (FR-010).
 3. Create the workspace with `auth.api.createOrganization`, passing the user's ID. The plugin makes
    the creator a member with the `owner` role. If the user already owns a workspace from an earlier
    run, reuse it.
-4. In one transaction, create the human actor, record the `owner.created` event, and set
+4. Issue the set-password link with `auth.api.requestPasswordReset`.
+5. In one transaction, create the human actor, record the `owner.created` event, and set
    `installation` to `claimed` with the workspace ID. A check constraint means it can never be
-   claimed without a workspace.
-5. Issue the set-password link with `auth.api.requestPasswordReset` and print it.
+   claimed without a workspace. Then print the link.
 
 If a run stops partway, running it again with the same email reuses what exists and finishes.
+Because the link is issued before the claim, a failure at any step leaves the installation without
+an owner, so the command can report that nothing was claimed and a rerun finishes the job. A link
+issued by a failed run was never printed and expires unused.

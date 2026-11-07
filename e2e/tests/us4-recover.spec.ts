@@ -42,7 +42,7 @@ test("reset-link sets a new password and signs out every device", async ({ brows
   // A page left open notices on its next refresh (here, returning to the tab) and goes to sign-in
   // instead of showing stale data.
   await expect(phone.getByRole("heading", { name: "Sam Rivera's space" })).toBeVisible();
-  await phone.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await phone.evaluate(() => document.dispatchEvent(new Event("visibilitychange", { bubbles: true })));
   await expect(phone).toHaveURL(/\/sign-in\?notice=expired$/);
   await expect(phone.getByText("Your session has ended. Sign in again to continue.")).toBeVisible();
   await evidence(phone, testInfo, "us4-2-other-device-signed-out");
