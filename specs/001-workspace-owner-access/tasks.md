@@ -119,7 +119,7 @@ on a clean stack.
   - collect the new password with native validation (12 to 128 characters);
   - post it with Better Auth `resetPassword`;
   - on success go to sign-in; on an invalid or expired link, explain how to get a new one with `reset-link`.
-- [ ] T032 [US1] Implement `web/src/router.tsx` with routes `/sign-in`, `/`, and `/reset-password`; the root `beforeLoad` shows NoOwnerYet when there is no owner and ErrorState when storage is unavailable
+- [X] T032 [US1] Implement `web/src/router.tsx` with routes `/sign-in`, `/`, and `/reset-password`; the root `beforeLoad` shows NoOwnerYet when there is no owner and ErrorState when storage is unavailable
 - [X] T033 [US1] Write `docs/install/README.md` sections for prerequisites, download and `.env` (`YS_PUBLIC_URL` modes from [research R9](research.md#r9-https-and-the-caddy-configuration)), starting the stack, `create-owner`, setting the password, and certificate troubleshooting with `docker compose logs caddy` (FR-001, FR-028)
 
 **Checkpoint**: User Story 1 works end to end on localhost, and on a domain with automatic HTTPS.
@@ -135,21 +135,21 @@ session.
 
 ### Tests for User Story 2
 
-- [ ] T034 [P] [US2] `server/tests/session.test.ts`:
+- [X] T034 [P] [US2] `server/tests/session.test.ts`:
   - correct sign-in creates a session and a wrong password does not;
   - `get-session` without a cookie returns no session;
   - after sign-out, replaying the cookie fails;
   - an expired session fails;
   - with an `https` `YS_PUBLIC_URL` the cookie is `__Secure-`, `Secure`, and `HttpOnly`, with no `Domain` attribute;
   - in production mode the 4th sign-in within 10 seconds returns 429.
-- [ ] T035 [P] [US2] `e2e/tests/us2-sign-in.spec.ts`: wrong password is refused; sign in reaches home; sign out returns to sign-in; a replayed session cookie is refused; a stopped server shows the "server unreachable" state, not an empty workspace
+- [X] T035 [P] [US2] `e2e/tests/us2-sign-in.spec.ts`: wrong password is refused; sign in reaches home; sign out returns to sign-in; a replayed session cookie is refused; a stopped server shows the "server unreachable" state, not an empty workspace
 
 ### Implementation for User Story 2
 
-- [ ] T036 [P] [US2] Implement `web/src/pages/SignIn.tsx`: email and password with native validation, Better Auth `signIn.email`, and clear errors for wrong credentials and rate limiting
-- [ ] T037 [P] [US2] Implement `web/src/pages/Home.tsx`: workspace name from `organization.list`, the owner's name and email, and sign out; nothing else (FR-027)
-- [ ] T038 [US2] Extend `web/src/router.tsx`: the root `beforeLoad` sends signed-out visitors to `/sign-in` and signed-in visitors away from it; an expired session mid-use returns to sign-in without reporting success (FR-016)
-- [ ] T039 [US2] Add a remote-access section to `docs/install/README.md`: your own domain, your own proxy, and Tailscale (`tailscale serve` with `YS_SITE_ADDRESS=http://:8080`), and why plain `http://<LAN IP>` is not supported
+- [X] T036 [P] [US2] Implement `web/src/pages/SignIn.tsx`: email and password with native validation, Better Auth `signIn.email`, and clear errors for wrong credentials and rate limiting
+- [X] T037 [P] [US2] Implement `web/src/pages/Home.tsx`: workspace name from `organization.list`, the owner's name and email, and sign out; nothing else (FR-027)
+- [X] T038 [US2] Extend `web/src/router.tsx`: the root `beforeLoad` sends signed-out visitors to `/sign-in` and signed-in visitors away from it; an expired session mid-use returns to sign-in without reporting success (FR-016)
+- [X] T039 [US2] Add a remote-access section to `docs/install/README.md`: your own domain, your own proxy, and Tailscale (`tailscale serve` with `YS_SITE_ADDRESS=http://:8080`), and why plain `http://<LAN IP>` is not supported
 
 **Checkpoint**: User Stories 1 and 2 both work; a second device signs in over HTTPS.
 
@@ -164,17 +164,17 @@ unavailable" and never "no owner yet".
 
 ### Tests for User Story 3
 
-- [ ] T040 [P] [US3] `e2e/tests/us3-restart.spec.ts`:
+- [X] T040 [P] [US3] `e2e/tests/us3-restart.spec.ts`:
   - after `docker compose restart` and after `down` then `up`, user, workspace, and membership IDs match and an existing session still works;
   - with Postgres stopped, the web shows "storage unavailable", `/api/status` returns 503, and `create-owner` exits 3;
   - after Postgres restarts, everything returns unchanged.
-- [ ] T041 [P] [US3] `server/tests/migrations.test.ts`: a database at the first migration upgrades to a later test migration in place, records the new version in `drizzle.__drizzle_migrations`, and keeps all identities and claim state (cross-cutting scenario 8)
+- [X] T041 [P] [US3] `server/tests/migrations.test.ts`: a database at the first migration upgrades to a later test migration in place, records the new version in `drizzle.__drizzle_migrations`, and keeps all identities and claim state (cross-cutting scenario 8)
 
 ### Implementation for User Story 3
 
-- [ ] T042 [US3] Make `server/src/owner/routes.ts` and `server/src/index.ts` keep serving 503 while the database is down and recover when it returns, without a restart
-- [ ] T043 [US3] Add a retry action to the storage-unavailable state in `web/src/components/ErrorState.tsx` that refetches `/api/status`
-- [ ] T044 [US3] Add a restart and storage section to `docs/install/README.md`: the named volumes, safe `restart` and `down`/`up`, a clear warning that `down -v` deletes the workspace, and recovery after a database outage
+- [X] T042 [US3] Make `server/src/owner/routes.ts` and `server/src/index.ts` keep serving 503 while the database is down and recover when it returns, without a restart
+- [X] T043 [US3] Add a retry action to the storage-unavailable state in `web/src/components/ErrorState.tsx` that refetches `/api/status`
+- [X] T044 [US3] Add a restart and storage section to `docs/install/README.md`: the named volumes, safe `restart` and `down`/`up`, a clear warning that `down -v` deletes the workspace, and recovery after a database outage
 
 **Checkpoint**: All data survives restarts and recreation; outages are reported honestly.
 
@@ -189,7 +189,7 @@ out every session, without email.
 
 ### Tests for User Story 4
 
-- [ ] T045 [P] [US4] `server/tests/reset-link.test.ts`:
+- [X] T045 [P] [US4] `server/tests/reset-link.test.ts`:
   - with no owner it exits 2 `no_owner`, and storage down exits 3;
   - the link resets the password once, and a second use fails;
   - an expired link fails;
@@ -198,14 +198,14 @@ out every session, without email.
   - issuing a link alone changes nothing;
   - `recovery.link_issued` and `recovery.password_reset` events reference actors;
   - `POST /api/auth/request-password-reset` over HTTP is refused.
-- [ ] T046 [P] [US4] `e2e/tests/us4-recover.spec.ts`: sign in on two browser contexts, run `reset-link`, set a new password through the link, both old sessions are signed out, the new password works and the old one does not
+- [X] T046 [P] [US4] `e2e/tests/us4-recover.spec.ts`: sign in on two browser contexts, run `reset-link`, set a new password through the link, both old sessions are signed out, the new password works and the old one does not
 
 ### Implementation for User Story 4
 
-- [ ] T047 [US4] Implement `server/src/recovery/reset-link.ts`: find the owner through the `owner` membership, call `requestPasswordReset` through `createCommandAuth`, and record `recovery.link_issued` against the operator actor
-- [ ] T048 [US4] Implement `server/src/commands/reset-link.ts` (`--json`, exit codes 0 to 4) and the `server/bin/reset-link` wrapper
-- [ ] T049 [US4] Record `recovery.password_reset` against the owner's actor using Better Auth's `emailAndPassword.onPasswordReset` option in `server/src/auth.ts`
-- [ ] T050 [US4] Add a recovery section to `docs/install/README.md`: running `reset-link`, link lifetime, and that using it signs out every device
+- [X] T047 [US4] Implement `server/src/recovery/reset-link.ts`: find the owner through the `owner` membership, call `requestPasswordReset` through `createCommandAuth`, and record `recovery.link_issued` against the operator actor
+- [X] T048 [US4] Implement `server/src/commands/reset-link.ts` (`--json`, exit codes 0 to 4) and the `server/bin/reset-link` wrapper
+- [X] T049 [US4] Record `recovery.password_reset` against the owner's actor using Better Auth's `emailAndPassword.onPasswordReset` option in `server/src/auth.ts`
+- [X] T050 [US4] Add a recovery section to `docs/install/README.md`: running `reset-link`, link lifetime, and that using it signs out every device
 
 **Checkpoint**: All four stories work independently.
 
@@ -215,10 +215,10 @@ out every session, without email.
 
 **Purpose**: Shared rules from the spec map, release evidence, and multi-architecture images.
 
-- [ ] T051 [P] `server/tests/logs.test.ts` and an e2e log check in `e2e/tests/logs.spec.ts`: after exercising create-owner, sign-in, failures, and recovery, server and Caddy logs contain no passwords, tokens, set-password links, or session values (cross-cutting scenario 2)
+- [X] T051 [P] `server/tests/logs.test.ts` and an e2e log check in `e2e/tests/logs.spec.ts`: after exercising create-owner, sign-in, failures, and recovery, server and Caddy logs contain no passwords, tokens, set-password links, or session values (cross-cutting scenario 2)
 - [ ] T052 [P] Add `.github/workflows/images.yml`: Docker Buildx with QEMU builds and publishes `your-space-server` and `your-space-web` for `linux/amd64` and `linux/arm64` to GitHub Container Registry; point `deploy/compose.yaml` at the published tags (FR-022)
 - [ ] T053 [P] Add an e2e job to `.github/workflows/ci.yml` that builds the images, starts `deploy/compose.yaml`, and runs Playwright in all three browsers
-- [ ] T054 Capture outbound traffic while running quickstart sections 1, 3, and 5, and confirm the only outbound connections are certificate requests for a configured domain (cross-cutting scenario 5, SC-013); record the method and result in `docs/install/VERIFICATION.md`
+- [X] T054 Capture outbound traffic while running quickstart sections 1, 3, and 5, and confirm the only outbound connections are certificate requests for a configured domain (cross-cutting scenario 5, SC-013); record the method and result in `docs/install/VERIFICATION.md`
 - [ ] T055 Run [quickstart.md](quickstart.md) on an Apple Silicon Mac and an Intel/AMD Linux host with the published images, including HTTPS with a real domain and Tailscale, and record versions, environments, results, and limitations in `docs/install/VERIFICATION.md` (SC-010, SC-011)
 - [ ] T056 Finish `docs/install/README.md`: the supported hosts and browsers verified in T055, password rules and hashing (scrypt with Better Auth defaults), sign-in limits, and session lifetime (FR-001, FR-010, FR-011)
 - [ ] T057 Self-review and an independent review of the full diff against the constitution, spec, and plan; then check off the delivered 001 roadmap items in `docs/roadmap.md` and the overview tree, each with the PR #3 link
