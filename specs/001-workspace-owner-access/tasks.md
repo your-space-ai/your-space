@@ -60,7 +60,7 @@ depends on these.
 - [X] T013 Implement `server/src/migrate.ts` (`drizzle-orm` `migrate()` under a PostgreSQL advisory lock, logging old and new schema versions) and `server/src/index.ts` (validate config, migrate, then listen on port 3000)
 - [X] T014 Implement `server/src/app.ts`: Express 5 with `trust proxy` set to 1 hop, Better Auth via `toNodeHandler(auth)` at `/api/auth/*splat` mounted before `express.json()`, then JSON routes, and an error handler that returns `{ error, message }` without stack traces
 - [X] T015 Implement `server/src/owner/installation.ts`: read the `installation` row and return `claimed` or `unclaimed`, or throw `StorageUnavailable` when the query fails or the row is missing ([research R10](research.md#r10-storage-unavailable-handling-fr-013))
-- [ ] T016 [P] Add `server/tests/helpers/db.ts`: create a fresh database per test file, run migrations, and expose helpers to stop and restore the connection
+- [X] T016 [P] Add `server/tests/helpers/db.ts`: create a fresh database per test file, run migrations, and expose helpers to stop and restore the connection
 - [X] T017 [P] Add `server/Dockerfile` (`node:26-slim`, production dependencies, `bin/` on `PATH`, `CMD ["node", "src/index.ts"]`)
 - [X] T018 [P] Add `deploy/Caddyfile`:
   - site address `{$YS_SITE_ADDRESS}`, with `encode`
@@ -91,36 +91,36 @@ on a clean stack.
 
 ### Tests for User Story 1
 
-- [ ] T023 [P] [US1] `server/tests/create-owner.test.ts`:
+- [X] T023 [P] [US1] `server/tests/create-owner.test.ts`:
   - success creates exactly one user, organization, `owner` member, human actor, `owner.created` event, and a `claimed` installation;
   - `--json` output matches [operator-commands](contracts/operator-commands.md);
   - a second run exits 2 `owner_exists`;
   - invalid name or email exits 1;
   - storage down exits 3 and changes nothing;
   - a rerun after a run stopped before the final transaction finishes with one owner.
-- [ ] T024 [P] [US1] `server/tests/signup-closed.test.ts`: `POST /api/auth/sign-up/email` is refused before and after the owner exists, and creating an organization over HTTP is refused
-- [ ] T025 [P] [US1] `server/tests/status.test.ts`: `GET /api/status` returns `{ owner: false }`, then `{ owner: true }`, and 503 `storage_unavailable` when the database is down or the row is missing; `GET /api/health` returns 200 or 503
-- [ ] T026 [P] [US1] `e2e/tests/us1-create-owner.spec.ts`: a fresh stack shows "no owner yet" with no form; run `create-owner --json` through `docker compose exec`; open the link; set the password; sign in; the home screen shows the workspace, name, email, and sign out only
+- [X] T024 [P] [US1] `server/tests/signup-closed.test.ts`: `POST /api/auth/sign-up/email` is refused before and after the owner exists, and creating an organization over HTTP is refused
+- [X] T025 [P] [US1] `server/tests/status.test.ts`: `GET /api/status` returns `{ owner: false }`, then `{ owner: true }`, and 503 `storage_unavailable` when the database is down or the row is missing; `GET /api/health` returns 200 or 503
+- [X] T026 [P] [US1] `e2e/tests/us1-create-owner.spec.ts`: a fresh stack shows "no owner yet" with no form; run `create-owner --json` through `docker compose exec`; open the link; set the password; sign in; the home screen shows the workspace, name, email, and sign out only
 
 ### Implementation for User Story 1
 
-- [ ] T027 [US1] Implement `server/src/owner/create-owner.ts` per [data-model.md](data-model.md#creating-the-owner):
+- [X] T027 [US1] Implement `server/src/owner/create-owner.ts` per [data-model.md](data-model.md#creating-the-owner):
   - validate the name and email;
   - stop with `owner_exists` if claimed;
   - sign up with a random password, or reuse an existing account for that email;
   - create or reuse the organization "&lt;name&gt;'s space";
   - in one transaction, create the actor and event and claim the installation;
   - request the reset link through `createCommandAuth`.
-- [ ] T028 [US1] Implement `server/src/commands/create-owner.ts` (`util.parseArgs` for `--email`, `--name`, `--json`; human and JSON output; exit codes 0 to 4) and the `server/bin/create-owner` wrapper
-- [ ] T029 [P] [US1] Implement `server/src/owner/routes.ts`: `GET /api/status` and `GET /api/health` per [http-api](contracts/http-api.md); register them in `server/src/app.ts`
-- [ ] T030 [P] [US1] Implement `web/src/pages/NoOwnerYet.tsx`: explains running `create-owner` and has no form
-- [ ] T031 [US1] Implement `web/src/pages/ResetPassword.tsx`:
+- [X] T028 [US1] Implement `server/src/commands/create-owner.ts` (`util.parseArgs` for `--email`, `--name`, `--json`; human and JSON output; exit codes 0 to 4) and the `server/bin/create-owner` wrapper
+- [X] T029 [P] [US1] Implement `server/src/owner/routes.ts`: `GET /api/status` and `GET /api/health` per [http-api](contracts/http-api.md); register them in `server/src/app.ts`
+- [X] T030 [P] [US1] Implement `web/src/pages/NoOwnerYet.tsx`: explains running `create-owner` and has no form
+- [X] T031 [US1] Implement `web/src/pages/ResetPassword.tsx`:
   - read the token from `location.hash`, then clear the hash;
   - collect the new password with native validation (12 to 128 characters);
   - post it with Better Auth `resetPassword`;
   - on success go to sign-in; on an invalid or expired link, explain how to get a new one with `reset-link`.
 - [ ] T032 [US1] Implement `web/src/router.tsx` with routes `/sign-in`, `/`, and `/reset-password`; the root `beforeLoad` shows NoOwnerYet when there is no owner and ErrorState when storage is unavailable
-- [ ] T033 [US1] Write `docs/install/README.md` sections for prerequisites, download and `.env` (`YS_PUBLIC_URL` modes from [research R9](research.md#r9-https-and-the-caddy-configuration)), starting the stack, `create-owner`, setting the password, and certificate troubleshooting with `docker compose logs caddy` (FR-001, FR-028)
+- [X] T033 [US1] Write `docs/install/README.md` sections for prerequisites, download and `.env` (`YS_PUBLIC_URL` modes from [research R9](research.md#r9-https-and-the-caddy-configuration)), starting the stack, `create-owner`, setting the password, and certificate troubleshooting with `docker compose logs caddy` (FR-001, FR-028)
 
 **Checkpoint**: User Story 1 works end to end on localhost, and on a domain with automatic HTTPS.
 

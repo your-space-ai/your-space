@@ -4,6 +4,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
+    // Show log output only for failing tests.
+    silent: "passed-only",
     testTimeout: 60_000,
     hookTimeout: 60_000,
   },

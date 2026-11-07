@@ -14,9 +14,16 @@ function clean(fields: Fields): Fields {
   return out;
 }
 
+let stream: "split" | "stderr" = "split";
+
+/** Operator commands send every log line to stderr, keeping stdout for their own output. */
+export function setLogStream(value: "split" | "stderr"): void {
+  stream = value;
+}
+
 export function log(level: Level, event: string, fields: Fields = {}): void {
   const line = JSON.stringify({ time: new Date().toISOString(), level, event, ...clean(fields) });
-  if (level === "error" || level === "warn") console.error(line);
+  if (stream === "stderr" || level === "error" || level === "warn") console.error(line);
   else console.log(line);
 }
 

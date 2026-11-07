@@ -6,6 +6,7 @@ const evidence = process.env.YS_E2E_EVIDENCE === "1";
 // The journeys run one at a time against a single Compose stack, which each spec resets.
 export default defineConfig({
   testDir: "./tests",
+  globalSetup: "./global-setup.ts",
   fullyParallel: false,
   workers: 1,
   timeout: 120_000,

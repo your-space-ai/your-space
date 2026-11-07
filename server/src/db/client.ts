@@ -29,3 +29,37 @@ export function createDatabase(databaseUrl: string): Database {
   const db = drizzle({ client: pool, schema });
   return { pool, db };
 }
+
+// Error codes that mean the database could not be reached or read, as opposed to a bug.
+const STORAGE_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+  "57P01", // admin_shutdown
+  "57P02", // crash_shutdown
+  "57P03", // cannot_connect_now
+  "3D000", // invalid_catalog_name: the database is gone
+  "42P01", // undefined_table: the schema is missing
+]);
+
+/** Whether an error (or anything in its cause chain) means storage is unavailable. */
+export function isStorageError(error: unknown): boolean {
+  for (let e: unknown = error, depth = 0; e && depth < 8; e = (e as { cause?: unknown }).cause, depth++) {
+    if (typeof e !== "object") break;
+    const { code, message, name } = e as { code?: unknown; message?: unknown; name?: unknown };
+    if (name === "StorageUnavailable") return true;
+    if (typeof code === "string" && (STORAGE_ERROR_CODES.has(code) || code.startsWith("08"))) return true;
+    if (
+      typeof message === "string" &&
+      /Connection terminated|timeout exceeded when trying to connect|does not allow connections|Client has encountered a connection error/i.test(
+        message,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
