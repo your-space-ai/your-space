@@ -75,6 +75,24 @@ async function issue() {
 const tokenRows = (token: string) =>
   t.db.select().from(verification).where(eq(verification.identifier, `reset-password:${token}`));
 
+describe("set-password link and reset-link", () => {
+  it("cancels create-owner's unused set-password link when reset-link issues a new one", async () => {
+    const created = await runCommand("create-owner", ["--email", OWNER.email, "--name", OWNER.name, "--json"], {
+      databaseUrl: t.url,
+      publicUrl: server.publicUrl,
+    });
+    expect(created.code).toBe(0);
+    const issued = await resetLink();
+    expect(issued.code).toBe(0);
+
+    const stale = await reset(created.json.token);
+    expect(stale.status).toBe(400);
+    expect(await json(stale)).toMatchObject({ code: "INVALID_TOKEN" });
+    expect((await reset(issued.json.token)).status).toBe(200);
+    expect((await signIn(NEW_PASSWORD)).status).toBe(200);
+  });
+});
+
 describe("reset-link", () => {
   it("exits 4 with one JSON object when the configuration is invalid, and issues nothing", async () => {
     const result = await runCommand("reset-link", ["--json"], {
@@ -115,6 +133,24 @@ describe("reset-link", () => {
     beforeEach(async () => {
       await createOwnerWithPassword(t.db, OWNER, server.publicUrl);
       ownerId = (await t.db.select({ id: user.id }).from(user))[0]!.id;
+    });
+
+    it("keeps only the newest link working: a new link cancels an earlier unused one", async () => {
+      const first = await resetLink();
+      const second = await resetLink();
+      expect(first.code).toBe(0);
+      expect(second.code).toBe(0);
+      expect(await tokenRows(first.json.token)).toEqual([]);
+      expect(await t.db.select().from(verification)).toHaveLength(1);
+
+      const stale = await reset(first.json.token, "a password from the stale link");
+      expect(stale.status).toBe(400);
+      expect(await json(stale)).toMatchObject({ code: "INVALID_TOKEN" });
+      expect((await signIn(OWNER.password)).status).toBe(200);
+
+      const fresh = await reset(second.json.token);
+      expect(fresh.status).toBe(200);
+      expect((await signIn(NEW_PASSWORD)).status).toBe(200);
     });
 
     it("exits 3 with storage_unavailable when the database is down, and changes nothing", async () => {

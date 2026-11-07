@@ -50,6 +50,8 @@ Both commands print the same kind of link: `${YS_PUBLIC_URL}/reset-password#toke
   random token, stores it, and calls `sendResetPassword`, which prints the link instead of emailing
   it.
 - **Lifetime:** valid for 30 minutes and works once. Using it signs out every existing session.
+- **Only the newest link works:** issuing a link, from either command, cancels any earlier link for
+  the owner that hasn't been used. There is never more than one working link.
 - **Fragment:** the token is in the URL fragment (`#token=`). Browsers never send fragments to a
   server, so the token can't appear in proxy logs, server logs, or a `Referer` header. The page posts
   it to `/api/auth/reset-password` in the request body.

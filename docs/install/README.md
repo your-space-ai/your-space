@@ -417,8 +417,9 @@ with it.
 
 - **Server access is the proof.** Only someone who can run commands on this server can get a link;
   the web page can't issue one. No email is sent or needed.
-- **The link works once, for 30 minutes.** Each run prints a new link. Links you haven't used keep
-  working until they expire, so treat each one like a password. Your Space doesn't log them.
+- **The link works once, for 30 minutes.** Each run prints a new link and cancels the previous one
+  if it wasn't used, including the set-password link from `create-owner`. Only the newest link
+  works. Treat it like a password; Your Space doesn't log it.
 - **Running the command changes nothing by itself.** The old password keeps working, and nobody is
   signed out, until someone uses the link.
 - **Using the link signs out every device.** Sign in again with the new password on each.

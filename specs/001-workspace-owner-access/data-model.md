@@ -40,7 +40,9 @@ on a membership that spec 004 can extend to other members without touching exist
 - **`session`**: `id`, `token` (unique), `userId`, `expiresAt`, `ipAddress`, `userAgent`,
   `activeOrganizationId`, timestamps. Database-backed, so sessions survive restarts (FR-009) and
   deleting the row revokes the session.
-- **`verification`**: short-lived tokens, including password reset tokens (30-minute expiry).
+- **`verification`**: short-lived tokens, including password reset tokens (30-minute expiry). At
+  most one reset token exists per account: the commands delete any unused one when they issue a new
+  one.
   Better Auth consumes a reset token inside the reset transaction, so it works once.
 - **`organization`**: `id`, `name`, `slug` (unique), `logo`, `metadata`, `createdAt`.
 - **`member`**: `id`, `organizationId`, `userId`, `role`, `createdAt`. This feature creates

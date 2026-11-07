@@ -192,6 +192,9 @@ that settled each question.
     body.
 - **Rationale:**
   - Better Auth generates, stores, expires, and consumes the token, and revokes sessions.
+  - Only one link works at a time. The commands' `sendResetPassword` deletes any earlier unused
+    reset token for the account before printing the new link (decided in the implementation review,
+    2026-11-07).
   - Better Auth's own link puts the token in the URL path, then redirects to the client with
     `?token=` in the query string (`api/routes/password.ts`). A URL fragment is never sent to any
     server, so the token stays out of proxy logs, server logs, and `Referer` headers (FR-010).

@@ -5,6 +5,7 @@
 //   `sendResetPassword`, so the network can neither create accounts nor request reset links.
 // - `createCommandAuth` exists only inside the create-owner and reset-link processes. Sign-up is on
 //   and `sendResetPassword` hands the link to the command, which prints it. It is never mounted.
+import { and, eq, like, ne } from "drizzle-orm";
 import { betterAuth, type User } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
@@ -85,6 +86,16 @@ function buildAuth(deps: AuthDeps, onLink?: OnLink) {
       resetPasswordTokenExpiresIn: LINK_LIFETIME_SECONDS,
       sendResetPassword: onLink
         ? async ({ user, token }) => {
+            // Only the newest link works: cancel any earlier unused set-password or reset link.
+            await db
+              .delete(authSchema.verification)
+              .where(
+                and(
+                  like(authSchema.verification.identifier, "reset-password:%"),
+                  eq(authSchema.verification.value, user.id),
+                  ne(authSchema.verification.identifier, `reset-password:${token}`),
+                ),
+              );
             const expiresAt = new Date(Date.now() + LINK_LIFETIME_SECONDS * 1000);
             expiresAt.setMilliseconds(0);
             await onLink({ user, token, url: linkFor(config.publicUrl, token), expiresAt });
