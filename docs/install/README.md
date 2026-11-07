@@ -119,7 +119,7 @@ that doesn't limit anything.
 
 Account rules:
 
-- **Name:** 1 to 100 characters.
+- **Name:** 1 to 100 characters, without control characters such as tabs or line breaks.
 - **Email:** a valid address, up to 254 characters. It is stored in lowercase.
 
 Running `create-owner` again does nothing and says the installation already has an owner. If the
