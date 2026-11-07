@@ -34,9 +34,11 @@ export interface ErrorStateProps {
 export function ErrorState({ kind, onRetry, retrying = false }: ErrorStateProps) {
   const { title, body } = CONTENT[kind];
   return (
-    <main className="panel" role="alert" data-state={kind}>
-      <h1>{title}</h1>
-      <p>{renderCode(body)}</p>
+    <main className="panel" data-state={kind}>
+      <div role="alert">
+        <h1>{title}</h1>
+        <p>{renderCode(body)}</p>
+      </div>
       {kind === "session_expired" ? (
         <a className="button" href="/sign-in">
           Sign in

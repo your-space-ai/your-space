@@ -4,7 +4,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { ConfigError, loadConfig } from "./config.ts";
-import { createDatabase } from "./db/client.ts";
+import { createDatabase, isStorageError } from "./db/client.ts";
 import { errorFields, log } from "./log.ts";
 import { runMigrations } from "./migrate.ts";
 
@@ -31,6 +31,12 @@ for (let attempt = 1; ; attempt++) {
     await runMigrations(pool);
     break;
   } catch (error) {
+    if (!isStorageError(error)) {
+      // The database answered but a migration failed: retrying won't help.
+      log("error", "db.migrate.failed", errorFields(error));
+      console.error("A database migration failed, so the server did not start. Nothing was claimed or deleted.");
+      process.exit(1);
+    }
     log("warn", "db.unavailable_at_start", { attempt, ...errorFields(error) });
     if (attempt >= MIGRATE_ATTEMPTS) {
       console.error("Could not reach the database to apply migrations. Check that the postgres service is running.");

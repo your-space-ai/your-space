@@ -120,7 +120,8 @@ that doesn't limit anything.
 Account rules:
 
 - **Name:** 1 to 100 characters, without control characters such as tabs or line breaks.
-- **Email:** a valid address, up to 254 characters. It is stored in lowercase.
+- **Email:** up to 254 characters: letters, digits, and `_ ' + -` in parts separated by single dots,
+  then `@` and a domain such as `example.com`. It is stored in lowercase.
 
 Running `create-owner` again does nothing and says the installation already has an owner. If the
 command was interrupted (for example, the server stopped), run it again with the same email: it
@@ -134,7 +135,7 @@ exit status says what happened:
 | 0 | Done |
 | 1 | Invalid input, such as a malformed email |
 | 2 | The installation already has an owner |
-| 3 | The database could not be read; nothing was changed |
+| 3 | The database could not be read. No owner was created; once the database is back, run the same command again |
 | 4 | Something unexpected went wrong; nothing was reported as done |
 
 The [command contract](../../specs/001-workspace-owner-access/contracts/operator-commands.md) lists

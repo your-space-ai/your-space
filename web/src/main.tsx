@@ -6,7 +6,14 @@ import { RouterProvider } from "@tanstack/react-router";
 import { createAppRouter } from "./router.tsx";
 import "./styles.css";
 
-const queryClient = new QueryClient();
+// "always": requests run even when the browser thinks it's offline, so a lost connection shows the
+// "can't reach" state instead of waiting silently for the network to return.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { networkMode: "always" },
+    mutations: { networkMode: "always" },
+  },
+});
 const router = createAppRouter(queryClient);
 
 createRoot(document.getElementById("root")!).render(

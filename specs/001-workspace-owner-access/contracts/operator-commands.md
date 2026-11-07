@@ -24,7 +24,7 @@ command's own process ([research R4](../research.md#r4-owner-first-then-invite-o
 | 0 | Success | both |
 | 1 | Usage error, or a name or email that fails the account rules | both |
 | 2 | Not applicable in the current state: an owner already exists (`create-owner`) or doesn't exist yet (`reset-link`) | both |
-| 3 | Storage unavailable or unreadable; nothing was changed | both |
+| 3 | Storage unavailable or unreadable. No owner was created and no link was printed; for `create-owner`, running it again finishes the job | both |
 | 4 | Unexpected error; nothing was reported as successful | both |
 
 If the `server` container is not running, `docker compose exec` itself fails with a non-zero exit
@@ -93,7 +93,10 @@ Rules:
   anywhere else, so the set-password link is the only way in.
 - **Workspace name:** "&lt;name&gt;'s space".
 - **Rerun:** if a run stops partway, running it again with the same email reuses the account and
-  workspace it already created and finishes the job.
+  workspace it already created and finishes the job. With a different email it exits 1
+  (`invalid_input`), naming the email the earlier run used.
+- **One at a time:** runs take turns through a database lock. Of two runs started together, one
+  creates the owner and the other exits 2 (`owner_exists`).
 - **Event:** records an `owner.created` event credited to the operator actor.
 
 ## `reset-link`

@@ -137,8 +137,10 @@ that settled each question.
   - **Reruns:** each step reuses what an earlier, interrupted run created, so rerunning finishes the
     job. The installation is marked as having an owner only in the last step, in the same
     transaction as the actor and event, and a check constraint requires the workspace (FR-004).
-    There are no locks: concurrent runs by the operator aren't a scenario this feature needs to
-    handle, and the unique email prevents duplicate accounts.
+    A PostgreSQL advisory lock makes runs take turns, so two runs started together (for example by
+    a script and the operator) can't each create an account and workspace: the second waits, then
+    finds the owner and exits 2. This was added after the implementation review found that two
+    concurrent runs with different emails could otherwise leave a second, unused account.
 - **Alternatives:**
   - First visitor becomes owner: no code, but exactly the risk above.
   - A setup code and browser form: same protection, more parts. It was the earlier design in this

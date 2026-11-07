@@ -62,6 +62,11 @@ export function ResetPassword() {
         else if (result.error.status === 429) setError("Too many attempts. Wait a minute, then try again.");
         else if (code === "PASSWORD_TOO_SHORT" || code === "PASSWORD_TOO_LONG")
           setError(`Use ${MIN} to ${MAX} characters.`);
+        // The page stays as it is so the link, already cleared from the address bar, can be retried.
+        else if (result.error.status === 503)
+          setError("Your Space can't read its storage right now, so your password wasn't changed. Try again shortly.");
+        else if (result.error.status === 502 || result.error.status === 504)
+          setError("Couldn't reach Your Space, so your password may not have been changed. Try again shortly.");
         else setError("Your password wasn't changed. Try again.");
         return;
       }
@@ -69,7 +74,10 @@ export function ResetPassword() {
       queryClient.removeQueries();
       await navigate({ to: "/sign-in", search: { notice: "password_set" } });
     } catch {
-      setError("Can't reach Your Space, so your password wasn't changed. Check your connection and try again.");
+      setError(
+        "Couldn't reach Your Space, so your password may not have been changed. Check your connection and try again. " +
+          "If the link no longer works, sign in with the new password or ask for a new link.",
+      );
     } finally {
       setPending(false);
     }

@@ -47,7 +47,7 @@ Your Space uses these unchanged. The web client calls them through Better Auth's
 | Endpoint | Used for |
 | --- | --- |
 | `POST /api/auth/sign-in/email` | Sign in (Story 2) |
-| `POST /api/auth/sign-out` | Sign out; deletes the session row (FR-009) |
+| `POST /api/auth/sign-out` | Sign out; deletes the session row (FR-009). While storage is unavailable it returns `503 { "error": "storage_unavailable" }` and the session stays as it was, because Better Auth would otherwise report a sign-out it could not carry out |
 | `GET /api/auth/get-session` | Current session and user, for routing and the home screen |
 | `POST /api/auth/reset-password` | Sets the first password or a new one; the token is sent in the request body (Stories 1 and 4). Password: 12 to 128 characters |
 | `GET /api/auth/organization/list` | The owner's workspace, for the home screen |
@@ -59,9 +59,15 @@ creating accounts or adding people (FR-005; [research R4](../research.md#r4-owne
   the `create-owner` command, whose Better Auth instance exists only in that command's process.
 - `POST /api/auth/request-password-reset` is refused because the public instance has no
   `sendResetPassword`. Only the `reset-link` command issues reset links.
-- Organization routes cannot add anyone. Adding a member is server-only in the plugin, accepting an
-  invitation needs an account that can't be created, and creating another organization is off
+- Organization routes other than `GET /api/auth/organization/list` are turned off with Better Auth's
+  `disabledPaths` and answer `404`, so nobody can be invited, added, removed, or given another
+  role, and the workspace can't be changed, left, or deleted over HTTP (FR-005, FR-014). Adding a
+  member is server-only in the plugin anyway, and creating another organization is off
   (`allowUserToCreateOrganization: false`).
+
+When storage fails during a Better Auth request, the server answers `503
+{ "error": "storage_unavailable", "message": "…" }`. Unexpected errors answer
+`500 { "error": "internal_error", "message": "…" }`. Neither includes the request's values.
 
 Sign-in is limited by Better Auth's built-in defaults (3 attempts per 10 seconds per IP), and a
 limited request gets `429`.

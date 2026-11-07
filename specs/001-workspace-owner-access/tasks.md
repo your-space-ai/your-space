@@ -217,7 +217,7 @@ out every session, without email.
 
 - [X] T051 [P] `server/tests/logs.test.ts` and an e2e log check in `e2e/tests/logs.spec.ts`: after exercising create-owner, sign-in, failures, and recovery, server and Caddy logs contain no passwords, tokens, set-password links, or session values (cross-cutting scenario 2)
 - [ ] T052 [P] Add `.github/workflows/images.yml`: Docker Buildx with QEMU builds and publishes `your-space-server` and `your-space-web` for `linux/amd64` and `linux/arm64` to GitHub Container Registry; point `deploy/compose.yaml` at the published tags (FR-022)
-- [ ] T053 [P] Add an e2e job to `.github/workflows/ci.yml` that builds the images, starts `deploy/compose.yaml`, and runs Playwright in all three browsers
+- [X] T053 [P] Add an e2e job to `.github/workflows/ci.yml` that builds the images, starts `deploy/compose.yaml`, and runs Playwright in all three browsers
 - [X] T054 Capture outbound traffic while running quickstart sections 1, 3, and 5, and confirm the only outbound connections are certificate requests for a configured domain (cross-cutting scenario 5, SC-013); record the method and result in `docs/install/VERIFICATION.md`
 - [ ] T055 Run [quickstart.md](quickstart.md) on an Apple Silicon Mac and an Intel/AMD Linux host with the published images, including HTTPS with a real domain and Tailscale, and record versions, environments, results, and limitations in `docs/install/VERIFICATION.md` (SC-010, SC-011)
 - [ ] T056 Finish `docs/install/README.md`: the supported hosts and browsers verified in T055, password rules and hashing (scrypt with Better Auth defaults), sign-in limits, and session lifetime (FR-001, FR-010, FR-011)

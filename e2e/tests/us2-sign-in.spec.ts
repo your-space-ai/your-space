@@ -70,6 +70,10 @@ test("sign in, sign out, and a replayed session is refused", async ({ page, cont
   await page.goto("/");
   await expect(page).toHaveURL(/\/sign-in$/);
 
+  // Unknown addresses lead back to the app, not to an error.
+  await page.goto("/no-such-page");
+  await expect(page).toHaveURL(/\/sign-in$/);
+
   const replay = await page.request.get("/api/auth/get-session", {
     headers: { cookie: `${session!.name}=${session!.value}` },
   });
@@ -105,6 +109,13 @@ test("a stopped server shows that it can't be reached, not an empty workspace", 
 
   await compose(["stop", "server"]);
   try {
+    // Signing out while the server is down is not reported as done.
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page.getByRole("alert")).toHaveText(
+      "Couldn't sign out because Your Space isn't reachable. You are still signed in; try again.",
+    );
+    await expect(page).toHaveURL(/\/$/);
+
     await page.reload();
     await expect(page.getByRole("heading", { name: "Can't reach Your Space" })).toBeVisible();
     await expect(page.getByText("Sam Rivera's space")).toHaveCount(0);
@@ -112,7 +123,6 @@ test("a stopped server shows that it can't be reached, not an empty workspace", 
     await expect(page.getByRole("heading", { name: "Your Space has no owner yet" })).toHaveCount(0);
     await evidence(page, testInfo, "us2-4-server-unreachable");
 
-    // Signing out while the server is down is not reported as done.
     await page.goto("/sign-in");
     await expect(page.getByRole("heading", { name: "Can't reach Your Space" })).toBeVisible();
   } finally {

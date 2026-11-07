@@ -52,6 +52,11 @@ export function Home() {
     );
   }
 
+  // The installation has an owner, so a missing workspace means its records can't be read correctly.
+  if (!ended && session.data && workspace.isSuccess && workspace.data === null) {
+    return <ErrorState kind="unexpected" onRetry={() => void workspace.refetch()} retrying={workspace.isFetching} />;
+  }
+
   if (ended || !session.data || workspace.isPending) {
     return (
       <main className="panel" aria-busy="true">
@@ -63,7 +68,7 @@ export function Home() {
   const { user } = session.data;
   return (
     <main className="panel" data-state="home">
-      <h1>{workspace.data?.name ?? "Your workspace"}</h1>
+      <h1>{workspace.data?.name}</h1>
       <p className="muted">Nothing is in this workspace yet.</p>
       <dl>
         <dt>Name</dt>

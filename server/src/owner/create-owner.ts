@@ -3,7 +3,8 @@
 // installation is marked as having an owner only in the last step's transaction, after the
 // set-password link exists, so any failure leaves it unclaimed and a rerun finishes the job.
 import { randomBytes } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, TransactionRollbackError } from "drizzle-orm";
+import { APIError } from "better-auth/api";
 import { createCommandAuth, type AuthDeps, type IssuedLink } from "../auth.ts";
 import { ensureHumanActor, operatorActorId, recordEvent } from "../actors.ts";
 import { isStorageError } from "../db/client.ts";
@@ -18,10 +19,36 @@ export type CreateOwnerResult =
   | { ok: false; error: "owner_exists" }
   | { ok: false; error: "storage_unavailable" };
 
+// Any fixed number works; it only has to be the same in every create-owner process.
+const CREATE_OWNER_LOCK_KEY = 7_959_002;
+
 export async function createOwner(deps: AuthDeps, input: Partial<OwnerInput>): Promise<CreateOwnerResult> {
   const valid = validateOwnerInput(input);
   if (!valid.ok) return { ok: false, error: "invalid_input", fields: valid.fields };
-  const { name, email } = valid.value;
+  const { db } = deps;
+
+  // Runs one at a time, so two runs started together can't each create an account and workspace;
+  // the second waits, then finds the owner.
+  let lock;
+  try {
+    lock = await db.$client.connect();
+    await lock.query("select pg_advisory_lock($1)", [CREATE_OWNER_LOCK_KEY]);
+  } catch (error) {
+    lock?.release(true);
+    if (isStorageError(error)) return { ok: false, error: "storage_unavailable" };
+    throw error;
+  }
+  try {
+    return await createOwnerLocked(deps, valid.value);
+  } finally {
+    await lock.query("select pg_advisory_unlock($1)", [CREATE_OWNER_LOCK_KEY]).then(
+      () => lock.release(),
+      (error: Error) => lock.release(error),
+    );
+  }
+}
+
+async function createOwnerLocked(deps: AuthDeps, { name, email }: OwnerInput): Promise<CreateOwnerResult> {
   const { db } = deps;
 
   let link: IssuedLink | undefined;
@@ -49,7 +76,14 @@ export async function createOwner(deps: AuthDeps, input: Partial<OwnerInput>): P
         };
       }
       const password = randomBytes(64).toString("base64url");
-      owner = (await auth.api.signUpEmail({ body: { name, email, password } })).user as typeof user.$inferSelect;
+      try {
+        owner = (await auth.api.signUpEmail({ body: { name, email, password } })).user as typeof user.$inferSelect;
+      } catch (error) {
+        if (error instanceof APIError && (error.body as { code?: string } | undefined)?.code === "INVALID_EMAIL") {
+          return { ok: false, error: "invalid_input", fields: { email: "Not a valid email address." } };
+        }
+        throw error;
+      }
     }
 
     // 3. The workspace and the owner membership. The plugin makes the creator its `owner`.
@@ -75,7 +109,8 @@ export async function createOwner(deps: AuthDeps, input: Partial<OwnerInput>): P
         return true;
       })
       .catch((error: unknown) => {
-        if (error instanceof Error && error.name === "TransactionRollbackError") return false;
+        // The claim found the installation already claimed: report the owner, not an error.
+        if (error instanceof TransactionRollbackError) return false;
         throw error;
       });
     if (!claimed) return { ok: false, error: "owner_exists" };

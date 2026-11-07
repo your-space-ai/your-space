@@ -5,6 +5,7 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
+  Navigate,
   Outlet,
   redirect,
   useRouter,
@@ -92,9 +93,8 @@ export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
     routeTree,
     context: { queryClient },
-    defaultNotFoundComponent: () => {
-      throw redirect({ to: "/" });
-    },
+    // Unknown addresses go to the home route, which sends signed-out visitors to sign-in.
+    defaultNotFoundComponent: () => <Navigate to="/" replace />,
   });
 }
 

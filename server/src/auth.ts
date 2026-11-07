@@ -33,6 +33,33 @@ export interface IssuedLink {
 
 export type OnLink = (link: IssuedLink) => void | Promise<void>;
 
+// Organization routes the web client doesn't use. Only `/organization/list` stays on HTTP: in this
+// feature nobody can be invited, added, removed, or given a different role, and the workspace can't
+// be changed or deleted over the network (FR-005, FR-014). Server-side calls are not affected.
+const DISABLED_ORGANIZATION_PATHS = [
+  "accept-invitation",
+  "cancel-invitation",
+  "check-slug",
+  "create",
+  "delete",
+  "get-active-member",
+  "get-active-member-role",
+  "get-full-organization",
+  "get-invitation",
+  "get-organization",
+  "has-permission",
+  "invite-member",
+  "leave",
+  "list-invitations",
+  "list-members",
+  "list-user-invitations",
+  "reject-invitation",
+  "remove-member",
+  "set-active",
+  "update",
+  "update-member-role",
+].map((name) => `/organization/${name}`);
+
 /** The set-password or reset link. The token is in the fragment, which browsers never send to a server. */
 export function linkFor(publicUrl: string, token: string): string {
   return `${publicUrl}/reset-password#token=${encodeURIComponent(token)}`;
@@ -78,6 +105,11 @@ function buildAuth(deps: AuthDeps, onLink?: OnLink) {
       database: { generateId: "uuid" },
     },
     telemetry: { enabled: false },
+    disabledPaths: DISABLED_ORGANIZATION_PATHS,
+    // Unexpected errors (a lost database, for example) are thrown to the Express error handler,
+    // which logs only their name and code. Otherwise Better Auth's router prints the raw error,
+    // whose text can include query parameters such as a reset token (FR-010).
+    onAPIError: { throw: true },
     logger: {
       // Better Auth's messages go through the JSON log helper. Extra arguments can carry request
       // details, so only the message text is kept.

@@ -1,6 +1,6 @@
 // Sign in with email and password (T036).
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { authClient } from "../auth-client.ts";
 
@@ -23,6 +23,7 @@ function messageFor(status: number): string {
 export function SignIn() {
   const { notice } = useSearch({ from: "/sign-in" });
   const navigate = useNavigate();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -39,6 +40,11 @@ export function SignIn() {
       });
       if (result.error) {
         setError(messageFor(result.error.status));
+        if (result.error.status >= 500) {
+          // Find out whether storage or the server is the problem; the root route shows that state.
+          await queryClient.invalidateQueries({ queryKey: ["status"] });
+          await router.invalidate();
+        }
         return;
       }
       await queryClient.invalidateQueries();

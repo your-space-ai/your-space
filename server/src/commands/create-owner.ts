@@ -66,7 +66,8 @@ async function main(argv: string[]): Promise<number> {
       case "storage_unavailable": {
         out.failure(
           { ok: false, error: "storage_unavailable", message: STORAGE_MESSAGE },
-          `${STORAGE_MESSAGE} Nothing was changed. Check the database with: docker compose ps`,
+          `${STORAGE_MESSAGE} The installation still has no owner. Check the database with ` +
+            "`docker compose ps`; once it is back, run this command again with the same email.",
         );
         return EXIT.storage;
       }

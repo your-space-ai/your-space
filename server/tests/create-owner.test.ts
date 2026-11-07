@@ -1,7 +1,9 @@
 // T023: the create-owner command (User Story 1; contracts/operator-commands.md).
+import pg from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { createCommandAuth } from "../src/auth.ts";
+import { createOwner } from "../src/owner/create-owner.ts";
 import { account, member, organization, user, verification } from "../src/db/auth-schema.ts";
 import { actor, event, installation } from "../src/db/schema.ts";
 import { runCommand } from "./helpers/commands.ts";
@@ -103,6 +105,10 @@ describe("create-owner", () => {
 
   it.each([
     [["--email", "not-an-email", "--name", "Sam"], "email"],
+    // Valid for a browser's email field, refused by Better Auth's rule, so refused up front.
+    [["--email", "sam!x@example.com", "--name", "Sam"], "email"],
+    [["--email", "sam@example.c", "--name", "Sam"], "email"],
+    [["--email", "sam..x@example.com", "--name", "Sam"], "email"],
     [["--email", `${"a".repeat(250)}@x.co`, "--name", "Sam"], "email"],
     [["--email", "sam@example.com", "--name", "   "], "name"],
     [["--email", "sam@example.com", "--name", "x".repeat(101)], "name"],
@@ -202,5 +208,54 @@ describe("create-owner", () => {
       ).rejects.toThrow();
       expect((await t.db.select().from(installation))[0]!.state).toBe("unclaimed");
     });
+  });
+});
+
+describe("create-owner run concurrently", () => {
+  it("lets one of two runs started together create the owner; the other finds it", async () => {
+    const [a, b] = await Promise.all([
+      create(["--email", "a@example.com", "--name", "A", "--json"]),
+      create(["--email", "b@example.com", "--name", "B", "--json"]),
+    ]);
+    expect([a.code, b.code].sort()).toEqual([0, 2]);
+    expect([a.json.error, b.json.error].filter(Boolean)).toEqual(["owner_exists"]);
+    expect(await counts(t.db)).toMatchObject({ users: 1, organizations: 1, members: 1, events: 1 });
+  });
+
+  it("reports owner_exists, not an unexpected error, when the claim is taken while it runs", async () => {
+    // Another connection claims the installation and holds the row until create-owner is waiting on it.
+    const other = new pg.Client({ connectionString: t.url });
+    await other.connect();
+    try {
+      await other.query("begin");
+      const [{ id }] = (
+        await other.query(
+          `insert into organization (name, slug, created_at) values ('Elsewhere', 'elsewhere', now()) returning id`,
+        )
+      ).rows;
+      await other.query(`update installation set state = 'claimed', workspace_id = $1, claimed_at = now() where id = 1`, [id]);
+
+      const run = createOwner({ config: { publicUrl: PUBLIC_URL, authSecret: TEST_SECRET }, db: t.db }, {
+        email: "sam@example.com",
+        name: "Sam Rivera",
+      });
+      const deadline = Date.now() + 30_000;
+      for (;;) {
+        const waiting = await t.pool.query(
+          `select count(*)::int as n from pg_stat_activity where datname = $1 and wait_event_type = 'Lock'`,
+          [t.name],
+        );
+        if (waiting.rows[0].n >= 1) break;
+        if (Date.now() > deadline) throw new Error("create-owner never waited for the claim");
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      await other.query("commit");
+      expect(await run).toEqual({ ok: false, error: "owner_exists" });
+    } finally {
+      await other.end();
+    }
+    const [claim] = await t.db.select().from(installation);
+    expect(claim!.state).toBe("claimed");
+    expect(await t.db.select().from(event)).toEqual([]);
   });
 });

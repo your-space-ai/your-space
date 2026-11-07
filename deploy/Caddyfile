@@ -4,8 +4,11 @@
 #   http://:8080               plain HTTP behind your own proxy or `tailscale serve`
 {
 	servers {
-		# Proxies allowed to report the client address (own-proxy and Tailscale mode).
+		# Proxies allowed to report the client address (own-proxy and Tailscale mode). Strict mode
+		# reads X-Forwarded-For from the right, so a visitor can't choose their own address by
+		# sending the header themselves to a proxy that appends to it.
 		trusted_proxies static {$YS_TRUSTED_PROXIES}
+		trusted_proxies_strict
 	}
 }
 
@@ -13,6 +16,10 @@
 	encode
 
 	handle /api/* {
+		# API requests are small. The server reads auth request bodies whole, so cap them here.
+		request_body {
+			max_size 64KB
+		}
 		reverse_proxy server:3000 {
 			# A single client address, the form Better Auth's sign-in limit reads.
 			header_up X-Forwarded-For {client_ip}

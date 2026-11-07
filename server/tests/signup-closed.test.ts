@@ -45,8 +45,9 @@ describe("closed sign-up", () => {
     const before = await counts(t.db);
     const body = JSON.stringify({ name: "Second space", slug: "second-space" });
 
+    // The route is turned off on the public instance, so it is refused before any session check.
     const anonymous = await server.request("/api/auth/organization/create", { method: "POST", body });
-    expect(anonymous.status).toBe(401);
+    expect(anonymous.status).toBe(404);
 
     const signIn = await server.request("/api/auth/sign-in/email", {
       method: "POST",
@@ -56,15 +57,15 @@ describe("closed sign-up", () => {
     const cookie = cookieHeader(signIn);
 
     const asOwner = await server.request("/api/auth/organization/create", { method: "POST", body, headers: { cookie } });
-    expect(asOwner.status).toBe(403);
+    expect(asOwner.status).toBe(404);
 
-    // Naming another user as the creator is server-only; over HTTP it is still refused.
+    // Naming another user as the creator is server-only; over HTTP the route is refused too.
     const asOther = await server.request("/api/auth/organization/create", {
       method: "POST",
       headers: { cookie },
       body: JSON.stringify({ name: "Third", slug: "third", userId: "00000000-0000-0000-0000-000000000000" }),
     });
-    expect(asOther.status).toBe(403);
+    expect(asOther.status).toBe(404);
 
     expect(await counts(t.db)).toMatchObject({ users: before.users, organizations: 1, members: 1 });
   });

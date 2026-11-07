@@ -52,6 +52,11 @@ test("with the database stopped it reports a storage problem, then recovers unch
   await expectHome(page);
   await compose(["stop", "postgres"]);
   try {
+    // Signing out can't be carried out without the database, so it is reported as failed and the
+    // session stays valid for when the database is back.
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page.getByRole("alert")).toHaveText("Couldn't sign out. You are still signed in; try again.");
+
     await page.reload();
     await expect(page.getByRole("heading", { name: "Your Space can't read its storage" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Your Space has no owner yet" })).toHaveCount(0);
