@@ -16,5 +16,9 @@ export async function signIn(page: Page, email: string, password = PASSWORD): Pr
   if (!page.url().includes("/sign-in")) await page.goto("/sign-in");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  // Wait for the server's answer, so a following navigation cannot cancel the request.
+  await Promise.all([
+    page.waitForResponse((r) => r.url().endsWith("/api/auth/sign-in/email")),
+    page.getByRole("button", { name: "Sign in" }).click(),
+  ]);
 }

@@ -17,9 +17,10 @@ automated tests and the evidence for SC-010. Endpoint and command details are in
 
 ```sh
 mkdir your-space && cd your-space
-curl -fsSLO https://github.com/your-space-ai/your-space/releases/latest/download/compose.yaml
-curl -fsSLO https://github.com/your-space-ai/your-space/releases/latest/download/.env.example
-cp .env.example .env        # set YS_PUBLIC_URL; for local use keep http://localhost
+curl -fsSL -o compose.yaml https://github.com/your-space-ai/your-space/releases/latest/download/compose.yaml
+# GitHub renames release files that start with a dot, so the template is published as env.example.
+curl -fsSL -o .env https://github.com/your-space-ai/your-space/releases/latest/download/env.example
+# In .env: generate the two secrets; set YS_PUBLIC_URL (for local use keep http://localhost)
 docker compose up -d
 docker compose ps           # every service healthy
 ```
