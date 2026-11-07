@@ -211,12 +211,58 @@ describe("create-owner", () => {
   });
 });
 
+describe("create-owner unexpected failures", () => {
+  it("exits 4 with one JSON object when the configuration is invalid", async () => {
+    const result = await runCommand("create-owner", [...VALID, "--json"], {
+      databaseUrl: t.url,
+      env: { BETTER_AUTH_SECRET: "short" },
+    });
+    expect(result.code).toBe(4);
+    expect(result.stdout.trim().split("\n")).toHaveLength(1);
+    expect(result.json).toMatchObject({ ok: false, error: "unexpected" });
+    expect(result.json.message).toMatch(/BETTER_AUTH_SECRET/);
+    expect(await counts(t.db)).toMatchObject({ users: 0, organizations: 0 });
+  });
+
+  it("exits 4 on an internal error and never reports success", async () => {
+    await t.db.delete(actor).where(eq(actor.kind, "operator"));
+    const result = await create([...VALID, "--json"]);
+    expect(result.code).toBe(4);
+    expect(result.json).toEqual({
+      ok: false,
+      error: "unexpected",
+      message: "Something unexpected went wrong. Nothing was reported as done.",
+    });
+    expect((await t.db.select().from(installation))[0]!.state).toBe("unclaimed");
+  });
+});
+
 describe("create-owner run concurrently", () => {
   it("lets one of two runs started together create the owner; the other finds it", async () => {
-    const [a, b] = await Promise.all([
+    // Hold the command's lock so both runs are waiting at once, then let them go.
+    const holder = new pg.Client({ connectionString: t.url });
+    await holder.connect();
+    await holder.query("select pg_advisory_lock(7959002)");
+    const runs = Promise.all([
       create(["--email", "a@example.com", "--name", "A", "--json"]),
       create(["--email", "b@example.com", "--name", "B", "--json"]),
     ]);
+    try {
+      const deadline = Date.now() + 30_000;
+      for (;;) {
+        const waiting = await t.pool.query(
+          `select count(*)::int as n from pg_stat_activity where datname = $1 and wait_event = 'advisory'`,
+          [t.name],
+        );
+        if (waiting.rows[0].n >= 2) break;
+        if (Date.now() > deadline) throw new Error("the runs never waited for the lock");
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    } finally {
+      await holder.query("select pg_advisory_unlock(7959002)");
+      await holder.end();
+    }
+    const [a, b] = await runs;
     expect([a.code, b.code].sort()).toEqual([0, 2]);
     expect([a.json.error, b.json.error].filter(Boolean)).toEqual(["owner_exists"]);
     expect(await counts(t.db)).toMatchObject({ users: 1, organizations: 1, members: 1, events: 1 });

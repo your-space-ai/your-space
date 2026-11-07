@@ -1,7 +1,6 @@
 // The Express app (T014): Better Auth first, then JSON routes, then a safe error handler.
-import { sql } from "drizzle-orm";
 import express, { type ErrorRequestHandler } from "express";
-import { toNodeHandler } from "better-auth/node";
+import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import type { Auth } from "./auth.ts";
 import { isStorageError, type Db } from "./db/client.ts";
 import { errorFields, log } from "./log.ts";
@@ -18,15 +17,20 @@ export function createApp({ auth, db }: AppDeps): express.Express {
   // Caddy is the one proxy in front of the server.
   app.set("trust proxy", 1);
 
-  // Better Auth reports sign-out as done even when it could not delete the session because the
-  // database is down, which would leave the session valid (FR-009). Check storage first, so a
-  // sign-out during an outage is reported as failed instead (FR-016).
-  app.post("/api/auth/sign-out", async (_req, res, next) => {
+  // Better Auth reports sign-out as done even when deleting the session failed, which would leave
+  // the session valid (FR-009). For requests from Your Space's own pages (the only origin Better
+  // Auth accepts), delete the session first and report a failure as one (FR-016); Better Auth then
+  // signs out as usual. Requests from anywhere else are left for Better Auth to refuse.
+  const publicOrigin = new URL(auth.options.baseURL as string).origin;
+  app.post("/api/auth/sign-out", async (req, res, next) => {
+    if (req.headers.origin !== publicOrigin) return next();
     try {
-      await db.execute(sql`select 1`);
+      const current = await auth.api.getSession({ headers: fromNodeHeaders(req.headers), query: { disableRefresh: true } });
+      if (current) await (await auth.$context).internalAdapter.deleteSession(current.session.token);
       next();
-    } catch {
-      res.status(503).json({ error: "storage_unavailable", message: "Your Space can't read its storage, so you are still signed in." });
+    } catch (error) {
+      if (!isStorageError(error)) return next(error);
+      res.status(503).json({ error: "storage_unavailable", message: "Your Space can't update its storage, so you are still signed in." });
     }
   });
 

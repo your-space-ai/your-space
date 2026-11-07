@@ -221,7 +221,7 @@ out every session, without email.
 - [X] T054 Capture outbound traffic while running quickstart sections 1, 3, and 5, and confirm the only outbound connections are certificate requests for a configured domain (cross-cutting scenario 5, SC-013); record the method and result in `docs/install/VERIFICATION.md`
 - [ ] T055 Run [quickstart.md](quickstart.md) on an Apple Silicon Mac and an Intel/AMD Linux host with the published images, including HTTPS with a real domain and Tailscale, and record versions, environments, results, and limitations in `docs/install/VERIFICATION.md` (SC-010, SC-011)
 - [ ] T056 Finish `docs/install/README.md`: the supported hosts and browsers verified in T055, password rules and hashing (scrypt with Better Auth defaults), sign-in limits, and session lifetime (FR-001, FR-010, FR-011)
-- [ ] T057 Self-review and an independent review of the full diff against the constitution, spec, and plan; then check off the delivered 001 roadmap items in `docs/roadmap.md` and the overview tree, each with the PR #3 link
+- [X] T057 Self-review and an independent review of the full diff against the constitution, spec, and plan; then check off the delivered 001 roadmap items in `docs/roadmap.md` and the overview tree, each with the PR #3 link
 
 ---
 

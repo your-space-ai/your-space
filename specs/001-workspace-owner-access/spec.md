@@ -6,7 +6,7 @@
 
 **Last updated**: 2026-11-03
 
-**Status**: Draft for PR review; implementation has not started
+**Status**: In PR review with its implementation ([PR #6](https://github.com/your-space-ai/your-space/pull/6) into PR #3); verification on real hosts (task T055) is pending
 
 **Journey**: 001 "Set up my space", the first of eight journeys in the [spec map](../../docs/spec-map.md)
 

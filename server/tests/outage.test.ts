@@ -103,6 +103,28 @@ describe("storage failing mid-request", () => {
     expect(await after.json()).toBeNull();
   });
 
+  it("refuses sign-out when the database can read but not delete, and the session is unchanged", async () => {
+    const cookie = await signIn();
+    const before = await t.db.select().from(session);
+    // Like a read-only database: reads work, deleting a session fails.
+    await t.db.execute(sql`create function refuse_delete() returns trigger language plpgsql as $$
+      begin raise exception 'read-only for the test' using errcode = '25006'; end $$`);
+    await t.db.execute(sql`create trigger refuse_delete before delete on session for each row execute function refuse_delete()`);
+    try {
+      const response = await server.request("/api/auth/sign-out", { method: "POST", body: "{}", headers: { cookie } });
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ error: "storage_unavailable" });
+      expect(response.headers.getSetCookie()).toEqual([]);
+    } finally {
+      await t.db.execute(sql`drop trigger refuse_delete on session`);
+      await t.db.execute(sql`drop function refuse_delete()`);
+    }
+    expect(await t.db.select().from(session)).toEqual(before);
+    const signOut = await server.request("/api/auth/sign-out", { method: "POST", body: "{}", headers: { cookie } });
+    expect(signOut.status).toBe(200);
+    expect(await (await server.request("/api/auth/get-session", { headers: { cookie } })).json()).toBeNull();
+  });
+
   it("survives losing the database while a connection is checked out", async () => {
     const client = await t.pool.connect();
     try {

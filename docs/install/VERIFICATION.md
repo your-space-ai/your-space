@@ -10,8 +10,10 @@ for what is listed here as verified (SC-010).
 
 | Check | Result |
 | --- | --- |
-| Server tests (Vitest, real PostgreSQL 18) | Pass |
-| Browser journeys, all four stories plus the log scan, against the Compose stack | Pass in Chromium, Firefox, and WebKit |
+| Server tests (Vitest, real PostgreSQL 18) | Pass: 88 tests in 9 files |
+| Browser journeys, all four stories plus the log scan, against the Compose stack | Pass: 27 journeys in Chromium, Firefox, and WebKit |
+| The same checks in GitHub Actions (`ci.yml`, ubuntu-24.04) | Pass: [run 2](https://github.com/your-space-ai/your-space/actions/runs/42418561251) |
+| Localhost mode reachable only from this machine | Pass: refused on the host's network address |
 | No outbound requests on `localhost` (cross-cutting scenario 5, SC-013) | Pass: none observed |
 | Only certificate requests with a domain configured | Pass: only the Let's Encrypt lookup observed |
 | Logs hold no credentials (cross-cutting scenario 2) | Pass |
@@ -19,6 +21,7 @@ for what is listed here as verified (SC-010).
 | Quickstart on an Apple Silicon Mac | **Not run** |
 | Quickstart on a real Intel/AMD Linux host, HTTPS with a real domain, Tailscale | **Not run** |
 | Published multi-architecture images (`images.yml`) | **Not run**: the workflow runs on GitHub after merge |
+| IPv6 | **Not supported yet**; not run |
 
 ## Where It Ran
 
@@ -56,6 +59,23 @@ npm run e2e                                      # builds the images, then runs 
 
 Screenshots of each story in each browser, and a video walking through all four stories, are kept on
 the `evidence/claude/001-implementation` branch, which is never merged.
+
+## Localhost Mode Stays on This Machine
+
+With the default `YS_PUBLIC_URL=http://localhost` and no `YS_BIND_ADDRESS`, `docker ps` showed
+Caddy's ports published only on `127.0.0.1`. `curl http://localhost/api/status` answered `200`,
+and the same request to the host's network address, with `Host: localhost`, was refused.
+
+## Review
+
+Independent reviewers checked the full diff against the constitution, spec, plan, and contracts
+along six lines: security, owner creation and recovery, durability and storage, the web client,
+deployment and docs, and tests. Every finding was reproduced or checked against library source
+before it was fixed, and each fix has a regression test where one is possible. Fixes include:
+keeping raw database errors (which can contain a reset token) out of logs; reporting sign-out as
+failed when the session can't be deleted; surviving a lost database connection mid-transaction;
+binding localhost mode to `127.0.0.1`; serializing `create-owner` runs; and closing unused
+organization routes. Skeptic reviewers then confirmed the findings they checked were fixed.
 
 ## Outbound Traffic (Cross-Cutting Scenario 5, SC-013)
 
@@ -96,4 +116,9 @@ These are required before the guide can claim them. They need real machines and 
   checked only as a Caddy configuration (`caddy adapt`), not end to end.
 - **Branded browsers**: Chrome, Edge, and Safari (including iOS) were not run; Playwright's
   Chromium, Firefox, and WebKit builds stand in for their engines.
-- **Downloading `compose.yaml` and `env.example` from a release**: no release exists yet.
+- **Downloading `compose.yaml` and `env.example` from a release**: no release exists yet. The
+  workflow step that pins a release's `compose.yaml` to its own image version was run locally.
+- **IPv6**: not supported yet. The Compose network has no IPv6, so the guide says not to add an
+  `AAAA` record.
+- **Docker Desktop's networking**: whether Your Space sees each visitor's own address there (which
+  the per-address sign-in limit relies on) has not been checked.

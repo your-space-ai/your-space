@@ -1,6 +1,6 @@
 # Your Space Roadmap
 
-**Last updated**: 2026-11-03
+**Last updated**: 2026-11-07
 
 This roadmap tracks the functionality we want to build for Your Space: a self-hostable platform
 for independent apps, human users, and agents, with a managed offering planned later.
@@ -31,7 +31,8 @@ The pre-public section is grouped into layers. Within each layer, each parent ch
 capability and its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
 place with their completion date and implementation PR or release link so this remains a record.
-All functionality below is currently unchecked because application implementation has not started.
+Owner setup and sessions, and keeping identity across restarts, are delivered by the owner-access
+feature (PR #3); everything else below is unchecked.
 
 ## Pre-public: Core Experience and First Working Version
 
@@ -177,13 +178,15 @@ Your Space: first public release
   **Source:** [Installation and hosting](architecture/decisions.md#installation-and-hosting).
 
   - [ ] [High] Install manually with documented Docker Compose procedures on supported macOS and Linux server hosts.
-  - [ ] [High] Retain account and workspace identity across restarts and service recreation with durable storage retained.
+  - [x] [High] Retain account and workspace identity across restarts and service recreation with durable storage retained. (2026-11-07, [PR #3](https://github.com/your-space-ai/your-space/pull/3))
   - [ ] [High] Access the same server and workspace from another device through a documented encrypted connection.
   - [ ] [Low] Keep the manual Compose procedure documented as an advanced alternative to the CLI.
   - [ ] [High] Publish Your Space images for both ARM (including Apple Silicon) and Intel/AMD machines.
 
-  The manual install is part of the owner-access feature (PR #3). Exact host support and remote
-  access details still need planning.
+  The manual install is part of the owner-access feature (PR #3). Its guide and images are written,
+  but installing, other-device access, and the published ARM and Intel/AMD images stay unchecked
+  until they are verified on real hosts (task T055 in the
+  [001 task list](../specs/001-workspace-owner-access/tasks.md)).
 
 - [ ] **HTTPS**
 
@@ -224,21 +227,23 @@ Your Space: first public release
 
 ### 2. Identity and Access
 
-- [ ] **Owner setup and sessions**
+- [x] **Owner setup and sessions** (2026-11-07, [PR #3](https://github.com/your-space-ai/your-space/pull/3))
 
   **Source:** [Authentication and initial claim](architecture/decisions.md#authentication-and-initial-claim) and [sessions, persistence, and recovery](architecture/decisions.md#sessions-persistence-and-recovery).
 
-  - [ ] [High] Create the owner with a server command that prints a single-use set-password link; the network alone can never create an account or the owner.
-  - [ ] [High] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct.
-  - [ ] [High] Prevent duplicate owners and keep sign-up closed; new people join only by invitation.
-  - [ ] [High] Reach an accurate empty workspace and distinguish unavailable services from empty or unclaimed state.
-  - [ ] [High] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation.
-  - [ ] [High] Keep the platform session in host-only cookies so it is never sent to app origins.
-  - [ ] [High] Recover the existing owner account through an operator command without requiring email delivery or a standalone CLI.
-  - [ ] [High] Preserve identity and revoke existing sessions after successful password recovery.
+  - [x] [High] Create the owner with a server command that prints a single-use set-password link; the network alone can never create an account or the owner. (2026-11-07, [PR #3](https://github.com/your-space-ai/your-space/pull/3))
+  - [x] [High] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct. (2026-11-07, [PR #3](https://github.com/your-space-ai/your-space/pull/3))
+  - [x] [High] Prevent duplicate owners and keep sign-up closed; new people join only by invitation. (2026-11-07, [PR #3](https://github.com/your-space-ai/your-space/pull/3))
+  - [x] [High] Reach an accurate empty workspace and distinguish unavailable services from empty or unclaimed state. (2026-11-07, [PR #3](https://github.com/your-space-ai/your-space/pull/3))
+  - [x] [High] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation. (2026-11-07, [PR #3](https://github.com/your-space-ai/your-space/pull/3))
+  - [x] [High] Keep the platform session in host-only cookies so it is never sent to app origins. (2026-11-07, [PR #3](https://github.com/your-space-ai/your-space/pull/3))
+  - [x] [High] Recover the existing owner account through an operator command without requiring email delivery or a standalone CLI. (2026-11-07, [PR #3](https://github.com/your-space-ai/your-space/pull/3))
+  - [x] [High] Preserve identity and revoke existing sessions after successful password recovery. (2026-11-07, [PR #3](https://github.com/your-space-ai/your-space/pull/3))
 
   The owner-access feature (PR #3) is owner-only and web-only. Password rules, session and credential
-  lifetimes, and failed-attempt behavior still need planning.
+  lifetimes, and failed-attempt behavior are settled in the
+  [001 plan](../specs/001-workspace-owner-access/plan.md#settled-values) and documented in the
+  [installation guide](install/README.md#sign-in-and-sessions).
 
 - [ ] **Workspace members**
 

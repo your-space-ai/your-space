@@ -76,6 +76,19 @@ const tokenRows = (token: string) =>
   t.db.select().from(verification).where(eq(verification.identifier, `reset-password:${token}`));
 
 describe("reset-link", () => {
+  it("exits 4 with one JSON object when the configuration is invalid, and issues nothing", async () => {
+    const result = await runCommand("reset-link", ["--json"], {
+      databaseUrl: t.url,
+      publicUrl: server.publicUrl,
+      env: { YS_PUBLIC_URL: "http://192.168.1.20" },
+    });
+    expect(result.code).toBe(4);
+    expect(result.stdout.trim().split("\n")).toHaveLength(1);
+    expect(result.json).toMatchObject({ ok: false, error: "unexpected" });
+    expect(result.json.message).toMatch(/YS_PUBLIC_URL/);
+    expect(await t.db.select().from(verification)).toEqual([]);
+  });
+
   it("exits 2 with no_owner before the owner exists, and changes nothing", async () => {
     const before = await counts(t.db);
 

@@ -47,6 +47,7 @@ const STORAGE_ERROR_CODES = new Set([
   "57P03", // cannot_connect_now
   "3D000", // invalid_catalog_name: the database is gone
   "42P01", // undefined_table: the schema is missing
+  "25006", // read_only_sql_transaction: the database accepts reads but not writes
 ]);
 
 /** Whether an error (or anything in its cause chain) means storage is unavailable. */
@@ -55,7 +56,10 @@ export function isStorageError(error: unknown): boolean {
     if (typeof e !== "object") break;
     const { code, message, name } = e as { code?: unknown; message?: unknown; name?: unknown };
     if (name === "StorageUnavailable") return true;
-    if (typeof code === "string" && (STORAGE_ERROR_CODES.has(code) || code.startsWith("08"))) return true;
+    // Class 08: connection exceptions. Class 53: insufficient resources, such as a full disk.
+    if (typeof code === "string" && (STORAGE_ERROR_CODES.has(code) || code.startsWith("08") || code.startsWith("53"))) {
+      return true;
+    }
     if (
       typeof message === "string" &&
       /Connection terminated|timeout exceeded when trying to connect|is not currently accepting connections|Client has encountered a connection error|Query read timeout/i.test(

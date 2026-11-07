@@ -38,7 +38,8 @@ codes apply to both commands:
 { "ok": false, "error": "unexpected", "message": "Something unexpected went wrong. Nothing was reported as done." }
 ```
 
-`usage` comes with exit 1 and `unexpected` with exit 4. Log lines, if any, go to stderr, so stdout
+`usage` comes with exit 1 and `unexpected` with exit 4. When the server's configuration is invalid,
+`unexpected` carries the configuration message instead, naming the setting to fix. Log lines, if any, go to stderr, so stdout
 holds only that object.
 
 ## Set-Password and Reset Links

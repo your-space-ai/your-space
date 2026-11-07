@@ -59,6 +59,16 @@ test("sign in, sign out, and a replayed session is refused", async ({ page, cont
     echo.close();
   }
 
+  // A sign-out request from another site is refused and the session stays (CSRF protection).
+  const sessionCookie = `${session!.name}=${session!.value}`;
+  const forged = await page.request.post("/api/auth/sign-out", {
+    headers: { origin: "https://elsewhere.example", cookie: sessionCookie },
+    data: {},
+  });
+  expect(forged.status()).toBe(403);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Sam Rivera's space" })).toBeVisible();
+
   // Signed-in visitors skip the sign-in page.
   await page.goto("/sign-in");
   await expect(page).toHaveURL(/\/$/);
