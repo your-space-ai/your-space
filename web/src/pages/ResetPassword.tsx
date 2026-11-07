@@ -1,0 +1,104 @@
+// Set the first password or a new one with a link from create-owner or reset-link (T031).
+// The token is in the URL fragment, which browsers never send to a server. It is read once and
+// then cleared from the address bar, and posted in the request body.
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { useEffect, useState, type FormEvent } from "react";
+import { authClient } from "../auth-client.ts";
+import { renderCode } from "../components/ErrorState.tsx";
+
+const MIN = 12;
+const MAX = 128;
+const NEW_LINK_HELP =
+  "Ask whoever runs the server for a new link. On the server, in the folder with `compose.yaml`, run: " +
+  "`docker compose exec server reset-link`";
+
+function readToken(): string | null {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const token = params.get("token");
+  return token && token.length > 0 ? token : null;
+}
+
+export function ResetPassword() {
+  const [token] = useState(readToken);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const [linkInvalid, setLinkInvalid] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    if (window.location.hash) {
+      window.history.replaceState(window.history.state, "", window.location.pathname);
+    }
+  }, []);
+
+  if (!token || linkInvalid) {
+    return (
+      <main className="panel" data-state="link-invalid">
+        <h1>{token ? "This link has expired or was already used" : "This link is incomplete"}</h1>
+        <p>Links to set a password work once, for 30 minutes. Your password has not been changed.</p>
+        <p>{renderCode(NEW_LINK_HELP)}</p>
+      </main>
+    );
+  }
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const newPassword = String(data.get("password"));
+    if (newPassword !== String(data.get("confirm"))) {
+      setError("The two passwords don't match.");
+      return;
+    }
+    setPending(true);
+    setError(null);
+    try {
+      const result = await authClient.resetPassword({ newPassword, token: token! });
+      if (result.error) {
+        const code = (result.error as { code?: string }).code;
+        if (code === "INVALID_TOKEN") setLinkInvalid(true);
+        else if (result.error.status === 429) setError("Too many attempts. Wait a minute, then try again.");
+        else if (code === "PASSWORD_TOO_SHORT" || code === "PASSWORD_TOO_LONG")
+          setError(`Use ${MIN} to ${MAX} characters.`);
+        else setError("Your password wasn't changed. Try again.");
+        return;
+      }
+      // Setting a password signs out every session.
+      queryClient.removeQueries();
+      await navigate({ to: "/sign-in", search: { notice: "password_set" } });
+    } catch {
+      setError("Can't reach Your Space, so your password wasn't changed. Check your connection and try again.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <main className="panel">
+      <h1>Choose your password</h1>
+      <p className="muted">
+        Use {MIN} to {MAX} characters. A long passphrase is a good choice. Saving it signs out every device.
+      </p>
+      {error ? (
+        <p className="notice error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <form onSubmit={onSubmit}>
+        <label>
+          New password
+          <input name="password" type="password" autoComplete="new-password" required minLength={MIN} maxLength={MAX} />
+        </label>
+        <label>
+          Confirm the password
+          <input name="confirm" type="password" autoComplete="new-password" required minLength={MIN} maxLength={MAX} />
+        </label>
+        <button type="submit" disabled={pending}>
+          {pending ? "Saving…" : "Set password"}
+        </button>
+      </form>
+    </main>
+  );
+}

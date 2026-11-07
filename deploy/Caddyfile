@@ -1,0 +1,29 @@
+# Your Space's Caddy configuration (research R9). YS_SITE_ADDRESS is the site address:
+#   https://space.example.com  automatic HTTPS with a Let's Encrypt certificate, HTTP redirects to HTTPS
+#   http://localhost           plain HTTP for this machine only (the default)
+#   http://:8080               plain HTTP behind your own proxy or `tailscale serve`
+{
+	servers {
+		# Proxies allowed to report the client address (own-proxy and Tailscale mode).
+		trusted_proxies static {$YS_TRUSTED_PROXIES}
+	}
+}
+
+{$YS_SITE_ADDRESS} {
+	encode
+
+	handle /api/* {
+		reverse_proxy server:3000 {
+			# A single client address, the form Better Auth's sign-in limit reads.
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	# There is no `log` directive, so the access log stays off and request URLs are not recorded.
+}

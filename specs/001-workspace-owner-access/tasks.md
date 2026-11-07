@@ -32,10 +32,10 @@ One repository with npm workspaces: `server/`, `web/`, `e2e/`, plus `deploy/` an
 
 **Purpose**: Create the workspaces and tooling.
 
-- [ ] T001 Create root `package.json` with npm workspaces `server`, `web`, `e2e`, plus root `tsconfig.base.json` (TypeScript 7, `strict`, `erasableSyntaxOnly`, `rewriteRelativeImportExtensions`) and `.gitignore` (`node_modules`, `dist`, `.env`)
-- [ ] T002 Create `server/package.json` (Node 26, `"type": "module"`) with runtime dependencies `express`, `better-auth`, `drizzle-orm`, `pg`, and dev dependencies `drizzle-kit`, `vitest`, `@types/express`, `@types/pg`, plus `server/tsconfig.json`
-- [ ] T003 [P] Create the Vite React app in `web/` (`web/package.json`, `web/tsconfig.json`, `web/vite.config.ts`, `web/index.html`) with `react`, `react-dom`, `@tanstack/react-router`, `@tanstack/react-query`, `better-auth`
-- [ ] T004 [P] Create `e2e/package.json` and `e2e/playwright.config.ts` with Chromium, Firefox, and WebKit projects and a base URL from `YS_PUBLIC_URL`
+- [X] T001 Create root `package.json` with npm workspaces `server`, `web`, `e2e`, plus root `tsconfig.base.json` (TypeScript 7, `strict`, `erasableSyntaxOnly`, `rewriteRelativeImportExtensions`) and `.gitignore` (`node_modules`, `dist`, `.env`)
+- [X] T002 Create `server/package.json` (Node 26, `"type": "module"`) with runtime dependencies `express`, `better-auth`, `drizzle-orm`, `pg`, and dev dependencies `drizzle-kit`, `vitest`, `@types/express`, `@types/pg`, plus `server/tsconfig.json`
+- [X] T003 [P] Create the Vite React app in `web/` (`web/package.json`, `web/tsconfig.json`, `web/vite.config.ts`, `web/index.html`) with `react`, `react-dom`, `@tanstack/react-router`, `@tanstack/react-query`, `better-auth`
+- [X] T004 [P] Create `e2e/package.json` and `e2e/playwright.config.ts` with Chromium, Firefox, and WebKit projects and a base URL from `YS_PUBLIC_URL`
 - [ ] T005 [P] Add `.github/workflows/ci.yml`: install, `tsc --noEmit` in every workspace, server tests with a PostgreSQL 18 service container, web build
 
 ---
@@ -45,37 +45,37 @@ One repository with npm workspaces: `server/`, `web/`, `e2e/`, plus `deploy/` an
 **Purpose**: Configuration, database, Better Auth, the HTTP app, and the Compose stack. Every story
 depends on these.
 
-- [ ] T006 Implement `server/src/config.ts`: read and validate `YS_PUBLIC_URL`, `DATABASE_URL`, and `BETTER_AUTH_SECRET` at startup; exit with a clear message when one is missing or malformed
-- [ ] T007 [P] Implement `server/src/log.ts`: one JSON line per event to stdout, never including request bodies, cookies, `Authorization` headers, passwords, or tokens
-- [ ] T008 Implement `server/src/db/client.ts`: a `pg` pool and Drizzle instance from `DATABASE_URL`, with a pool `error` handler so losing the database never crashes the process
-- [ ] T009 Implement `server/src/auth.ts` with one shared options builder ([research R3, R4](research.md#r3-authentication-with-better-auth)):
+- [X] T006 Implement `server/src/config.ts`: read and validate `YS_PUBLIC_URL`, `DATABASE_URL`, and `BETTER_AUTH_SECRET` at startup; exit with a clear message when one is missing or malformed
+- [X] T007 [P] Implement `server/src/log.ts`: one JSON line per event to stdout, never including request bodies, cookies, `Authorization` headers, passwords, or tokens
+- [X] T008 Implement `server/src/db/client.ts`: a `pg` pool and Drizzle instance from `DATABASE_URL`, with a pool `error` handler so losing the database never crashes the process
+- [X] T009 Implement `server/src/auth.ts` with one shared options builder ([research R3, R4](research.md#r3-authentication-with-better-auth)):
   - `emailAndPassword` with `disableSignUp`, `minPasswordLength: 12`, `maxPasswordLength: 128`, `autoSignIn: false`, `revokeSessionsOnPasswordReset: true`, `resetPasswordTokenExpiresIn: 1800`
   - `baseURL` from `YS_PUBLIC_URL`, `advanced.database.generateId: "uuid"`, `telemetry: { enabled: false }`
   - `organization({ allowUserToCreateOrganization: false })`, and the Drizzle adapter
   - export `auth`, the public instance with sign-up off and no `sendResetPassword`
   - export `createCommandAuth(onLink)`, the command-only instance with sign-up on and `sendResetPassword` calling `onLink`
-- [ ] T010 Generate `server/src/db/auth-schema.ts` with `npx auth@latest generate` from `server/src/auth.ts`
-- [ ] T011 Define `installation`, `actor`, and `event` in `server/src/db/schema.ts` per [data-model.md](data-model.md): single-row check on `installation`, a `claimed` row requires `workspace_id` and `claimed_at`, `workspace_id` references `organization.id` `on delete restrict`
-- [ ] T012 Add `server/drizzle.config.ts`, generate the first migration into `server/drizzle/`, and append inserts for the `installation` row (`state = 'unclaimed'`) and the `operator` actor
-- [ ] T013 Implement `server/src/migrate.ts` (`drizzle-orm` `migrate()` under a PostgreSQL advisory lock, logging old and new schema versions) and `server/src/index.ts` (validate config, migrate, then listen on port 3000)
-- [ ] T014 Implement `server/src/app.ts`: Express 5 with `trust proxy` set to 1 hop, Better Auth via `toNodeHandler(auth)` at `/api/auth/*splat` mounted before `express.json()`, then JSON routes, and an error handler that returns `{ error, message }` without stack traces
-- [ ] T015 Implement `server/src/owner/installation.ts`: read the `installation` row and return `claimed` or `unclaimed`, or throw `StorageUnavailable` when the query fails or the row is missing ([research R10](research.md#r10-storage-unavailable-handling-fr-013))
+- [X] T010 Generate `server/src/db/auth-schema.ts` with `npx auth@latest generate` from `server/src/auth.ts`
+- [X] T011 Define `installation`, `actor`, and `event` in `server/src/db/schema.ts` per [data-model.md](data-model.md): single-row check on `installation`, a `claimed` row requires `workspace_id` and `claimed_at`, `workspace_id` references `organization.id` `on delete restrict`
+- [X] T012 Add `server/drizzle.config.ts`, generate the first migration into `server/drizzle/`, and append inserts for the `installation` row (`state = 'unclaimed'`) and the `operator` actor
+- [X] T013 Implement `server/src/migrate.ts` (`drizzle-orm` `migrate()` under a PostgreSQL advisory lock, logging old and new schema versions) and `server/src/index.ts` (validate config, migrate, then listen on port 3000)
+- [X] T014 Implement `server/src/app.ts`: Express 5 with `trust proxy` set to 1 hop, Better Auth via `toNodeHandler(auth)` at `/api/auth/*splat` mounted before `express.json()`, then JSON routes, and an error handler that returns `{ error, message }` without stack traces
+- [X] T015 Implement `server/src/owner/installation.ts`: read the `installation` row and return `claimed` or `unclaimed`, or throw `StorageUnavailable` when the query fails or the row is missing ([research R10](research.md#r10-storage-unavailable-handling-fr-013))
 - [ ] T016 [P] Add `server/tests/helpers/db.ts`: create a fresh database per test file, run migrations, and expose helpers to stop and restore the connection
-- [ ] T017 [P] Add `server/Dockerfile` (`node:26-slim`, production dependencies, `bin/` on `PATH`, `CMD ["node", "src/index.ts"]`)
-- [ ] T018 [P] Add `deploy/Caddyfile`:
+- [X] T017 [P] Add `server/Dockerfile` (`node:26-slim`, production dependencies, `bin/` on `PATH`, `CMD ["node", "src/index.ts"]`)
+- [X] T018 [P] Add `deploy/Caddyfile`:
   - site address `{$YS_SITE_ADDRESS}`, with `encode`
   - `/api/*` to `server:3000`, with `X-Forwarded-For` set to `{client_ip}`
   - the web files served with `try_files {path} /index.html`
   - no access log, and `trusted_proxies` taken from the environment
-- [ ] T019 [P] Add `web/Dockerfile`: build with Vite, then `caddy:2.11` with `dist/` and `deploy/Caddyfile`
-- [ ] T020 Add `deploy/compose.yaml` and `deploy/.env.example`:
+- [X] T019 [P] Add `web/Dockerfile`: build with Vite, then `caddy:2.11` with `dist/` and `deploy/Caddyfile`
+- [X] T020 Add `deploy/compose.yaml` and `deploy/.env.example`:
   - services `caddy` (web image), `server`, and `postgres:18`;
   - named volumes `ys-postgres` (mounted at `/var/lib/postgresql`) and `ys-caddy-data`;
   - `YS_SITE_ADDRESS` defaulting to `YS_PUBLIC_URL`;
   - health checks: `pg_isready` and `/api/health`;
   - `server` starts after Postgres is healthy.
-- [ ] T021 [P] Implement `web/src/auth-client.ts` (Better Auth `createAuthClient` with `organizationClient`), `web/src/queries.ts` (TanStack Query hooks for `/api/status`, the session, and the workspace that unwrap `{ data, error }`), and `web/src/main.tsx` (QueryClient and RouterProvider)
-- [ ] T022 [P] Implement `web/src/components/ErrorState.tsx` (storage unavailable, server unreachable, session expired, each with a next step) and `web/src/styles.css` (plain CSS)
+- [X] T021 [P] Implement `web/src/auth-client.ts` (Better Auth `createAuthClient` with `organizationClient`), `web/src/queries.ts` (TanStack Query hooks for `/api/status`, the session, and the workspace that unwrap `{ data, error }`), and `web/src/main.tsx` (QueryClient and RouterProvider)
+- [X] T022 [P] Implement `web/src/components/ErrorState.tsx` (storage unavailable, server unreachable, session expired, each with a next step) and `web/src/styles.css` (plain CSS)
 
 **Checkpoint**: `docker compose up` starts all three services healthy, and migrations apply.
 

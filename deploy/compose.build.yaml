@@ -1,0 +1,14 @@
+# For development, CI, and the browser tests: build both images from this repository instead of
+# pulling the published ones.
+#   docker compose -f deploy/compose.yaml -f deploy/compose.build.yaml up -d --build
+services:
+  caddy:
+    image: your-space-web:local
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
+  server:
+    image: your-space-server:local
+    build:
+      context: ..
+      dockerfile: server/Dockerfile

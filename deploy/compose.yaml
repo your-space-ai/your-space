@@ -1,0 +1,63 @@
+# Your Space: Caddy (HTTPS and the web client), the API server, and PostgreSQL.
+# All durable state is in the two named volumes below (FR-023). `docker compose down -v` deletes them,
+# and the workspace with them.
+name: your-space
+
+services:
+  caddy:
+    image: ghcr.io/your-space-ai/your-space-web:${YS_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+      - "127.0.0.1:8080:8080"
+    environment:
+      YS_SITE_ADDRESS: ${YS_SITE_ADDRESS:-${YS_PUBLIC_URL:?Set YS_PUBLIC_URL in .env (see .env.example)}}
+      YS_TRUSTED_PROXIES: ${YS_TRUSTED_PROXIES:-127.0.0.1/32}
+    volumes:
+      - ys-caddy-data:/data
+    depends_on:
+      - server
+
+  server:
+    image: ghcr.io/your-space-ai/your-space-server:${YS_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      YS_PUBLIC_URL: ${YS_PUBLIC_URL:?Set YS_PUBLIC_URL in .env (see .env.example)}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env (generate one with openssl rand -base64 32)}
+      DATABASE_URL: postgres://yourspace:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (generate one with openssl rand -hex 32)}@postgres:5432/yourspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: yourspace
+      POSTGRES_DB: yourspace
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (generate one with openssl rand -hex 32)}
+    volumes:
+      # PostgreSQL 18's official image keeps its data under /var/lib/postgresql.
+      - ys-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "yourspace", "-d", "yourspace"]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 10
+
+volumes:
+  ys-postgres:
+  ys-caddy-data:
