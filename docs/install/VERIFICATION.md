@@ -4,16 +4,17 @@ This records what was checked for [spec 001](../../specs/001-workspace-owner-acc
 with which versions, and what was not checked. The [installation guide](README.md) claims support only
 for what is listed here as verified (SC-010).
 
-**Date:** 2026-11-07 · **Branch:** `claude/001-implementation`
+**Date:** 2026-11-08 · **Branch:** `claude/001-implementation`
 
 ## Summary
 
 | Check | Result |
 | --- | --- |
-| Server tests (Vitest, real PostgreSQL 18) | Pass: 88 tests in 9 files |
+| Server tests (Vitest, real PostgreSQL 18) | Pass: 167 tests in 11 files |
 | Browser journeys, all four stories plus the log scan, against the Compose stack | Pass: 27 journeys in Chromium, Firefox, and WebKit |
-| The same checks in GitHub Actions (`ci.yml`, ubuntu-24.04) | Pass: [run 2](https://github.com/your-space-ai/your-space/actions/runs/42418561251) |
-| Localhost mode reachable only from this machine | Pass: refused on the host's network address |
+| Setups and secrets against the Compose stack (run once, in Chromium) | Pass: 12 checks, on Compose 5.6.1; the setup and secrets checks also on 2.26.0 |
+| The same checks in GitHub Actions (`ci.yml`, ubuntu-24.04), including the setups on Compose 2.26.0 | Pass: [run on `d50e873`](https://github.com/your-space-ai/your-space/actions/runs/42439745996) |
+| The default setup reachable only from this machine | Pass: refused on the host's network address |
 | No outbound requests on `localhost` (cross-cutting scenario 5, SC-013) | Pass: none observed |
 | Only certificate requests with a domain configured | Pass: only the Let's Encrypt lookup observed |
 | Logs hold no credentials (cross-cutting scenario 2) | Pass |
@@ -104,23 +105,29 @@ With a running stack and locally built images (2026-11-08):
 
 ## Secrets
 
-`e2e/tests/secrets.spec.ts`, with an empty `.env`, on Compose 5.6.1 and 2.26.0 (2026-11-08):
+`e2e/tests/secrets.spec.ts`, on Compose 5.6.1 and 2.26.0 (2026-11-08):
 
-- The first start generated both secrets as 43-character base64url values. `show-secrets` reported
-  each as generated, the `secrets` service's log noted `secrets.generated` without the values, and
-  the browser journeys' log scan found neither value in any service's log.
-- PostgreSQL's view of the volume held only its password file. The server couldn't write to the
-  volume, and its environment had no generated value, so `docker inspect` can't show one.
+- **An empty `.env`:** the first start generated both secrets as 43-character base64url values.
+  `show-secrets` reported each as generated, the `secrets` service's log noted `secrets.generated`
+  without the values, and the browser journeys' log scan found neither value in any service's log.
+- PostgreSQL's view of the volume held only its password file. The server got "Read-only file
+  system" writing where it owns the files, and its environment had no generated value, so
+  `docker inspect` can't show one.
 - After `docker compose down` and `up`, both values were unchanged and the log noted `secrets.kept`.
-- With the `ys-secrets` volume deleted and the database kept, `docker compose up -d` failed, the
-  `secrets` log gave the recovery steps, and the server didn't start. The guide's "Lost Secrets"
-  steps then brought the server back with the same account and workspace. The `ALTER ROLE` command
-  was also run once exactly as the guide prints it, through `bash`.
+- **A lost volume:** with `ys-secrets` deleted and the database kept, `docker compose up -d` failed,
+  the `secrets` log named both missing secrets and pointed to the guide, and the server didn't
+  start. The guide's "Lost Secrets" steps then brought it back with the same account and workspace.
+- **Both secrets set in `.env`**, as an install from before generated secrets has them, with a
+  password containing `@ / # : % ? & =`: the stack started, `show-secrets` reported both as set in
+  `.env`, and the volume held no copy. After the password in `.env` changed, the server stopped with
+  "PostgreSQL refused the database password"; the guide's "Give PostgreSQL the Database Password"
+  command, run from the test with the same text the guide prints (a test checks the two match),
+  brought it back with the same workspace.
 
-Server tests cover the rest: `.env` values used as given with nothing written, an empty line
-treated as no line, a too-short auth secret refused, a leftover temporary file removed, the
-database detected in PostgreSQL 18's layout and older ones, `--new`, and a password with `@ / # %`
-reaching PostgreSQL unchanged.
+Server tests cover the rest: an empty line treated as no line, values with surrounding spaces and a
+too-short auth secret refused, a leftover temporary file removed, the database detected in
+PostgreSQL 18's layout and older ones, `--new` (including leaving a value set in `.env` alone), and
+a password with URL characters percent-encoded into the database URL and decoded unchanged.
 
 ## Review
 
