@@ -86,7 +86,7 @@ Your Space: first public release
 │
 ├── 2. Identity and access
 │   ├── Owner setup and sessions
-│   │   ├── [001] Owner created by a server command; sign-up closed
+│   │   ├── [001] Owner by server command; one owner, no duplicates; sign-up closed
 │   │   ├── [001] Accurate empty workspace and service states
 │   │   ├── [001] Sign in/out, expiry and revocation, host-only session cookie
 │   │   └── [001] Owner recovery by server command, sessions revoked
@@ -488,7 +488,7 @@ These capabilities are not required for the first public release. Their order an
 
 - [ ] **Optional open sign-up**
 
-  **Deferred (2026-11-03):** [Authentication and initial claim](architecture/decisions.md#authentication-and-initial-claim).
+  **Source:** [Authentication and initial claim](architecture/decisions.md#authentication-and-initial-claim).
 
   - [ ] Let the owner choose to allow people to sign up without an invitation.
 

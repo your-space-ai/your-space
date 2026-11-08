@@ -81,15 +81,15 @@ depends on these.
   - a one-shot `secrets` service running `server/src/commands/secrets-step.ts` that settles the auth secret and database password into `ys-secrets` unless `.env` sets them, with no network ([research R16](research.md#r16-platform-secrets));
   - health checks: `pg_isready` and `/api/health`;
   - `postgres` and `server` start after the secrets step, `server` after Postgres is healthy, and `caddy` after the server is healthy.
-- [ ] T064 Implement `server/src/commands/show-secrets.ts`, with the output and exit codes the commands share in `server/src/commands/output.ts`, and the `server/bin/show-secrets` wrapper: print both platform secrets and where each comes from, as lines valid in `.env` ([operator commands](contracts/operator-commands.md#show-secrets))
+- [ ] T064 Implement `server/src/commands/show-secrets.ts`, with the output and exit codes the commands share in `server/src/commands/output.ts`, and the `server/bin/show-secrets` wrapper: print both platform secrets and where each comes from, as lines valid in `.env` ([operator commands](contracts/operator-commands.md#show-secrets)); test `describeSecrets` in `server/tests/secrets.test.ts`
 - [ ] T065 [P] `e2e/tests/setups.spec.ts`: this machine, with and without `YS_PORT`, publishes only its loopback port, the server and database publish nothing, and the secrets step has no network while each service mounts only what it reads, all read with `docker compose config`. A `setups` job in `.github/workflows/ci.yml` runs it on Compose 2.26.0 and on the runner's version
-- [ ] T066 [P] `e2e/tests/secrets.spec.ts` against the Compose stack: an empty `.env` gets generated secrets that survive restarts; a lost `ys-secrets` volume stops start-up and the guide's steps recover the workspace; secrets set in `.env` are used as given, and a changed password is recovered with the guide's command. Write the Secrets, Lost Secrets, Give PostgreSQL the Database Password, and Replace a Secret sections of `docs/install/README.md`
+- [ ] T066 `e2e/tests/secrets.spec.ts` against the Compose stack: an empty `.env` gets generated secrets that survive restarts; a lost `ys-secrets` volume stops start-up and the guide's steps recover the workspace; secrets set in `.env` are used as given, and a changed password is recovered with the guide's command. Write the Secrets, Lost Secrets, Give PostgreSQL the Database Password, and Replace a Secret sections of `docs/install/README.md`
 - [ ] T021 Implement `web/src/auth-client.ts` (Better Auth `createAuthClient` with `organizationClient`), `web/src/queries.ts` (TanStack Query hooks for `/api/status`, the session, and the workspace that unwrap `{ data, error }`), and `web/src/main.tsx` (QueryClient and RouterProvider)
 - [ ] T022 [P] Implement `web/src/components/ErrorState.tsx` with the failure kinds in `web/src/errors.ts` (storage unavailable, server unreachable, wrong address (421), session expired, each with a next step) and `web/src/styles.css` (plain CSS)
 
 **Checkpoint**: `docker compose up` starts all three services healthy, and migrations apply, once
-T029 adds `/api/health`, which the server's health check calls, and T032 adds the router's root
-route, which the web image's `main.tsx` renders.
+T029 adds `/api/health`, which the server's health check calls, and T030 and T032 add NoOwnerYet and
+the router's root route, which the web image's `main.tsx` renders.
 
 ---
 
@@ -257,12 +257,15 @@ out every session, without email.
   runs `reset-link` (T048); `secrets.spec.ts` (T066) runs `create-owner` through
   `docker compose exec` (T027, T028). Both server tests also call `/api/status` (T029). So the
   three tests pass once these files exist: T025's helpers, `create-owner.ts` (T027) and
-  `owner/routes.ts` (T029), plus `commands/reset-link.ts` (T048) for `outage.test.ts` and the
-  `create-owner` command and wrapper (T028) for `secrets.spec.ts`, which also needs the running
-  stack (see the Phase 2 checkpoint).
+  `owner/routes.ts` (T029), plus `recovery/reset-link.ts` and `commands/reset-link.ts` (T047,
+  T048) for `outage.test.ts` and the `create-owner` command and wrapper (T028) for
+  `secrets.spec.ts`, which also needs the running stack (see the Phase 2 checkpoint).
 - **T032 and T026**: `router.tsx` imports `SignIn.tsx` (T036) and `Home.tsx` (T037), and the US1
   browser test signs in and reads the home screen. So T036 and T037 are built with US1, and Phase 4
   checks their US2 behavior (wrong password, rate limit, sign-out).
+- **T040**: `us3-restart.spec.ts` also runs `reset-link` with Postgres stopped and expects exit 3,
+  so it passes once `recovery/reset-link.ts` (T047) and the `reset-link` command and wrapper (T048)
+  exist.
 - **Polish (Phase 7)**: depends on all stories.
 
 ### Within Each Story
@@ -273,10 +276,10 @@ out every session, without email.
 ### Parallel Opportunities
 
 - Setup: T003, T004, T005 together after T001 and T002.
-- Foundational: T058 and T007 first (T006 imports `secrets.ts`, T008 imports `log.ts`); then T017, T018, T019, T022, T059, T063 together once T006 and T008 exist; T065 once T020 exists, and T066 once T017, T019, T020 and T064 exist; T016 once T012 and T013 exist (`helpers/db.ts` runs the migrations through `migrate.ts`); T021's `main.tsx` renders the router from T032, so it builds once T032's root route exists.
+- Foundational: T058 and T007 first (T006 imports `secrets.ts`, T008 imports `log.ts`); then T017, T018, T019, T022, T059, T063 together once T006 and T008 exist; T065 once T020 exists, and T066 once T017, T019, T020 and T064 exist; T016 once T012 and T013 exist (`helpers/db.ts` runs the migrations through `migrate.ts`); T021's `main.tsx` renders the router from T032, so it builds once T032's root route and T030's `NoOwnerYet.tsx` exist.
 - US1: T025's `helpers/server.ts` and `helpers/owner.ts` first, since T024 imports them; then tests T023 to T026 together; T029 and T030 alongside T027 and T028; T036 and T037 before T032.
-- US2: T034, T035, T036, T037 together.
-- US3 and US4 can be built in parallel after US1.
+- US2: T034 and T035 together; T036 and T037 are already built with US1.
+- US3 and US4 can be built in parallel after US1, except that T040's test needs T047 and T048.
 - Polish: T051, T052, T053 together; T070 after T052, since it adds a job to `images.yml`.
 
 ## Parallel Example: User Story 1

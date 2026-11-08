@@ -6,9 +6,9 @@ Sync Impact Report (2026-11-07): 1.1.1 -> 1.2.0 (minor: materially expanded prin
 - Rationale: the owner asked that configuration work like editor settings: nothing to fill in by
   default, one line per change. Every required setting is a chance to get an install wrong, and
   defaults the project owns can improve without owners editing files.
-- Impact: the 001 plan follows it: no line in .env for this machine, one line (YS_DOMAIN or
-  YS_PROXY_URL) for other devices, and the two secrets are generated unless .env sets them
-  (research R16). Later plans name the default and the derivation for every setting they add.
+- Impact: since 2026-11-08 the 001 plan follows it: no line in .env for this machine, one line
+  (YS_DOMAIN or YS_PROXY_URL) for other devices, and the two secrets are generated unless .env sets
+  them (research R16). Later plans name the default and the derivation for every setting they add.
 
 Sync Impact Report (2026-11-03): 1.1.0 -> 1.1.1 (patch: clarification)
 - Clarified: VII. Reuse Before Building now says to use each library only for the purpose it was

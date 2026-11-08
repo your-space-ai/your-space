@@ -335,9 +335,8 @@ that settled each question.
     serve FR-016's error states.
   - **Code-based routes:** with three routes, they avoid the router's Vite plugin.
 - **Alternatives:**
-  - React Router: TanStack Router was chosen because its root `beforeLoad` reads the status and
-    session through TanStack Query, so the redirects and error states above share one cache and one
-    error model.
+  - React Router: not selected; this plan selects TanStack Router with TanStack Query, as the
+    decision record's Web Client update (2026-11-03) records.
   - TanStack Form: not needed for four small forms.
   - A component library or Pico CSS: rejected under principle VII for a plain UI.
 
