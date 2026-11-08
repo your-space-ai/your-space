@@ -91,8 +91,8 @@ product behavior. This checklist is maintained by the Spec Kit specification wor
   references, host-only cookies, HTTPS-only remote access, ARM and Intel/AMD images, storage layout,
   versioned migrations, actor identity, no telemetry, simple by default, scriptable operator commands,
   and sessions that survive restarts. An independent review checked the update against those documents.
-- No runtime tests apply to this documentation-only change. Implementation acceptance scenarios
-  have been specified, not executed.
-- The next phase is technical planning with the open implementation choices in the decision record.
-  Agreed stack selections are recorded; the specification does not select remaining libraries or
-  start implementation.
+- No runtime tests apply to this checklist: it reviews the specification's quality. The acceptance
+  scenarios are verified through the tasks in [tasks.md](../tasks.md).
+- Technical planning is in [plan.md](../plan.md), which settles this feature's open implementation
+  choices. Agreed stack selections are recorded; the specification does not select remaining
+  libraries or start implementation.

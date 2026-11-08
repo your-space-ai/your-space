@@ -171,7 +171,7 @@ These concepts do not prescribe a specific database schema.
 - Network access alone can never create an account or the owner: before an owner exists there is no setup page, and sign-up is always off.
 - After setup, sign-up stays closed: new people join only when the owner invites them. Open sign-up
   may be offered later as an optional feature.
-- A rerun of the owner command must not create duplicate owners or replace an existing owner.
+- Concurrent runs or reruns of the owner command must not create duplicate owners or replace an existing owner.
 
 Server access proves installation authority. It does not prove control of the supplied email address.
 Every installation uses the same owner command. In desktop local mode, the desktop app asks for the name, email, and password, runs the command through the CLI, and sets the password through the printed link on the user's behalf; the flow itself does not change.
@@ -289,7 +289,7 @@ Existing app authorization should be reusable where it has a suitable integratio
 - When setting up the desktop app, the user either connects to an existing server by URL or runs Your Space locally. In local mode, the desktop app uses the Your Space CLI to set up and run the Docker Compose stack on that machine, then connects to it.
 - The CLI is part of the first public release for setting up Your Space on a server or locally; desktop, web, and PWA clients can connect to a server it sets up.
 - Before publication, local mode detects Docker and links to the Docker Desktop download when it is missing, sets up the Your Space stack, starts it when the desktop app opens, and updates Your Space when the owner chooses.
-- Every installation, local or server, uses one setup flow: the owner command. In local mode the desktop app runs it through the CLI and sets the password for the user, so the user only fills in one form. Streamlined local setup in the desktop app gets its own specification and implementation PR, separate from the owner-access feature.
+- Every installation, local or server, uses one setup flow: the owner command. In local mode the desktop app runs it through the CLI and sets the password for the user, so the user only fills in one form. Streamlined local setup in the desktop app gets its own specification and implementation PR, separate from the owner-access feature. (Superseded 2026-11-08: it is specified in journey 008 and, like every journey, delivered as a stack of pull requests; see [journey-based specifications](#journey-based-specifications).)
 - Before publication, the owner can back up and restore local and server installations alike, and move a local workspace to a server, through the CLI; the desktop app uses the same operation in local mode. Owner-triggered Your Space updates in local mode go through the CLI and roll back automatically if they fail.
 - A local workspace is unavailable to other people and remote agents while its machine is asleep or off. Install documentation must state this and the Docker Desktop license terms.
 - PWA offline support remains open. The first owner-access feature remains web-only.

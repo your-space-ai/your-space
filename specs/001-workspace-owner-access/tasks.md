@@ -159,9 +159,9 @@ session.
 - [ ] T036 [P] [US2] Implement `web/src/pages/SignIn.tsx`: email and password with native validation, Better Auth `signIn.email`, and clear errors for wrong credentials and rate limiting
 - [ ] T037 [P] [US2] Implement `web/src/pages/Home.tsx`: workspace name from `organization.list`, the owner's name and email, and sign out; nothing else (FR-027)
 - [ ] T038 [US2] Extend `web/src/router.tsx`: the root `beforeLoad` sends signed-out visitors to `/sign-in` and signed-in visitors away from it; an expired session mid-use returns to sign-in without reporting success (FR-016)
-- [ ] T039 [US2] Add the remote-access sections to `docs/install/README.md`: the configure and start rows for `YS_DOMAIN` and `YS_PROXY_URL`, and which line opens which ports; your own domain, with certificate troubleshooting through `docker compose logs caddy`; your own proxy; and Tailscale (`tailscale serve` with `YS_PROXY_URL`), including proxies in containers through the `your-space_edge` network and the `Host` check, and why plain `http://<LAN IP>` is not supported (FR-028)
 - [ ] T067 [US2] Add the other setups: `deploy/modes/mode.domain.yaml` (ports 80 and 443 on every IPv4 address), `deploy/modes/mode.proxy.yaml` (`127.0.0.1:8080` and the `your-space_edge` network), and `deploy/modes/mode.domain.proxy.yaml` (stops Compose when both keys are set); the `YS_DOMAIN` and `YS_PROXY_URL` lines in `deploy/.env.example`; and their checks in `e2e/tests/setups.spec.ts` ([research R9](research.md#r9-https-and-the-caddy-configuration))
 - [ ] T068 [US2] Pass visitors' addresses to the sign-in limit in `deploy/Caddyfile`: `X-Forwarded-For` set to `{client_ip}` on `/api/*`, and `trusted_proxies` (strict, `private_ranges`) on the `:8080` proxy listener only ([research R9](research.md#r9-https-and-the-caddy-configuration))
+- [ ] T039 [US2] Add the remote-access sections to `docs/install/README.md`: the configure and start rows for `YS_DOMAIN` and `YS_PROXY_URL`, and which line opens which ports; your own domain, with certificate troubleshooting through `docker compose logs caddy`; your own proxy; and Tailscale (`tailscale serve` with `YS_PROXY_URL`), including proxies in containers through the `your-space_edge` network and the `Host` check, and why plain `http://<LAN IP>` is not supported (FR-028)
 - [ ] T069 [US2] Add a Sign-In and Sessions section to `docs/install/README.md`: session lifetime, sign-out, the sign-in limit, password rules and hashing (scrypt with Better Auth defaults), and how links are stored (FR-009 to FR-011)
 
 **Checkpoint**: User Stories 1 and 2 both work; a second device signs in over HTTPS.
@@ -250,9 +250,11 @@ out every session, without email.
 - **User Stories 2 to 4 (Phases 4 to 6)**: depend on Foundational. Their browser tests need an owner
   from US1, created through `create-owner`. Their server tests can create an owner with the US1
   helper and otherwise run in parallel.
-- **T061 and T062**: their tests (`host.test.ts`, `outage.test.ts`) use the server and owner helpers
-  from T025, which need `create-owner` (T027), and `outage.test.ts` also runs `reset-link` (T048),
-  so those tests pass only once US1 and T048 are done.
+- **T061, T062 and T066**: the tests of T061 and T062 (`host.test.ts`, `outage.test.ts`) use the
+  server and owner helpers from T025, which need `create-owner` (T027), and `outage.test.ts` also
+  runs `reset-link` (T048); `secrets.spec.ts` (T066) runs `create-owner` through
+  `docker compose exec` (T027, T028). So these tests pass only once US1, and for T062 also T048,
+  are done.
 - **Polish (Phase 7)**: depends on all stories.
 
 ### Within Each Story
@@ -264,7 +266,7 @@ out every session, without email.
 
 - Setup: T003, T004, T005 together after T001 and T002.
 - Foundational: T058 and T007 first (T006 imports `secrets.ts`, T008 imports `log.ts`); then T017, T018, T019, T022, T059, T063, T065, T066 together once T006 and T008 exist; T016 once T012 and T013 exist (`helpers/db.ts` runs the migrations through `migrate.ts`); T021's `main.tsx` renders the router from T032, so it builds once T032's root route exists.
-- US1: tests T023 to T026 together; T029 and T030 alongside T027 and T028.
+- US1: T025's `helpers/server.ts` and `helpers/owner.ts` first, since T024 imports them; then tests T023 to T026 together; T029 and T030 alongside T027 and T028.
 - US2: T034, T035, T036, T037 together.
 - US3 and US4 can be built in parallel after US1.
 - Polish: T051, T052, T053 together; T070 after T052, since it adds a job to `images.yml`.

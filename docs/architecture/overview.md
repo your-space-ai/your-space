@@ -93,10 +93,11 @@ work from the roadmap.
    [agent access through Your Space](decisions.md#agent-access-through-your-space),
    [Your Space updates, backup, and restore](decisions.md#your-space-updates-backup-and-restore), and
    [activity log](decisions.md#activity-log).
-5. **Platform data.** PostgreSQL through Drizzle, and backups and snapshots. The platform's own
-   secrets (the auth secret and the database password) are generated into a separate `ys-secrets`
-   volume by a one-shot step that runs before the database and the server, unless the owner sets
-   them ([2026-11-08 decision](decisions.md#installation-and-hosting)). See
+5. **Platform data.** PostgreSQL through Drizzle, a secrets store for app settings (spec 002), and
+   backups and snapshots. The platform's own secrets (the auth secret and the database password) are
+   generated into a separate `ys-secrets` volume by a one-shot step that runs before the database
+   and the server, unless the owner sets them
+   ([2026-11-08 decision](decisions.md#installation-and-hosting)). See
    [server and database](decisions.md#server-and-database).
 6. **Apps.** Managed apps run in their own isolated containers with resource limits and approved
    outbound access. External apps are hosted elsewhere and accept only identity verified by Your

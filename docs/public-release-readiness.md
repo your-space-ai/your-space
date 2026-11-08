@@ -75,8 +75,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
   - [ ] Document and test installation from a clean state on each claimed host and architecture,
     including prerequisites, configuration, startup, and actionable failure handling.
   - [ ] Verify that only the operator's server command can create the owner, that set-password links
-    are single-use and expire, that reruns create no duplicates, and that network-only attempts to
-    create an account are denied.
+    are single-use and expire, that concurrent runs and reruns create no duplicates, and that
+    network-only attempts to create an account are denied.
   - [ ] Verify protected requests are denied without valid authentication, including direct API
     requests; test session expiry, sign-out, and invalidation.
   - [ ] Verify the platform session uses host-only cookies that are not sent to app origins.
