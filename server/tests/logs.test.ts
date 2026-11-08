@@ -79,7 +79,7 @@ beforeAll(async () => {
   secret("BETTER_AUTH_SECRET", TEST_SECRET);
 
   const port = await freePort();
-  baseUrl = `http://127.0.0.1:${port}`;
+  baseUrl = `http://localhost:${port}`;
   publicUrl = `http://localhost:${port}`;
   child = spawn(process.execPath, [SERVER], {
     env: {
@@ -87,7 +87,7 @@ beforeAll(async () => {
       NODE_ENV: "production",
       PORT: String(port),
       DATABASE_URL: t.url,
-      YS_PUBLIC_URL: publicUrl,
+      YS_PORT: String(port),
       BETTER_AUTH_SECRET: TEST_SECRET,
     },
     stdio: ["ignore", "pipe", "pipe"],

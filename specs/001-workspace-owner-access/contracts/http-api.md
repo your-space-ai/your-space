@@ -15,6 +15,19 @@ FR-020).
 This API is internal to Your Space's own clients in this feature; it is not yet a public,
 versioned app contract (those start in spec 002).
 
+## Host Check
+
+Every `/api` request except `GET /api/health` must carry the public address's host in its `Host`
+header (`localhost[:YS_PORT]`, the `YS_DOMAIN` name, or the `YS_PROXY_URL` host; compared without
+regard to case). Browsers always send it. Otherwise the server answers before any other handling,
+including Better Auth's:
+
+| Status | Body | Meaning |
+| --- | --- | --- |
+| 421 | `{ "error": "wrong_host", "message": "Your Space is set up for <public address>, …" }` | The request named another address: usually a proxy that rewrites `Host` (the message says how to fix nginx), or a page that re-pointed its own name at this machine (DNS rebinding) |
+
+The web client shows the message's advice instead of "Can't reach Your Space".
+
 ## Custom Endpoints (Your Space code)
 
 ### `GET /api/health`

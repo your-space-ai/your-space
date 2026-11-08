@@ -38,6 +38,34 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  setups:
+    # Each setup's Compose files (deploy/modes/) must resolve on the oldest Compose the installation
+    # guide supports, as well as on the runner's own. This only reads the configuration.
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        compose: ["2.24.0", runner]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - if: matrix.compose != 'runner'
+        run: |
+          mkdir -p ~/.docker/cli-plugins
+          base=https://github.com/docker/compose/releases/download/v${{ matrix.compose }}
+          curl -fsSL -o docker-compose-linux-x86_64 "$base/docker-compose-linux-x86_64"
+          curl -fsSL -o docker-compose-linux-x86_64.sha256 "$base/docker-compose-linux-x86_64.sha256"
+          sha256sum -c docker-compose-linux-x86_64.sha256
+          install -m 755 docker-compose-linux-x86_64 ~/.docker/cli-plugins/docker-compose
+      - run: docker compose version
+      - run: npx playwright test tests/setups.spec.ts --project chromium
+        working-directory: e2e
+        env:
+          YS_E2E_SKIP_BUILD: "1"
+
   e2e:
     needs: check
     runs-on: ubuntu-24.04

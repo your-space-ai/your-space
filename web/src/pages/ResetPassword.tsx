@@ -6,6 +6,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { authClient } from "../auth-client.ts";
 import { renderCode } from "../components/ErrorState.tsx";
+import { WRONG_ADDRESS_FIX } from "../errors.ts";
 
 const MIN = 12;
 const MAX = 128;
@@ -65,6 +66,8 @@ export function ResetPassword() {
         // The page stays as it is so the link, already cleared from the address bar, can be retried.
         else if (result.error.status === 503)
           setError("Your Space can't read its storage right now, so your password wasn't changed. Try again shortly.");
+        else if (result.error.status === 421)
+          setError(`Your Space is set up for a different address, so your password wasn't changed. ${WRONG_ADDRESS_FIX}`);
         else if (result.error.status === 502 || result.error.status === 504)
           setError("Couldn't reach Your Space, so your password may not have been changed. Try again shortly.");
         else setError("Your password wasn't changed. Try again.");
@@ -91,7 +94,7 @@ export function ResetPassword() {
       </p>
       {error ? (
         <p className="notice error" role="alert">
-          {error}
+          {renderCode(error)}
         </p>
       ) : null}
       <form onSubmit={onSubmit}>

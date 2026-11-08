@@ -1,0 +1,65 @@
+# The services every setup shares. compose.yaml adds the file from modes/ that publishes ports.
+# All durable state is in the two named volumes below (FR-023). `docker compose down -v` deletes
+# them, and the workspace with them.
+services:
+  caddy:
+    image: ghcr.io/your-space-ai/your-space-web:${YS_VERSION:-latest}
+    restart: unless-stopped
+    volumes:
+      - ys-caddy-data:/data
+    depends_on:
+      # Caddy opens its ports only once the server has accepted the settings, so a wrong value
+      # never publishes anything or asks Let's Encrypt for a certificate.
+      server:
+        condition: service_healthy
+
+  server:
+    image: ghcr.io/your-space-ai/your-space-server:${YS_VERSION:-latest}
+    restart: unless-stopped
+    env_file:
+      # The whole .env, so the server can refuse a misspelled or retired setting by name instead of
+      # silently using another setup.
+      - path: .env
+        required: false
+    environment:
+      # The values Compose used to pick the mode file, so the server always agrees with it.
+      YS_DOMAIN: ${YS_DOMAIN:-}
+      YS_PROXY_URL: ${YS_PROXY_URL:-}
+      YS_PORT: ${YS_PORT:-}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env (generate one with openssl rand -base64 32)}
+      DATABASE_URL: postgres://yourspace:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (generate one with openssl rand -hex 32)}@postgres:5432/yourspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 1s
+      retries: 3
+
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: yourspace
+      POSTGRES_DB: yourspace
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (generate one with openssl rand -hex 32)}
+    volumes:
+      # PostgreSQL 18's official image keeps its data under /var/lib/postgresql.
+      - ys-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "yourspace", "-d", "yourspace"]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 10
+
+volumes:
+  ys-postgres:
+  ys-caddy-data:

@@ -73,6 +73,21 @@ of relying only on the owner's own proxy or tunnel. Spec 002 adds app routing to
 and the CLI asks for the domain during installation. This supersedes the 2026-11-02 note that the
 proxy is chosen in the CLI specification.
 
+**Decision update (2026-11-08):** In the manual Compose install, the settings line the owner
+writes picks the setup, and the setup decides which ports open. With no line, Your Space runs on
+this machine only, at `http://localhost`, published on `127.0.0.1`. `YS_DOMAIN=<name>` publishes
+ports 80 and 443 to the network and turns on automatic HTTPS. `YS_PROXY_URL=https://<address>`
+publishes plain HTTP on `127.0.0.1:8080` for the owner's own proxy or Tailscale, and offers a
+Docker network for proxies that run in containers. `YS_PORT` moves the local port when another
+program has it. Compose selects one file per setup by which key is set, so every port address is
+written out in a file rather than computed or left to Docker's defaults, and the server refuses a
+wrong value or a misspelled setting before any port opens. The alternative most projects use, one
+address setting with ports open on every interface, was rejected because a fresh local install
+on a Linux server would put its sign-in page on the network. The research and the designs
+considered are summarized in [research R9](../../specs/001-workspace-owner-access/research.md#r9-https-and-the-caddy-configuration).
+This replaces the first plan's `YS_PUBLIC_URL` with a separate `YS_BIND_ADDRESS`. The CLI
+(spec 003) writes the same lines.
+
 ### CLI Delivery Sequence
 
 **Decision update (2026-10-29)**: Establish and verify the Compose deployment with the owner-access feature first.
@@ -317,7 +332,7 @@ Dependency selection must consider actual licenses, including bundled components
 
 - Configuration works like editor settings: the defaults live in Your Space, the owner's file starts empty, and each line in it overrides one default. Every setting needs a safe default that suits most installations; a value that follows from other settings is derived, not asked for; secrets are generated when the owner doesn't supply them.
 
-**Decision update (2026-11-07):** Configuration is optional, now part of [constitution principle II](../../.specify/memory/constitution.md#ii-preserve-user-control-and-hosting-choice). Required settings are each a chance to get an install wrong, and they freeze today's choice into every owner's file, so a better default later reaches nobody. Plans name each setting's default and how it is derived, and the documentation lists the defaults so an owner can see what a line would change. Where a tool can't derive a value (for example, Docker Compose can't choose a port binding from the public address), the setting stays, and the CLI (spec 003) derives it.
+**Decision update (2026-11-07):** Configuration is optional, now part of [constitution principle II](../../.specify/memory/constitution.md#ii-preserve-user-control-and-hosting-choice). Required settings are each a chance to get an install wrong, and they freeze today's choice into every owner's file, so a better default later reaches nobody. Plans name each setting's default and how it is derived, and the documentation lists the defaults so an owner can see what a line would change. Where a tool can't derive a value (for example, Docker Compose can't choose a port binding from the public address), the setting stays, and the CLI (spec 003) derives it. (Superseded in part 2026-11-08: Compose can't read a value, but it can pick a file by which setting is present, so the port bindings now follow from the one line the owner writes; see [Installation and Hosting](#installation-and-hosting).)
 
 ### Telemetry and Outbound Connections
 

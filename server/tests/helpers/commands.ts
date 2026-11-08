@@ -1,7 +1,7 @@
 // Runs create-owner and reset-link as real processes, the way the operator does.
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { PUBLIC_URL, TEST_SECRET } from "./env.ts";
+import { PUBLIC_URL, settingsFor, TEST_SECRET } from "./env.ts";
 
 export interface CommandResult {
   code: number | null;
@@ -23,7 +23,7 @@ export function runCommand(
         PATH: process.env.PATH ?? "",
         NODE_ENV: "production",
         DATABASE_URL: options.databaseUrl,
-        YS_PUBLIC_URL: options.publicUrl ?? PUBLIC_URL,
+        ...settingsFor(options.publicUrl ?? PUBLIC_URL),
         BETTER_AUTH_SECRET: TEST_SECRET,
         ...options.env,
       },

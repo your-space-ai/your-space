@@ -53,7 +53,7 @@ that settled each question.
   - Rate limiting: Better Auth's built-in defaults, unchanged ([R7](#r7-failed-attempt-limits-fr-011)).
   - Session: database-backed, 7-day expiry, refreshed daily (the library defaults), `cookieCache`
     off.
-  - `baseURL` set to `YS_PUBLIC_URL`; `advanced.database.generateId: "uuid"`.
+  - `baseURL` set to the public address derived in [R9](#r9-https-and-the-caddy-configuration); `advanced.database.generateId: "uuid"`.
   - Plugins: `organization({ allowUserToCreateOrganization: false })` only.
   - `telemetry: { enabled: false }`, set explicitly.
 - **Rationale:**
@@ -187,7 +187,7 @@ that settled each question.
 - **Decision:**
   - The `reset-link` command calls `auth.api.requestPasswordReset` for the owner's email.
   - The `sendResetPassword` callback receives the token and prints
-    `${YS_PUBLIC_URL}/reset-password#token=<token>`.
+    `<public address>/reset-password#token=<token>`.
   - The reset page posts the token and new password to `/api/auth/reset-password` in the request
     body.
 - **Rationale:**
@@ -203,16 +203,33 @@ that settled each question.
 
 ## R9. HTTPS and the Caddy Configuration
 
-- **Decision:** one setting in `.env`, `YS_PUBLIC_URL`, is the address people use. Caddy uses it as
-  its site address, because Caddy accepts a full URL there, and Better Auth uses it as `baseURL`.
-  Only the own-proxy and Tailscale mode needs a second setting, `YS_SITE_ADDRESS`, which Compose
-  otherwise fills in from `YS_PUBLIC_URL`.
+- **Decision (revised 2026-11-08):** the owner writes at most one line in `.env`, and which key
+  they write picks the setup. Everything else, including which ports open, is derived. Each setup
+  is a file in `deploy/modes/` with its port addresses written out, and `deploy/compose.yaml`
+  includes the matching file through an interpolated path,
+  `modes/mode${YS_DOMAIN:+.domain}${YS_PROXY_URL:+.proxy}.yaml` (Compose 2.24 or newer).
 
-  | Mode | `.env` | Result |
+  | Setup | `.env` | Result |
   | --- | --- | --- |
-  | Own domain | `YS_PUBLIC_URL=https://space.example.com` | Caddy gets and renews a Let's Encrypt certificate and redirects HTTP to HTTPS. Needs DNS pointing at the server and ports 80 and 443 open |
-  | Same machine (default) | `YS_PUBLIC_URL=http://localhost` | Plain HTTP, no certificate, reachable only from that machine |
-  | Own proxy or Tailscale | `YS_PUBLIC_URL=https://<proxy address>` and `YS_SITE_ADDRESS=http://:8080` | Caddy serves plain HTTP on `127.0.0.1:8080`; the proxy or `tailscale serve` handles HTTPS |
+  | This machine (default) | nothing | Plain HTTP at `http://localhost`, published on `127.0.0.1:80` only |
+  | Own domain | `YS_DOMAIN=space.example.com` | Ports 80 and 443 published on `0.0.0.0`. Caddy gets and renews a Let's Encrypt certificate and redirects HTTP to HTTPS |
+  | Own proxy or Tailscale | `YS_PROXY_URL=https://<proxy address>` | Plain HTTP published on `127.0.0.1:8080` only, plus the `your-space_edge` network (alias `your-space`) for proxies in containers. The proxy or `tailscale serve` handles HTTPS |
+  | Port taken | `YS_PORT=8081`, with nothing or `YS_PROXY_URL` | Moves the published loopback port. Refused with `YS_DOMAIN` |
+  | Both keys | `YS_DOMAIN` and `YS_PROXY_URL` | `modes/mode.domain.proxy.yaml` stops every Compose command with a message |
+
+  The server derives the public address (`http://localhost[:YS_PORT]`, `https://<YS_DOMAIN>`, or
+  `YS_PROXY_URL`) and uses it as Better Auth's `baseURL`. It reads the whole `.env` through
+  `env_file` (`required: false`) and refuses to start on an unknown or retired `YS_*` key, with
+  "did you mean" for typos, and on a domain that can't get a public certificate (an IP address,
+  `localhost`, `.ts.net`, `.local`, and other reserved names). Caddy depends on the server being
+  healthy, so a refused line never publishes a port or contacts Let's Encrypt. The server logs the
+  setup it picked in `server.listening`.
+
+  Proxy trust follows the listener: only the `:8080` server trusts `X-Forwarded-For`, from
+  `private_ranges`, in Caddy's strict mode (read from the right), so a proxy that appends to the
+  header can't be fooled by a visitor on the internet or a tailnet. The API refuses a request whose
+  `Host` isn't the public address with 421 (`/api/health` excepted), which catches proxies that
+  rewrite `Host` and DNS-rebinding pages. `http://127.0.0.1` redirects to the public address.
 
   Other devices on the local network can't use plain `http://<LAN IP>`, because session cookies
   never travel over plain HTTP to another machine (FR-015). They use Tailscale or a domain.
@@ -221,15 +238,39 @@ that settled each question.
   and sends `/api/*` to `server:3000`. Caddy's access log stays off.
 
 - **Rationale:**
+  - Configuration is optional and loopback is the default (constitution principle II, 1.2.0): a
+    fresh install opens nothing to the network, and only `YS_DOMAIN`, an explicit choice, does.
+  - Docker publishes ports before any Your Space code runs, and Compose can only test whether a
+    key is set, not read its value. Choosing a file by which key is set is the one way found to
+    derive exposure in plain Compose without relying on Docker's implied defaults; the port
+    addresses stay literal and reviewable.
   - Caddy's automatic HTTPS needs no custom code (FR-028).
-  - `YS_PUBLIC_URL` (`https://…`) makes Better Auth issue `Secure` cookies even when Caddy serves
-    plain HTTP to a local proxy, so the browser never sends them over plain HTTP.
+  - `YS_PROXY_URL` must be `https://`, so Better Auth issues `Secure` cookies even when Caddy serves
+    plain HTTP to a local proxy, and the browser never sends them over plain HTTP.
   - With the access log off, nothing records request URLs.
+- **Alternatives considered** (survey of about 45 projects, 2026-11-07, kept in the project's
+  research folder):
+  - One `YS_PUBLIC_URL` with a separate `YS_BIND_ADDRESS` (the first version of this plan): two
+    lines that must agree, and a forgotten one breaks silently.
+  - One URL with ports published on every interface, as most projects do (GitLab, Immich, Ghost):
+    a fresh local install on a Linux server would put the plain-HTTP sign-in API on the network,
+    Docker bypasses ufw, and it collides with any web server on ports 80 and 443.
+  - Docker's `host_binding_ipv4` network option to make loopback the default: relies on an implied
+    third-party default that could change without notice.
+  - A Tailscale or Cloudflare sidecar: needs FR-026 amended and an image the plan doesn't list.
+    Kept as later direction.
+  - Caddy on-demand TLS with an `ask` endpoint: makes the server the gate for certificates, but
+    waiting for a healthy server already keeps a refused domain offline, more simply.
+- **Known limits:** domain mode publishes on IPv4 only, because a literal `[::]` fails on hosts
+  without IPv6; owners use an `A` record and no `AAAA`. Behind a proxy, visitors with private
+  addresses (such as `192.168.1.20`) look like proxies in strict mode and share one sign-in limit.
+  Switching away from the proxy setup leaves the unused `your-space_edge` network until removed.
 - **Certificate failures:** Caddy logs the ACME error (for example, DNS doesn't point at the host)
   and keeps retrying. It does not fall back to serving the domain over plain HTTP. The guide points
   to `docker compose logs caddy`.
 - **Tailscale:** `tailscale serve --https=443 http://127.0.0.1:8080` gives a `*.ts.net` HTTPS address
-  with no public ports; the guide documents it.
+  with no public ports; the guide documents it. It passes the original `Host` and sets
+  `X-Forwarded-For` to the tailnet client (`ipn/ipnlocal/serve.go`).
 - **Outbound requests (FR-026):**
   - Caddy has no telemetry. It contacts the ACME certificate authority only when a domain is
     configured.

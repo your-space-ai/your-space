@@ -3,6 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { authClient } from "../auth-client.ts";
+import { renderCode } from "../components/ErrorState.tsx";
+import { WRONG_ADDRESS_FIX } from "../errors.ts";
 
 export type SignInNotice = "password_set" | "signed_out" | "expired";
 
@@ -17,6 +19,7 @@ function messageFor(status: number): string {
   if (status === 429) return "Too many sign-in attempts. Wait a few seconds, then try again.";
   if (status === 0 || status === 502 || status === 504) return "Can't reach Your Space. Check your connection and try again.";
   if (status === 503) return "Your Space can't read its storage right now. Try again shortly.";
+  if (status === 421) return `Your Space is set up for a different address than this one. ${WRONG_ADDRESS_FIX}`;
   return "Sign-in didn't work. Try again.";
 }
 
@@ -66,7 +69,7 @@ export function SignIn() {
       ) : null}
       {error ? (
         <p className="notice error" role="alert">
-          {error}
+          {renderCode(error)}
         </p>
       ) : null}
       <form onSubmit={onSubmit}>

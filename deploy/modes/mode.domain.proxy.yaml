@@ -1,0 +1,6 @@
+# Both YS_DOMAIN and YS_PROXY_URL are set. Compose stops every command here with the message
+# below, until one of the two lines is removed from .env.
+services:
+  server:
+    environment:
+      YS_BOTH_SET: ${YS_BOTH_SET:?Set YS_DOMAIN (your own domain) or YS_PROXY_URL (your own proxy or Tailscale) in .env, not both. Remove one line}

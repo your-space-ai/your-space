@@ -1,16 +1,19 @@
-# Your Space's Caddy configuration (research R9). YS_SITE_ADDRESS is the site address:
-#   https://space.example.com  automatic HTTPS with a Let's Encrypt certificate, HTTP redirects to HTTPS
-#   http://localhost           plain HTTP for this machine only (the default)
-#   http://:8080               plain HTTP behind your own proxy or `tailscale serve`
+# Your Space's Caddy configuration (research R9). The mode file Compose picks (deploy/modes/) sets:
+#   YS_SITE          http://localhost        plain HTTP for this machine only (the default)
+#                    https://<YS_DOMAIN>     automatic HTTPS from Let's Encrypt; HTTP redirects to it
+#                    http://:8080            plain HTTP behind your own proxy or `tailscale serve`
+#   YS_REDIRECT_URL  where http://127.0.0.1 sends people: sign-in works at one address only
 {
-	servers {
-		# Proxies allowed to report the client address (own-proxy and Tailscale mode). The proxy must
-		# replace X-Forwarded-For with the visitor's address (see the installation guide).
-		trusted_proxies static {$YS_TRUSTED_PROXIES}
+	servers :8080 {
+		# Only port 8080, where your own proxy forwards, accepts the visitor address a proxy reports.
+		# Strict mode reads X-Forwarded-For from the right, so a proxy that appends to it (nginx's
+		# $proxy_add_x_forwarded_for) can't be fooled by a visitor who sends their own.
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
 	}
 }
 
-{$YS_SITE_ADDRESS} {
+(app) {
 	encode
 
 	handle /api/* {
@@ -18,6 +21,7 @@
 		request_body {
 			max_size 64KB
 		}
+		# Caddy passes the Host header through unchanged; the server checks it.
 		reverse_proxy server:3000 {
 			# A single client address, the form Better Auth's sign-in limit reads.
 			header_up X-Forwarded-For {client_ip}
@@ -31,4 +35,12 @@
 	}
 
 	# There is no `log` directive, so the access log stays off and request URLs are not recorded.
+}
+
+{$YS_SITE:http://localhost} {
+	import app
+}
+
+http://127.0.0.1 {
+	redir {$YS_REDIRECT_URL:http://localhost}{uri}
 }

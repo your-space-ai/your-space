@@ -32,11 +32,15 @@ export interface Result {
   stderr: string;
 }
 
-export async function compose(args: string[], options: { allowFailure?: boolean; timeout?: number } = {}): Promise<Result> {
+export async function compose(
+  args: string[],
+  options: { allowFailure?: boolean; timeout?: number; env?: Record<string, string> } = {},
+): Promise<Result> {
   const [program, base] = composeCommand();
   try {
     const { stdout, stderr } = await run(program, [...base, ...args], {
       timeout: options.timeout ?? 180_000,
+      env: { ...process.env, ...options.env },
       maxBuffer: 16 * 1024 * 1024,
     });
     return { code: 0, stdout, stderr };

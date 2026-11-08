@@ -62,7 +62,8 @@ The tables are in [data-model.md](data-model.md).
 **Target Platform**:
 
 - Server hosts: macOS 15 and 26 with Docker Desktop, and Ubuntu 24.04 LTS and Debian 13 with Docker
-  Engine 28 or newer. Each runs on ARM and Intel/AMD.
+  Engine 28.3.3 or newer (CVE-2025-54388) and Docker Compose 2.24 or newer. Each runs on ARM and
+  Intel/AMD.
 - Browsers: the current and previous versions of Chrome, Edge, Firefox, and Safari, including iOS.
 
 Only verified combinations are claimed in the guide ([R15](research.md#r15-supported-hosts-and-browsers)).
@@ -194,9 +195,11 @@ web/
     └── styles.css
 e2e/                         # Playwright journeys against the Compose stack
 deploy/
-├── compose.yaml             # caddy (web image), server, postgres; named volumes
+├── compose.yaml             # includes stack.yaml and the mode file picked by .env (R9)
+├── stack.yaml               # caddy (web image), server, postgres; named volumes
+├── modes/                   # one file per setup, with its port addresses written out
 ├── Caddyfile                # copied into the web image
-└── .env.example             # YS_PUBLIC_URL (+ YS_SITE_ADDRESS for own proxy), secrets
+└── .env.example             # the two secrets; optional YS_DOMAIN, YS_PROXY_URL, YS_PORT
 docs/install/                # the installation guide (FR-001)
 .github/workflows/           # typecheck, tests, multi-arch image publishing
 ```

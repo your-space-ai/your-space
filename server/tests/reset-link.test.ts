@@ -98,12 +98,12 @@ describe("reset-link", () => {
     const result = await runCommand("reset-link", ["--json"], {
       databaseUrl: t.url,
       publicUrl: server.publicUrl,
-      env: { YS_PUBLIC_URL: "http://192.168.1.20" },
+      env: { YS_PROXY_URL: "http://192.168.1.20" },
     });
     expect(result.code).toBe(4);
     expect(result.stdout.trim().split("\n")).toHaveLength(1);
     expect(result.json).toMatchObject({ ok: false, error: "unexpected" });
-    expect(result.json.message).toMatch(/YS_PUBLIC_URL/);
+    expect(result.json.message).toMatch(/YS_PROXY_URL must start with https/);
     expect(await t.db.select().from(verification)).toEqual([]);
   });
 

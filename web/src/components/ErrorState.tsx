@@ -1,5 +1,5 @@
 // Storage, connection, and session failures, each with a next step (T022, T043, FR-016).
-import type { FailureKind } from "../errors.ts";
+import { WRONG_ADDRESS_FIX, type FailureKind } from "../errors.ts";
 
 const CONTENT: Record<FailureKind, { title: string; body: string }> = {
   storage_unavailable: {
@@ -14,6 +14,10 @@ const CONTENT: Record<FailureKind, { title: string; body: string }> = {
     body:
       "The server isn't responding. Check your connection. If you run this server, check that it's running " +
       "with `docker compose ps`, then try again.",
+  },
+  wrong_address: {
+    title: "Your Space is set up for a different address",
+    body: `The server answered, but it's set up for another address than the one you opened. ${WRONG_ADDRESS_FIX}`,
   },
   session_expired: {
     title: "Your session has ended",

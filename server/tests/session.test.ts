@@ -213,7 +213,7 @@ describe("sign-in limit in production", () => {
 
   beforeAll(async () => {
     const port = await freePort();
-    base = `http://127.0.0.1:${port}`;
+    base = `http://localhost:${port}`;
     publicUrl = `http://localhost:${port}`;
     const script = fileURLToPath(new URL("../src/index.ts", import.meta.url));
     child = spawn(process.execPath, [script], {
@@ -222,7 +222,7 @@ describe("sign-in limit in production", () => {
         NODE_ENV: "production",
         PORT: String(port),
         DATABASE_URL: t.url,
-        YS_PUBLIC_URL: publicUrl,
+        YS_PORT: String(port),
         BETTER_AUTH_SECRET: TEST_SECRET,
       },
       stdio: ["ignore", "pipe", "pipe"],

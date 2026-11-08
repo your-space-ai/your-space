@@ -60,11 +60,39 @@ npm run e2e                                      # builds the images, then runs 
 Screenshots of each story in each browser, and a video walking through all four stories, are kept on
 the `evidence/claude/001-implementation` branch, which is never merged.
 
-## Localhost Mode Stays on This Machine
+## Each Setup Opens Only Its Own Ports
 
-With the default `YS_PUBLIC_URL=http://localhost` and no `YS_BIND_ADDRESS`, `docker ps` showed
-Caddy's ports published only on `127.0.0.1`. `curl http://localhost/api/status` answered `200`,
-and the same request to the host's network address, with `Host: localhost`, was refused.
+`e2e/tests/setups.spec.ts` reads each setup's resolved configuration with `docker compose config`
+(Compose 5.6.1) and checks:
+
+- the published ports: `127.0.0.1:80` with nothing in `.env`, `127.0.0.1:8081` with
+  `YS_PORT=8081`, `0.0.0.0` ports 80, 443, and 443/udp with `YS_DOMAIN`, and `127.0.0.1:8080` with
+  `YS_PROXY_URL`;
+- that the server and the database publish nothing, and that only the proxy setup joins the edge
+  network;
+- that setting both keys stops Compose with a message.
+
+CI runs the same checks on Compose 2.24.0. That wasn't run here: the sandbox couldn't download other
+Compose versions.
+
+With a running stack and locally built images (2026-11-08):
+
+- **This machine, with `YS_PORT=18291`:** only `127.0.0.1:18291` was published.
+  `http://localhost:18291/api/status` answered 200, and `http://127.0.0.1:18291/sign-in` redirected
+  to `http://localhost:18291/sign-in`.
+- **Your own proxy, with `YS_PROXY_URL=https://space.example.test` and `YS_PORT=18292`:** only
+  `127.0.0.1:18292` was published. A request with `Host: space.example.test` answered 200; one with
+  any other `Host` got 421 and the message about `proxy_set_header Host $host`. A container on the
+  stack's edge network reached `http://your-space:8080`.
+- **A misspelled key (`YS_DOMIAN`), `YS_DOMAIN=myserver.tail1234.ts.net`, and an old `.env` with
+  `YS_PUBLIC_URL` and `YS_BIND_ADDRESS`:** `docker compose up -d --wait` failed with "dependency
+  failed to start: container ... is unhealthy", Caddy stayed `Created` with no published ports,
+  and `docker compose logs server` named the fix ("Did you mean YS_DOMAIN?", "for Tailscale, write
+  YS_PROXY_URL=https://… instead", "is no longer used").
+
+- **The default setup, during the browser journeys:** `docker ps` showed Caddy published only on
+  `127.0.0.1:80`. `curl http://localhost/api/status` answered 200, and the same request to the
+  host's network address, with `Host: localhost`, was refused (connection refused).
 
 ## Review
 
@@ -84,6 +112,9 @@ fresh stack: every packet leaving the stack's Docker network for any other addre
 packet on the host (Docker's resolver forwards containers' lookups from the host). A browser drove
 the steps (no owner yet, `create-owner`, set the password, a wrong and a right sign-in, sign out,
 `reset-link`, reset, sign in) and logged every host the page contacted.
+
+These runs used the first configuration (`YS_PUBLIC_URL`), before the setups above replaced it,
+and weren't repeated. The default setup serves the same site on the same loopback port.
 
 **Result with `YS_PUBLIC_URL=http://localhost`:** no packets left the stack's network, there were
 no DNS lookups, and the web client contacted only `localhost`.
@@ -112,13 +143,15 @@ These are required before the guide can claim them. They need real machines and 
 - **HTTPS with a real domain**: obtaining and renewing a Let's Encrypt certificate (User Story 1,
   scenario 9; SC-009).
 - **Another device over HTTPS** (User Story 2, scenario 6): through the built-in proxy, your own
-  proxy, or Tailscale (`tailscale serve`). The own-proxy mode (`YS_SITE_ADDRESS=http://:8080`) was
-  checked only as a Caddy configuration (`caddy adapt`), not end to end.
+  proxy, or Tailscale (`tailscale serve`). The own-proxy setup was checked with `curl` and a
+  container on the edge network standing in for a proxy, not with nginx, Traefik, or Tailscale.
 - **Branded browsers**: Chrome, Edge, and Safari (including iOS) were not run; Playwright's
   Chromium, Firefox, and WebKit builds stand in for their engines.
-- **Downloading `compose.yaml` and `env.example` from a release**: no release exists yet. The
-  workflow step that pins a release's `compose.yaml` to its own image version was run locally.
-- **IPv6**: not supported yet. The Compose network has no IPv6, so the guide says not to add an
-  `AAAA` record.
+- **Downloading `your-space.tar.gz` from a release**: no release exists yet. The workflow step that
+  builds it and pins `stack.yaml` to the release's image version was run locally with a pretend tag,
+  and the unpacked files resolved with `docker compose config`.
+- **Compose 2.24**, the oldest version the guide names: checked only by the CI job above.
+- **IPv6**: not supported yet. Your own domain is published on `0.0.0.0` (IPv4) only, because a
+  literal `[::]` fails on hosts without IPv6, so the guide says not to add an `AAAA` record.
 - **Docker Desktop's networking**: whether Your Space sees each visitor's own address there (which
   the per-address sign-in limit relies on) has not been checked.

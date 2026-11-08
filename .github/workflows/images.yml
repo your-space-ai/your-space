@@ -1,7 +1,7 @@
 name: Images
 
 # Builds and publishes the server and web images for Intel/AMD and ARM (FR-022), and attaches the
-# Compose file and settings template to each release, where the installation guide downloads them.
+# install files (your-space.tar.gz) to each release, where the installation guide downloads them.
 on:
   push:
     branches: [main]
@@ -66,13 +66,18 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
-      # Each release's compose.yaml runs that release's images by default. GitHub renames release
-      # files that start with a dot, so the template is published as env.example.
+      # Each release's files run that release's images by default, so a later `docker compose pull`
+      # never pairs new images with old mode files. The tarball holds no .env, so unpacking it over
+      # an installation keeps the owner's settings. Its files sit at the top level, not in a folder.
       - run: |
-          sed "s/\${YS_VERSION:-latest}/\${YS_VERSION:-${TAG#v}}/g" deploy/compose.yaml > compose.yaml
-          grep -q "YS_VERSION:-${TAG#v}}" compose.yaml
-          cp deploy/.env.example env.example
-          gh release upload "$TAG" compose.yaml env.example --clobber
+          mkdir release
+          cp -r deploy/compose.yaml deploy/stack.yaml deploy/modes release/
+          sed -i "s/\${YS_VERSION:-latest}/\${YS_VERSION:-${TAG#v}}/g" release/stack.yaml
+          test "$(grep -c "YS_VERSION:-${TAG#v}}" release/stack.yaml)" -eq 2
+          if grep -rq "YS_VERSION:-latest" release; then exit 1; fi
+          cp deploy/.env.example release/env.example
+          tar -czf your-space.tar.gz -C release compose.yaml stack.yaml modes env.example
+          gh release upload "$TAG" your-space.tar.gz --clobber
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}

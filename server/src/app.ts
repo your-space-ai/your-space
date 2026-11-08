@@ -17,11 +17,24 @@ export function createApp({ auth, db }: AppDeps): express.Express {
   // Caddy is the one proxy in front of the server.
   app.set("trust proxy", 1);
 
+  // Every API request must name the address Your Space is set up for. Browsers always send it. A
+  // proxy that rewrites the Host header (nginx's default) doesn't, and neither does a page that
+  // re-points its own name at this machine (DNS rebinding), so those stop here with a message
+  // that says what to fix. Docker's health check calls the server directly, so /api/health is exempt.
+  const publicUrl = new URL(auth.options.baseURL as string);
+  const publicOrigin = publicUrl.origin;
+  app.use("/api", (req, res, next) => {
+    if (req.path === "/health" || req.headers.host?.toLowerCase() === publicUrl.host) return next();
+    res.status(421).json({
+      error: "wrong_host",
+      message: `Your Space is set up for ${publicOrigin}, and this request named a different address. If you use your own proxy, set it to pass the original Host header (nginx: proxy_set_header Host $host).`,
+    });
+  });
+
   // Better Auth reports sign-out as done even when deleting the session failed, which would leave
   // the session valid (FR-009). For requests from Your Space's own pages (the only origin Better
   // Auth accepts), delete the session first and report a failure as one (FR-016); Better Auth then
   // signs out as usual. Requests from anywhere else are left for Better Auth to refuse.
-  const publicOrigin = new URL(auth.options.baseURL as string).origin;
   app.post("/api/auth/sign-out", async (req, res, next) => {
     if (req.headers.origin !== publicOrigin) return next();
     try {

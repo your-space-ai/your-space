@@ -1,0 +1,11 @@
+# Your own domain: YS_DOMAIN=space.example.com in .env. Ports 80 and 443 open on every IPv4
+# address, so Let's Encrypt and visitors can reach them. Caddy gets and renews the certificate.
+services:
+  caddy:
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+      - "0.0.0.0:443:443/udp"
+    environment:
+      YS_SITE: https://${YS_DOMAIN}
+      YS_REDIRECT_URL: https://${YS_DOMAIN}

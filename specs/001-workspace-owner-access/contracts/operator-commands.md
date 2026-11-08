@@ -44,7 +44,7 @@ holds only that object.
 
 ## Set-Password and Reset Links
 
-Both commands print the same kind of link: `${YS_PUBLIC_URL}/reset-password#token=<token>`.
+Both commands print the same kind of link: `<public address>/reset-password#token=<token>`, where the public address is derived from `.env` (`http://localhost`, `https://<YS_DOMAIN>`, or `YS_PROXY_URL`).
 
 - **Source:** the command calls Better Auth's `auth.api.requestPasswordReset`. Better Auth creates a
   random token, stores it, and calls `sendResetPassword`, which prints the link instead of emailing

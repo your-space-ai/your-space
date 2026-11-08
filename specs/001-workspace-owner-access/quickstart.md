@@ -17,10 +17,9 @@ automated tests and the evidence for SC-010. Endpoint and command details are in
 
 ```sh
 mkdir your-space && cd your-space
-curl -fsSL -o compose.yaml https://github.com/your-space-ai/your-space/releases/latest/download/compose.yaml
-# GitHub renames release files that start with a dot, so the template is published as env.example.
-curl -fsSL -o .env https://github.com/your-space-ai/your-space/releases/latest/download/env.example
-# In .env: generate the two secrets; set YS_PUBLIC_URL (for local use keep http://localhost)
+curl -fsSL https://github.com/your-space-ai/your-space/releases/latest/download/your-space.tar.gz | tar -xz
+cp env.example .env
+# In .env: generate the two secrets. Nothing else for this machine (http://localhost).
 docker compose up -d
 docker compose ps           # every service healthy
 ```
@@ -44,11 +43,13 @@ Negative checks:
 
 ## 2. HTTPS With a Domain (Story 1, scenario 9)
 
-Set `YS_PUBLIC_URL=https://space.example.com` in `.env` and run `docker compose up -d`.
+Add `YS_DOMAIN=space.example.com` to `.env` and run `docker compose up -d`.
 
 Expected: Caddy obtains a certificate (see `docker compose logs caddy`), `https://space.example.com`
 loads with a valid certificate, and `http://space.example.com` redirects to HTTPS. With DNS pointing
-elsewhere, the Caddy log names the failure and nothing is served over plain HTTP.
+elsewhere, the Caddy log names the failure and nothing is served over plain HTTP. With
+`YS_DOMAIN=192.168.1.20` or `YS_DOMAIN=myserver.tail1234.ts.net`, `docker compose up -d` fails, the
+server log says what to write instead, and `docker compose ps` shows no published ports.
 
 ## 3. Sign In, Remote Access, Sign Out (Story 2)
 

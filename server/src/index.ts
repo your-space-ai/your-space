@@ -49,7 +49,8 @@ for (let attempt = 1; ; attempt++) {
 const auth = createAuth({ config, db });
 const app = createApp({ auth, db });
 const server: Server = app.listen(PORT, "0.0.0.0", () => {
-  log("info", "server.listening", { port: PORT });
+  // Which setup the .env produced, so `docker compose logs server` shows it.
+  log("info", "server.listening", { port: PORT, setup: config.mode, address: config.publicUrl });
 });
 
 function shutdown(signal: string): void {

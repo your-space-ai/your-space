@@ -84,8 +84,10 @@ work from the roadmap.
    [CLI delivery sequence](decisions.md#cli-delivery-sequence), and
    [product experience principles](decisions.md#product-experience-principles).
 3. **Edge.** A Caddy reverse proxy in the Compose stack provides HTTPS with automatic certificates, unless
-   the owner brings their own proxy or tunnel. It also serves the web client's static files and
-   forwards `/api` to the server, so both share one origin. See [installation and hosting](decisions.md#installation-and-hosting).
+   the owner brings their own proxy or tunnel. Then the owner's proxy sits in front of Caddy and
+   reaches it on `127.0.0.1:8080`, or over the stack's `edge` network when the proxy runs in a
+   container. Caddy also serves the web client's static files and forwards `/api` to the server, so
+   both share one origin. See [installation and hosting](decisions.md#installation-and-hosting).
 4. **Your Space core.** Identity and sessions, roles and delegation, the gateway for agent requests,
    app management, operations (backup, restore, updates), and the activity log. See
    [agent access through Your Space](decisions.md#agent-access-through-your-space),

@@ -35,7 +35,7 @@ One repository with npm workspaces: `server/`, `web/`, `e2e/`, plus `deploy/` an
 - [X] T001 Create root `package.json` with npm workspaces `server`, `web`, `e2e`, plus root `tsconfig.base.json` (TypeScript 7, `strict`, `erasableSyntaxOnly`, `rewriteRelativeImportExtensions`) and `.gitignore` (`node_modules`, `dist`, `.env`)
 - [X] T002 Create `server/package.json` (Node 26, `"type": "module"`) with runtime dependencies `express`, `better-auth`, `drizzle-orm`, `pg`, and dev dependencies `drizzle-kit`, `vitest`, `@types/express`, `@types/pg`, plus `server/tsconfig.json`
 - [X] T003 [P] Create the Vite React app in `web/` (`web/package.json`, `web/tsconfig.json`, `web/vite.config.ts`, `web/index.html`) with `react`, `react-dom`, `@tanstack/react-router`, `@tanstack/react-query`, `better-auth`
-- [X] T004 [P] Create `e2e/package.json` and `e2e/playwright.config.ts` with Chromium, Firefox, and WebKit projects and a base URL from `YS_PUBLIC_URL`
+- [X] T004 [P] Create `e2e/package.json` and `e2e/playwright.config.ts` with Chromium, Firefox, and WebKit projects and a base URL of `http://localhost` (`YS_PORT` moves it)
 - [X] T005 [P] Add `.github/workflows/ci.yml`: install, `tsc --noEmit` in every workspace, server tests with a PostgreSQL 18 service container, web build
 
 ---
@@ -45,12 +45,12 @@ One repository with npm workspaces: `server/`, `web/`, `e2e/`, plus `deploy/` an
 **Purpose**: Configuration, database, Better Auth, the HTTP app, and the Compose stack. Every story
 depends on these.
 
-- [X] T006 Implement `server/src/config.ts`: read and validate `YS_PUBLIC_URL`, `DATABASE_URL`, and `BETTER_AUTH_SECRET` at startup; exit with a clear message when one is missing or malformed
+- [X] T006 Implement `server/src/config.ts`: derive the setup and public address from the optional `YS_DOMAIN`, `YS_PROXY_URL`, and `YS_PORT` ([research R9](research.md#r9-https-and-the-caddy-configuration)), refuse unknown and retired `YS_*` keys, and validate `DATABASE_URL` and `BETTER_AUTH_SECRET` at startup; exit with a clear message when one is missing or malformed
 - [X] T007 [P] Implement `server/src/log.ts`: one JSON line per event to stdout, never including request bodies, cookies, `Authorization` headers, passwords, or tokens
 - [X] T008 Implement `server/src/db/client.ts`: a `pg` pool and Drizzle instance from `DATABASE_URL`, with a pool `error` handler so losing the database never crashes the process
 - [X] T009 Implement `server/src/auth.ts` with one shared options builder ([research R3, R4](research.md#r3-authentication-with-better-auth)):
   - `emailAndPassword` with `disableSignUp`, `minPasswordLength: 12`, `maxPasswordLength: 128`, `autoSignIn: false`, `revokeSessionsOnPasswordReset: true`, `resetPasswordTokenExpiresIn: 1800`
-  - `baseURL` from `YS_PUBLIC_URL`, `advanced.database.generateId: "uuid"`, `telemetry: { enabled: false }`
+  - `baseURL` from the derived public address, `advanced.database.generateId: "uuid"`, `telemetry: { enabled: false }`
   - `organization({ allowUserToCreateOrganization: false })`, and the Drizzle adapter
   - export `auth`, the public instance with sign-up off and no `sendResetPassword`
   - export `createCommandAuth(onLink)`, the command-only instance with sign-up on and `sendResetPassword` calling `onLink`
@@ -63,17 +63,17 @@ depends on these.
 - [X] T016 [P] Add `server/tests/helpers/db.ts`: create a fresh database per test file, run migrations, and expose helpers to stop and restore the connection
 - [X] T017 [P] Add `server/Dockerfile` (`node:26-slim`, production dependencies, `bin/` on `PATH`, `CMD ["node", "src/index.ts"]`)
 - [X] T018 [P] Add `deploy/Caddyfile`:
-  - site address `{$YS_SITE_ADDRESS}`, with `encode`
+  - site address `{$YS_SITE}` from the mode file, with `encode`, and `http://127.0.0.1` redirecting to the public address
   - `/api/*` to `server:3000`, with `X-Forwarded-For` set to `{client_ip}`
   - the web files served with `try_files {path} /index.html`
-  - no access log, and `trusted_proxies` taken from the environment
+  - no access log, and `trusted_proxies` (strict, `private_ranges`) on the `:8080` proxy listener only
 - [X] T019 [P] Add `web/Dockerfile`: build with Vite, then `caddy:2.11` with `dist/` and `deploy/Caddyfile`
-- [X] T020 Add `deploy/compose.yaml` and `deploy/.env.example`:
+- [X] T020 Add `deploy/compose.yaml`, `deploy/stack.yaml`, `deploy/modes/`, and `deploy/.env.example`:
   - services `caddy` (web image), `server`, and `postgres:18`;
   - named volumes `ys-postgres` (mounted at `/var/lib/postgresql`) and `ys-caddy-data`;
-  - `YS_SITE_ADDRESS` defaulting to `YS_PUBLIC_URL`;
+  - one mode file per setup, picked by which of `YS_DOMAIN` and `YS_PROXY_URL` is set, with literal port addresses ([research R9](research.md#r9-https-and-the-caddy-configuration));
   - health checks: `pg_isready` and `/api/health`;
-  - `server` starts after Postgres is healthy.
+  - `server` starts after Postgres is healthy, and `caddy` after the server is healthy.
 - [X] T021 [P] Implement `web/src/auth-client.ts` (Better Auth `createAuthClient` with `organizationClient`), `web/src/queries.ts` (TanStack Query hooks for `/api/status`, the session, and the workspace that unwrap `{ data, error }`), and `web/src/main.tsx` (QueryClient and RouterProvider)
 - [X] T022 [P] Implement `web/src/components/ErrorState.tsx` (storage unavailable, server unreachable, session expired, each with a next step) and `web/src/styles.css` (plain CSS)
 
@@ -120,7 +120,7 @@ on a clean stack.
   - post it with Better Auth `resetPassword`;
   - on success go to sign-in; on an invalid or expired link, explain how to get a new one with `reset-link`.
 - [X] T032 [US1] Implement `web/src/router.tsx` with routes `/sign-in`, `/`, and `/reset-password`; the root `beforeLoad` shows NoOwnerYet when there is no owner and ErrorState when storage is unavailable
-- [X] T033 [US1] Write `docs/install/README.md` sections for prerequisites, download and `.env` (`YS_PUBLIC_URL` modes from [research R9](research.md#r9-https-and-the-caddy-configuration)), starting the stack, `create-owner`, setting the password, and certificate troubleshooting with `docker compose logs caddy` (FR-001, FR-028)
+- [X] T033 [US1] Write `docs/install/README.md` sections for prerequisites, download and `.env` (the one-line setups from [research R9](research.md#r9-https-and-the-caddy-configuration)), starting the stack, `create-owner`, setting the password, and certificate troubleshooting with `docker compose logs caddy` (FR-001, FR-028)
 
 **Checkpoint**: User Story 1 works end to end on localhost, and on a domain with automatic HTTPS.
 
@@ -140,7 +140,7 @@ session.
   - `get-session` without a cookie returns no session;
   - after sign-out, replaying the cookie fails;
   - an expired session fails;
-  - with an `https` `YS_PUBLIC_URL` the cookie is `__Secure-`, `Secure`, and `HttpOnly`, with no `Domain` attribute;
+  - with an `https` public address the cookie is `__Secure-`, `Secure`, and `HttpOnly`, with no `Domain` attribute;
   - in production mode the 4th sign-in within 10 seconds returns 429.
 - [X] T035 [P] [US2] `e2e/tests/us2-sign-in.spec.ts`: wrong password is refused; sign in reaches home; sign out returns to sign-in; a replayed session cookie is refused; a stopped server shows the "server unreachable" state, not an empty workspace
 
@@ -149,7 +149,7 @@ session.
 - [X] T036 [P] [US2] Implement `web/src/pages/SignIn.tsx`: email and password with native validation, Better Auth `signIn.email`, and clear errors for wrong credentials and rate limiting
 - [X] T037 [P] [US2] Implement `web/src/pages/Home.tsx`: workspace name from `organization.list`, the owner's name and email, and sign out; nothing else (FR-027)
 - [X] T038 [US2] Extend `web/src/router.tsx`: the root `beforeLoad` sends signed-out visitors to `/sign-in` and signed-in visitors away from it; an expired session mid-use returns to sign-in without reporting success (FR-016)
-- [X] T039 [US2] Add a remote-access section to `docs/install/README.md`: your own domain, your own proxy, and Tailscale (`tailscale serve` with `YS_SITE_ADDRESS=http://:8080`), and why plain `http://<LAN IP>` is not supported
+- [X] T039 [US2] Add a remote-access section to `docs/install/README.md`: your own domain, your own proxy, and Tailscale (`tailscale serve` with `YS_PROXY_URL`), including proxies in containers through the `your-space_edge` network and the `Host` check, and why plain `http://<LAN IP>` is not supported
 
 **Checkpoint**: User Stories 1 and 2 both work; a second device signs in over HTTPS.
 

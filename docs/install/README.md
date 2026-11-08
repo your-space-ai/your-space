@@ -16,8 +16,10 @@ You need:
 
 - A Mac or Linux machine that can run Docker:
   - macOS with [Docker Desktop](https://docs.docker.com/desktop/), or
-  - Linux with [Docker Engine](https://docs.docker.com/engine/install/) 28 or newer and the Docker
-    Compose v2 plugin (`docker compose version` prints `v2` or later).
+  - Linux with [Docker Engine](https://docs.docker.com/engine/install/) 28.3.3 or newer and the
+    Docker Compose plugin. Older Engine versions can open ports meant for this machine only to the
+    network after a firewall reload (CVE-2025-54388).
+- Docker Compose 2.24 or newer: `docker compose version` prints `v2.24.0` or later.
 - About 1 GB of free memory and 2 GB of disk.
 - `openssl` to generate secrets (installed on macOS and most Linux distributions).
 - For access from other devices: a domain name pointing at the server, or [Tailscale](https://tailscale.com).
@@ -26,10 +28,12 @@ You need:
 Windows is not supported as a server.
 
 **Checked so far:** steps 2 to 5 and the later sections were checked only with locally built
-images on Linux on Intel/AMD (x86_64) with Docker Engine 29, in Chromium, Firefox, and WebKit.
-Downloading from a release, the published images, macOS, ARM machines such as Apple Silicon, IPv6,
-and HTTPS with a real domain or Tailscale have not been checked yet.
-[VERIFICATION.md](VERIFICATION.md) lists exactly what was tested, with versions.
+images on Linux on Intel/AMD (x86_64) with Docker Engine 29 and Compose 5.6, in Chromium, Firefox,
+and WebKit. Each setup's published ports were checked with `docker compose config`, and the
+this-machine and own-proxy setups also with a running stack. Downloading from a release, the
+published images, macOS, ARM machines such as Apple Silicon, IPv6, Compose 2.24 itself, and HTTPS
+with a real domain or Tailscale have not been checked yet. [VERIFICATION.md](VERIFICATION.md) lists
+exactly what was tested, with versions.
 
 Check Docker before you go on:
 
@@ -43,15 +47,17 @@ until it says it is running.
 
 ## 1. Download
 
-Make a folder for Your Space and download the Compose file and the settings template:
+Make a folder for Your Space, download the release into it, and make your settings file:
 
 ```sh
 mkdir your-space && cd your-space
-curl -fsSL -o compose.yaml https://github.com/your-space-ai/your-space/releases/latest/download/compose.yaml
-curl -fsSL -o .env https://github.com/your-space-ai/your-space/releases/latest/download/env.example
+curl -fsSL https://github.com/your-space-ai/your-space/releases/latest/download/your-space.tar.gz | tar -xz
+cp env.example .env
 ```
 
-Run every later command in this folder.
+The download holds `compose.yaml`, `stack.yaml`, a `modes` folder, and `env.example`. It never
+contains `.env`, so your settings are never overwritten by a download. Run every later command in
+this folder.
 
 ## 2. Configure
 
@@ -67,17 +73,23 @@ openssl rand -hex 32      # for POSTGRES_PASSWORD
 Keep `.env` private: anyone with these secrets can read or impersonate your installation. Don't
 commit it or share it.
 
-**Choose the address** people will use, `YS_PUBLIC_URL`:
+**That's all for this machine.** With nothing else in `.env`, Your Space answers only on this
+machine, at `http://localhost`. To use it from other devices, add one line:
 
-| You want | Set in `.env` | What happens |
+| You want | Add to `.env` | What happens |
 | --- | --- | --- |
-| Use it on this machine only (the default) | `YS_PUBLIC_URL=http://localhost` | Plain HTTP, reachable only from this machine |
-| Use your own domain | `YS_PUBLIC_URL=https://space.example.com` and `YS_BIND_ADDRESS=0.0.0.0` | Caddy gets and renews a Let's Encrypt certificate and redirects HTTP to HTTPS. The domain's DNS must point at this server, with ports 80 and 443 open to the internet |
-| Use your own proxy or Tailscale | `YS_PUBLIC_URL=https://<the proxy's address>`, `YS_SITE_ADDRESS=http://:8080`, and `YS_TRUSTED_PROXIES=private_ranges` | Caddy serves plain HTTP on `127.0.0.1:8080`; your proxy or Tailscale handles HTTPS. See [Use Your Space From Other Devices](#use-your-space-from-other-devices) |
+| Use it on this machine only (the default) | nothing | Plain HTTP at `http://localhost`, reachable only from this machine |
+| Use your own domain | `YS_DOMAIN=space.example.com` | Ports 80 and 443 open to the network. Caddy gets and renews a Let's Encrypt certificate and redirects HTTP to HTTPS. See [Use Your Own Domain](#use-your-own-domain) |
+| Use your own proxy or Tailscale | `YS_PROXY_URL=https://<the proxy's address>` | Caddy serves plain HTTP on `127.0.0.1:8080` only; your proxy or Tailscale handles HTTPS. See [Use Your Own Reverse Proxy](#use-your-own-reverse-proxy) or [Use Tailscale](#use-tailscale) |
 
-`YS_PUBLIC_URL` must be just the address: no path and no trailing slash. Plain `http://` works only
-for `localhost`; the server refuses to start with plain HTTP for any other address, because your
-sign-in would travel unencrypted.
+If another program already uses port 80 on this machine (or 8080 with `YS_PROXY_URL`), also add
+`YS_PORT=8081`, or any free port. Your Space then answers at `http://localhost:8081`. `YS_PORT`
+doesn't apply to your own domain, which needs ports 80 and 443.
+
+Which line you write decides which ports open: only `YS_DOMAIN` opens any to the network. The
+server checks every line when it starts and refuses to start, with a message that says what to fix,
+if a value is wrong, if both `YS_DOMAIN` and `YS_PROXY_URL` are set, or if a setting's name is
+misspelled. Caddy waits for the server, so a wrong line never opens a port.
 
 ## 3. Start
 
@@ -91,10 +103,12 @@ all three services running, with `server` and `postgres` marked `healthy`. If th
 
 | You see | What to do |
 | --- | --- |
-| `required variable ... is missing a value` | A setting in `.env` is empty. Fill it in as in step 2 |
-| `server` keeps restarting | Run `docker compose logs server`. An `Invalid configuration` message names the setting to fix |
-| `address already in use` or `port is already allocated`, for port 80 or 443 | Another program uses the port. Stop it, or use [your own proxy](#use-your-own-reverse-proxy) |
-| `server` is `unhealthy` | Run `docker compose logs server postgres` and see [When the Database Is Down](#when-the-database-is-down) |
+| `required variable BETTER_AUTH_SECRET is missing a value` (or `POSTGRES_PASSWORD`) | Generate the secret as in step 2 |
+| `dependency failed to start: container your-space-server-1 is unhealthy` | Run `docker compose logs server`. An `Invalid configuration` message names the setting to fix. Fix `.env` and run `docker compose up -d` again. No port was opened meanwhile |
+| `Set YS_DOMAIN (your own domain) or YS_PROXY_URL (your own proxy or Tailscale) in .env, not both` | Remove one of the two lines. Every `docker compose` command stops with this message until you do |
+| `address already in use` or `port is already allocated`, for port 80 or 8080 | Another program uses the port. Add `YS_PORT=8081` (or any free port) to `.env` |
+| The same, for port 443 with your own domain | Another program uses the port, such as another web server. Stop it, or put Your Space behind it as [your own proxy](#use-your-own-reverse-proxy) |
+| `server` is `unhealthy` after it was running | Run `docker compose logs server postgres` and see [When the Database Is Down](#when-the-database-is-down) |
 
 Open your address (for example `http://localhost`). It says Your Space has no owner yet and shows
 the command to create one. There is no sign-up form: nobody can make an account from the web.
@@ -155,8 +169,8 @@ installing apps comes in a later release.
 
 ## Certificates
 
-With your own domain in `YS_PUBLIC_URL`, Caddy asks Let's Encrypt for a certificate when it starts
-and renews it automatically. To see what it is doing:
+With `YS_DOMAIN` set, Caddy asks Let's Encrypt for a certificate when it starts and renews it
+automatically. To see what it is doing:
 
 ```sh
 docker compose logs caddy
@@ -165,9 +179,10 @@ docker compose logs caddy
 If the certificate isn't issued, the log names the reason. The usual causes:
 
 - **The domain doesn't point at this server.** Check the DNS `A` record.
-- **`YS_BIND_ADDRESS=0.0.0.0` is missing from `.env`.** Without it, only this machine can connect.
 - **Ports 80 or 443 are blocked.** Let's Encrypt must reach this server on both, from the internet.
   Check the firewall and any router port forwarding.
+- **The domain has an `AAAA` (IPv6) record.** Let's Encrypt may try IPv6 first, and Your Space
+  listens on IPv4 only for now. Remove the `AAAA` record.
 
 Caddy keeps retrying, and it never falls back to serving your domain over plain HTTP. Certificates
 are kept in the `ys-caddy-data` volume, so restarts don't request new ones.
@@ -180,7 +195,7 @@ another computer, give it an HTTPS address in one of three ways:
 | Way | You need | Who can reach it |
 | --- | --- | --- |
 | [Your own domain](#use-your-own-domain) | A domain whose DNS points at this server, with ports 80 and 443 open to the internet | Anyone on the internet; only the owner can sign in |
-| [Your own reverse proxy](#use-your-own-reverse-proxy) | A proxy on this machine that already handles HTTPS | Whoever can reach your proxy |
+| [Your own reverse proxy](#use-your-own-reverse-proxy) | A proxy that already handles HTTPS, on this machine or in a container | Whoever can reach your proxy |
 | [Tailscale](#use-tailscale) | Tailscale on this server and on each device | Only your devices on your tailnet |
 
 A plain `http://` address on your network is not one of them; see
@@ -196,44 +211,63 @@ is nothing to set up again.
    `AAAA` record.
 2. Open ports 80 and 443 to the internet, in the firewall and any router port forwarding. Let's
    Encrypt reaches the server through them to issue the certificate.
-3. In `.env`, set the address, let the network reach ports 80 and 443, and leave
-   `YS_SITE_ADDRESS` and `YS_TRUSTED_PROXIES` unset:
+3. Add the domain to `.env`, as just the name, without `https://`:
 
    ```sh
-   YS_PUBLIC_URL=https://space.example.com
-   YS_BIND_ADDRESS=0.0.0.0
+   YS_DOMAIN=space.example.com
    ```
 
 4. Run `docker compose up -d`.
 
 Caddy gets a certificate, renews it automatically, and redirects `http://space.example.com` to
-HTTPS. If the address doesn't load, see [Certificates](#certificates).
+HTTPS. If the address doesn't load, see [Certificates](#certificates). The server refuses names
+that can't get a public certificate, such as an IP address, `localhost`, or a Tailscale `.ts.net`
+name, and says what to use instead.
 
 ### Use Your Own Reverse Proxy
 
-Use this if a proxy on this machine, such as nginx, Caddy, or Traefik, already handles HTTPS for
-other services.
+Use this if a proxy, such as nginx, Caddy, Traefik, or Nginx Proxy Manager, already handles HTTPS
+for other services.
 
-1. In `.env`, set the address your proxy serves, and turn on proxy mode:
+1. Add the address your proxy serves to `.env`:
 
    ```sh
-   YS_PUBLIC_URL=https://space.example.com
-   YS_SITE_ADDRESS=http://:8080
-   YS_TRUSTED_PROXIES=private_ranges
+   YS_PROXY_URL=https://space.example.com
    ```
 
-   Your Space then serves plain HTTP on `127.0.0.1:8080`, reachable only from this machine, and gets
-   no certificate. `YS_TRUSTED_PROXIES=private_ranges` lets it take the visitor's address from your
-   proxy.
+   Your Space then serves plain HTTP on `127.0.0.1:8080`, reachable only from this machine, and
+   doesn't use ports 80 and 443 at all, so it doesn't compete with your proxy for them. It gets no
+   certificate. If another program has port 8080, add `YS_PORT=8090` (or any free port) and use that
+   port below.
 
-2. Point your proxy at `http://127.0.0.1:8080`. It must:
+2. Run `docker compose up -d`.
 
-   - run on this machine, directly or in a container with host networking
-     (`network_mode: host`). Port 8080 accepts connections only on this machine's own `127.0.0.1`,
-     so a proxy in an ordinary container can't reach it;
-   - pass the original `Host` header;
-   - set `X-Forwarded-For` to the visitor's address, replacing any value the visitor sent. The
-     sign-in limit counts attempts per address; without this header, all visitors share one limit.
+3. Point your proxy at Your Space:
+
+   - **A proxy on this machine** forwards to `http://127.0.0.1:8080`.
+   - **A proxy in a container** can't reach `127.0.0.1` on the machine. Instead, join it to Your
+     Space's network, `your-space_edge`, and forward to `http://your-space:8080`. In your proxy's
+     Compose file:
+
+     ```yaml
+     services:
+       proxy:              # your proxy's service
+         networks: [default, your-space]
+     networks:
+       your-space:
+         external: true
+         name: your-space_edge
+     ```
+
+     The network exists once Your Space runs with `YS_PROXY_URL`, so start Your Space first.
+     Attach only your proxy to it: Your Space accepts a visitor's address from anything on it.
+
+4. Your proxy must:
+
+   - **pass the original `Host` header.** Your Space answers only to the address in `YS_PROXY_URL`.
+     Requests that arrive under another name get status 421 and a message that says to fix this;
+   - **set `X-Forwarded-For` to the visitor's address,** replacing any value the visitor sent. The
+     sign-in limit counts attempts per address.
 
    Caddy and Traefik do both by default. In nginx, add:
 
@@ -242,21 +276,10 @@ other services.
    proxy_set_header X-Forwarded-For $remote_addr;
    ```
 
-3. If your proxy uses ports 80 and 443 on this machine, stop Your Space from publishing them. Create
-   `compose.override.yaml` next to `compose.yaml`:
-
-   ```yaml
-   services:
-     caddy:
-       ports: !override
-         - "127.0.0.1:8080:8080"
-   ```
-
-   Docker Compose reads this file automatically. `!override` replaces the port list from
-   `compose.yaml` and needs Docker Compose 2.24.4 or later. Without the override, your proxy and
-   Your Space compete for ports 80 and 443, and one of them fails to start.
-
-4. Run `docker compose up -d`.
+Your Space reads the visitor's address only from connections to port 8080, and only from the right
+end of `X-Forwarded-For`, so visitors on the internet or on Tailscale can't fake it even if your
+proxy appends to the header instead of replacing it. Visitors on your own network, with addresses
+such as `192.168.1.20`, look like proxies, so behind a proxy they share one sign-in limit.
 
 ### Use Tailscale
 
@@ -273,27 +296,27 @@ reach. You need no domain and no ports open to the internet.
 
    It prints the server's address, such as `https://myserver.tail1234.ts.net`. If it says HTTPS
    isn't enabled for your tailnet, follow the link it prints. `--bg` keeps it serving after you
-   close the terminal; `tailscale serve status` shows the address again.
+   close the terminal; `tailscale serve status` shows the address again. Until the next two steps
+   are done, the address shows an error page.
 
-3. In `.env`, set that address, with no trailing slash, and turn on proxy mode:
+3. Add that address to `.env`, with `https://` and no trailing slash:
 
    ```sh
-   YS_PUBLIC_URL=https://myserver.tail1234.ts.net
-   YS_SITE_ADDRESS=http://:8080
-   YS_TRUSTED_PROXIES=private_ranges
+   YS_PROXY_URL=https://myserver.tail1234.ts.net
    ```
 
 4. Run `docker compose up -d`.
 
-Your Space doesn't use ports 80 and 443 in this mode. To stop publishing them, add the
-`compose.override.yaml` from [Use Your Own Reverse Proxy](#use-your-own-reverse-proxy).
+Tailscale passes the original `Host` header and the visitor's tailnet address, so nothing else needs
+setting up.
 
 ### Plain HTTP on Your Network Is Not Supported
 
 You can't use Your Space from another device at a plain address like `http://192.168.1.20`. Your
 Space sends your password and session to other machines only over HTTPS, so nobody on the network
-can read them or take over your session. The server refuses to start with plain `http://` for any
-address other than `localhost`, and `docker compose logs server` says why.
+can read them or take over your session. `YS_PROXY_URL` must start with `https://`, and
+`YS_DOMAIN` gets HTTPS from Let's Encrypt; the server refuses anything else, and
+`docker compose logs server` says why.
 
 For devices on your own network, use [Tailscale](#use-tailscale): it needs no domain.
 
@@ -309,7 +332,8 @@ For devices on your own network, use [Tailscale](#use-tailscale): it needs no do
   with "Too many sign-in attempts" until 10 seconds pass without an accepted attempt. Refused
   attempts don't extend the wait. This slows password guessing but never locks your account: once
   the wait is over, the right password works. If Your Space can't see visitors' own addresses, for
-  example behind a proxy that doesn't pass them on, all visitors share one limit.
+  example behind a proxy that doesn't pass them on, all visitors share one limit (see
+  [Use Your Own Reverse Proxy](#use-your-own-reverse-proxy)).
 - **Passwords** are 12 to 128 characters. Your Space stores only a salted, one-way scrypt hash of
   each password (Better Auth's default: N=16384, r=16, p=1, a 64-byte key, and a random 16-byte salt
   per password), never the password itself.
@@ -329,8 +353,7 @@ Everything Your Space keeps is in two Docker volumes:
 `docker volume ls` lists them as `your-space_ys-postgres` and `your-space_ys-caddy-data`. Nothing
 else is kept in the containers, so they can be removed and recreated at any time.
 
-Your settings and secrets are in `.env` (and `compose.override.yaml`, if you made one), next to
-`compose.yaml`. Keep them with the volumes:
+Your settings and secrets are in `.env`, next to `compose.yaml`. Keep it with the volumes:
 
 - Changing `BETTER_AUTH_SECRET` signs out every device.
 - Don't change `POSTGRES_PASSWORD` after the first start. PostgreSQL keeps the password it was
