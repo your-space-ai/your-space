@@ -137,6 +137,8 @@ PostgreSQL provides one persistence foundation across local and hosted server de
 This choice does not require every independently developed app to use PostgreSQL.
 Exact runtime and database versions, migration execution and recovery strategy, and connection configuration remain open.
 
+**Decision update (2026-11-03):** The [001 technical plan](../../specs/001-workspace-owner-access/plan.md) selects Node.js 26 LTS and PostgreSQL 18, with Drizzle and `pg`, and applies Drizzle Kit migrations at server startup. Recovery from a failed migration belongs with update rollback in spec 006.
+
 ### Web Client
 
 - Use React, TypeScript, and Vite for the initial web client.
@@ -171,7 +173,7 @@ These concepts do not prescribe a specific database schema.
 Server access proves installation authority. It does not prove control of the supplied email address.
 Every installation uses the same owner command. In desktop local mode, the desktop app asks for the name, email, and password, runs the command through the CLI, and sets the password through the printed link on the user's behalf; the flow itself does not change.
 
-**Decision update (2026-11-03):** The owner is created by a server command that prints a set-password link, replacing the setup code and browser claim form. Bots watch public certificate logs and complete the setup pages of new sites within minutes, so a fresh install must not be claimable over the network. A server command closes that hole with the fewest parts: no setup code, no claim endpoint, and no setup page. The set-password link reuses Better Auth's password-reset flow, so no temporary password exists. Better Auth has no "change password on first sign-in" feature, so a temporary password would need custom code. Sign-up stays off on the running server; the command creates the owner from its own process. This supersedes the setup-code decisions above.
+**Decision update (2026-11-03):** The owner is created by a server command that prints a set-password link, replacing the setup code and browser claim form. Bots watch public certificate logs and complete the setup pages of new sites within minutes, so a fresh install must not be claimable over the network. A server command closes that hole with the fewest parts: no setup code, no claim endpoint, and no setup page. The set-password link reuses Better Auth's password-reset flow, so no temporary password exists. Better Auth has no "change password on first sign-in" feature, so a temporary password would need custom code. Sign-up stays off on the running server; the command creates the owner from its own process. This supersedes the earlier setup-code decisions: browser-guided owner setup, in which a temporary, single-use setup code from the operator-only installation procedure established the authority to claim an installation and successful setup then closed initial registration; initial account creation that also collected the password; and, in desktop local mode, the desktop app obtaining the setup code through the CLI and submitting it for the user. Server access now proves installation authority, as the setup code did; neither proves control of the email address.
 The same account model serves local and remote installations; deployment configuration may govern email delivery and verification policy.
 Separate local-only and hosted authentication implementations are not part of the direction.
 
@@ -341,7 +343,7 @@ Dependency selection must consider actual licenses, including bundled components
 
 - Configuration works like editor settings: the defaults live in Your Space, the owner's file starts empty, and each line in it overrides one default. Every setting needs a safe default that suits most installations; a value that follows from other settings is derived, not asked for; secrets are generated when the owner doesn't supply them.
 
-**Decision update (2026-11-08):** Configuration is optional, now part of [constitution principle II](../../.specify/memory/constitution.md#ii-preserve-user-control-and-hosting-choice). Required settings are each a chance to get an install wrong, and they freeze today's choice into every owner's file, so a better default later reaches nobody. Plans name each setting's default and how it is derived, and the documentation lists the defaults so an owner can see what a line would change. Where a tool can't derive a value, the setting stays and the CLI (spec 003) derives it; in the manual Compose install, the one line the owner writes picks the port bindings (see [Installation and Hosting](#installation-and-hosting)).
+**Decision update (2026-11-08):** Configuration is optional, part of [constitution principle II](../../.specify/memory/constitution.md#ii-preserve-user-control-and-hosting-choice) since version 1.2.0 (2026-11-07). Required settings are each a chance to get an install wrong, and they freeze today's choice into every owner's file, so a better default later reaches nobody. Plans name each setting's default and how it is derived, and the documentation lists the defaults so an owner can see what a line would change. Where a tool can't derive a value, the setting stays and the CLI (spec 003) derives it; in the manual Compose install, the one line the owner writes picks the port bindings (see [Installation and Hosting](#installation-and-hosting)).
 
 ### Telemetry and Outbound Connections
 
@@ -555,7 +557,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 
 This refines the sequence above without changing scope: it groups existing pre-public items into journeys and orders the work after the CLI.
 
-**Decision update (2026-11-08):** A journey is delivered as a stack of pull requests into `main`. The first carries the specification and its supporting documents (plan, research, contracts, and the task list) with no task checked. Each later one adds one layer that passes its own checks, checks only the tasks it verifies, and checks roadmap items only for what it delivers. A spec on `main` describes agreed design; only checked tasks, checked roadmap items, and the verification record claim delivered work, so a spec never claims work that doesn't exist yet.
+**Decision update (2026-11-08):** A journey is delivered as a stack of pull requests into `main`. The first carries the specification and its supporting documents (plan, research, contracts, and the task list) with no task checked. Each later one adds one layer that passes its own checks, checks only the tasks it verifies, and checks roadmap items only for what it delivers. A spec on `main` describes agreed design; only checked tasks, checked roadmap items, and the verification record claim delivered work, so a spec never claims work that doesn't exist yet. This supersedes the earlier wording that a feature such as the CLI or streamlined local setup gets its own specification and implementation PR: each is specified in its journey and delivered the same way.
 
 ## Choices Still Open
 

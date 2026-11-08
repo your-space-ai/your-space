@@ -94,4 +94,5 @@ product behavior. This checklist is maintained by the Spec Kit specification wor
 - No runtime tests apply to this documentation-only change. Implementation acceptance scenarios
   have been specified, not executed.
 - The next phase is technical planning with the open implementation choices in the decision record.
-  Agreed stack selections are recorded; this PR does not select remaining libraries or start implementation.
+  Agreed stack selections are recorded; the specification does not select remaining libraries or
+  start implementation.

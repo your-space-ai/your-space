@@ -32,7 +32,7 @@ One repository with npm workspaces: `server/`, `web/`, `e2e/`, plus `deploy/` an
 
 **Purpose**: Create the workspaces and tooling.
 
-- [ ] T001 Create root `package.json` with npm workspaces `server`, `web`, `e2e`, plus root `tsconfig.base.json` (TypeScript 7, `strict`, `erasableSyntaxOnly`, `rewriteRelativeImportExtensions`) and `.gitignore` (`node_modules`, `dist`, `.env`)
+- [ ] T001 Create root `package.json` with npm workspaces `server`, `web`, `e2e` and its `package-lock.json`, plus root `tsconfig.base.json` (TypeScript 7, `strict`, `erasableSyntaxOnly`, `rewriteRelativeImportExtensions`) and `.gitignore` (`node_modules`, `dist`, `.env`)
 - [ ] T002 Create `server/package.json` (Node 26, `"type": "module"`) with runtime dependencies `express`, `better-auth`, `drizzle-orm`, `pg`, and dev dependencies `drizzle-kit`, `vitest`, `@types/express`, `@types/pg`, plus `server/tsconfig.json` and `server/vitest.config.ts`
 - [ ] T003 [P] Create the Vite React app in `web/` (`web/package.json`, `web/tsconfig.json`, `web/vite.config.ts`, `web/index.html`) with `react`, `react-dom`, `@tanstack/react-router`, `@tanstack/react-query`, `better-auth`
 - [ ] T004 [P] Create `e2e/package.json` and `e2e/playwright.config.ts` with Chromium, Firefox, and WebKit projects and a base URL of `http://localhost` (`YS_PORT` moves it), plus `e2e/tsconfig.json`, `e2e/global-setup.ts` (builds the images), `e2e/stack.env` (the stack's settings, empty on purpose), and the `stack` and `evidence` helpers in `e2e/tests/helpers/`
@@ -45,9 +45,9 @@ One repository with npm workspaces: `server/`, `web/`, `e2e/`, plus `deploy/` an
 **Purpose**: Configuration, database, Better Auth, the HTTP app, and the Compose stack. Every story
 depends on these.
 
+- [ ] T058 [P] Implement `server/src/secrets.ts`: each platform secret from `.env` as given, otherwise the copy in `ys-secrets`, otherwise, for a new installation, generated; stop with recovery steps when the database exists but a secret is missing; replace a generated secret on request ([research R16](research.md#r16-platform-secrets)). Test it in `server/tests/secrets.test.ts`
 - [ ] T006 Implement `server/src/config.ts`: derive the setup and public address from the optional `YS_DOMAIN`, `YS_PROXY_URL`, and `YS_PORT` ([research R9](research.md#r9-https-and-the-caddy-configuration)), refuse unknown `YS_*` keys, read the auth secret and database password from `.env` or the `ys-secrets` volume ([research R16](research.md#r16-platform-secrets)), and validate them and `DATABASE_URL` at startup; exit with a clear message when one is missing or malformed
 - [ ] T007 [P] Implement `server/src/log.ts`: one JSON line per event to stdout, never including request bodies, cookies, `Authorization` headers, passwords, or tokens
-- [ ] T058 [P] Implement `server/src/secrets.ts`: each platform secret from `.env` as given, otherwise the copy in `ys-secrets`, otherwise, for a new installation, generated; stop with recovery steps when the database exists but a secret is missing; replace a generated secret on request ([research R16](research.md#r16-platform-secrets)). Test it in `server/tests/secrets.test.ts`
 - [ ] T059 [P] `server/tests/config.test.ts`: each setup line and the public address it gives, refused values and setting names with messages that say what to fix, Better Auth's own secret settings refused, and the secrets read from `.env` or the volume
 - [ ] T008 Implement `server/src/db/client.ts`: a `pg` pool and Drizzle instance from `DATABASE_URL`, with a pool `error` handler so losing the database never crashes the process
 - [ ] T009 Implement `server/src/auth.ts` with one shared options builder ([research R3, R4](research.md#r3-authentication-with-better-auth)):
@@ -66,7 +66,7 @@ depends on these.
 - [ ] T061 Refuse `/api` requests whose `Host` isn't the public address with 421 `wrong_host` in `server/src/app.ts`, with `/api/health` exempt for Docker's health check ([http-api](contracts/http-api.md#host-check)); test it in `server/tests/host.test.ts`
 - [ ] T062 Make sign-out from Your Space's own pages delete the session first in `server/src/app.ts`, and report a storage failure as 503 instead of success (FR-009, FR-016). `server/tests/outage.test.ts` covers storage failing mid-request (a reset, sign-out, a lost connection) and the organization routes closed over HTTP
 - [ ] T015 Implement `server/src/owner/installation.ts`: read the `installation` row and return `claimed` or `unclaimed`, or throw `StorageUnavailable` when the query fails or the row is missing ([research R10](research.md#r10-storage-unavailable-handling-fr-013))
-- [ ] T016 [P] Add `server/tests/helpers/db.ts`: create a fresh database per test file, run migrations, and expose helpers to stop and restore the connection; and the other helpers in `server/tests/helpers/`: `state.ts` (the identity and ownership records the tests compare), `commands.ts` (runs the operator commands as processes), `env.ts` (shared settings), `server.ts` (the Express app on a random port), and `owner.ts` (an owner with a known password)
+- [ ] T016 [P] Add `server/tests/helpers/db.ts`: create a fresh database per test file, run migrations, and expose helpers to stop and restore the connection; and the other helpers in `server/tests/helpers/`: `state.ts` (the identity and ownership records the tests compare), `commands.ts` (runs the operator commands as processes), and `env.ts` (shared settings)
 - [ ] T017 [P] Add `server/Dockerfile` (`node:26-slim`, production dependencies, `bin/` on `PATH`, `CMD ["node", "src/index.ts"]`) and a `.dockerignore` that keeps `node_modules`, `.env`, docs, and specs out of the build context
 - [ ] T018 [P] Add `deploy/Caddyfile`:
   - site address `{$YS_SITE}` from the mode file, with `encode`, and `http://127.0.0.1` redirecting to the public address
@@ -109,19 +109,19 @@ on a clean stack.
   - storage down exits 3 and changes nothing;
   - a rerun after a run stopped before the final transaction finishes with one owner.
 - [ ] T024 [P] [US1] `server/tests/signup-closed.test.ts`: `POST /api/auth/sign-up/email` is refused before and after the owner exists, and creating an organization over HTTP is refused
-- [ ] T025 [P] [US1] `server/tests/status.test.ts`: `GET /api/status` returns `{ owner: false }`, then `{ owner: true }`, and 503 `storage_unavailable` when the database is down or the row is missing; `GET /api/health` returns 200 or 503
+- [ ] T025 [P] [US1] `server/tests/status.test.ts`: `GET /api/status` returns `{ owner: false }`, then `{ owner: true }`, and 503 `storage_unavailable` when the database is down or the row is missing; `GET /api/health` returns 200 or 503; with the helpers `server/tests/helpers/server.ts` (the Express app on a random port) and `owner.ts` (an owner with a known password), which T024 and the later stories' server tests reuse
 - [ ] T026 [P] [US1] `e2e/tests/us1-create-owner.spec.ts`: a fresh stack shows "no owner yet" with no form; run `create-owner --json` through `docker compose exec`; open the link; set the password; sign in; the home screen shows the workspace, name, email, and sign out only, with the shared set-password and sign-in steps in `e2e/tests/helpers/ui.ts`
 
 ### Implementation for User Story 1
 
 - [ ] T027 [US1] Implement `server/src/owner/create-owner.ts` per [data-model.md](data-model.md#creating-the-owner):
-  - validate the name and email;
+  - validate the name and email with the rules in `server/src/owner/rules.ts`;
   - stop with `owner_exists` if claimed;
   - sign up with a random password, or reuse an existing account for that email;
   - create or reuse the organization "&lt;name&gt;'s space";
-  - in one transaction, create the actor and event and claim the installation;
+  - in one transaction, create the actor and event (`server/src/actors.ts`) and claim the installation;
   - request the reset link through `createCommandAuth`.
-- [ ] T028 [US1] Implement `server/src/commands/create-owner.ts` (`util.parseArgs` for `--email`, `--name`, `--json`; human and JSON output; exit codes 0 to 4) and the `server/bin/create-owner` wrapper
+- [ ] T028 [US1] Implement `server/src/commands/create-owner.ts` (`util.parseArgs` for `--email`, `--name`, `--json`; human and JSON output; exit codes 0 to 4), with the output and exit codes the commands share in `server/src/commands/output.ts`, and the `server/bin/create-owner` wrapper
 - [ ] T029 [P] [US1] Implement `server/src/owner/routes.ts`: `GET /api/status` and `GET /api/health` per [http-api](contracts/http-api.md); register them in `server/src/app.ts`
 - [ ] T030 [P] [US1] Implement `web/src/pages/NoOwnerYet.tsx`: explains running `create-owner` and has no form
 - [ ] T031 [US1] Implement `web/src/pages/ResetPassword.tsx`:
@@ -132,7 +132,7 @@ on a clean stack.
 - [ ] T032 [US1] Implement `web/src/router.tsx` with routes `/sign-in`, `/`, and `/reset-password`; the root `beforeLoad` shows NoOwnerYet when there is no owner and ErrorState when storage is unavailable
 - [ ] T033 [US1] Write `docs/install/README.md` sections for prerequisites, configuring this machine (`YS_PORT` and refused settings), starting the stack, `create-owner`, and setting the password (FR-001)
 
-**Checkpoint**: User Story 1 works end to end on localhost, and on a domain with automatic HTTPS.
+**Checkpoint**: User Story 1 works end to end on localhost.
 
 ---
 
@@ -230,7 +230,7 @@ out every session, without email.
 
 - [ ] T051 [P] `server/tests/logs.test.ts` and an e2e log check in `e2e/tests/logs.spec.ts`: after exercising create-owner, sign-in, failures, and recovery, server and Caddy logs contain no passwords, tokens, set-password links, or session values (cross-cutting scenario 2)
 - [ ] T052 [P] Add `.github/workflows/images.yml`: Docker Buildx with QEMU builds and publishes `your-space-server` and `your-space-web` for `linux/amd64` and `linux/arm64` to GitHub Container Registry; point `deploy/stack.yaml` at the published tags (FR-022)
-- [ ] T070 [P] Add a `release-files` job to `.github/workflows/images.yml` that attaches `your-space.tar.gz` (`compose.yaml`, `stack.yaml`, `modes/`, and `env.example`, with `stack.yaml` pinned to the release's image version) to each release, and the Download section of `docs/install/README.md` that fetches and unpacks it
+- [ ] T070 Add a `release-files` job to `.github/workflows/images.yml` that attaches `your-space.tar.gz` (`compose.yaml`, `stack.yaml`, `modes/`, and `env.example`, with `stack.yaml` pinned to the release's image version) to each release, and the Download section of `docs/install/README.md` that fetches and unpacks it
 - [ ] T053 [P] Add an e2e job to `.github/workflows/ci.yml` that builds both images locally with `deploy/compose.build.yaml`, starts `deploy/compose.yaml`, and runs Playwright in all three browsers
 - [ ] T054 Capture outbound traffic while running quickstart sections 1, 3, and 5, and confirm the only outbound connections are certificate requests for a configured domain (cross-cutting scenario 5, SC-013); record the method and result in `docs/install/VERIFICATION.md`
 - [ ] T055 Run [quickstart.md](quickstart.md) on an Apple Silicon Mac and an Intel/AMD Linux host with the published images, including HTTPS with a real domain and Tailscale, and record versions, environments, results, and limitations in `docs/install/VERIFICATION.md` (SC-010, SC-011)
@@ -260,11 +260,11 @@ out every session, without email.
 ### Parallel Opportunities
 
 - Setup: T003, T004, T005 together after T001 and T002.
-- Foundational: T007, T016, T017, T018, T019, T021, T022, T058, T059, T063, T065, T066 together once T006 and T008 exist.
+- Foundational: T058 and T007 first (T006 imports `secrets.ts`, T008 imports `log.ts`); then T016, T017, T018, T019, T021, T022, T059, T063, T065, T066 together once T006 and T008 exist.
 - US1: tests T023 to T026 together; T029 and T030 alongside T027 and T028.
 - US2: T034, T035, T036, T037 together.
 - US3 and US4 can be built in parallel after US1.
-- Polish: T051, T052, T053, T070 together.
+- Polish: T051, T052, T053 together; T070 after T052, since it adds a job to `images.yml`.
 
 ## Parallel Example: User Story 1
 
@@ -281,7 +281,7 @@ Task: "T026 e2e/tests/us1-create-owner.spec.ts"
 
 1. Phases 1 and 2.
 2. Phase 3 (US1).
-3. Stop and validate quickstart section 1 on localhost and with a domain.
+3. Stop and validate quickstart section 1 on localhost.
 
 ### Then, in Order
 

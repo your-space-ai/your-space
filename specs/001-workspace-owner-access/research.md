@@ -112,8 +112,8 @@ that settled each question.
     refuses `/request-password-reset` itself (`RESET_PASSWORD_DISABLED`, `api/routes/password.ts`).
     Completing a reset with a token still works.
 - **Alternatives:**
-  - Our own allowlist in front of Better Auth, or `before` hooks: rejected in review as custom
-    machinery.
+  - Our own allowlist in front of Better Auth, or `before` hooks: custom machinery for what Better
+    Auth's documented options already do.
   - The admin plugin's `createUser`: adds admin routes and user columns that this feature doesn't
     need.
 

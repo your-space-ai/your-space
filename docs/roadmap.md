@@ -33,7 +33,7 @@ Checked items mean delivered and verified work, not completed planning. Keep com
 place with their completion date and implementation PR or release link so this remains a record.
 Items delivered by the owner-access feature ([spec 001](../specs/001-workspace-owner-access/spec.md))
 are checked here as each part is delivered and verified; its install, other-device, image, and HTTPS
-items wait for verification on real hosts. Everything else below is unchecked.
+items are checked only after verification on real hosts. Everything else below is unchecked.
 
 ## Pre-public: Core Experience and First Working Version
 
@@ -188,7 +188,7 @@ Your Space: first public release
 
 - [ ] **HTTPS**
 
-  **Source:** [Installation and hosting](architecture/decisions.md#installation-and-hosting).
+  **Source:** [Installation and hosting](architecture/decisions.md#installation-and-hosting). Moved from the CLI spec to the owner-access feature 2026-11-03.
 
   Part of the owner-access feature ([spec 001](../specs/001-workspace-owner-access/spec.md)); the CLI
   later asks for the domain during installation.
@@ -228,7 +228,7 @@ Your Space: first public release
 
 - [ ] **Owner setup and sessions**
 
-  **Source:** [Authentication and initial claim](architecture/decisions.md#authentication-and-initial-claim) and [sessions, persistence, and recovery](architecture/decisions.md#sessions-persistence-and-recovery).
+  **Source:** [Authentication and initial claim](architecture/decisions.md#authentication-and-initial-claim) and [sessions, persistence, and recovery](architecture/decisions.md#sessions-persistence-and-recovery). The setup code and browser claim were replaced by a server command 2026-11-03.
 
   - [ ] [High] Create the owner with a server command that prints a single-use set-password link; the network alone can never create an account or the owner.
   - [ ] [High] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct.
@@ -424,7 +424,7 @@ Your Space: first public release
 
 - [ ] **Desktop local mode**
 
-  **Source:** [First public-release audience and clients](architecture/decisions.md#first-public-release-audience-and-clients).
+  **Source:** [First public-release audience and clients](architecture/decisions.md#first-public-release-audience-and-clients). The setup code was replaced by the owner command 2026-11-03; see [authentication and initial claim](architecture/decisions.md#authentication-and-initial-claim).
 
   - [ ] [High] In local mode, drive the Your Space CLI to set up and run the Docker Compose stack on the same machine, then connect to it.
   - [ ] [High] Detect Docker and link to the Docker Desktop download when it is missing.
