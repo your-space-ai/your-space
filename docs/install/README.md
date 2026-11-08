@@ -19,9 +19,8 @@ You need:
   - Linux with [Docker Engine](https://docs.docker.com/engine/install/) 28.3.3 or newer and the
     Docker Compose plugin. Older Engine versions can open ports meant for this machine only to the
     network after a firewall reload (CVE-2025-54388).
-- Docker Compose 2.24.6 or newer: `docker compose version` prints `v2.24.6` or later.
+- Docker Compose 2.26.0 or newer: `docker compose version` prints `v2.26.0` or later.
 - About 1 GB of free memory and 2 GB of disk.
-- `openssl` to generate secrets (installed on macOS and most Linux distributions).
 - For access from other devices: a domain name pointing at the server, or [Tailscale](https://tailscale.com).
   See [Use Your Space From Other Devices](#use-your-space-from-other-devices).
 
@@ -29,8 +28,8 @@ Windows is not supported as a server.
 
 **Checked so far:** steps 2 to 5 and the later sections were checked only with locally built
 images on Linux on Intel/AMD (x86_64) with Docker Engine 29 and Compose 5.6, in Chromium, Firefox,
-and WebKit. Each setup's published ports were checked with `docker compose config` on Compose 5.6
-and 2.24.6, and the this-machine and own-proxy setups also with a running stack. Downloading from
+and WebKit. Each setup's published ports and the generated secrets were checked on Compose 5.6 and
+2.26.0, and the this-machine and own-proxy setups also with a running stack. Downloading from
 a release, the published images, macOS, ARM machines such as Apple Silicon, IPv6, and HTTPS with a
 real domain or Tailscale have not been checked yet. [VERIFICATION.md](VERIFICATION.md) lists
 exactly what was tested, with versions.
@@ -47,7 +46,8 @@ until it says it is running.
 
 ## 1. Download
 
-Make a folder for Your Space, download the release into it, and make your settings file:
+Make a folder for Your Space, download the release into it, and make your settings file. It starts
+with every line commented out:
 
 ```sh
 mkdir your-space && cd your-space
@@ -61,20 +61,9 @@ this folder.
 
 ## 2. Configure
 
-Open `.env` in a text editor.
-
-**Generate the two secrets** and paste each after its `=`:
-
-```sh
-openssl rand -base64 32   # for BETTER_AUTH_SECRET
-openssl rand -hex 32      # for POSTGRES_PASSWORD
-```
-
-Keep `.env` private: anyone with these secrets can read or impersonate your installation. Don't
-commit it or share it.
-
-**That's all for this machine.** With nothing else in `.env`, Your Space answers only on this
-machine, at `http://localhost`. To use it from other devices, add one line:
+**For this machine, there's nothing to configure.** With nothing in `.env`, Your Space answers only
+on this machine, at `http://localhost`, and generates its own secrets (see [Secrets](#secrets)). To
+use it from other devices, add one line:
 
 | You want | Add to `.env` | What happens |
 | --- | --- | --- |
@@ -91,6 +80,31 @@ server checks every line when it starts and refuses to start, with a message tha
 if a value is wrong, if both `YS_DOMAIN` and `YS_PROXY_URL` are set, or if a setting's name is
 misspelled. Caddy waits for the server, so a wrong line never opens a port.
 
+### Secrets
+
+Your Space needs two secrets: the auth secret that signs sessions, and the database password. On
+the first start it generates each one, 32 random bytes, and keeps it in the `ys-secrets` volume. It
+never generates them again, and it never logs them. The log only notes that they were generated
+(`docker compose logs secrets`).
+
+To use your own instead, for example from a password manager, add them to `.env` before the first
+start:
+
+```sh
+BETTER_AUTH_SECRET=...   # at least 32 characters, e.g. from: openssl rand -base64 32
+POSTGRES_PASSWORD=...
+```
+
+Your Space then uses them as given and never copies them anywhere. Keep `.env` private if you do.
+
+To see the secrets in use and where each comes from:
+
+```sh
+docker compose exec server show-secrets
+```
+
+To manage a generated secret yourself, copy its line from that output into `.env`.
+
 ## 3. Start
 
 ```sh
@@ -103,7 +117,7 @@ all three services running, with `server` and `postgres` marked `healthy`. If th
 
 | You see | What to do |
 | --- | --- |
-| `required variable BETTER_AUTH_SECRET is missing a value` (or `POSTGRES_PASSWORD`) | Generate the secret as in step 2 |
+| `service "secrets" didn't complete successfully` | Run `docker compose logs secrets`. It says what's wrong with a secret and how to fix it; see [Lost Secrets](#lost-secrets) |
 | `dependency failed to start: container your-space-server-1 is unhealthy` | Run `docker compose logs server`. An `Invalid configuration` message names the setting to fix. Fix `.env` and run `docker compose up -d` again. No port was opened meanwhile |
 | `Set YS_DOMAIN (your own domain) or YS_PROXY_URL (your own proxy or Tailscale) in .env, not both` | Remove one of the two lines. Every `docker compose` command stops with this message until you do |
 | `address already in use` or `port is already allocated`, for port 80 or 8080 | Another program uses the port. Add `YS_PORT=8081` (or any free port) to `.env` |
@@ -344,21 +358,24 @@ For devices on your own network, use [Tailscale](#use-tailscale): it needs no do
 
 ## Restarts and Your Data
 
-Everything Your Space keeps is in two Docker volumes:
+Everything Your Space keeps is in three Docker volumes:
 
 | Volume | What it holds |
 | --- | --- |
 | `ys-postgres` | The database: your account, password hash, workspace, and sessions |
+| `ys-secrets` | The generated auth secret and database password. Keep it with `ys-postgres` |
 | `ys-caddy-data` | Caddy's HTTPS certificates |
 
-`docker volume ls` lists them as `your-space_ys-postgres` and `your-space_ys-caddy-data`. Nothing
-else is kept in the containers, so they can be removed and recreated at any time.
+`docker volume ls` lists them as `your-space_ys-postgres`, `your-space_ys-secrets`, and
+`your-space_ys-caddy-data`. Nothing else is kept in the containers, so they can be removed and
+recreated at any time.
 
-Your settings and secrets are in `.env`, next to `compose.yaml`. Keep it with the volumes:
+Your settings are in `.env`, next to `compose.yaml`. Keep it with the volumes:
 
-- Changing `BETTER_AUTH_SECRET` signs out every device.
-- Don't change `POSTGRES_PASSWORD` after the first start. PostgreSQL keeps the password it was
-  first given, so the server could no longer connect.
+- Setting or changing `BETTER_AUTH_SECRET` signs out every device. Nothing else is lost.
+- Don't change `POSTGRES_PASSWORD` once the database exists. PostgreSQL keeps the password it was
+  created with, so the server would stop with "PostgreSQL refused the database password". Change it
+  back, or follow [Lost Secrets](#lost-secrets) to set a new one.
 
 These keep everything, including your sessions:
 
@@ -373,7 +390,7 @@ example after a reboot, unless you stopped it with `docker compose stop` or `doc
 On macOS, that needs Docker Desktop set to start when you sign in.
 
 > [!WARNING]
-> `docker compose down -v` is not a restart. `-v` (`--volumes`) deletes both volumes, and your
+> `docker compose down -v` is not a restart. `-v` (`--volumes`) deletes all three volumes, and your
 > account and workspace with them: the next start has no owner. `docker volume rm` on these
 > volumes, or `docker volume prune --all` while Your Space is down, does the same. There is no
 > undo.
@@ -418,6 +435,34 @@ database, then exits, and Docker keeps starting it again until the database is b
 web page says "Can't reach Your Space".
 
 Don't delete the `ys-postgres` volume to make the error go away: that deletes your workspace.
+
+## Lost Secrets
+
+If the `ys-secrets` volume is gone but the database is still there, Your Space stops before it
+starts anything, instead of generating new secrets: a new database password wouldn't work, because
+PostgreSQL only accepts the one it was created with. `docker compose up -d` reports that the
+`secrets` service didn't complete, and `docker compose logs secrets` explains.
+
+Ways to recover, best first:
+
+1. **Restore the `ys-secrets` volume** from a backup, or **put the old values back** in `.env` as
+   `BETTER_AUTH_SECRET` and `POSTGRES_PASSWORD`. Then run `docker compose up -d`.
+2. **Start with new secrets.** Your account and workspace stay; every device is signed out. In the
+   folder with `compose.yaml`:
+
+   ```sh
+   docker compose run --rm secrets --new auth-secret --new database-password
+   docker compose up -d --wait postgres
+   docker compose exec postgres sh -c 'psql -U yourspace -d yourspace -c "ALTER ROLE yourspace PASSWORD '\''$(cat /run/ys-secrets/password)'\''"'
+   docker compose up -d
+   ```
+
+   The first command makes both secrets. The next two start the database and give it the new
+   password, through a connection that works only inside its container. The last starts the rest.
+
+If only the auth secret is missing, because you set `POSTGRES_PASSWORD` in `.env`, the first
+command with just `--new auth-secret` and then `docker compose up -d` is enough. A secret set in
+`.env` can't be replaced this way; change it in `.env`.
 
 ## Recover the Owner Account
 

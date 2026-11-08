@@ -48,7 +48,9 @@ Better Auth, Drizzle, PostgreSQL, React, Vite, and Caddy. The TanStack libraries
 this PR's review and are recorded here.
 
 **Storage**: PostgreSQL 18 (official image) on the `ys-postgres` named volume. Caddy's certificates
-are on the `ys-caddy-data` named volume. Nothing durable lives in a container filesystem (FR-023).
+are on the `ys-caddy-data` named volume, and the generated auth secret and database password on
+`ys-secrets` ([R16](research.md#r16-platform-secrets)). Nothing durable lives in a container
+filesystem (FR-023).
 The tables are in [data-model.md](data-model.md).
 
 **Testing**:
@@ -62,7 +64,7 @@ The tables are in [data-model.md](data-model.md).
 **Target Platform**:
 
 - Server hosts: macOS 15 and 26 with Docker Desktop, and Ubuntu 24.04 LTS and Debian 13 with Docker
-  Engine 28.3.3 or newer (CVE-2025-54388) and Docker Compose 2.24.6 or newer. Each runs on ARM and
+  Engine 28.3.3 or newer (CVE-2025-54388) and Docker Compose 2.26.0 or newer. Each runs on ARM and
   Intel/AMD.
 - Browsers: the current and previous versions of Chrome, Edge, Firefox, and Safari, including iOS.
 
@@ -95,7 +97,7 @@ reset password), plus the "no owner yet" and error states.
 | II. User control and hosting choice | Pass | Self-hosted Compose with a guide. Server-managed accounts with no external identity service. Recovery works without email. |
 | III. Identity, permissions, ownership explicit | Pass | Account, workspace, membership, and ownership are separate tables or roles. Actions are credited to an `actor`. Denied requests change nothing. |
 | IV. Apps directly installable | N/A | No apps in this feature (spec 002). |
-| V. Protect private data | Pass | Secrets come from `.env`, which is not committed. Passwords are stored as Better Auth scrypt hashes, and link tokens only as SHA-256 hashes (`verification.storeIdentifier`). Logs exclude credentials. Tests use synthetic data. |
+| V. Protect private data | Pass | The auth secret and database password come from `.env` when set there, otherwise they are generated into the `ys-secrets` volume, outside the database (R16). Passwords are stored as Better Auth scrypt hashes, and link tokens only as SHA-256 hashes (`verification.storeIdentifier`). Logs exclude credentials. Tests use synthetic data. |
 | VI. Proportionate discipline | Pass | Auth, owner creation, and data-integrity behavior gets automated tests plus the quickstart run on real hosts. Rationale is recorded in research.md. |
 | VII. Reuse before building | Pass | Each requirement maps to a library feature (below). The custom code is listed and justified. No new dependency beyond the decision record and this review's choices. |
 
@@ -122,7 +124,7 @@ Both use only documented options. Nothing sits in front of Better Auth and no ho
 | FR-009 expiry, revocation, durable sessions | Better Auth database sessions (7 days, refreshed daily), sign-out deletes the row |
 | FR-010 password hashing | Better Auth scrypt (N=16384, r=16, p=1, 64-byte key, 16-byte salt) |
 | FR-011 attempt limits | Better Auth's built-in sign-in limits (defaults); set-password and reset tokens are too long to guess |
-| FR-012, FR-023 durability | PostgreSQL on a named volume; Caddy data volume |
+| FR-012, FR-023 durability | PostgreSQL on a named volume; Caddy data volume; generated secrets volume |
 | FR-015, FR-021 HTTPS-only remote cookies, host-only | Better Auth cookie defaults with an `https` `baseURL` |
 | FR-017 to FR-019 recovery | `auth.api.requestPasswordReset`, `sendResetPassword`, single-use tokens, `revokeSessionsOnPasswordReset` |
 | FR-022 ARM and Intel images | Docker Buildx multi-platform builds |
@@ -196,10 +198,10 @@ web/
 e2e/                         # Playwright journeys against the Compose stack
 deploy/
 ├── compose.yaml             # includes stack.yaml and the mode file picked by .env (R9)
-├── stack.yaml               # caddy (web image), server, postgres; named volumes
+├── stack.yaml               # secrets step, caddy (web image), server, postgres; named volumes
 ├── modes/                   # one file per setup, with its port addresses written out
 ├── Caddyfile                # copied into the web image
-└── .env.example             # the two secrets; optional YS_DOMAIN, YS_PROXY_URL, YS_PORT
+└── .env.example             # every line optional: YS_DOMAIN, YS_PROXY_URL, YS_PORT, the two secrets
 docs/install/                # the installation guide (FR-001)
 .github/workflows/           # typecheck, tests, multi-arch image publishing
 ```

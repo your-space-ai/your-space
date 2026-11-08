@@ -45,7 +45,7 @@ One repository with npm workspaces: `server/`, `web/`, `e2e/`, plus `deploy/` an
 **Purpose**: Configuration, database, Better Auth, the HTTP app, and the Compose stack. Every story
 depends on these.
 
-- [X] T006 Implement `server/src/config.ts`: derive the setup and public address from the optional `YS_DOMAIN`, `YS_PROXY_URL`, and `YS_PORT` ([research R9](research.md#r9-https-and-the-caddy-configuration)), refuse unknown and retired `YS_*` keys, and validate `DATABASE_URL` and `BETTER_AUTH_SECRET` at startup; exit with a clear message when one is missing or malformed
+- [X] T006 Implement `server/src/config.ts`: derive the setup and public address from the optional `YS_DOMAIN`, `YS_PROXY_URL`, and `YS_PORT` ([research R9](research.md#r9-https-and-the-caddy-configuration)), refuse unknown and retired `YS_*` keys, read the auth secret and database password from `.env` or the `ys-secrets` volume ([research R16](research.md#r16-platform-secrets)), and validate them and `DATABASE_URL` at startup; exit with a clear message when one is missing or malformed
 - [X] T007 [P] Implement `server/src/log.ts`: one JSON line per event to stdout, never including request bodies, cookies, `Authorization` headers, passwords, or tokens
 - [X] T008 Implement `server/src/db/client.ts`: a `pg` pool and Drizzle instance from `DATABASE_URL`, with a pool `error` handler so losing the database never crashes the process
 - [X] T009 Implement `server/src/auth.ts` with one shared options builder ([research R3, R4](research.md#r3-authentication-with-better-auth)):
@@ -72,6 +72,7 @@ depends on these.
   - services `caddy` (web image), `server`, and `postgres:18`;
   - named volumes `ys-postgres` (mounted at `/var/lib/postgresql`) and `ys-caddy-data`;
   - one mode file per setup, picked by which of `YS_DOMAIN` and `YS_PROXY_URL` is set, with literal port addresses ([research R9](research.md#r9-https-and-the-caddy-configuration));
+  - a one-shot `secrets` service that generates the auth secret and database password into the `ys-secrets` volume unless `.env` sets them, and `show-secrets` ([research R16](research.md#r16-platform-secrets));
   - health checks: `pg_isready` and `/api/health`;
   - `server` starts after Postgres is healthy, and `caddy` after the server is healthy.
 - [X] T021 [P] Implement `web/src/auth-client.ts` (Better Auth `createAuthClient` with `organizationClient`), `web/src/queries.ts` (TanStack Query hooks for `/api/status`, the session, and the workspace that unwrap `{ data, error }`), and `web/src/main.tsx` (QueryClient and RouterProvider)

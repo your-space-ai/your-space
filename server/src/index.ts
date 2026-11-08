@@ -31,6 +31,16 @@ for (let attempt = 1; ; attempt++) {
     await runMigrations(pool);
     break;
   } catch (error) {
+    if ((error as { code?: unknown }).code === "28P01") {
+      // PostgreSQL keeps the password it was created with; .env or the volume now holds another.
+      log("error", "db.password_rejected", errorFields(error));
+      console.error(
+        "PostgreSQL refused the database password. It keeps the password it was first created with, so " +
+          "if POSTGRES_PASSWORD in .env changed, change it back. Otherwise see \"Lost Secrets\" in the " +
+          "installation guide.",
+      );
+      process.exit(1);
+    }
     if (!isStorageError(error)) {
       // The database answered but a migration failed: retrying won't help.
       log("error", "db.migrate.failed", errorFields(error));

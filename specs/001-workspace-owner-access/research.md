@@ -210,7 +210,8 @@ that settled each question.
   `modes/mode${YS_DOMAIN:+.domain}${YS_PROXY_URL:+.proxy}.yaml`. That needs Compose 2.24.6 or newer:
   2.24.0 to 2.24.5 refuse any second Compose file (such as `compose.override.yaml`) that changes a
   service brought in by `include` ("conflicts with imported resource"), checked with the official
-  `docker/compose-bin` releases.
+  `docker/compose-bin` releases. The secrets volume ([R16](#r16-platform-secrets)) raises the
+  minimum to 2.26.0.
 
   | Setup | `.env` | Result |
   | --- | --- | --- |
@@ -379,9 +380,65 @@ that settled each question.
 
 - **Decision:**
   - **Hosts:** macOS 15 and 26 with Docker Desktop; Ubuntu 24.04 LTS and Debian 13 with Docker
-    Engine 28 or newer and the Compose v2 plugin. Each must be verified on ARM and Intel/AMD where
-    available.
+    Engine 28.3.3 or newer and Docker Compose 2.26.0 or newer. Each must be verified on ARM and
+    Intel/AMD where available.
   - **Browsers:** the current and previous major versions of Chrome, Edge, Firefox, and Safari,
     including iOS Safari.
 - **Rationale:** these are current, widely used releases that can be tested directly. The support
   claims in the guide list only what was verified (SC-010).
+
+## R16. Platform Secrets
+
+- **Decision (2026-11-08, owner):** the auth secret (`BETTER_AUTH_SECRET`) and the database
+  password (`POSTGRES_PASSWORD`) are optional in `.env`.
+  - A value set in `.env` is used as given and never copied.
+  - Otherwise a one-shot `secrets` service in `deploy/stack.yaml` settles each secret before
+    PostgreSQL and the server start. It keeps the copy in the `ys-secrets` volume or, for a new
+    installation, generates 32 random bytes (base64url) and writes them there. If the database
+    already exists but a secret is missing, it stops with recovery steps instead of generating one.
+  - The step runs from the server image with no network, a read-only root, every capability
+    dropped except `CHOWN`, `DAC_OVERRIDE`, and `FOWNER`, and `no-new-privileges`. It writes each
+    file atomically (a random temporary name, fsync, rename) and gives it to the user that reads
+    it: the auth secret to the server (uid 1000, mode 0400), the database password to PostgreSQL
+    (uid 999) with the server's group (0440).
+  - PostgreSQL mounts only its own folder of the volume (`volume.subpath`, which Compose applies
+    from 2.26.0; 2.25 accepts it but ignores it). A one-line entrypoint wrapper passes
+    `POSTGRES_PASSWORD` or `POSTGRES_PASSWORD_FILE`, since the image refuses both. The server
+    mounts the volume read-only, reads `.env` first and then the file, and builds the database URL
+    itself with the password percent-encoded.
+  - "The database exists" means a `PG_VERSION` file within three levels of the `ys-postgres` volume,
+    so a later PostgreSQL major version's layout doesn't look like a new installation.
+  - `docker compose exec server show-secrets` prints both values and their source;
+    `docker compose run --rm secrets --new auth-secret` (or `database-password`) replaces a
+    generated one ([operator commands](contracts/operator-commands.md#the-secrets-step)).
+  - The server refuses `BETTER_AUTH_SECRETS` and `AUTH_SECRET` in its environment: Better Auth
+    reads them by itself and would replace the secret Your Space gives it.
+  - Set-password and reset tokens are stored only as SHA-256 hashes (`verification.storeIdentifier`),
+    keeping the `reset-password:` prefix the one-link cleanup relies on. Better Auth's default
+    stores them in plain text.
+- **Rationale:**
+  - Constitution principle II: a local install's `.env` is empty, and nobody runs `openssl` before
+    the first start.
+  - A generated secret is random and unique to the installation. Sample values that still run
+    (Supabase's `.env.example`, Dokploy's hardcoded auth secret, CVE-2026-45631) leave a weak
+    secret to replace later; a generated one never needs replacing.
+  - Owners who keep secrets elsewhere supply them through `.env`, and Your Space keeps no copy.
+  - Stopping when a secret is missing next to an existing database avoids the silent new keys seen
+    in n8n and Discourse, and a database password PostgreSQL would refuse.
+  - Keeping the auth secret out of the database means a copy of the database alone can't forge
+    sessions. This keeps the sign-in key out of the database; it doesn't protect against root or
+    Docker access on the host, which can read every volume.
+- **Alternatives considered** (research of 2026-11-08, kept in the project's research folder):
+  - Required secrets in `.env` (the first version of this plan): an extra step for every owner, and
+    principle II would need amending.
+  - Sample values in `.env.example`, as Supabase ships: they run until someone changes them.
+  - A dedicated secret manager. OpenBao (MPL-2.0) is the only fit, but on one machine its unseal key
+    sits on the same disk, and it needs a container and bootstrap secrets of its own. HashiCorp
+    Vault (BUSL-1.1) and Infisical (MIT open core, needs Redis, telemetry on by default) were
+    rejected. OpenBao stays the upgrade path for short-lived credentials, an audit trail of secret
+    reads, or a hardware or cloud key.
+  - PostgreSQL on a socket with no password: the image would write a permanent `trust` rule into the
+    data volume.
+- **Later work this sets up:** app secrets (spec 002) sealed with AES-256-GCM from `node:crypto`
+  under a versioned key in `ys-secrets`; backups (spec 006) encrypted to an owner-held key; and an
+  app database role that isn't a superuser.

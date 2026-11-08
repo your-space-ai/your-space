@@ -1,7 +1,13 @@
 // T006: configuration is validated at startup with messages that say what to fix. Which key the
 // owner writes picks the setup; everything else is derived (constitution principle II).
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ConfigError, loadConfig } from "../src/config.ts";
+
+/** An empty ys-secrets volume, so no test depends on the machine it runs on. */
+const NO_SECRETS = mkdtempSync(join(tmpdir(), "ys-config-test-"));
 
 const SECRETS = {
   DATABASE_URL: "postgres://yourspace:secret@postgres:5432/yourspace",
@@ -10,7 +16,7 @@ const SECRETS = {
 
 function problems(env: Record<string, string | undefined>): string[] {
   try {
-    loadConfig({ ...SECRETS, ...env });
+    loadConfig({ ...SECRETS, ...env }, { secretsDir: NO_SECRETS });
     return [];
   } catch (error) {
     if (error instanceof ConfigError) return error.problems;
@@ -149,9 +155,67 @@ describe("loadConfig: setting names", () => {
     expect(found.join("\n")).toMatch(/BETTER_AUTH_SECRET must be at least 32 characters/);
   });
 
-  it("names a missing database URL and secret", () => {
-    const found = problems({ DATABASE_URL: undefined, BETTER_AUTH_SECRET: undefined });
-    expect(found.join("\n")).toMatch(/DATABASE_URL is not set/);
-    expect(found.join("\n")).toMatch(/BETTER_AUTH_SECRET is not set\. Generate one with: openssl rand -base64 32/);
+  it("names a missing database URL", () => {
+    expect(only({ DATABASE_URL: undefined })).toMatch(/DATABASE_URL is not set/);
+  });
+
+  it.each(["BETTER_AUTH_SECRETS", "AUTH_SECRET"])("refuses %s, which Better Auth would read in place of the secret", (key) => {
+    expect(only({ [key]: "x".repeat(40) })).toMatch(new RegExp(`${key} isn't a Your Space setting\\. Write BETTER_AUTH_SECRET`));
+  });
+});
+
+describe("loadConfig: secrets", () => {
+  function volume(auth?: string, password?: string): string {
+    const dir = mkdtempSync(join(tmpdir(), "ys-config-secrets-"));
+    if (auth !== undefined) {
+      mkdirSync(join(dir, "auth"));
+      writeFileSync(join(dir, "auth", "secret"), `${auth}\n`);
+    }
+    if (password !== undefined) {
+      mkdirSync(join(dir, "postgres"));
+      writeFileSync(join(dir, "postgres", "password"), `${password}\n`);
+    }
+    return dir;
+  }
+  const COMPOSE_URL = "postgres://yourspace@postgres:5432/yourspace";
+  const GENERATED_AUTH = "g".repeat(43);
+
+  it("reads the generated secrets from ys-secrets when .env sets none", () => {
+    const config = loadConfig({ DATABASE_URL: COMPOSE_URL }, { secretsDir: volume(GENERATED_AUTH, "generatedpw") });
+    expect(config.authSecret).toBe(GENERATED_AUTH);
+    expect(new URL(config.databaseUrl).password).toBe("generatedpw");
+  });
+
+  it("uses values set in .env over the generated ones", () => {
+    const config = loadConfig(
+      { DATABASE_URL: COMPOSE_URL, BETTER_AUTH_SECRET: "e".repeat(40), POSTGRES_PASSWORD: "frometc" },
+      { secretsDir: volume(GENERATED_AUTH, "generatedpw") },
+    );
+    expect(config.authSecret).toBe("e".repeat(40));
+    expect(new URL(config.databaseUrl).password).toBe("frometc");
+  });
+
+  it("passes a password with URL characters to PostgreSQL unchanged", () => {
+    const password = "p@ss/w#rd:%41 ?&=";
+    const config = loadConfig({ DATABASE_URL: COMPOSE_URL, POSTGRES_PASSWORD: password }, { secretsDir: volume(GENERATED_AUTH) });
+    expect(decodeURIComponent(new URL(config.databaseUrl).password)).toBe(password);
+    expect(new URL(config.databaseUrl).host).toBe("postgres:5432");
+  });
+
+  it("keeps a database URL that already carries a password", () => {
+    const url = "postgres://yourspace:inurl@localhost:5432/yourspace";
+    expect(loadConfig({ DATABASE_URL: url, POSTGRES_PASSWORD: "ignored" }, { secretsDir: volume(GENERATED_AUTH) }).databaseUrl).toBe(url);
+  });
+
+  it("says how to get a secret that is neither in .env nor generated yet", () => {
+    let found: string[] = [];
+    try {
+      loadConfig({ DATABASE_URL: COMPOSE_URL }, { secretsDir: volume() });
+    } catch (error) {
+      found = (error as ConfigError).problems;
+    }
+    expect(found).toHaveLength(2);
+    expect(found[0]).toMatch(/POSTGRES_PASSWORD isn't set in \.env, and Your Space hasn't generated the database password yet\. Start it with docker compose up -d/);
+    expect(found[1]).toMatch(/BETTER_AUTH_SECRET isn't set in \.env, and Your Space hasn't generated the auth secret yet/);
   });
 });

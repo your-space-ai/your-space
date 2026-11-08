@@ -88,6 +88,16 @@ considered are summarized in [research R9](../../specs/001-workspace-owner-acces
 This replaces the first plan's `YS_PUBLIC_URL` with a separate `YS_BIND_ADDRESS`. The CLI
 (spec 003) writes the same lines.
 
+**Decision update (2026-11-08):** Your Space generates its own platform secrets. A secret the owner
+sets in `.env` is used as given and never copied, so owners can supply secrets from their own
+store. Otherwise each secret is generated once, as random bytes, into a dedicated `ys-secrets`
+volume kept apart from the database, and never regenerated: if the database exists but a secret is
+missing, start-up stops with recovery steps. No sample or default secret ever runs. A dedicated
+secret manager was rejected for now, because on one machine its unseal key sits on the same disk
+and it adds a container and bootstrap secrets of its own; OpenBao (MPL-2.0) is the upgrade path.
+The research and alternatives are summarized in
+[research R16](../../specs/001-workspace-owner-access/research.md#r16-platform-secrets).
+
 ### CLI Delivery Sequence
 
 **Decision update (2026-10-29)**: Establish and verify the Compose deployment with the owner-access feature first.

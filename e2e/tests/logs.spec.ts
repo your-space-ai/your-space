@@ -1,8 +1,7 @@
 // T051 (browser half), cross-cutting scenario 2: after setup, sign-in, failures, and recovery, the
 // stack's logs hold no passwords, tokens, set-password or reset links, or session values.
-import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { createOwner, logs, resetLink, resetStack } from "./helpers/stack.ts";
+import { createOwner, logs, resetLink, resetStack, serverCommand } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
 
 const EMAIL = "sam@example.com";
@@ -10,13 +9,11 @@ const FIRST_PASSWORD = "first passphrase for the log check";
 const WRONG_PASSWORD = "wrong passphrase for the log check";
 const SECOND_PASSWORD = "second passphrase for the log check";
 
-function stackSecrets(): string[] {
-  const env = readFileSync(new URL("../stack.env", import.meta.url), "utf8");
-  return env
-    .split("\n")
-    .filter((line) => /^(BETTER_AUTH_SECRET|POSTGRES_PASSWORD)=/.test(line))
-    .map((line) => line.slice(line.indexOf("=") + 1).trim())
-    .filter(Boolean);
+/** The auth secret and database password the secrets step generated for this stack. */
+async function stackSecrets(): Promise<string[]> {
+  const shown = await serverCommand("show-secrets");
+  expect(shown.code).toBe(0);
+  return (shown.json.secrets as { value: string }[]).map((secret) => secret.value);
 }
 
 test("logs contain no credentials after the whole journey", async ({ page, context }) => {
@@ -49,7 +46,9 @@ test("logs contain no credentials after the whole journey", async ({ page, conte
 
   const output = await logs();
   expect(output.length).toBeGreaterThan(0);
-  for (const secret of [...secrets, ...stackSecrets()]) {
+  const generated = await stackSecrets();
+  expect(generated).toHaveLength(2);
+  for (const secret of [...secrets, ...generated]) {
     expect(secret.length).toBeGreaterThan(8);
     expect(output.includes(secret), `logs must not contain ${secret.slice(0, 4)}…`).toBe(false);
   }

@@ -8,9 +8,9 @@ Sync Impact Report (2026-11-07): 1.1.1 -> 1.2.0 (minor: materially expanded prin
   to get an install wrong, and defaults the project owns can improve without owners editing files.
 - Impact: the 001 plan and implementation required YS_PUBLIC_URL and two secrets in .env, and a
   YS_BIND_ADDRESS line for own-domain installs. PR #6 brings the setup in line (2026-11-08): no
-  line for this machine, one line (YS_DOMAIN or YS_PROXY_URL) for other devices. The two secrets
-  are still required in .env until secret generation is decided. Later plans name the default and
-  the derivation for every setting they add.
+  line for this machine, one line (YS_DOMAIN or YS_PROXY_URL) for other devices, and the two
+  secrets are generated unless .env sets them (research R16). Later plans name the default and the
+  derivation for every setting they add.
 
 Sync Impact Report (2026-11-03): 1.1.0 -> 1.1.1 (patch: clarification)
 - Clarified: VII. Reuse Before Building now says to use each library only for the purpose it was

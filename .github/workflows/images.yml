@@ -73,7 +73,7 @@ jobs:
           mkdir release
           cp -r deploy/compose.yaml deploy/stack.yaml deploy/modes release/
           sed -i "s/\${YS_VERSION:-latest}/\${YS_VERSION:-${TAG#v}}/g" release/stack.yaml
-          test "$(grep -c "YS_VERSION:-${TAG#v}}" release/stack.yaml)" -eq 2
+          test "$(grep -c "YS_VERSION:-${TAG#v}}" release/stack.yaml)" -eq 3
           if grep -rq "YS_VERSION:-latest" release; then exit 1; fi
           cp deploy/.env.example release/env.example
           tar -czf your-space.tar.gz -C release compose.yaml stack.yaml modes env.example

@@ -6,6 +6,8 @@
 //   YS_DOMAIN=space.example.com    your own domain, HTTPS from Let's Encrypt
 //   YS_PROXY_URL=https://...       behind your own proxy or Tailscale
 // YS_PORT moves the local port when 80 (or 8080 behind a proxy) is taken. Everything else is derived.
+// The two secrets come from .env when set there, otherwise from the ys-secrets volume (secrets.ts).
+import { AUTH_SECRET, DATABASE_PASSWORD, resolveSecret, SECRETS_DIR, type SecretSpec } from "./secrets.ts";
 
 export type Mode = "local" | "domain" | "proxy";
 
@@ -28,6 +30,12 @@ export class ConfigError extends Error {
 }
 
 const OWNER_KEYS = ["YS_DOMAIN", "YS_PROXY_URL", "YS_PORT", "YS_VERSION"];
+
+// Better Auth reads these by itself, and they would replace the secret Your Space gives it.
+const FOREIGN_SECRET_KEYS: Record<string, string> = {
+  BETTER_AUTH_SECRETS: "BETTER_AUTH_SECRETS isn't a Your Space setting. Write BETTER_AUTH_SECRET, or remove it to use the generated secret.",
+  AUTH_SECRET: "AUTH_SECRET isn't a Your Space setting. Write BETTER_AUTH_SECRET, or remove it to use the generated secret.",
+};
 
 // Settings from earlier versions of this guide, with what to write instead.
 const RETIRED_KEYS: Record<string, string> = {
@@ -72,6 +80,10 @@ function distance(a: string, b: string): number {
 /** Refuses settings Your Space doesn't know, so a typo can't silently fall back to another setup. */
 function checkKeys(env: NodeJS.ProcessEnv, problems: string[]): void {
   for (const key of Object.keys(env)) {
+    if (FOREIGN_SECRET_KEYS[key] && env[key]) {
+      problems.push(FOREIGN_SECRET_KEYS[key]);
+      continue;
+    }
     const upper = key.toUpperCase();
     if (!upper.startsWith("YS_") || upper.startsWith("YS_E2E_")) continue;
     if (OWNER_KEYS.includes(key)) continue;
@@ -131,34 +143,64 @@ function checkPort(value: string, problems: string[]): number {
   return port;
 }
 
-function checkDatabaseUrl(value: string | undefined, problems: string[]): string {
+/** A secret from .env or the volume, or a problem that says how to get one. */
+function secret(spec: SecretSpec, env: NodeJS.ProcessEnv, dir: string, problems: string[]): string | undefined {
+  try {
+    const resolved = resolveSecret(spec, env, dir);
+    if (resolved) return resolved.value;
+    problems.push(
+      `${spec.env} isn't set in .env, and Your Space hasn't generated the ${spec.label} yet. ` +
+        "Start it with docker compose up -d, which generates one.",
+    );
+  } catch (error) {
+    problems.push(`The ${spec.label} in the ys-secrets volume can't be read (${(error as NodeJS.ErrnoException).code ?? "error"}).`);
+  }
+  return undefined;
+}
+
+function checkDatabaseUrl(env: NodeJS.ProcessEnv, dir: string, problems: string[]): string {
+  const value = env.DATABASE_URL;
   if (!value) {
     problems.push("DATABASE_URL is not set.");
     return "";
   }
+  let url: URL;
   try {
-    const url = new URL(value);
-    if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
-      problems.push("DATABASE_URL must be a postgres:// URL.");
-    }
+    url = new URL(value);
   } catch {
     problems.push("DATABASE_URL is not a valid URL.");
+    return value;
   }
-  return value;
+  if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
+    problems.push("DATABASE_URL must be a postgres:// URL.");
+    return value;
+  }
+  if (url.password) return value;
+  const password = secret(DATABASE_PASSWORD, env, dir, problems);
+  if (password === undefined) return value;
+  // Encoded, so a password with characters such as @, /, # or % still reaches PostgreSQL unchanged.
+  url.password = encodeURIComponent(password);
+  return url.toString();
 }
 
-function checkSecret(value: string | undefined, problems: string[]): string {
-  if (!value) {
-    problems.push("BETTER_AUTH_SECRET is not set. Generate one with: openssl rand -base64 32");
-    return "";
-  }
+function checkSecret(env: NodeJS.ProcessEnv, dir: string, problems: string[]): string {
+  const value = secret(AUTH_SECRET, env, dir, problems);
+  if (value === undefined) return "";
   if (value.length < 32) {
-    problems.push("BETTER_AUTH_SECRET must be at least 32 characters. Generate one with: openssl rand -base64 32");
+    problems.push(
+      "BETTER_AUTH_SECRET must be at least 32 characters. Remove it from .env to use a generated one, or make one with: openssl rand -base64 32",
+    );
   }
   return value;
 }
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+export interface LoadOptions {
+  /** Where the ys-secrets volume is mounted. */
+  secretsDir?: string;
+}
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadOptions = {}): Config {
+  const secretsDir = options.secretsDir ?? SECRETS_DIR;
   const problems: string[] = [];
   checkKeys(env, problems);
 
@@ -182,8 +224,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const config: Config = {
     mode,
     publicUrl,
-    databaseUrl: checkDatabaseUrl(env.DATABASE_URL, problems),
-    authSecret: checkSecret(env.BETTER_AUTH_SECRET, problems),
+    databaseUrl: checkDatabaseUrl(env, secretsDir, problems),
+    authSecret: checkSecret(env, secretsDir, problems),
   };
   if (problems.length > 0) throw new ConfigError(problems);
   return config;

@@ -1,0 +1,146 @@
+// The two platform secrets (research R16): a value set in .env is used as given and never copied;
+// otherwise the copy in ys-secrets; otherwise, for a new installation, a generated one. A missing
+// secret next to an existing database stops start-up instead of making a new one.
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { beforeEach, describe, expect, it } from "vitest";
+import { describeSecrets } from "../src/commands/show-secrets.ts";
+import { AUTH_SECRET, DATABASE_PASSWORD, databaseExists, SecretsError, settleSecrets } from "../src/secrets.ts";
+
+let secretsDir: string;
+let databaseDir: string;
+beforeEach(() => {
+  const root = mkdtempSync(join(tmpdir(), "ys-secrets-test-"));
+  secretsDir = join(root, "secrets");
+  databaseDir = join(root, "pgdata");
+  mkdirSync(secretsDir);
+  mkdirSync(databaseDir);
+});
+
+const settle = (env: NodeJS.ProcessEnv = {}, replace = [] as (typeof AUTH_SECRET)[]) =>
+  settleSecrets({ dir: secretsDir, databaseDir, env, replace, chown: false });
+const stored = (spec: typeof AUTH_SECRET) => readFileSync(join(secretsDir, spec.dir, spec.file), "utf8").trim();
+const actions = (outcomes: ReturnType<typeof settle>) => outcomes.map(({ spec, action }) => `${spec.env}:${action}`);
+const makeDatabase = (...path: string[]) => {
+  mkdirSync(join(databaseDir, ...path), { recursive: true });
+  writeFileSync(join(databaseDir, ...path, "PG_VERSION"), "18\n");
+};
+
+describe("settleSecrets on a new installation", () => {
+  it("generates both secrets as 43-character base64url values, readable only by their users", () => {
+    expect(actions(settle())).toEqual(["BETTER_AUTH_SECRET:generated", "POSTGRES_PASSWORD:generated"]);
+    for (const spec of [AUTH_SECRET, DATABASE_PASSWORD]) {
+      expect(stored(spec)).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(statSync(join(secretsDir, spec.dir, spec.file)).mode & 0o777).toBe(spec.fileMode);
+      expect(statSync(join(secretsDir, spec.dir)).mode & 0o777).toBe(spec.dirMode);
+    }
+    expect(stored(AUTH_SECRET)).not.toBe(stored(DATABASE_PASSWORD));
+  });
+
+  it("keeps them on every later start and never overwrites them", () => {
+    settle();
+    const first = [stored(AUTH_SECRET), stored(DATABASE_PASSWORD)];
+    makeDatabase("18", "docker");
+    expect(actions(settle())).toEqual(["BETTER_AUTH_SECRET:kept", "POSTGRES_PASSWORD:kept"]);
+    expect([stored(AUTH_SECRET), stored(DATABASE_PASSWORD)]).toEqual(first);
+  });
+
+  it("uses a value set in .env as given, and writes nothing for it", () => {
+    const outcomes = settle({ BETTER_AUTH_SECRET: "x".repeat(40), POSTGRES_PASSWORD: "p@ss/w#rd %41" });
+    expect(actions(outcomes)).toEqual(["BETTER_AUTH_SECRET:from_env", "POSTGRES_PASSWORD:from_env"]);
+    expect(readdirSync(secretsDir)).toEqual([]);
+  });
+
+  it("treats an empty line in .env as no line", () => {
+    expect(actions(settle({ BETTER_AUTH_SECRET: "", POSTGRES_PASSWORD: "  " }))).toEqual([
+      "BETTER_AUTH_SECRET:generated",
+      "POSTGRES_PASSWORD:generated",
+    ]);
+  });
+
+  it("refuses a too-short auth secret in .env before anything starts", () => {
+    expect(() => settle({ BETTER_AUTH_SECRET: "short" })).toThrow(/BETTER_AUTH_SECRET in \.env must be at least 32 characters/);
+  });
+
+  it("removes a temporary file left by an interrupted start instead of failing", () => {
+    mkdirSync(join(secretsDir, "auth"));
+    writeFileSync(join(secretsDir, "auth", ".secret.1.tmp"), "half");
+    settle();
+    expect(readdirSync(join(secretsDir, "auth"))).toEqual(["secret"]);
+  });
+});
+
+describe("settleSecrets when a secret is missing next to an existing database", () => {
+  beforeEach(() => makeDatabase("18", "docker"));
+
+  it("stops with recovery steps for the auth secret, and generates nothing", () => {
+    let error: unknown;
+    try {
+      settle();
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(SecretsError);
+    expect((error as Error).message).toMatch(/already has a\s+database/);
+    expect((error as Error).message).toContain("docker compose run --rm secrets --new auth-secret");
+    expect(readdirSync(secretsDir)).toEqual([]);
+  });
+
+  it("stops with recovery steps for the database password", () => {
+    expect(() => settle({ BETTER_AUTH_SECRET: "x".repeat(40) })).toThrow(/only accepts the password it was created with/);
+    expect(readdirSync(secretsDir)).toEqual([]);
+  });
+
+  it("still starts when .env supplies both", () => {
+    expect(actions(settle({ BETTER_AUTH_SECRET: "x".repeat(40), POSTGRES_PASSWORD: "given" }))).toEqual([
+      "BETTER_AUTH_SECRET:from_env",
+      "POSTGRES_PASSWORD:from_env",
+    ]);
+  });
+
+  it("replaces a secret only when asked with --new", () => {
+    settle({ POSTGRES_PASSWORD: "given" }, [AUTH_SECRET]);
+    expect(stored(AUTH_SECRET)).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const before = stored(AUTH_SECRET);
+    expect(actions(settle({ POSTGRES_PASSWORD: "given" }, [AUTH_SECRET]))).toEqual([
+      "BETTER_AUTH_SECRET:replaced",
+      "POSTGRES_PASSWORD:from_env",
+    ]);
+    expect(stored(AUTH_SECRET)).not.toBe(before);
+  });
+
+  it("won't replace a secret that .env sets", () => {
+    expect(() => settle({ BETTER_AUTH_SECRET: "x".repeat(40) }, [AUTH_SECRET])).toThrow(/is set in \.env, so Your Space uses it as given/);
+  });
+});
+
+describe("databaseExists", () => {
+  it("is false for an empty volume and for empty folders", () => {
+    expect(databaseExists(databaseDir)).toBe(false);
+    mkdirSync(join(databaseDir, "18", "docker"), { recursive: true });
+    expect(databaseExists(databaseDir)).toBe(false);
+    expect(databaseExists(join(databaseDir, "missing"))).toBe(false);
+  });
+
+  it.each([[["18", "docker"]], [["data"]], [[]]])("finds a data directory at %j, whatever the PostgreSQL version's layout", (path) => {
+    makeDatabase(...path);
+    expect(databaseExists(databaseDir)).toBe(true);
+  });
+});
+
+describe("describeSecrets (show-secrets)", () => {
+  it("shows each value and where it comes from", () => {
+    settle();
+    const { shown, missing } = describeSecrets({ BETTER_AUTH_SECRET: "y".repeat(40) }, secretsDir);
+    expect(missing).toEqual([]);
+    expect(shown).toEqual([
+      { name: "BETTER_AUTH_SECRET", label: "auth secret", source: "env", value: "y".repeat(40) },
+      { name: "POSTGRES_PASSWORD", label: "database password", source: "generated", value: stored(DATABASE_PASSWORD) },
+    ]);
+  });
+
+  it("names the settings that have no value yet", () => {
+    expect(describeSecrets({}, secretsDir).missing).toEqual(["BETTER_AUTH_SECRET", "POSTGRES_PASSWORD"]);
+  });
+});

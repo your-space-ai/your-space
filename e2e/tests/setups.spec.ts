@@ -99,6 +99,24 @@ test("only the proxy setup joins the edge network, where a proxy in a container 
   }
 });
 
+test("the secrets step has no network, and PostgreSQL and the server get only what they read", async () => {
+  const { services } = await config({});
+  const secrets = services.secrets as Service & { network_mode?: string; read_only?: boolean; cap_drop?: string[] };
+  expect(secrets.network_mode).toBe("none");
+  expect(secrets.ports ?? []).toEqual([]);
+  expect(secrets.read_only).toBe(true);
+  expect(secrets.cap_drop).toEqual(["ALL"]);
+  const mounts = (service: string) =>
+    ((services[service] as Service & { volumes?: { source: string; target: string; read_only?: boolean; volume?: { subpath?: string } }[] }).volumes ?? [])
+      .filter((v) => v.source === "ys-secrets")
+      .map((v) => ({ target: v.target, readOnly: v.read_only ?? false, subpath: v.volume?.subpath }));
+  expect(mounts("postgres")).toEqual([{ target: "/run/ys-secrets", readOnly: true, subpath: "postgres" }]);
+  expect(mounts("server")).toEqual([{ target: "/run/ys-secrets", readOnly: true, subpath: undefined }]);
+  expect(mounts("caddy")).toEqual([]);
+  expect(services.postgres!.depends_on?.secrets?.condition).toBe("service_completed_successfully");
+  expect(services.server!.depends_on?.secrets?.condition).toBe("service_completed_successfully");
+});
+
 test("setting both YS_DOMAIN and YS_PROXY_URL stops Compose with a message", async () => {
   const result = await compose(["config"], {
     allowFailure: true,

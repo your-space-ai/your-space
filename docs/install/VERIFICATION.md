@@ -72,12 +72,16 @@ the `evidence/claude/001-implementation` branch, which is never merged.
   network;
 - that setting both keys stops Compose with a message.
 
-The same checks pass on Compose 2.24.6, the oldest version the guide names, run from Docker's official
-`docker/compose-bin:v2.24.6` image; CI runs them on that version too. Versions 2.24.0 to 2.24.5
-refuse a second Compose file that changes an included service ("conflicts with imported resource"),
-which the browser tests' build override and an owner's `compose.override.yaml` both do. On 2.24.6,
-a stack started with `YS_PORT=18291` served `/api/status`, and a misspelled key kept every port
-closed, as on 5.6.
+The same checks, and the secrets checks below, pass on Compose 2.26.0, the oldest version the guide
+names, run from Docker's official `docker/compose-bin:v2.26.0` image; CI runs the setup checks on
+that version too. Older versions fail in two ways, checked the same way:
+
+- 2.24.0 to 2.24.5 refuse a second Compose file that changes an included service ("conflicts with
+  imported resource"), which the browser tests' build override and an owner's
+  `compose.override.yaml` both do.
+- 2.25 accepts the `subpath` that gives PostgreSQL only its own folder of `ys-secrets`, but ignores
+  it when it runs the stack. PostgreSQL then can't find its password and refuses to create a new
+  database, so this fails safe, but 2.26.0 is the first version that works.
 
 With a running stack and locally built images (2026-11-08):
 
@@ -97,6 +101,26 @@ With a running stack and locally built images (2026-11-08):
 - **The default setup, during the browser journeys:** `docker ps` showed Caddy published only on
   `127.0.0.1:80`. `curl http://localhost/api/status` answered 200, and the same request to the
   host's network address, with `Host: localhost`, was refused (connection refused).
+
+## Secrets
+
+`e2e/tests/secrets.spec.ts`, with an empty `.env`, on Compose 5.6.1 and 2.26.0 (2026-11-08):
+
+- The first start generated both secrets as 43-character base64url values. `show-secrets` reported
+  each as generated, the `secrets` service's log noted `secrets.generated` without the values, and
+  the browser journeys' log scan found neither value in any service's log.
+- PostgreSQL's view of the volume held only its password file. The server couldn't write to the
+  volume, and its environment had no generated value, so `docker inspect` can't show one.
+- After `docker compose down` and `up`, both values were unchanged and the log noted `secrets.kept`.
+- With the `ys-secrets` volume deleted and the database kept, `docker compose up -d` failed, the
+  `secrets` log gave the recovery steps, and the server didn't start. The guide's "Lost Secrets"
+  steps then brought the server back with the same account and workspace. The `ALTER ROLE` command
+  was also run once exactly as the guide prints it, through `bash`.
+
+Server tests cover the rest: `.env` values used as given with nothing written, an empty line
+treated as no line, a too-short auth secret refused, a leftover temporary file removed, the
+database detected in PostgreSQL 18's layout and older ones, `--new`, and a password with `@ / # %`
+reaching PostgreSQL unchanged.
 
 ## Review
 

@@ -19,7 +19,7 @@ automated tests and the evidence for SC-010. Endpoint and command details are in
 mkdir your-space && cd your-space
 curl -fsSL https://github.com/your-space-ai/your-space/releases/latest/download/your-space.tar.gz | tar -xz
 cp env.example .env
-# In .env: generate the two secrets. Nothing else for this machine (http://localhost).
+# .env can stay as it is for this machine (http://localhost); the first start generates the secrets.
 docker compose up -d
 docker compose ps           # every service healthy
 ```
