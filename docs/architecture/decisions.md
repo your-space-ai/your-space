@@ -4,13 +4,13 @@
 
 **Recorded**: 2026-10-28
 
-**Last updated**: 2026-11-02
+**Last updated**: 2026-11-08
 
 **Scope**: Project-wide direction, independent of any feature specification
 
 **Delivery view**: [Roadmap](../roadmap.md), derived from this record, and the [spec map](../spec-map.md)
 
-**Related feature**: [Workspace Setup and Owner Access specification (PR #3)](https://github.com/your-space-ai/your-space/pull/3)
+**Related feature**: [Workspace Setup and Owner Access specification](../../specs/001-workspace-owner-access/spec.md)
 
 **Governing document**: [Your Space Constitution](../../.specify/memory/constitution.md)
 
@@ -42,7 +42,7 @@ The repository README and agent guidance link here so future planning can find t
 
 ### Installation and Hosting
 
-- Begin with a documented, manual Docker Compose installation and browser-guided owner setup.
+- Begin with a documented, manual Docker Compose installation. The owner is created with a server command and sets their password in the browser.
 - Initially support macOS and Linux server hosts. Users on other operating systems can access a supported server through the web client.
 - The desktop app can also run a local workspace on the same machine on macOS, Windows, and Linux, through the Your Space CLI. The CLI therefore runs on all three.
 - On Windows, people can use the desktop app and run a local workspace through Docker Desktop. Windows is not a supported server host.
@@ -65,6 +65,38 @@ Exact supported OS versions, prerequisites, networking, and proxy configuration 
 
 **Decision update (2026-11-02):** HTTPS for remote access is built in rather than left to the owner: a reverse proxy in the Compose stack provides automatic certificates for a domain, with a bring-your-own-proxy option and documented tunnel guidance for owners without a domain. The proxy implementation (for example, Caddy) is chosen in the CLI specification.
 
+**Decision update (2026-11-03):** The built-in proxy moves from the CLI specification into the
+owner-access feature (spec 001), and Caddy is selected. Caddy obtains and renews certificates
+natively, so HTTPS needs configuration rather than custom code ([constitution principle VII](../../.specify/memory/constitution.md#vii-reuse-before-building-with-few-trusted-dependencies)).
+Shipping it with the first Compose stack means remote access is HTTPS from the first install instead
+of relying only on the owner's own proxy or tunnel. Spec 002 adds app routing to the same proxy,
+and the CLI asks for the domain during installation. This supersedes the 2026-11-02 note that the
+proxy is chosen in the CLI specification.
+
+**Decision update (2026-11-08):** In the manual Compose install, the settings line the owner
+writes picks the setup, and the setup decides which ports open. With no line, Your Space runs on
+this machine only, at `http://localhost`, published on `127.0.0.1`. `YS_DOMAIN=<name>` publishes
+ports 80 and 443 to the network and turns on automatic HTTPS. `YS_PROXY_URL=https://<address>`
+publishes plain HTTP on `127.0.0.1:8080` for the owner's own proxy or Tailscale, and offers a
+Docker network for proxies that run in containers. `YS_PORT` moves the local port when another
+program has it. Compose selects one file per setup by which key is set, so every port address is
+written out in a file rather than computed or left to Docker's defaults, and the server refuses a
+wrong value or a misspelled setting before any port opens. The alternative most projects use, one
+address setting with ports open on every interface, was rejected because a fresh local install
+on a Linux server would put its sign-in page on the network. The research and the designs
+considered are summarized in [research R9](../../specs/001-workspace-owner-access/research.md#r9-https-and-the-caddy-configuration).
+The CLI (spec 003) writes the same lines.
+
+**Decision update (2026-11-08):** Your Space generates its own platform secrets. A secret the owner
+sets in `.env` is used as given and never copied, so owners can supply secrets from their own
+store. Otherwise each secret is generated once, as random bytes, into a dedicated `ys-secrets`
+volume kept apart from the database, and never regenerated: if the database exists but a secret is
+missing, start-up stops with recovery steps. No sample or default secret ever runs. A dedicated
+secret manager was rejected for now, because on one machine its unseal key sits on the same disk
+and it adds a container and bootstrap secrets of its own; OpenBao (MPL-2.0) is the upgrade path.
+The research and alternatives are summarized in
+[research R16](../../specs/001-workspace-owner-access/research.md#r16-platform-secrets).
+
 ### CLI Delivery Sequence
 
 **Decision update (2026-10-29)**: Establish and verify the Compose deployment with the owner-access feature first.
@@ -72,7 +104,7 @@ A separate specification and implementation PR will add a Your Space CLI for ins
 This replaces the earlier proposed CLI-first ordering: the CLI needs a working deployment to manage.
 
 - The first feature must be installable and operable through documented manual Compose procedures without a standalone Your Space CLI.
-- Setup authority and owner recovery remain part of the first feature, with documented operator commands available through the deployment.
+- Owner creation and owner recovery remain part of the first feature, with documented operator commands available through the deployment.
 - The CLI drives Docker Compose on the user's behalf for both local and server installations, so installation and management are a managed experience rather than users running Compose themselves.
 - The desktop app's local mode drives the CLI for the user. People can also run the CLI themselves to set up a local workspace.
 - There is one installation and setup behavior. The CLI behaves the same for local and server installations, and wrappers such as the desktop app simplify the experience without changing the CLI or setup behavior.
@@ -87,9 +119,9 @@ Guided installation remains the product direction. The initial guide and browser
 
 **Decision update (2026-10-31):** The CLI is the managed installation and management path for both local and server installations, driving Docker Compose for the user. The desktop app's local mode drives the CLI rather than managing Docker itself, and people can run the CLI themselves for a local install. This supersedes the 2026-10-31 position that the CLI is only the server deployment path.
 
-**Decision update (2026-11-01):** The owner-access feature (PR #3) and its manual Compose procedure come first, then the CLI. The minimum CLI operations before publication are install, start, stop, status, logs, update Your Space, and owner password recovery. Backup and restore are not part of the first release (superseded 2026-11-02: backup, restore, and uninstall are required before publication); see [Your Space updates, backup, and restore](#your-space-updates-backup-and-restore).
+**Decision update (2026-11-01):** The owner-access feature (spec 001) and its manual Compose procedure come first, then the CLI. The minimum CLI operations before publication are install, start, stop, status, logs, update Your Space, and owner password recovery. Backup and restore are not part of the first release (superseded 2026-11-02: backup, restore, and uninstall are required before publication); see [Your Space updates, backup, and restore](#your-space-updates-backup-and-restore).
 
-**Decision update (2026-11-02):** The app UI and sign-in specification (now part of journey 002 "install an app and use it"; see [journey-based specifications](#journey-based-specifications)) comes between the owner-access feature (PR #3) and the CLI specification. It decides app origins and routing, which set the DNS, certificates, and proxy configuration the CLI installs, and clients, apps, SDKs, and agent access all build on it. Settling it before the CLI avoids reworking the CLI's HTTPS setup. The resulting order is PR #3, then the app UI and sign-in specification, then the CLI specification, then the remaining pre-public items.
+**Decision update (2026-11-02):** The app UI and sign-in specification (now part of journey 002 "install an app and use it"; see [journey-based specifications](#journey-based-specifications)) comes between the owner-access feature (spec 001) and the CLI specification. It decides app origins and routing, which set the DNS, certificates, and proxy configuration the CLI installs, and clients, apps, SDKs, and agent access all build on it. Settling it before the CLI avoids reworking the CLI's HTTPS setup. The resulting order is spec 001, then the app UI and sign-in specification, then the CLI specification, then the remaining pre-public items.
 
 **Decision update (2026-11-02):** The CLI provides an uninstall command before publication instead of documented manual removal. Apps run in containers Your Space starts outside the main Compose file, so `docker compose down` alone would leave app containers and data behind; only Your Space knows what it started.
 
@@ -110,6 +142,8 @@ Exact runtime and database versions, migration execution and recovery strategy, 
 - Use React, TypeScript, and Vite for the initial web client.
 - Router, query/state tooling, styling, and component library remain implementation planning choices.
 
+**Decision update (2026-11-03):** The [001 technical plan](../../specs/001-workspace-owner-access/plan.md) selects TanStack Router and TanStack Query, with Better Auth's React client for session calls, plain CSS, native form validation, and no component library. Caddy serves the built web client as static files and forwards `/api` to the Express server, so the client and API share one origin. A server-rendered frontend was considered and deferred until a spec needs public, logged-out pages.
+
 ### Owner and Workspace Model
 
 - Support one human owner and one workspace in the first feature.
@@ -125,16 +159,19 @@ These concepts do not prescribe a specific database schema.
 - Your Space defines and operates one server-managed authentication system across deployment modes.
 - Use Better Auth as the authentication library within that system.
 - Authentication must not depend on an external identity provider.
-- Initial account creation collects a name, email address, and password.
+- Initial account creation collects a name and email address; the owner then sets a password.
 - Email serves as a login identifier and is not treated as verified without mailbox verification.
 - Initial self-hosted setup does not require SMTP or another email-delivery service.
-- A temporary, single-use setup code supplied through the operator-only installation procedure establishes authority to claim an installation.
-- Network access to an unclaimed server alone is insufficient authority to create its owner.
-- Successful setup creates the initial owner and workspace, then closes initial registration.
-- Concurrent or retried setup must not create duplicate owners or replace an existing owner.
+- A server command run by the operator creates the owner account and workspace and prints a short-lived, single-use set-password link. Access to the server is the authority to create the owner.
+- Network access alone can never create an account or the owner: before an owner exists there is no setup page, and sign-up is always off.
+- After setup, sign-up stays closed: new people join only when the owner invites them. Open sign-up
+  may be offered later as an optional feature.
+- A rerun of the owner command must not create duplicate owners or replace an existing owner.
 
-The setup code proves installation authority. It does not prove control of the supplied email address.
-Every installation uses the same setup-code flow. In desktop local mode, the desktop app obtains the setup code through the CLI and submits it on the user's behalf, so the user never has to enter it; the setup flow itself does not change.
+Server access proves installation authority. It does not prove control of the supplied email address.
+Every installation uses the same owner command. In desktop local mode, the desktop app asks for the name, email, and password, runs the command through the CLI, and sets the password through the printed link on the user's behalf; the flow itself does not change.
+
+**Decision update (2026-11-03):** The owner is created by a server command that prints a set-password link, replacing the setup code and browser claim form. Bots watch public certificate logs and complete the setup pages of new sites within minutes, so a fresh install must not be claimable over the network. A server command closes that hole with the fewest parts: no setup code, no claim endpoint, and no setup page. The set-password link reuses Better Auth's password-reset flow, so no temporary password exists. Better Auth has no "change password on first sign-in" feature, so a temporary password would need custom code. Sign-up stays off on the running server; the command creates the owner from its own process. This supersedes the setup-code decisions above.
 The same account model serves local and remote installations; deployment configuration may govern email delivery and verification policy.
 Separate local-only and hosted authentication implementations are not part of the direction.
 
@@ -180,6 +217,36 @@ Invited members recover their passwords without email in the first release:
 
 What counts as a failed Your Space update, snapshot contents and storage, how the CLI authenticates to a remote server, how a restore reaches a broken or fresh installation, and backup format and protection remain open.
 
+### Reuse Before Building
+
+Governed by [constitution principle VII](../../.specify/memory/constitution.md#vii-reuse-before-building-with-few-trusted-dependencies).
+
+- Prefer established open-source libraries and tools over custom code. Before building something,
+  check whether a selected library already provides it.
+- Use selected libraries' native features as intended rather than wrapping or reimplementing them.
+  Custom code fills only the gaps they leave.
+- Use each library only for the purpose it was built for. Don't stretch an available feature into
+  a general system for the app; pick a library made for that job.
+- Keep dependencies few and trusted. Not every small need gets a dependency: add one only when it
+  replaces substantial custom code, and prefer one library that covers several needs over several
+  narrow ones. Keep integrations thin.
+- Technical plans name the library feature each requirement relies on and justify each new
+  dependency and any custom code.
+
+**Decision update (2026-11-03):** Reuse before building is a project-wide principle, balanced
+against keeping as few trusted dependencies as possible. Custom code must be maintained, secured,
+and documented by the project, and mature libraries already solve most of it; every dependency also
+adds supply-chain and upgrade cost. Dependencies still follow the licensing rule in
+[deployment boundaries and licensing](#deployment-boundaries-and-licensing). Added to the
+constitution as principle VII (version 1.1.0).
+
+**Decision update (2026-11-03):** Reuse means using libraries for what they were built for. Better
+Auth's rate limiter protects Better Auth's own routes, so it is not the app's rate limiter. The
+owner-access feature adds no rate limiting of its own and keeps Better Auth's defaults on its own
+routes. When a spec needs app-wide or per-account limits, it adds a dedicated rate-limiting library.
+Clarified in constitution principle VII (version 1.1.1). Simplicity also governs: libraries and
+custom code are added only when a requirement needs them.
+
 ## Accepted Product and Repository Direction
 
 ### Platform and Independent Apps
@@ -211,12 +278,13 @@ Existing app authorization should be reusable where it has a suitable integratio
 - The first public release targets two groups: people who can install Docker Desktop and the Your Space desktop app to run a local workspace, and people who can install Docker and follow a guided CLI to deploy a server or a local workspace, both without one-on-one assistance.
 - The web, desktop, and PWA clients provide the same core workspace and installed-app experience while connected to a Your Space server; a local network connection is sufficient.
 - The desktop app uses Electron and ships for macOS, Windows, and Linux.
+- The desktop app is the intended primary way people use Your Space. The web client and PWA stay full clients with the same core experience, so the workspace also works in a browser and on phones.
 - Desktop releases are signed before publication. macOS builds are signed with an Apple Developer ID and notarized, so people see the standard "downloaded from the Internet" prompt rather than a block, and the app can update itself. Windows builds are signed through the SignPath Foundation's free open-source program, with Microsoft Artifact Signing as the fallback. Linux builds need no signing.
 - Signing runs in CI with keys held as CI secrets, never on a personal machine.
 - When setting up the desktop app, the user either connects to an existing server by URL or runs Your Space locally. In local mode, the desktop app uses the Your Space CLI to set up and run the Docker Compose stack on that machine, then connects to it.
 - The CLI is part of the first public release for setting up Your Space on a server or locally; desktop, web, and PWA clients can connect to a server it sets up.
 - Before publication, local mode detects Docker and links to the Docker Desktop download when it is missing, sets up the Your Space stack, starts it when the desktop app opens, and updates Your Space when the owner chooses.
-- Every installation, local or server, uses one setup flow with the setup code. In local mode the desktop app obtains the setup code through the CLI and submits it for the user, so the user never has to enter it. Streamlined local setup in the desktop app gets its own specification and implementation PR, separate from the owner-access feature.
+- Every installation, local or server, uses one setup flow: the owner command. In local mode the desktop app runs it through the CLI and sets the password for the user, so the user only fills in one form. Streamlined local setup in the desktop app gets its own specification and implementation PR, separate from the owner-access feature.
 - Before publication, the owner can back up and restore local and server installations alike, and move a local workspace to a server, through the CLI; the desktop app uses the same operation in local mode. Owner-triggered Your Space updates in local mode go through the CLI and roll back automatically if they fail.
 - A local workspace is unavailable to other people and remote agents while its machine is asleep or off. Install documentation must state this and the Docker Desktop license terms.
 - PWA offline support remains open. The first owner-access feature remains web-only.
@@ -232,11 +300,13 @@ Existing app authorization should be reusable where it has a suitable integratio
 
 **Decision update (2026-10-31):** Local mode skips the setup code: the desktop app sets up the stack and supplies setup authority itself, so network access alone still cannot claim a local workspace. Server installations keep the setup code from the owner-access feature. Streamlined local setup is specified and implemented in its own PR, separate from the owner-access feature. (Superseded below: one setup flow for every installation.)
 
-**Decision update (2026-10-31):** Supersedes the setup-code exception above. There is one setup flow for every installation, and the CLI behaves the same for local and server installations. The desktop app wraps the CLI and handles the setup code on the user's behalf; it does not skip or replace setup authority.
+**Decision update (2026-10-31):** (The setup code was later replaced by the owner command; see [authentication and initial claim](#authentication-and-initial-claim).) Supersedes the setup-code exception above. There is one setup flow for every installation, and the CLI behaves the same for local and server installations. The desktop app wraps the CLI and handles the setup code on the user's behalf; it does not skip or replace setup authority.
 
 **Decision update (2026-11-02):** Pre-public roadmap items carry High, Medium, or Low priority. Windows support and PWA installation are Low: they remain first-release goals, built last, and are the first to move to post-open-source work if the timeline slips.
 
 **Decision update (2026-11-02):** Signed desktop releases are required before publication. An unsigned macOS app is blocked with a malware-verification warning and cannot update itself, which is too rough for the less technical audience. The Apple Developer Program ($99/year) covers macOS. Windows uses SignPath's free open-source signing, which needs a public repository and an OSI-approved license and lists SignPath Foundation as the publisher; Microsoft Artifact Signing (about $10/month) is the fallback if approval timing or the publisher name is a problem. New Windows apps may still show a SmartScreen warning until they build download reputation.
+
+**Decision update (2026-11-03):** The desktop app is the intended primary client. It can show installed apps in native views instead of iframes (see [UI integration](#ui-integration)), which gives the best in-app experience. The web client and PWA remain full clients, so people can use Your Space from a browser or phone. This does not change the build order: the desktop app is still built in journey 008.
 
 ### Deployment Boundaries and Licensing
 
@@ -269,10 +339,14 @@ Dependency selection must consider actual licenses, including bundled components
 
 **Decision update (2026-11-02):** Simplicity by default is a product principle for every client and feature. New settings, logs, and configuration go behind advanced controls unless most users need them.
 
+- Configuration works like editor settings: the defaults live in Your Space, the owner's file starts empty, and each line in it overrides one default. Every setting needs a safe default that suits most installations; a value that follows from other settings is derived, not asked for; secrets are generated when the owner doesn't supply them.
+
+**Decision update (2026-11-08):** Configuration is optional, now part of [constitution principle II](../../.specify/memory/constitution.md#ii-preserve-user-control-and-hosting-choice). Required settings are each a chance to get an install wrong, and they freeze today's choice into every owner's file, so a better default later reaches nobody. Plans name each setting's default and how it is derived, and the documentation lists the defaults so an owner can see what a line would change. Where a tool can't derive a value, the setting stays and the CLI (spec 003) derives it; in the manual Compose install, the one line the owner writes picks the port bindings (see [Installation and Hosting](#installation-and-hosting)).
+
 ### Telemetry and Outbound Connections
 
 - Your Space collects no telemetry. Neither the server, the CLI, nor the desktop app reports usage, errors, or any other data to the project.
-- The only automatic outbound requests are update checks that ask GitHub for the latest release. The owner can turn them off. Actions the owner starts, such as installing or updating an app, contact the sources they name.
+- The only automatic outbound requests are update checks that ask GitHub for the latest release. The owner can turn them off. Certificate requests the built-in proxy makes for an owner-configured domain are part of HTTPS setup, not reporting. Actions the owner starts, such as installing or updating an app, contact the sources they name.
 - Opt-in reporting, off until the owner turns it on, is the only acceptable future extension. Opt-out telemetry is prohibited.
 
 **Decision update (2026-11-02):** No telemetry in the first release. Any future reporting must be opt-in; opt-out collection is an anti-pattern and is ruled out permanently.
@@ -345,9 +419,22 @@ App role authorization controls what users and agents may do within an app. Host
 - UI integration must not require replacing every frontend request with a Your Space-specific SDK call.
 - UI and programmatic access must reach equivalent backend authorization checks.
 - The platform session stays confined to the platform's own host (host-only cookies), so it is never sent to app origins. The owner-access implementation follows this so it does not need rework once app origins are decided.
+- Apps open in panes inside the Your Space interface. Several apps can be open side by side in one layout on larger screens; phones show one app at a time.
+- Each app's interface runs on its own origin, separate from Your Space and from other apps, so the browser isolates them from each other. A subdomain per app is the default; a port per app is the fallback where wildcard DNS is unavailable. Spec 002 settles the mechanism.
+- In the web client and PWA, each pane is a cross-origin iframe. In the desktop app, each pane is a native view (for example, Electron's `WebContentsView`), not an iframe.
+- Any app can also open in its own browser tab or window, for apps that cannot run in a pane.
 - The app UI and sign-in specification comes right after the owner-access feature and before the CLI specification; see the [CLI delivery sequence](#cli-delivery-sequence). It is part of journey 002; see [journey-based specifications](#journey-based-specifications).
 
-An iframe, reverse proxy, or controlled UI extension system is not selected by this record.
+**Decision update (2026-11-03):** Selects cross-origin panes for app interfaces: iframes in the web client and PWA, and native views in the desktop app. This supersedes the earlier statement that no iframe, reverse proxy, or UI extension system was selected. Rationale:
+
+- Only cross-origin panes run existing apps from any stack unchanged while keeping them isolated from Your Space and from each other. That keeps apps stack-agnostic.
+- Serving apps under paths on the Your Space origin was rejected. App code would share the origin, so it could call the Your Space API as the user, read platform storage, and reach other panes. Many frameworks also assume they own the root path.
+- Micro-frontends (apps shipping components that load into the Your Space page) were rejected. They run app code with the user's Your Space session and require apps to be built as JavaScript components.
+- Declarative UI (apps describe their interface and Your Space draws it) was rejected for full apps, because every app would have to rewrite its interface. Server-side composition of app HTML was rejected because it breaks most apps' scripts and routing.
+- The desktop app uses native views instead of iframes because it is the intended primary client and native views give each app its own process.
+
+Spec 002 still defines framing permission, the optional messages between Your Space and an app (such as navigation, deep links, and theme), sign-in inside a pane, and the fallback for hosts without wildcard DNS, such as Tailscale `ts.net` names. Small native pieces drawn by Your Space from app-provided descriptions (such as dashboard cards) were discussed as a possible later developer-kit contract and are not decided.
+
 Embedding and routing are separate decisions from how an app interprets authenticated identity and roles.
 Frontend controls may reflect granted access, but hiding a control is not authorization enforcement.
 
@@ -452,13 +539,13 @@ No hosted workflow engine or model-provider integration is selected here.
 
 The intended pre-public experience includes owner setup; additional members signing up through invitation links created and shared by the owner; the installation CLI for servers and local workspaces; a desktop app that can also run a local workspace; web, desktop, and PWA workspace clients; at least one installed independent app; a way for developers to create, integrate, and install more apps; and access for external agents through the Your Space gateway and CLI. It also includes built-in backup, restore, and moving a workspace between installations; owner-triggered Your Space and app updates that roll back automatically if they fail; app roles; member removal; an activity log; built-in HTTPS; uninstall; and signed desktop releases. Only the owner installs or removes apps in the first public release. The first release targets users who can install Docker Desktop and the Your Space desktop app for a local workspace, or install Docker and follow a guided CLI for a server or a local workspace.
 
-This is a developing release roadmap, not a complete acceptance specification or a claim of implementation. Additional requirements may emerge during specification. These future capabilities do not expand the owner-only first feature. The agreed sequence is manual Compose and owner access (PR #3) first, then the app UI and sign-in specification, then the CLI specification and implementation; the remaining pre-public items have no set order beyond their priorities.
+This is a developing release roadmap, not a complete acceptance specification or a claim of implementation. Additional requirements may emerge during specification. These future capabilities do not expand the owner-only first feature. The agreed sequence is manual Compose and owner access (spec 001) first, then the app UI and sign-in specification, then the CLI specification and implementation; the remaining pre-public items have no set order beyond their priorities.
 
 ### Journey-Based Specifications
 
 **Decision update (2026-11-02):** Pre-public work is specified as eight user journeys rather than one specification per roadmap capability. Each journey follows a person from where they start to a result they can see, so one specification covers many roadmap items and is tested the way people will use it. The [spec map](../spec-map.md) lists the journeys, what each covers, and the build order.
 
-- The build order is 001 set up my space (PR #3), 002 install an app and use it, 003 install and run with the CLI, 004 invite my team, 005 let my agent work for me, 006 keep my space safe over time, then 007 build my own app and 008 use Your Space as an app on my computer in parallel.
+- The build order is 001 set up my space ([spec](../../specs/001-workspace-owner-access/spec.md)), 002 install an app and use it, 003 install and run with the CLI, 004 invite my team, 005 let my agent work for me, 006 keep my space safe over time, then 007 build my own app and 008 use Your Space as an app on my computer in parallel.
 - The app UI and sign-in specification becomes part of 002, which ends with the Tasks app working inside Your Space. It still comes before the CLI, so app origins are settled before the CLI sets up HTTPS. If 002 proves too large, it can split into opening an app inside Your Space and installing an app from a URL.
 - The app contract defines app roles in 002, although only the owner exists then, so 004 adds role assignment without changing the contract.
 - The activity log arrives with agents in 005, since reviewing what agents did is its main purpose. App installs and member changes are logged from then on.
@@ -468,21 +555,23 @@ This is a developing release roadmap, not a complete acceptance specification or
 
 This refines the sequence above without changing scope: it groups existing pre-public items into journeys and orders the work after the CLI.
 
+**Decision update (2026-11-08):** A journey is delivered as a stack of pull requests into `main`. The first carries the specification and its supporting documents (plan, research, contracts, and the task list) with no task checked. Each later one adds one layer that passes its own checks, checks only the tasks it verifies, and checks roadmap items only for what it delivers. A spec on `main` describes agreed design; only checked tasks, checked roadmap items, and the verification record claim delivered work, so a spec never claims work that doesn't exist yet.
+
 ## Choices Still Open
 
 | Area | Current status |
 | --- | --- |
-| Client supporting libraries | Router, query/state tooling, styling, and component library remain open. |
-| Database configuration | PostgreSQL and Drizzle are selected; versions, migration execution and recovery, and connection configuration need planning. |
-| Authentication configuration | Better Auth is selected; password rules, session and credential lifetimes, failed-attempt limits, and adapter configuration need planning. |
-| Initial deployment details | macOS and Linux with manual Docker Compose are selected. HTTPS comes from a reverse proxy in the Compose stack with automatic certificates for an owner-provided domain, a bring-your-own-proxy option, and documented tunnel guidance; plain HTTP is supported only on localhost. Exact OS versions, proxy choice, networking, and configuration need planning. |
-| Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app handling the setup code for the user, and owner-triggered Your Space updates, backup, restore, migration to a server, and uninstall, all through the CLI. Windows support is low priority. Releases are signed before publication: Apple Developer ID with notarization on macOS, SignPath's open-source program on Windows with Microsoft Artifact Signing as the fallback, all in CI. Self-update is required; packaging and self-update mechanics need a specification. |
+| Client supporting libraries | TanStack Router, TanStack Query, plain CSS, and no component library are selected in the [001 plan](../../specs/001-workspace-owner-access/plan.md). A design system is open for the later interface design spec. |
+| Database configuration | PostgreSQL 18 with Drizzle and `pg`; Drizzle Kit migrations applied at server startup. Settled in the [001 plan](../../specs/001-workspace-owner-access/plan.md). Recovery from a failed migration belongs with update rollback in spec 006. |
+| Authentication configuration | Better Auth with its organization plugin; password rules, lifetimes, attempt limits, and adapter configuration are settled in the [001 plan](../../specs/001-workspace-owner-access/plan.md). |
+| Initial deployment details | macOS and Linux with manual Docker Compose are selected. HTTPS comes from a Caddy reverse proxy in the Compose stack, delivered in the owner-access feature, with automatic certificates for an owner-provided domain, a bring-your-own-proxy option, and documented tunnel guidance; plain HTTP is supported only on localhost. Host versions (Docker Engine 28.3.3 and Compose 2.26.0 or newer), the one-line setups, and generated platform secrets are settled in the [001 plan](../../specs/001-workspace-owner-access/plan.md); support claims wait for verification on real hosts. |
+| Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers Docker detection, stack setup and startup, owner setup with the app running the owner command and setting the password for the user, and owner-triggered Your Space updates, backup, restore, migration to a server, and uninstall, all through the CLI. Windows support is low priority. Releases are signed before publication: Apple Developer ID with notarization on macOS, SignPath's open-source program on Windows with Microsoft Artifact Signing as the fallback, all in CI. Self-update is required; packaging and self-update mechanics need a specification. |
 | CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. Its minimum operations are install, start, stop, status, logs, update Your Space, owner password recovery, backup, restore, and uninstall; uninstall removes managed app containers and keeps data unless the owner confirms deletion. A separate follow-up specification will define packaging, command names, prerequisite automation, and management behavior over the established Compose deployment. |
 | Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup, restore, and migration between installations are required before publication; remote CLI authentication, restore into a broken or fresh installation, and backup format and protection remain open. |
 | Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
 | Public launch scope | A working core experience before publication is the direction. The pre-public scope was settled in the 2026-11-02 interview, and every pre-public roadmap item has a High, Medium, or Low priority; Windows support and PWA installation are Low. Detailed release criteria remain to be defined. See [public release readiness](../public-release-readiness.md). |
-| App UI execution | Embedding model, origins, isolation, routing, and session bridging remain open; they are specified in journey 002, after the owner-access feature and before the CLI. The platform session uses host-only cookies. |
+| App UI execution | Apps open in panes, side by side on larger screens: cross-origin iframes in the web client and PWA, native views in the desktop app. Each app runs on its own origin, a subdomain by default with a port as the fallback. Framing permission, shell-to-app messages, sign-in inside a pane, and the no-wildcard-DNS fallback are specified in journey 002, after the owner-access feature and before the CLI. The platform session uses host-only cookies. |
 | Project license | AGPL-3.0 for Your Space and Apache-2.0 for the SDKs, with a "Your Space" trademark and a contributor license agreement, all in place and reviewed by a lawyer before publication. Trademark filing details and agreement wording remain open. |
 | Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off. Future reporting must be opt-in; opt-out is prohibited. |
 | External apps | Apps can be managed or hosted elsewhere and added by pointing Your Space at them. How an external app is registered, verifies Your Space identity, and is reached through the gateway needs definition in the app integration specification. |

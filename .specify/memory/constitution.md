@@ -1,3 +1,29 @@
+<!--
+Sync Impact Report (2026-11-07): 1.1.1 -> 1.2.0 (minor: materially expanded principle)
+- Expanded: II. Preserve User Control and Hosting Choice now requires configuration to be optional:
+  safe defaults that suit most installations, an owner's configuration that starts empty and holds
+  only what they change, derived values instead of extra settings, and generated secrets.
+- Rationale: the owner asked that configuration work like editor settings: nothing to fill in by
+  default, one line per change. Every required setting is a chance to get an install wrong, and
+  defaults the project owns can improve without owners editing files.
+- Impact: the 001 plan follows it: no line in .env for this machine, one line (YS_DOMAIN or
+  YS_PROXY_URL) for other devices, and the two secrets are generated unless .env sets them
+  (research R16). Later plans name the default and the derivation for every setting they add.
+
+Sync Impact Report (2026-11-03): 1.1.0 -> 1.1.1 (patch: clarification)
+- Clarified: VII. Reuse Before Building now says to use each library only for the purpose it was
+  built for, rather than stretching an available feature into a general system for the app.
+- Rationale: in the 001 plan review, Better Auth's rate limiter was proposed as the app's rate
+  limiter; it only protects Better Auth's own routes and cannot count per account.
+- Impact: the 001 plan keeps Better Auth's limiter on Better Auth's own routes and adds no app-wide
+  rate limiting yet; no implementations exist yet.
+
+Sync Impact Report (2026-11-03): 1.0.0 -> 1.1.0 (minor: new principle)
+- Added: VII. Reuse Before Building, With Few Trusted Dependencies
+- Rationale: custom code must be maintained, secured, and documented by the project; proven
+  libraries already solve most of it, while every dependency adds supply-chain and upgrade cost.
+- Impact: no existing plans or implementations; decision record and spec map updated to match.
+-->
 # Your Space Constitution
 
 ## Core Principles
@@ -21,6 +47,12 @@ execution runtime.
 
 Your Space must support self-hosting with guided installation and understandable recovery from
 setup failures.
+
+Configuration is optional. Every setting has a safe default that suits most installations, so an
+owner's configuration starts empty and holds only the lines they change. Values that follow from
+other settings are derived rather than asked for, wherever the tooling can derive them, and
+secrets are generated when none are given. A default never exposes more than the most common setup
+needs: anything reachable from the network is opened by an explicit choice.
 
 Your Space defines the authentication model and provides server-managed user accounts and
 sessions. Authentication must not require an external identity service.
@@ -84,6 +116,25 @@ behaviors.
 
 Completion claims must accurately describe what was verified and any known limitations.
 
+### VII. Reuse Before Building, With Few Trusted Dependencies
+
+Do not reinvent the wheel. Prefer proven open-source libraries and tools to custom code, and use
+their native features as intended rather than wrapping or reimplementing them. Custom code fills
+only the gaps they leave.
+
+Use each library for the purpose it was built for. Do not stretch a feature that happens to be
+available into a general system for the app; when the app needs that system, choose a library made
+for the job.
+
+Keep the set of dependencies small and trusted. A dependency must be actively maintained, widely
+used, and license-compatible, and must earn its place by replacing substantial custom code or
+providing a capability the project should not own. Small, simple needs are written directly rather
+than imported. Prefer one dependency that covers several needs over several narrow ones, and keep
+integrations thin.
+
+Technical plans name the dependency or native feature each requirement relies on, and justify each
+new dependency and each piece of custom machinery.
+
 ## Data and Compatibility
 
 User data must survive supported restarts and upgrades. Changes affecting stored data or public
@@ -121,4 +172,4 @@ clarifications and other non-semantic changes.
 When a proposal conflicts with the constitution, resolve the conflict explicitly by revising the
 proposal or amending the relevant principle.
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-10-28
+**Version**: 1.2.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-11-07

@@ -1,6 +1,6 @@
 # Spec Map
 
-**Last updated**: 2026-11-02
+**Last updated**: 2026-11-08
 
 The pre-public [roadmap](roadmap.md) is delivered through eight specifications. Each one follows a
 person through one complete journey, from where they start to a result they can see, and covers
@@ -13,7 +13,7 @@ Why: [journey-based specifications](architecture/decisions.md#journey-based-spec
 
 | Spec | Journey | Done when |
 | --- | --- | --- |
-| 001 | **Set up my space** | The operator installs Your Space, claims it, signs in, and can recover the owner account. |
+| 001 | **Set up my space** | The operator installs Your Space, creates the owner, signs in, and can recover the owner account. |
 | 002 | **Install an app and use it** | The owner installs the Tasks app from its URL and uses it inside Your Space. |
 | 003 | **Install and run with the CLI** | One guided install on a server or laptop gives a working HTTPS space. |
 | 004 | **Invite my team** | A member joins by invitation, gets app roles, and can recover their password. The owner can remove them. |
@@ -29,8 +29,8 @@ Why: [journey-based specifications](architecture/decisions.md#journey-based-spec
                                                                                           └─► 008 Desktop
 ```
 
-- **002 before 003:** 002 decides where apps live (subdomains or paths), which sets the domains and
-  certificates the CLI installs.
+- **002 before 003:** 002 decides each app's origin (a subdomain by default, a port as the
+  fallback), which sets the domains and certificates the CLI configures on the proxy from 001.
 - **006 after 004 and 005:** backup and restore must cover members, agents, and app data.
 - **008 last:** the desktop app wraps the CLI's finished commands without changing them.
 - **007 and 008** can run in parallel.
@@ -42,13 +42,15 @@ Roadmap layers: [1 Install and operate](roadmap.md#1-install-and-operate) ·
 [4 Agents](roadmap.md#4-agents) · [5 Clients](roadmap.md#5-clients) ·
 [6 Trust and release](roadmap.md#6-trust-and-release)
 
-**001 Set up my space** ([PR #3](https://github.com/your-space-ai/your-space/pull/3))
+**001 Set up my space** ([spec](../specs/001-workspace-owner-access/spec.md))
 - Manual Compose install, data that survives restarts, access from another device, ARM and Intel images.
-- Owner setup and sessions: setup code, sign-in, host-only session cookie, recovery.
+- HTTPS: built-in proxy with automatic certificates, or your own proxy or tunnel.
+- Owner setup and sessions: owner command with a set-password link, sign-in, host-only session cookie, recovery.
 - The web client.
 
 **002 Install an app and use it**
-- App UI and sign-in: where apps live, opening them inside Your Space, verified identity for apps.
+- App UI and sign-in: each app on its own origin, opened in panes inside Your Space (iframes on the
+  web, several side by side on larger screens), verified identity for apps.
 - Installing from a URL: deployment file, exact images, approved Compose settings, `x-your-space`,
   settings and secrets, trust warning.
 - Running apps: containers, database, storage, isolation, outbound access approval, limits, status
@@ -58,7 +60,7 @@ Roadmap layers: [1 Install and operate](roadmap.md#1-install-and-operate) ·
 **003 Install and run with the CLI**
 - Guided install for servers and local machines on macOS and Linux, and Windows (L).
 - Commands: install, start, stop, status, logs, owner recovery.
-- HTTPS: built-in proxy with automatic certificates, or your own proxy or tunnel.
+- Asking for the domain during install, so HTTPS is set up for you.
 - The manual Compose guide, kept as an advanced option (L).
 
 **004 Invite my team**
@@ -83,7 +85,8 @@ Roadmap layers: [1 Install and operate](roadmap.md#1-install-and-operate) ·
 - Adding an external app hosted elsewhere.
 
 **008 Use Your Space as an app on my computer**
-- Desktop app on macOS, Linux, and Windows (L), signed and self-updating.
+- Desktop app on macOS, Linux, and Windows (L), signed and self-updating; the intended primary client.
+- Installed apps in native views instead of iframes.
 - Local mode: detect Docker, set up through the CLI, start with the app, update, back up, uninstall.
 - A clear message when app, CLI, and server versions don't match; the installable PWA (L).
 
@@ -97,6 +100,9 @@ These apply from the first spec, so later specs don't have to retrofit them:
 - **Known storage.** All durable state lives in the database or named volumes, so backup has one
   clear thing to capture.
 - **The actual actor.** Records credit the real actor, human or agent, from the first database schema.
+- **Reuse before building.** Use open-source libraries and their native features before writing
+  custom code, each for the purpose it was built for, while keeping dependencies few and trusted
+  and integrations thin.
 - **Docs and security included.** Each spec ships its own docs and tests its own security boundaries.
 
 ## Release Gate (Not a Spec)

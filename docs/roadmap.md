@@ -1,6 +1,6 @@
 # Your Space Roadmap
 
-**Last updated**: 2026-11-02
+**Last updated**: 2026-11-08
 
 This roadmap tracks the functionality we want to build for Your Space: a self-hostable platform
 for independent apps, human users, and agents, with a managed offering planned later.
@@ -17,27 +17,29 @@ Release scope and details may evolve as the remaining questions are resolved. Se
 
 **Current direction:** Pre-public work is delivered through eight journey specifications, listed with
 their build order in the [spec map](spec-map.md). Owner access with a manual Compose install comes
-first (PR #3), then installing and using an app (which includes app UI and sign-in), then the CLI.
-The [overview tree](#overview) summarizes the full pre-public scope by layer, and the
-[architecture overview](architecture/overview.md) shows the resulting system. Automatic app updates,
-building apps from source, alternative deployment-file formats, and a workspace MCP endpoint are
-post-open-source work.
+first ([spec 001](../specs/001-workspace-owner-access/spec.md)), then installing and using an app
+(which includes app UI and sign-in), then the CLI. The [overview tree](#overview) summarizes the
+full pre-public scope by layer, and the [architecture overview](architecture/overview.md) shows the
+resulting system. Automatic app updates, building apps from source, alternative deployment-file
+formats, and a workspace MCP endpoint are post-open-source work.
 
-**Next step:** Review and merge PR #3, then write spec 002, "install an app and use it". Every
-pre-public item below has a priority; Low items move to post-open-source work first if the timeline
-slips.
+**Next step:** Deliver spec 001 through its stack of pull requests, then write spec 002, "install an
+app and use it". Every pre-public item below has a priority; Low items move to post-open-source work
+first if the timeline slips.
 
 The pre-public section is grouped into layers. Within each layer, each parent checkbox represents a
 capability and its nested checkboxes track specific functionality.
 Checked items mean delivered and verified work, not completed planning. Keep completed items in
 place with their completion date and implementation PR or release link so this remains a record.
-All functionality below is currently unchecked because application implementation has not started.
+Items delivered by the owner-access feature ([spec 001](../specs/001-workspace-owner-access/spec.md))
+are checked here as each part is delivered and verified; its install, other-device, image, and HTTPS
+items wait for verification on real hosts. Everything else below is unchecked.
 
 ## Pre-public: Core Experience and First Working Version
 
 The first release targets people who can install Docker Desktop and the Your Space desktop app for a
 local workspace, or install Docker and follow a guided CLI for a server or local workspace. The
-[owner-access feature (PR #3)](https://github.com/your-space-ai/your-space/pull/3) is first. Spec 002,
+[owner-access feature](../specs/001-workspace-owner-access/spec.md) is first. Spec 002,
 "install an app and use it", follows and includes app UI and sign-in, because app origins decide
 what the CLI sets up for HTTPS and clients, apps, SDKs, and agents build on it. The CLI follows in
 spec 003. The [spec map](spec-map.md) assigns every item below to a journey specification and sets
@@ -64,14 +66,14 @@ Your Space: first public release
 │
 ├── 1. Install and operate
 │   ├── Server stack
-│   │   ├── [001] Manual Docker Compose install on macOS and Linux (PR #3)
+│   │   ├── [001] Manual Docker Compose install on macOS and Linux
 │   │   ├── [001] Identity and data survive restarts and recreation
 │   │   ├── [001] Encrypted access from another device
 │   │   ├── [001] Images for ARM (Apple Silicon) and Intel/AMD
 │   │   └── [003] Manual Compose guide kept as an advanced option (L)
 │   ├── HTTPS
-│   │   ├── [003] Built-in proxy with automatic certificates; plain HTTP on localhost only
-│   │   └── [003] Bring your own proxy or tunnel (M)
+│   │   ├── [001] Built-in proxy with automatic certificates; plain HTTP on localhost only
+│   │   └── [001] Bring your own proxy or tunnel (M)
 │   ├── CLI (drives Compose for you)
 │   │   ├── [003] Guided local and server install
 │   │   ├── [003 006] install · start · stop · status · logs · update · owner recovery
@@ -84,7 +86,7 @@ Your Space: first public release
 │
 ├── 2. Identity and access
 │   ├── Owner setup and sessions
-│   │   ├── [001] One-time setup code, one owner, no duplicate claims
+│   │   ├── [001] Owner created by a server command; sign-up closed
 │   │   ├── [001] Accurate empty workspace and service states
 │   │   ├── [001] Sign in/out, expiry and revocation, host-only session cookie
 │   │   └── [001] Owner recovery by server command, sessions revoked
@@ -129,7 +131,10 @@ Your Space: first public release
 │   │   └── [006] Backup first, automatic rollback on failure
 │   ├── Apps inside Your Space
 │   │   ├── [002] Apps open in the UI with navigation; normal frontend requests work
-│   │   └── [002] Same backend checks for UI and programmatic access
+│   │   ├── [002] Same backend checks for UI and programmatic access
+│   │   ├── [002] Each app on its own origin, in an iframe on the web
+│   │   ├── [002] Several apps side by side on larger screens (M)
+│   │   └── [002] Open any app in its own tab or window (M)
 │   └── Developer kit
 │       ├── [002 007] Versioned public contracts, same for managed and external apps
 │       ├── [002 007] TypeScript + Python SDKs, each verified with a working app
@@ -152,9 +157,10 @@ Your Space: first public release
 │   │   ├── [008] macOS · Linux (M) · Windows with a local workspace (L)
 │   │   ├── [008] Signed: macOS Developer ID + notarization · Windows (L)
 │   │   ├── [008] Connect to a server by URL, or run locally
+│   │   ├── [008] Apps in native views instead of iframes
 │   │   └── [008] Updates itself from GitHub releases (M)
 │   └── Desktop local mode (wraps the CLI)
-│       ├── [008] Detect Docker, set up, submit the setup code, start with the app, update
+│       ├── [008] Detect Docker, set up, create the owner, start with the app, update
 │       ├── [008] Backup, restore, move to a server, uninstall (M)
 │       └── [008] Sleep/off availability and Docker Desktop license documented (M)
 │
@@ -178,12 +184,14 @@ Your Space: first public release
   - [ ] [Low] Keep the manual Compose procedure documented as an advanced alternative to the CLI.
   - [ ] [High] Publish Your Space images for both ARM (including Apple Silicon) and Intel/AMD machines.
 
-  The manual install is part of the owner-access feature (PR #3). Exact host support and remote
-  access details still need planning.
+  The manual install is part of the owner-access feature ([spec 001](../specs/001-workspace-owner-access/spec.md)).
 
 - [ ] **HTTPS**
 
   **Source:** [Installation and hosting](architecture/decisions.md#installation-and-hosting).
+
+  Part of the owner-access feature ([spec 001](../specs/001-workspace-owner-access/spec.md)); the CLI
+  later asks for the domain during installation.
 
   - [ ] [High] Set up HTTPS during installation: a reverse proxy in the Compose stack obtains and renews a certificate when the owner gives a domain. Plain HTTP is supported only on localhost.
   - [ ] [Medium] Let owners with their own reverse proxy or tunnel turn off the built-in proxy, and document a private tunnel such as Tailscale for owners without a domain.
@@ -222,17 +230,18 @@ Your Space: first public release
 
   **Source:** [Authentication and initial claim](architecture/decisions.md#authentication-and-initial-claim) and [sessions, persistence, and recovery](architecture/decisions.md#sessions-persistence-and-recovery).
 
-  - [ ] [High] Reach browser-guided setup and prove operator authority with a temporary, single-use setup code.
+  - [ ] [High] Create the owner with a server command that prints a single-use set-password link; the network alone can never create an account or the owner.
   - [ ] [High] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct.
-  - [ ] [High] Prevent duplicate claims and close initial registration after setup.
+  - [ ] [High] Prevent duplicate owners and keep sign-up closed; new people join only by invitation.
   - [ ] [High] Reach an accurate empty workspace and distinguish unavailable services from empty or unclaimed state.
   - [ ] [High] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation.
   - [ ] [High] Keep the platform session in host-only cookies so it is never sent to app origins.
   - [ ] [High] Recover the existing owner account through an operator command without requiring email delivery or a standalone CLI.
   - [ ] [High] Preserve identity and revoke existing sessions after successful password recovery.
 
-  The owner-access feature (PR #3) is owner-only and web-only. Password rules, session and credential
-  lifetimes, and failed-attempt behavior still need planning.
+  The owner-access feature ([spec 001](../specs/001-workspace-owner-access/spec.md)) is owner-only and
+  web-only. Password rules, session and credential lifetimes, and failed-attempt behavior are settled
+  in the [001 plan](../specs/001-workspace-owner-access/plan.md#settled-values).
 
 - [ ] **Workspace members**
 
@@ -347,8 +356,12 @@ Your Space: first public release
   - [ ] [High] Open installed apps within the Your Space interface while platform navigation remains available.
   - [ ] [High] Preserve normal frontend requests to the app backend without requiring each request to be rewritten for Your Space.
   - [ ] [High] Apply equivalent backend authorization checks to human UI and programmatic access.
+  - [ ] [High] Run each app's interface on its own origin, isolated from Your Space and other apps, in a cross-origin iframe in the web client.
+  - [ ] [Medium] Open several apps side by side in one layout on larger screens; show one app at a time on phones.
+  - [ ] [Medium] Open any app in its own browser tab or window when it cannot run in a pane.
 
-  Embedding, origins, routing, isolation, and session bridging are decided in spec 002, "install an
+  Origins default to a subdomain per app, with a port per app as the fallback. Framing permission,
+  shell-to-app messages, sign-in inside a pane, and routing are decided in spec 002, "install an
   app and use it".
 
 - [ ] **Developer kit**
@@ -391,7 +404,8 @@ Your Space: first public release
 
   **Source for simplicity:** [Product experience principles](architecture/decisions.md#product-experience-principles).
 
-  The owner-access feature uses the web client. PWA offline behavior remains open.
+  The desktop app is the intended primary client; web and PWA stay full clients. The owner-access
+  feature uses the web client. PWA offline behavior remains open.
 
 - [ ] **Desktop app**
 
@@ -403,6 +417,7 @@ Your Space: first public release
   - [ ] [High] Sign and notarize macOS builds with an Apple Developer ID in CI.
   - [ ] [Low] Sign Windows builds through SignPath, with Microsoft Artifact Signing as fallback, in CI.
   - [ ] [High] On setup, let the user connect to an existing server by URL or run Your Space locally.
+  - [ ] [High] Show installed apps in native views, one per app, instead of iframes.
   - [ ] [Medium] Update the desktop app itself, checking GitHub for new releases.
 
   Desktop packaging and self-update mechanics need a specification.
@@ -413,7 +428,7 @@ Your Space: first public release
 
   - [ ] [High] In local mode, drive the Your Space CLI to set up and run the Docker Compose stack on the same machine, then connect to it.
   - [ ] [High] Detect Docker and link to the Docker Desktop download when it is missing.
-  - [ ] [High] In local mode, obtain the setup code through the CLI and submit it on the user's behalf, using the same setup flow as every other installation.
+  - [ ] [High] In local mode, create the owner through the CLI and set the password on the user's behalf, using the same owner command as every other installation.
   - [ ] [High] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
   - [ ] [Medium] Back up and restore the local workspace, and move it to a server, through the CLI.
   - [ ] [Medium] Uninstall the local workspace through the CLI's uninstall command.
@@ -466,6 +481,14 @@ These capabilities are not required for the first public release. Their order an
   - [ ] Send password-reset links to verified addresses through the existing recovery mechanism.
 
   No installation requires email. The first public release needs a member recovery path that works without it.
+
+- [ ] **Optional open sign-up**
+
+  **Deferred (2026-11-03):** [Authentication and initial claim](architecture/decisions.md#authentication-and-initial-claim).
+
+  - [ ] Let the owner choose to allow people to sign up without an invitation.
+
+  Until then, new people join only when the owner invites them.
 
 - [ ] **Automatic app updates**
 
