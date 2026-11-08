@@ -62,7 +62,7 @@ The tables are in [data-model.md](data-model.md).
 **Target Platform**:
 
 - Server hosts: macOS 15 and 26 with Docker Desktop, and Ubuntu 24.04 LTS and Debian 13 with Docker
-  Engine 28.3.3 or newer (CVE-2025-54388) and Docker Compose 2.24 or newer. Each runs on ARM and
+  Engine 28.3.3 or newer (CVE-2025-54388) and Docker Compose 2.24.6 or newer. Each runs on ARM and
   Intel/AMD.
 - Browsers: the current and previous versions of Chrome, Edge, Firefox, and Safari, including iOS.
 

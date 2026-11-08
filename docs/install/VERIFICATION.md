@@ -72,8 +72,12 @@ the `evidence/claude/001-implementation` branch, which is never merged.
   network;
 - that setting both keys stops Compose with a message.
 
-CI runs the same checks on Compose 2.24.0. That wasn't run here: the sandbox couldn't download other
-Compose versions.
+The same checks pass on Compose 2.24.6, the oldest version the guide names, run from Docker's official
+`docker/compose-bin:v2.24.6` image; CI runs them on that version too. Versions 2.24.0 to 2.24.5
+refuse a second Compose file that changes an included service ("conflicts with imported resource"),
+which the browser tests' build override and an owner's `compose.override.yaml` both do. On 2.24.6,
+a stack started with `YS_PORT=18291` served `/api/status`, and a misspelled key kept every port
+closed, as on 5.6.
 
 With a running stack and locally built images (2026-11-08):
 
@@ -150,7 +154,6 @@ These are required before the guide can claim them. They need real machines and 
 - **Downloading `your-space.tar.gz` from a release**: no release exists yet. The workflow step that
   builds it and pins `stack.yaml` to the release's image version was run locally with a pretend tag,
   and the unpacked files resolved with `docker compose config`.
-- **Compose 2.24**, the oldest version the guide names: checked only by the CI job above.
 - **IPv6**: not supported yet. Your own domain is published on `0.0.0.0` (IPv4) only, because a
   literal `[::]` fails on hosts without IPv6, so the guide says not to add an `AAAA` record.
 - **Docker Desktop's networking**: whether Your Space sees each visitor's own address there (which

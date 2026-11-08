@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        compose: ["2.24.0", runner]
+        compose: ["2.24.6", runner]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

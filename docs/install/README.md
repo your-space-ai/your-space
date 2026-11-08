@@ -19,7 +19,7 @@ You need:
   - Linux with [Docker Engine](https://docs.docker.com/engine/install/) 28.3.3 or newer and the
     Docker Compose plugin. Older Engine versions can open ports meant for this machine only to the
     network after a firewall reload (CVE-2025-54388).
-- Docker Compose 2.24 or newer: `docker compose version` prints `v2.24.0` or later.
+- Docker Compose 2.24.6 or newer: `docker compose version` prints `v2.24.6` or later.
 - About 1 GB of free memory and 2 GB of disk.
 - `openssl` to generate secrets (installed on macOS and most Linux distributions).
 - For access from other devices: a domain name pointing at the server, or [Tailscale](https://tailscale.com).
@@ -29,10 +29,10 @@ Windows is not supported as a server.
 
 **Checked so far:** steps 2 to 5 and the later sections were checked only with locally built
 images on Linux on Intel/AMD (x86_64) with Docker Engine 29 and Compose 5.6, in Chromium, Firefox,
-and WebKit. Each setup's published ports were checked with `docker compose config`, and the
-this-machine and own-proxy setups also with a running stack. Downloading from a release, the
-published images, macOS, ARM machines such as Apple Silicon, IPv6, Compose 2.24 itself, and HTTPS
-with a real domain or Tailscale have not been checked yet. [VERIFICATION.md](VERIFICATION.md) lists
+and WebKit. Each setup's published ports were checked with `docker compose config` on Compose 5.6
+and 2.24.6, and the this-machine and own-proxy setups also with a running stack. Downloading from
+a release, the published images, macOS, ARM machines such as Apple Silicon, IPv6, and HTTPS with a
+real domain or Tailscale have not been checked yet. [VERIFICATION.md](VERIFICATION.md) lists
 exactly what was tested, with versions.
 
 Check Docker before you go on:

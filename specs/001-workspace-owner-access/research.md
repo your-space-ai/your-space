@@ -207,7 +207,10 @@ that settled each question.
   they write picks the setup. Everything else, including which ports open, is derived. Each setup
   is a file in `deploy/modes/` with its port addresses written out, and `deploy/compose.yaml`
   includes the matching file through an interpolated path,
-  `modes/mode${YS_DOMAIN:+.domain}${YS_PROXY_URL:+.proxy}.yaml` (Compose 2.24 or newer).
+  `modes/mode${YS_DOMAIN:+.domain}${YS_PROXY_URL:+.proxy}.yaml`. That needs Compose 2.24.6 or newer:
+  2.24.0 to 2.24.5 refuse any second Compose file (such as `compose.override.yaml`) that changes a
+  service brought in by `include` ("conflicts with imported resource"), checked with the official
+  `docker/compose-bin` releases.
 
   | Setup | `.env` | Result |
   | --- | --- | --- |
