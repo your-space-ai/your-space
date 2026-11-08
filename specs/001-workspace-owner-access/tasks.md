@@ -134,7 +134,8 @@ on a clean stack.
 - [ ] T032 [US1] Implement `web/src/router.tsx` with routes `/sign-in`, `/`, and `/reset-password`; the root `beforeLoad` shows NoOwnerYet when there is no owner and ErrorState when storage is unavailable
 - [ ] T033 [US1] Write `docs/install/README.md` sections for prerequisites, configuring this machine (`YS_PORT` and refused settings), starting the stack, `create-owner`, and setting the password (FR-001)
 
-**Checkpoint**: User Story 1 works end to end on localhost.
+**Checkpoint**: User Story 1 works end to end on localhost, once T036 and T037 (Phase 4) and T049
+(Phase 6) exist.
 
 ---
 
@@ -143,7 +144,8 @@ on a clean stack.
 **Goal**: The owner signs in and out from any device over HTTPS, and protected data needs a valid
 session.
 
-**Independent Test**: [quickstart.md section 3](quickstart.md#3-sign-in-remote-access-sign-out-story-2).
+**Independent Test**: [quickstart.md section 2](quickstart.md#2-https-with-a-domain-story-1-scenario-9)
+and [section 3](quickstart.md#3-sign-in-remote-access-sign-out-story-2).
 
 ### Tests for User Story 2
 
@@ -179,7 +181,7 @@ unavailable" and never "no owner yet".
 
 ### Tests for User Story 3
 
-- [ ] T040 [P] [US3] `e2e/tests/us3-restart.spec.ts`:
+- [ ] T040 [US3] `e2e/tests/us3-restart.spec.ts`:
   - after `docker compose restart` and after `down` then `up`, user, workspace, and membership IDs match and an existing session still works;
   - with Postgres stopped, the web shows "storage unavailable", `/api/status` returns 503, and `create-owner` exits 3;
   - after Postgres restarts, everything returns unchanged.
@@ -262,10 +264,14 @@ out every session, without email.
   `secrets.spec.ts`, which also needs the running stack (see the Phase 2 checkpoint).
 - **T032 and T026**: `router.tsx` imports `SignIn.tsx` (T036) and `Home.tsx` (T037), and the US1
   browser test signs in and reads the home screen. So T036 and T037 are built with US1, and Phase 4
-  checks their US2 behavior (wrong password, rate limit, sign-out).
+  checks their US2 behavior (wrong password, rate limit, sign-out). The US1 browser test also
+  expects the `recovery.password_reset` event recorded when the owner sets the password, which T049
+  adds to `auth.ts`, so T049 is built with US1 too.
 - **T040**: `us3-restart.spec.ts` also runs `reset-link` with Postgres stopped and expects exit 3,
   so it passes once `recovery/reset-link.ts` (T047) and the `reset-link` command and wrapper (T048)
   exist.
+- **T046**: `us4-recover.spec.ts` opens `/` after the reset and expects `/sign-in`, the redirect for
+  signed-out visitors that T038 adds to `router.tsx`, so it passes once T038 exists.
 - **Polish (Phase 7)**: depends on all stories.
 
 ### Within Each Story
@@ -279,12 +285,16 @@ out every session, without email.
 - Foundational: T058 and T007 first (T006 imports `secrets.ts`, T008 imports `log.ts`); then T017, T018, T019, T022, T059, T063 together once T006 and T008 exist; T065 once T020 exists, and T066 once T017, T019, T020 and T064 exist; T016 once T012 and T013 exist (`helpers/db.ts` runs the migrations through `migrate.ts`); T021's `main.tsx` renders the router from T032, so it builds once T032's root route and T030's `NoOwnerYet.tsx` exist.
 - US1: T025's `helpers/server.ts` and `helpers/owner.ts` first, since T024 imports them; then tests T023 to T026 together; T029 and T030 alongside T027 and T028; T036 and T037 before T032.
 - US2: T034 and T035 together; T036 and T037 are already built with US1.
-- US3 and US4 can be built in parallel after US1, except that T040's test needs T047 and T048.
+- US3 and US4 can be built in parallel after US1, except that T040's test needs T047 and T048, and T046's test needs T038 (US2).
 - Polish: T051, T052, T053 together; T070 after T052, since it adds a job to `images.yml`.
 
 ## Parallel Example: User Story 1
 
 ```text
+# First, the helpers that T024 imports:
+Task: "T025 server/tests/helpers/server.ts and server/tests/helpers/owner.ts"
+
+# Then the tests together:
 Task: "T023 server/tests/create-owner.test.ts"
 Task: "T024 server/tests/signup-closed.test.ts"
 Task: "T025 server/tests/status.test.ts"
@@ -296,7 +306,7 @@ Task: "T026 e2e/tests/us1-create-owner.spec.ts"
 ### MVP First
 
 1. Phases 1 and 2.
-2. Phase 3 (US1).
+2. Phase 3 (US1), with T036, T037 and T049 (see Phase Dependencies).
 3. Stop and validate quickstart section 1 on localhost.
 
 ### Then, in Order

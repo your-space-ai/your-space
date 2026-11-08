@@ -93,10 +93,12 @@ The CLI (spec 003) writes the same lines.
 **Decision update (2026-11-08):** Your Space generates its own platform secrets. A secret the owner
 sets in `.env` is used as given and never copied, so owners can supply secrets from their own
 store. Otherwise each secret is generated once, as random bytes, into a dedicated `ys-secrets`
-volume kept apart from the database, and never regenerated: if the database exists but a secret is
-missing, start-up stops with recovery steps. No sample or default secret ever runs. A dedicated
-secret manager was rejected for now, because on one machine its unseal key sits on the same disk
-and it adds a container and bootstrap secrets of its own; OpenBao (MPL-2.0) is the upgrade path.
+volume kept apart from the database, and never regenerated on its own: if the database exists but
+a secret is missing, start-up stops with recovery steps. The owner can replace a generated secret
+on request with the secrets step's `--new` option. No sample or default secret ever runs. A
+dedicated secret manager was rejected for now, because on one machine its unseal key sits on the
+same disk and it adds a container and bootstrap secrets of its own; OpenBao (MPL-2.0) is the
+upgrade path.
 The research and alternatives are summarized in
 [research R16](../../specs/001-workspace-owner-access/research.md#r16-platform-secrets).
 
@@ -179,6 +181,8 @@ Every installation uses the same owner command. In desktop local mode, the deskt
 **Decision update (2026-11-03):** The owner is created by a server command that prints a set-password link, replacing the setup code and browser claim form. Bots watch public certificate logs and complete the setup pages of new sites within minutes, so a fresh install must not be claimable over the network. A server command closes that hole with the fewest parts: no setup code, no claim endpoint, and no setup page. The set-password link reuses Better Auth's password-reset flow, so no temporary password exists. Better Auth has no "change password on first sign-in" feature, so a temporary password would need custom code. Sign-up stays off on the running server; the command creates the owner from its own process. This supersedes the earlier setup-code decisions: browser-guided owner setup, in which a temporary, single-use setup code from the operator-only installation procedure established the authority to claim an installation and successful setup then closed initial registration; initial account creation that also collected the password; and, in desktop local mode, the desktop app obtaining the setup code through the CLI and submitting it for the user. Server access now proves installation authority, as the setup code did; neither proves control of the email address.
 The same account model serves local and remote installations; deployment configuration may govern email delivery and verification policy.
 Separate local-only and hosted authentication implementations are not part of the direction.
+
+**Decision update (2026-11-03):** The [001 technical plan](../../specs/001-workspace-owner-access/plan.md) uses Better Auth's organization plugin for the workspace, membership, and owner role, and settles password rules, session and link lifetimes, and sign-in limits in its [settled values](../../specs/001-workspace-owner-access/plan.md#settled-values).
 
 ### Sessions, Persistence, and Recovery
 
@@ -341,10 +345,9 @@ Dependency selection must consider actual licenses, including bundled components
 
 - Simple by default. Show people only what they need to see, and avoid filling the interface with settings and configuration that can overwhelm beginners.
 - Deeper controls are available for power users, but they stay out of the default experience.
+- Configuration works like editor settings: the defaults live in Your Space, the owner's file starts empty, and each line in it overrides one default. Every setting needs a safe default that suits most installations; a value that follows from other settings is derived, not asked for; secrets are generated when the owner doesn't supply them.
 
 **Decision update (2026-11-02):** Simplicity by default is a product principle for every client and feature. New settings, logs, and configuration go behind advanced controls unless most users need them.
-
-- Configuration works like editor settings: the defaults live in Your Space, the owner's file starts empty, and each line in it overrides one default. Every setting needs a safe default that suits most installations; a value that follows from other settings is derived, not asked for; secrets are generated when the owner doesn't supply them.
 
 **Decision update (2026-11-08):** Configuration is optional, part of [constitution principle II](../../.specify/memory/constitution.md#ii-preserve-user-control-and-hosting-choice) since version 1.2.0 (2026-11-07). Required settings are each a chance to get an install wrong, and they freeze today's choice into every owner's file, so a better default later reaches nobody. Plans name each setting's default and how it is derived, and the documentation lists the defaults so an owner can see what a line would change. Where a tool can't derive a value, the setting stays and the CLI (spec 003) derives it; in the manual Compose install, the one line the owner writes picks the port bindings (see [Installation and Hosting](#installation-and-hosting)).
 
