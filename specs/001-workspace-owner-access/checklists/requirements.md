@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-28
 
-**Last updated**: 2026-11-02
+**Last updated**: 2026-11-08
 
 **Feature**: [Specification](../spec.md)
 

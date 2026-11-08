@@ -301,7 +301,8 @@ that settled each question.
 ## R11. Migrations and Schema Version (FR-024)
 
 - **Decision:**
-  - Better Auth's CLI (`npx auth@latest generate`) writes its Drizzle schema file.
+  - Better Auth's CLI, pinned to the server's Better Auth version (`npx auth@1.7.18 generate`),
+    writes its Drizzle schema file.
   - Drizzle Kit (`drizzle-kit generate`) turns both schema files into versioned SQL migrations,
     which are committed.
   - At startup, the server applies pending migrations with `drizzle-orm`'s `migrate()` under a

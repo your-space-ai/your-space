@@ -166,7 +166,8 @@ Your Space: first public release
 │
 └── 6. Trust and release
     ├── [gate] Security: review, safe defaults, vulnerability reporting, hardening pass
-    ├── [gate] Privacy: no telemetry; only GitHub update checks, which can be turned off
+    ├── [gate] Privacy: no telemetry; only GitHub update checks, which can be turned off,
+    │          and certificate requests for an owner-configured domain
     ├── [gate] Legal: rights and notices; AGPL core, Apache SDKs, trademark, CLA,
     │          lawyer review
     └── [gate] Release: secrets review, docs, core journeys verified, release evidence
@@ -435,7 +436,7 @@ Your Space: first public release
   - [ ] [Medium] Document that a local workspace is unavailable to others while its machine is asleep or off, and state the Docker Desktop license terms.
 
   Streamlined local setup is specified in journey 008 and, like every journey, delivered as a stack of
-  pull requests; this replaced its own specification and implementation PR 2026-11-08 (see
+  pull requests; this replaced its own implementation PR 2026-11-08 (see
   [journey-based specifications](architecture/decisions.md#journey-based-specifications)). It wraps
   the CLI and setup flow without changing them; the desktop app drives the CLI rather than managing
   Docker itself.
@@ -451,9 +452,9 @@ Your Space: first public release
 
 - [ ] **Privacy**
 
-  **Source:** [Telemetry and outbound connections](architecture/decisions.md#telemetry-and-outbound-connections).
+  **Source:** [Telemetry and outbound connections](architecture/decisions.md#telemetry-and-outbound-connections). Reworded 2026-11-03: the built-in proxy's certificate requests for an owner-configured domain are allowed.
 
-  - [ ] [High] Send no telemetry; the only automatic outbound requests are GitHub update checks, which the owner can turn off.
+  - [ ] [High] Send no telemetry; the only automatic outbound requests are GitHub update checks, which the owner can turn off, and the built-in proxy's certificate requests for an owner-configured domain.
 
 - [ ] **Legal**
 

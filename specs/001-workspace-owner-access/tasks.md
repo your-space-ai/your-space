@@ -56,7 +56,7 @@ depends on these.
   - `organization({ allowUserToCreateOrganization: false })`, and the Drizzle adapter
   - export `auth`, the public instance with sign-up off and no `sendResetPassword`
   - export `createCommandAuth(onLink)`, the command-only instance with sign-up on and `sendResetPassword` calling `onLink`
-- [ ] T060 Store set-password and reset tokens in `server/src/auth.ts` only as SHA-256 hashes (`verification.storeIdentifier`), and have the commands' `sendResetPassword` delete any earlier unused link for the account, so only the newest link works ([research R8](research.md#r8-owner-recovery-link))
+- [ ] T060 Store set-password and reset tokens in `server/src/auth.ts` only as SHA-256 hashes (`verification.storeIdentifier`), and have the commands' `sendResetPassword` delete any earlier unused link for the account, so only the newest link works ([research R8](research.md#r8-owner-recovery-link), [R16](research.md#r16-platform-secrets))
 - [ ] T010 Generate `server/src/db/auth-schema.ts` with `npx auth@1.7.18 generate` (`npm run auth:generate -w server`) from `server/src/db/auth-generate.ts`, which builds the instance in `server/src/auth.ts`
 - [ ] T011 Define `installation`, `actor`, and `event` in `server/src/db/schema.ts` per [data-model.md](data-model.md): single-row check on `installation`, a `claimed` row requires `workspace_id` and `claimed_at`, `workspace_id` references `organization.id` `on delete restrict`
 - [ ] T012 Add `server/drizzle.config.ts`, generate the first migration into `server/drizzle/`, and append inserts for the `installation` row (`state = 'unclaimed'`) and the `operator` actor
@@ -74,7 +74,7 @@ depends on these.
   - the web files served with `try_files {path} /index.html`
   - no access log
 - [ ] T019 [P] Add `web/Dockerfile`: build with Vite, then `caddy:2.11` with `dist/` and `deploy/Caddyfile`
-- [ ] T020 Add `deploy/compose.yaml`, `deploy/stack.yaml`, `deploy/modes/mode.yaml`, and `deploy/.env.example` for this machine:
+- [ ] T020 Add `deploy/compose.yaml`, `deploy/stack.yaml`, `deploy/modes/mode.yaml`, and `deploy/.env.example` for this machine, and `deploy/compose.build.yaml`, which builds both images from this repository for development, CI, and the browser tests:
   - services `caddy` (web image), `server`, and `postgres:18`;
   - named volumes `ys-postgres` (mounted at `/var/lib/postgresql`), `ys-caddy-data`, and `ys-secrets`;
   - `compose.yaml` includes the mode file picked by which of `YS_DOMAIN` and `YS_PROXY_URL` is set; `modes/mode.yaml`, for neither, publishes `127.0.0.1` only, with literal port addresses ([research R9](research.md#r9-https-and-the-caddy-configuration));
@@ -84,10 +84,12 @@ depends on these.
 - [ ] T064 Implement `server/src/commands/show-secrets.ts`, with the output and exit codes the commands share in `server/src/commands/output.ts`, and the `server/bin/show-secrets` wrapper: print both platform secrets and where each comes from, as lines valid in `.env` ([operator commands](contracts/operator-commands.md#show-secrets))
 - [ ] T065 [P] `e2e/tests/setups.spec.ts`: this machine, with and without `YS_PORT`, publishes only its loopback port, the server and database publish nothing, and the secrets step has no network while each service mounts only what it reads, all read with `docker compose config`. A `setups` job in `.github/workflows/ci.yml` runs it on Compose 2.26.0 and on the runner's version
 - [ ] T066 [P] `e2e/tests/secrets.spec.ts` against the Compose stack: an empty `.env` gets generated secrets that survive restarts; a lost `ys-secrets` volume stops start-up and the guide's steps recover the workspace; secrets set in `.env` are used as given, and a changed password is recovered with the guide's command. Write the Secrets, Lost Secrets, Give PostgreSQL the Database Password, and Replace a Secret sections of `docs/install/README.md`
-- [ ] T021 [P] Implement `web/src/auth-client.ts` (Better Auth `createAuthClient` with `organizationClient`), `web/src/queries.ts` (TanStack Query hooks for `/api/status`, the session, and the workspace that unwrap `{ data, error }`), and `web/src/main.tsx` (QueryClient and RouterProvider)
+- [ ] T021 Implement `web/src/auth-client.ts` (Better Auth `createAuthClient` with `organizationClient`), `web/src/queries.ts` (TanStack Query hooks for `/api/status`, the session, and the workspace that unwrap `{ data, error }`), and `web/src/main.tsx` (QueryClient and RouterProvider)
 - [ ] T022 [P] Implement `web/src/components/ErrorState.tsx` with the failure kinds in `web/src/errors.ts` (storage unavailable, server unreachable, wrong address (421), session expired, each with a next step) and `web/src/styles.css` (plain CSS)
 
-**Checkpoint**: `docker compose up` starts all three services healthy, and migrations apply.
+**Checkpoint**: `docker compose up` starts all three services healthy, and migrations apply, once
+T029 adds `/api/health`, which the server's health check calls, and T032 adds the router's root
+route, which the web image's `main.tsx` renders.
 
 ---
 
@@ -231,7 +233,7 @@ out every session, without email.
 - [ ] T051 [P] `server/tests/logs.test.ts` and an e2e log check in `e2e/tests/logs.spec.ts`: after exercising create-owner, sign-in, failures, and recovery, server and Caddy logs contain no passwords, tokens, set-password links, or session values (cross-cutting scenario 2)
 - [ ] T052 [P] Add `.github/workflows/images.yml`: Docker Buildx with QEMU builds and publishes `your-space-server` and `your-space-web` for `linux/amd64` and `linux/arm64` to GitHub Container Registry; point `deploy/stack.yaml` at the published tags (FR-022)
 - [ ] T070 Add a `release-files` job to `.github/workflows/images.yml` that attaches `your-space.tar.gz` (`compose.yaml`, `stack.yaml`, `modes/`, and `env.example`, with `stack.yaml` pinned to the release's image version) to each release, and the Download section of `docs/install/README.md` that fetches and unpacks it
-- [ ] T053 [P] Add an e2e job to `.github/workflows/ci.yml` that builds both images locally with `deploy/compose.build.yaml`, starts `deploy/compose.yaml`, and runs Playwright in all three browsers
+- [ ] T053 [P] Add an e2e job to `.github/workflows/ci.yml` that builds both images locally with `deploy/compose.build.yaml` (T020), starts `deploy/compose.yaml`, and runs Playwright in all three browsers
 - [ ] T054 Capture outbound traffic while running quickstart sections 1, 3, and 5, and confirm the only outbound connections are certificate requests for a configured domain (cross-cutting scenario 5, SC-013); record the method and result in `docs/install/VERIFICATION.md`
 - [ ] T055 Run [quickstart.md](quickstart.md) on an Apple Silicon Mac and an Intel/AMD Linux host with the published images, including HTTPS with a real domain and Tailscale, and record versions, environments, results, and limitations in `docs/install/VERIFICATION.md` (SC-010, SC-011)
 - [ ] T056 Finish `docs/install/README.md`: list the supported hosts and browsers verified in T055 (FR-001)
@@ -253,8 +255,14 @@ out every session, without email.
 - **T061, T062 and T066**: the tests of T061 and T062 (`host.test.ts`, `outage.test.ts`) use the
   server and owner helpers from T025, which need `create-owner` (T027), and `outage.test.ts` also
   runs `reset-link` (T048); `secrets.spec.ts` (T066) runs `create-owner` through
-  `docker compose exec` (T027, T028). So these tests pass only once US1, and for T062 also T048,
-  are done.
+  `docker compose exec` (T027, T028). Both server tests also call `/api/status` (T029). So the
+  three tests pass once these files exist: T025's helpers, `create-owner.ts` (T027) and
+  `owner/routes.ts` (T029), plus `commands/reset-link.ts` (T048) for `outage.test.ts` and the
+  `create-owner` command and wrapper (T028) for `secrets.spec.ts`, which also needs the running
+  stack (see the Phase 2 checkpoint).
+- **T032 and T026**: `router.tsx` imports `SignIn.tsx` (T036) and `Home.tsx` (T037), and the US1
+  browser test signs in and reads the home screen. So T036 and T037 are built with US1, and Phase 4
+  checks their US2 behavior (wrong password, rate limit, sign-out).
 - **Polish (Phase 7)**: depends on all stories.
 
 ### Within Each Story
@@ -265,8 +273,8 @@ out every session, without email.
 ### Parallel Opportunities
 
 - Setup: T003, T004, T005 together after T001 and T002.
-- Foundational: T058 and T007 first (T006 imports `secrets.ts`, T008 imports `log.ts`); then T017, T018, T019, T022, T059, T063, T065, T066 together once T006 and T008 exist; T016 once T012 and T013 exist (`helpers/db.ts` runs the migrations through `migrate.ts`); T021's `main.tsx` renders the router from T032, so it builds once T032's root route exists.
-- US1: T025's `helpers/server.ts` and `helpers/owner.ts` first, since T024 imports them; then tests T023 to T026 together; T029 and T030 alongside T027 and T028.
+- Foundational: T058 and T007 first (T006 imports `secrets.ts`, T008 imports `log.ts`); then T017, T018, T019, T022, T059, T063 together once T006 and T008 exist; T065 once T020 exists, and T066 once T017, T019, T020 and T064 exist; T016 once T012 and T013 exist (`helpers/db.ts` runs the migrations through `migrate.ts`); T021's `main.tsx` renders the router from T032, so it builds once T032's root route exists.
+- US1: T025's `helpers/server.ts` and `helpers/owner.ts` first, since T024 imports them; then tests T023 to T026 together; T029 and T030 alongside T027 and T028; T036 and T037 before T032.
 - US2: T034, T035, T036, T037 together.
 - US3 and US4 can be built in parallel after US1.
 - Polish: T051, T052, T053 together; T070 after T052, since it adds a job to `images.yml`.

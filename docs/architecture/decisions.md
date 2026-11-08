@@ -103,7 +103,7 @@ The research and alternatives are summarized in
 ### CLI Delivery Sequence
 
 **Decision update (2026-10-29)**: Establish and verify the Compose deployment with the owner-access feature first.
-A separate specification and implementation PR will add a Your Space CLI for installation and management of that deployment (sequence updated 2026-11-02 below: the app UI and sign-in specification comes first, and is now part of journey 002; see [journey-based specifications](#journey-based-specifications)).
+A separate specification and implementation PR will add a Your Space CLI for installation and management of that deployment (sequence updated 2026-11-02 below: the app UI and sign-in specification comes first, and is now part of journey 002; the CLI is journey 003, and since 2026-11-08 it is delivered, like every journey, as a stack of pull requests; see [journey-based specifications](#journey-based-specifications)).
 This replaces the earlier proposed CLI-first ordering: the CLI needs a working deployment to manage.
 
 - The first feature must be installable and operable through documented manual Compose procedures without a standalone Your Space CLI.
@@ -118,7 +118,7 @@ This replaces the earlier proposed CLI-first ordering: the CLI needs a working d
 - The CLI also gives agents their first-release way to use apps: agent commands call app actions through Your Space with the agent's own credential. See [Agent access through Your Space](#agent-access-through-your-space).
 - CLI command names, packaging, prerequisite automation, and the rest of its management scope belong in its separate specification.
 
-Guided installation remains the product direction. The initial guide and browser setup establish the working pathway that the CLI will automate.
+Guided installation remains the product direction. The initial guide and browser setup establish the working pathway that the CLI will automate. (Browser setup was replaced by the owner command 2026-11-03; see [authentication and initial claim](#authentication-and-initial-claim).)
 
 **Decision update (2026-10-31):** The CLI is the managed installation and management path for both local and server installations, driving Docker Compose for the user. The desktop app's local mode drives the CLI rather than managing Docker itself, and people can run the CLI themselves for a local install. This supersedes the 2026-10-31 position that the CLI is only the server deployment path.
 
@@ -289,7 +289,7 @@ Existing app authorization should be reusable where it has a suitable integratio
 - When setting up the desktop app, the user either connects to an existing server by URL or runs Your Space locally. In local mode, the desktop app uses the Your Space CLI to set up and run the Docker Compose stack on that machine, then connects to it.
 - The CLI is part of the first public release for setting up Your Space on a server or locally; desktop, web, and PWA clients can connect to a server it sets up.
 - Before publication, local mode detects Docker and links to the Docker Desktop download when it is missing, sets up the Your Space stack, starts it when the desktop app opens, and updates Your Space when the owner chooses.
-- Every installation, local or server, uses one setup flow: the owner command. In local mode the desktop app runs it through the CLI and sets the password for the user, so the user only fills in one form. Streamlined local setup in the desktop app gets its own specification and implementation PR, separate from the owner-access feature. (Superseded 2026-11-08: it is specified in journey 008 and, like every journey, delivered as a stack of pull requests; see [journey-based specifications](#journey-based-specifications).)
+- Every installation, local or server, uses one setup flow: the owner command. In local mode the desktop app runs it through the CLI and sets the password for the user, so the user only fills in one form. Streamlined local setup in the desktop app gets its own specification and implementation PR, separate from the owner-access feature. (Superseded: part of journey 008 since 2026-11-02, and since 2026-11-08 delivered, like every journey, as a stack of pull requests; see [journey-based specifications](#journey-based-specifications).)
 - Before publication, the owner can back up and restore local and server installations alike, and move a local workspace to a server, through the CLI; the desktop app uses the same operation in local mode. Owner-triggered Your Space updates in local mode go through the CLI and roll back automatically if they fail.
 - A local workspace is unavailable to other people and remote agents while its machine is asleep or off. Install documentation must state this and the Docker Desktop license terms.
 - PWA offline support remains open. The first owner-access feature remains web-only.
@@ -356,7 +356,7 @@ Dependency selection must consider actual licenses, including bundled components
 
 **Decision update (2026-11-02):** No telemetry in the first release. Any future reporting must be opt-in; opt-out collection is an anti-pattern and is ruled out permanently.
 
-**Decision update (2026-11-03):** Certificate requests the built-in proxy makes for an owner-configured domain are part of HTTPS setup, not reporting.
+**Decision update (2026-11-03):** Certificate requests the built-in proxy makes for an owner-configured domain are part of HTTPS setup, not reporting. This qualifies the bullet above on automatic outbound requests: with a domain configured, these certificate requests are the only automatic outbound requests besides update checks.
 
 ## Accepted Future App Distribution Direction
 
@@ -562,7 +562,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 
 This refines the sequence above without changing scope: it groups existing pre-public items into journeys and orders the work after the CLI.
 
-**Decision update (2026-11-08):** A journey is delivered as a stack of pull requests into `main`. The first carries the specification and its supporting documents (plan, research, contracts, and the task list) with no task checked. Each later one adds one layer that passes its own checks, checks only the tasks it verifies, and checks roadmap items only for what it delivers. A spec on `main` describes agreed design; only checked tasks, checked roadmap items, and the verification record claim delivered work, so a spec never claims work that doesn't exist yet. This supersedes the earlier wording that a feature such as the CLI or streamlined local setup gets its own specification and implementation PR: each is specified in its journey and delivered the same way.
+**Decision update (2026-11-08):** A journey is delivered as a stack of pull requests into `main`. The first carries the specification and its supporting documents (plan, research, contracts, and the task list) with no task checked. Each later one adds one layer that passes its own checks, checks only the tasks it verifies, and checks roadmap items only for what it delivers. A spec on `main` describes agreed design; only checked tasks, checked roadmap items, and the verification record claim delivered work, so a spec never claims work that doesn't exist yet. This supersedes the earlier wording that the CLI or streamlined local setup gets its own implementation PR; each is specified in its journey (2026-11-02) and delivered the same way.
 
 ## Choices Still Open
 
@@ -580,7 +580,7 @@ This refines the sequence above without changing scope: it groups existing pre-p
 | Public launch scope | A working core experience before publication is the direction. The pre-public scope was settled in the 2026-11-02 interview, and every pre-public roadmap item has a High, Medium, or Low priority; Windows support and PWA installation are Low. Detailed release criteria remain to be defined. See [public release readiness](../public-release-readiness.md). |
 | App UI execution | Apps open in panes, side by side on larger screens: cross-origin iframes in the web client and PWA, native views in the desktop app. Each app runs on its own origin, a subdomain by default with a port as the fallback. Framing permission, shell-to-app messages, sign-in inside a pane, and the no-wildcard-DNS fallback are specified in journey 002, after the owner-access feature and before the CLI. The platform session uses host-only cookies. |
 | Project license | AGPL-3.0 for Your Space and Apache-2.0 for the SDKs, with a "Your Space" trademark and a contributor license agreement, all in place and reviewed by a lawyer before publication. Trademark filing details and agreement wording remain open. |
-| Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off. Future reporting must be opt-in; opt-out is prohibited. |
+| Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off, apart from the built-in proxy's certificate requests for an owner-configured domain, which are part of HTTPS setup (2026-11-03). Future reporting must be opt-in; opt-out is prohibited. |
 | External apps | Apps can be managed or hosted elsewhere and added by pointing Your Space at them. How an external app is registered, verifies Your Space identity, and is reached through the gateway needs definition in the app integration specification. |
 | App settings, egress, and limits | A Compose stack component stores app settings and secrets; apps declare outbound access for owner approval; managed apps have resource limits, status, and logs. Mechanisms and defaults need definition in the app specification. |
 | Activity log | Records installs, role and member changes, delegations, and agent requests. Retention, detail, and viewers need definition. |

@@ -56,9 +56,9 @@ work from the roadmap.
 │ 5. PLATFORM DATA              │ │ 6. APPS (SDKs or public contracts)         │
 │  PostgreSQL (Drizzle)         │ │ ┌──────────────────────┐ ┌───────────────┐ │
 │  Platform secrets volume      │ │ │ MANAGED              │ │ EXTERNAL      │ │
-│  Backups and snapshots        │ │ │ Your Space runs it:  │ │ hosted        │ │
-└───────────────────────────────┘ │ │ own containers, DB,  │ │ anywhere;     │ │
-                                  │ │ storage · no ports · │ │ accepts only  │ │
+│  App secrets store (spec)     │ │ │ Your Space runs it:  │ │ hosted        │ │
+│  Backups and snapshots        │ │ │ own containers, DB,  │ │ anywhere;     │ │
+└───────────────────────────────┘ │ │ storage · no ports · │ │ accepts only  │ │
                                   │ │ CPU/memory caps ·    │ │ identity      │ │
                                   │ │ outbound only to     │ │ verified by   │ │
                                   │ │ approved hosts (spec)│ │ Your Space    │ │

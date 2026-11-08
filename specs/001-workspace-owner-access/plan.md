@@ -47,8 +47,8 @@ The web client is built by Vite 8.
 That is 8 runtime npm packages: `express`, `better-auth`, `drizzle-orm`, and `pg` on the server, and
 `react`, `react-dom`, `@tanstack/react-router`, and `@tanstack/react-query` in the web client.
 Caddy and PostgreSQL ship as their official images. The decision record already selects Express,
-Better Auth, Drizzle, PostgreSQL, React, Vite, and Caddy. The TanStack libraries were chosen in
-the plan review and are recorded here.
+Better Auth, Drizzle, PostgreSQL, React, Vite, and Caddy; this plan adds TanStack Router and
+TanStack Query ([R12](research.md#r12-web-client)).
 
 **Storage**: PostgreSQL 18 (official image) on the `ys-postgres` named volume. Caddy's certificates
 are on the `ys-caddy-data` named volume, and the generated auth secret and database password on
@@ -102,7 +102,7 @@ reset password), plus the "no owner yet" and error states.
 | IV. Apps directly installable | N/A | No apps in this feature (spec 002). |
 | V. Protect private data | Pass | The auth secret and database password come from `.env` when set there, otherwise they are generated into the `ys-secrets` volume, outside the database (R16). Passwords are stored as Better Auth scrypt hashes, and link tokens only as SHA-256 hashes (`verification.storeIdentifier`). Logs exclude credentials. Tests use synthetic data. |
 | VI. Proportionate discipline | Pass | Auth, owner creation, and data-integrity behavior gets automated tests plus the quickstart run on real hosts. Rationale is recorded in research.md. |
-| VII. Reuse before building | Pass | Each requirement maps to a library feature (below). The custom code is listed and justified. No new dependency beyond the decision record and the plan review's choices. |
+| VII. Reuse before building | Pass | Each requirement maps to a library feature (below). The custom code is listed and justified. No new dependency beyond the decision record and the TanStack libraries this plan selects. |
 
 **Post-design re-check (after Phase 1)**: Pass. The design added no dependencies.
 

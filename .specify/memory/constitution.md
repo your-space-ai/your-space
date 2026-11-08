@@ -13,8 +13,8 @@ Sync Impact Report (2026-11-07): 1.1.1 -> 1.2.0 (minor: materially expanded prin
 Sync Impact Report (2026-11-03): 1.1.0 -> 1.1.1 (patch: clarification)
 - Clarified: VII. Reuse Before Building now says to use each library only for the purpose it was
   built for, rather than stretching an available feature into a general system for the app.
-- Rationale: in the 001 plan review, Better Auth's rate limiter was proposed as the app's rate
-  limiter; it only protects Better Auth's own routes and cannot count per account.
+- Rationale: Better Auth's rate limiter protects only Better Auth's own routes and cannot count per
+  account, so using it as the app's rate limiter would stretch it past the purpose it was built for.
 - Impact: the 001 plan keeps Better Auth's limiter on Better Auth's own routes and adds no app-wide
   rate limiting yet; no implementations exist yet.
 

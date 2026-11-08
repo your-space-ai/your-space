@@ -71,7 +71,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
 
 - [ ] **Install and use the owner workspace**
   - [ ] Implement the owner-access specification and its manual Docker Compose pathway, including
-    browser setup, one owner and workspace, sign-in, sign-out, and server-enforced access.
+    owner creation by a server command with the password set in the browser, one owner and
+    workspace, sign-in, sign-out, and server-enforced access.
   - [ ] Document and test installation from a clean state on each claimed host and architecture,
     including prerequisites, configuration, startup, and actionable failure handling.
   - [ ] Verify that only the operator's server command can create the owner, that set-password links
@@ -130,7 +131,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
   - [ ] Review default network exposure, access to operator commands and setup credentials, encrypted
     remote access, and the documented deployment's configuration for supported environments.
   - [ ] Verify the server, CLI, and desktop app send no telemetry, make no automatic outbound
-    requests other than update checks, and stop update checks when the owner turns them off.
+    requests other than update checks and the built-in proxy's certificate requests for an
+    owner-configured domain, and stop update checks when the owner turns them off.
   - [ ] Review dependencies and container images for known vulnerabilities, remediate release
     blockers, and document accepted risks and how updates are monitored.
   - [ ] Publish a private vulnerability reporting channel and a realistic response policy, including
@@ -141,8 +143,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
 - [ ] **Prepare a usable project and contributor experience**
   - [ ] Write a README that explains the product, release maturity, supported capabilities and
     environments, prerequisites, installation entry point, and known limitations. State that Your
-    Space collects no telemetry and that update checks to GitHub are its only automatic outbound
-    requests.
+    Space collects no telemetry and that update checks to GitHub and the built-in proxy's
+    certificate requests for an owner-configured domain are its only automatic outbound requests.
   - [ ] Provide accurate installation, configuration, restart, remote access, troubleshooting,
     owner recovery, and uninstall guidance for the actual release.
   - [ ] Document where durable data lives, and how to back up, restore, and move a workspace

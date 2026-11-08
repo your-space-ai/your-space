@@ -95,7 +95,8 @@ Roadmap layers: [1 Install and operate](roadmap.md#1-install-and-operate) ·
 These apply from the first spec, so later specs don't have to retrofit them:
 
 - **Simple by default.** Show people only what they need; advanced controls stay out of the way.
-- **No telemetry.** The only automatic outbound requests are GitHub update checks.
+- **No telemetry.** The only automatic outbound requests are GitHub update checks and the built-in
+  proxy's certificate requests for an owner-configured domain.
 - **ARM and Intel.** Every image ships for both.
 - **Known storage.** All durable state lives in the database or named volumes, so backup has one
   clear thing to capture.
