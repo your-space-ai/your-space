@@ -81,7 +81,7 @@ depends on these.
   - a one-shot `secrets` service running `server/src/commands/secrets-step.ts` that settles the auth secret and database password into `ys-secrets` unless `.env` sets them, with no network ([research R16](research.md#r16-platform-secrets));
   - health checks: `pg_isready` and `/api/health`;
   - `postgres` and `server` start after the secrets step, `server` after Postgres is healthy, and `caddy` after the server is healthy.
-- [ ] T064 Implement `server/src/commands/show-secrets.ts` and the `server/bin/show-secrets` wrapper: print both platform secrets and where each comes from, as lines valid in `.env` ([operator commands](contracts/operator-commands.md#show-secrets))
+- [ ] T064 Implement `server/src/commands/show-secrets.ts`, with the output and exit codes the commands share in `server/src/commands/output.ts`, and the `server/bin/show-secrets` wrapper: print both platform secrets and where each comes from, as lines valid in `.env` ([operator commands](contracts/operator-commands.md#show-secrets))
 - [ ] T065 [P] `e2e/tests/setups.spec.ts`: this machine, with and without `YS_PORT`, publishes only its loopback port, the server and database publish nothing, and the secrets step has no network while each service mounts only what it reads, all read with `docker compose config`. A `setups` job in `.github/workflows/ci.yml` runs it on Compose 2.26.0 and on the runner's version
 - [ ] T066 [P] `e2e/tests/secrets.spec.ts` against the Compose stack: an empty `.env` gets generated secrets that survive restarts; a lost `ys-secrets` volume stops start-up and the guide's steps recover the workspace; secrets set in `.env` are used as given, and a changed password is recovered with the guide's command. Write the Secrets, Lost Secrets, Give PostgreSQL the Database Password, and Replace a Secret sections of `docs/install/README.md`
 - [ ] T021 [P] Implement `web/src/auth-client.ts` (Better Auth `createAuthClient` with `organizationClient`), `web/src/queries.ts` (TanStack Query hooks for `/api/status`, the session, and the workspace that unwrap `{ data, error }`), and `web/src/main.tsx` (QueryClient and RouterProvider)
@@ -109,7 +109,7 @@ on a clean stack.
   - storage down exits 3 and changes nothing;
   - a rerun after a run stopped before the final transaction finishes with one owner.
 - [ ] T024 [P] [US1] `server/tests/signup-closed.test.ts`: `POST /api/auth/sign-up/email` is refused before and after the owner exists, and creating an organization over HTTP is refused
-- [ ] T025 [P] [US1] `server/tests/status.test.ts`: `GET /api/status` returns `{ owner: false }`, then `{ owner: true }`, and 503 `storage_unavailable` when the database is down or the row is missing; `GET /api/health` returns 200 or 503; with the helpers `server/tests/helpers/server.ts` (the Express app on a random port) and `owner.ts` (an owner with a known password), which T024 and the later stories' server tests reuse
+- [ ] T025 [P] [US1] `server/tests/status.test.ts`: `GET /api/status` returns `{ owner: false }`, then `{ owner: true }`, and 503 `storage_unavailable` when the database is down or the row is missing; `GET /api/health` returns 200 or 503; with the helpers `server/tests/helpers/server.ts` (the Express app on a random port) and `owner.ts` (an owner with a known password), which T024, T061, T062 and the later stories' server tests reuse
 - [ ] T026 [P] [US1] `e2e/tests/us1-create-owner.spec.ts`: a fresh stack shows "no owner yet" with no form; run `create-owner --json` through `docker compose exec`; open the link; set the password; sign in; the home screen shows the workspace, name, email, and sign out only, with the shared set-password and sign-in steps in `e2e/tests/helpers/ui.ts`
 
 ### Implementation for User Story 1
@@ -121,7 +121,7 @@ on a clean stack.
   - create or reuse the organization "&lt;name&gt;'s space";
   - in one transaction, create the actor and event (`server/src/actors.ts`) and claim the installation;
   - request the reset link through `createCommandAuth`.
-- [ ] T028 [US1] Implement `server/src/commands/create-owner.ts` (`util.parseArgs` for `--email`, `--name`, `--json`; human and JSON output; exit codes 0 to 4), with the output and exit codes the commands share in `server/src/commands/output.ts`, and the `server/bin/create-owner` wrapper
+- [ ] T028 [US1] Implement `server/src/commands/create-owner.ts` (`util.parseArgs` for `--email`, `--name`, `--json`; human and JSON output; exit codes 0 to 4) with the shared output in `server/src/commands/output.ts` (T064), and the `server/bin/create-owner` wrapper
 - [ ] T029 [P] [US1] Implement `server/src/owner/routes.ts`: `GET /api/status` and `GET /api/health` per [http-api](contracts/http-api.md); register them in `server/src/app.ts`
 - [ ] T030 [P] [US1] Implement `web/src/pages/NoOwnerYet.tsx`: explains running `create-owner` and has no form
 - [ ] T031 [US1] Implement `web/src/pages/ResetPassword.tsx`:
@@ -250,6 +250,9 @@ out every session, without email.
 - **User Stories 2 to 4 (Phases 4 to 6)**: depend on Foundational. Their browser tests need an owner
   from US1, created through `create-owner`. Their server tests can create an owner with the US1
   helper and otherwise run in parallel.
+- **T061 and T062**: their tests (`host.test.ts`, `outage.test.ts`) use the server and owner helpers
+  from T025, which need `create-owner` (T027), and `outage.test.ts` also runs `reset-link` (T048),
+  so those tests pass only once US1 and T048 are done.
 - **Polish (Phase 7)**: depends on all stories.
 
 ### Within Each Story
@@ -260,7 +263,7 @@ out every session, without email.
 ### Parallel Opportunities
 
 - Setup: T003, T004, T005 together after T001 and T002.
-- Foundational: T058 and T007 first (T006 imports `secrets.ts`, T008 imports `log.ts`); then T016, T017, T018, T019, T021, T022, T059, T063, T065, T066 together once T006 and T008 exist.
+- Foundational: T058 and T007 first (T006 imports `secrets.ts`, T008 imports `log.ts`); then T017, T018, T019, T022, T059, T063, T065, T066 together once T006 and T008 exist; T016 once T012 and T013 exist (`helpers/db.ts` runs the migrations through `migrate.ts`); T021's `main.tsx` renders the router from T032, so it builds once T032's root route exists.
 - US1: tests T023 to T026 together; T029 and T030 alongside T027 and T028.
 - US2: T034, T035, T036, T037 together.
 - US3 and US4 can be built in parallel after US1.

@@ -78,12 +78,15 @@ writes picks the setup, and the setup decides which ports open. With no line, Yo
 this machine only, at `http://localhost`, published on `127.0.0.1`. `YS_DOMAIN=<name>` publishes
 ports 80 and 443 to the network and turns on automatic HTTPS. `YS_PROXY_URL=https://<address>`
 publishes plain HTTP on `127.0.0.1:8080` for the owner's own proxy or Tailscale, and offers a
-Docker network for proxies that run in containers. `YS_PORT` moves the local port when another
-program has it. Compose selects one file per setup by which key is set, so every port address is
-written out in a file rather than computed or left to Docker's defaults, and the server refuses a
-wrong value or a misspelled setting before any port opens. The alternative most projects use, one
-address setting with ports open on every interface, was rejected because a fresh local install
-on a Linux server would put its sign-in page on the network. The research and the designs
+Docker network for proxies that run in containers. With `YS_PROXY_URL` the built-in proxy is not
+removed: it still serves the web client and forwards `/api` behind the owner's proxy, which
+terminates HTTPS, so only Caddy's certificate handling is off. This refines the bullet above about
+turning off the built-in proxy. `YS_PORT` moves the local port when another program has it. Compose
+selects one file per setup by which key is set, so every port address is written out in a file
+rather than computed or left to Docker's defaults, and the server refuses a wrong value or a
+misspelled setting before any port opens. The alternative most projects use, one address setting
+with ports open on every interface, was rejected because a fresh local install on a Linux server
+would put its sign-in page on the network. The research and the designs
 considered are summarized in [research R9](../../specs/001-workspace-owner-access/research.md#r9-https-and-the-caddy-configuration).
 The CLI (spec 003) writes the same lines.
 
@@ -348,10 +351,12 @@ Dependency selection must consider actual licenses, including bundled components
 ### Telemetry and Outbound Connections
 
 - Your Space collects no telemetry. Neither the server, the CLI, nor the desktop app reports usage, errors, or any other data to the project.
-- The only automatic outbound requests are update checks that ask GitHub for the latest release. The owner can turn them off. Certificate requests the built-in proxy makes for an owner-configured domain are part of HTTPS setup, not reporting. Actions the owner starts, such as installing or updating an app, contact the sources they name.
+- The only automatic outbound requests are update checks that ask GitHub for the latest release. The owner can turn them off. Actions the owner starts, such as installing or updating an app, contact the sources they name.
 - Opt-in reporting, off until the owner turns it on, is the only acceptable future extension. Opt-out telemetry is prohibited.
 
 **Decision update (2026-11-02):** No telemetry in the first release. Any future reporting must be opt-in; opt-out collection is an anti-pattern and is ruled out permanently.
+
+**Decision update (2026-11-03):** Certificate requests the built-in proxy makes for an owner-configured domain are part of HTTPS setup, not reporting.
 
 ## Accepted Future App Distribution Direction
 

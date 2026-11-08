@@ -188,13 +188,13 @@ Your Space: first public release
 
 - [ ] **HTTPS**
 
-  **Source:** [Installation and hosting](architecture/decisions.md#installation-and-hosting). Moved from the CLI spec to the owner-access feature 2026-11-03.
+  **Source:** [Installation and hosting](architecture/decisions.md#installation-and-hosting). Moved from the CLI spec to the owner-access feature 2026-11-03. Reworded 2026-11-08: the built-in proxy stays behind the owner's proxy.
 
   Part of the owner-access feature ([spec 001](../specs/001-workspace-owner-access/spec.md)); the CLI
   later asks for the domain during installation.
 
   - [ ] [High] Set up HTTPS during installation: a reverse proxy in the Compose stack obtains and renews a certificate when the owner gives a domain. Plain HTTP is supported only on localhost.
-  - [ ] [Medium] Let owners with their own reverse proxy or tunnel turn off the built-in proxy, and document a private tunnel such as Tailscale for owners without a domain.
+  - [ ] [Medium] Let owners with their own reverse proxy or tunnel turn off the built-in proxy's certificate handling, and document a private tunnel such as Tailscale for owners without a domain.
 
 - [ ] **CLI installation and management**
 
@@ -434,8 +434,11 @@ Your Space: first public release
   - [ ] [Medium] Uninstall the local workspace through the CLI's uninstall command.
   - [ ] [Medium] Document that a local workspace is unavailable to others while its machine is asleep or off, and state the Docker Desktop license terms.
 
-  Streamlined local setup has its own specification and implementation PR. It wraps the CLI and setup
-  flow without changing them; the desktop app drives the CLI rather than managing Docker itself.
+  Streamlined local setup is specified in journey 008 and, like every journey, delivered as a stack of
+  pull requests; this replaced its own specification and implementation PR 2026-11-08 (see
+  [journey-based specifications](architecture/decisions.md#journey-based-specifications)). It wraps
+  the CLI and setup flow without changing them; the desktop app drives the CLI rather than managing
+  Docker itself.
 
 ### 6. Trust and Release
 
