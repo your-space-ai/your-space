@@ -1,0 +1,36 @@
+# Your Space's Caddy configuration (research R9). The mode file Compose picks (deploy/modes/) sets:
+#   YS_SITE          http://localhost        plain HTTP for this machine only (the default)
+#                    https://<YS_DOMAIN>     automatic HTTPS from Let's Encrypt; HTTP redirects to it
+#                    http://:8080            plain HTTP behind your own proxy or `tailscale serve`
+#   YS_REDIRECT_URL  where http://127.0.0.1 sends people: sign-in works at one address only
+(app) {
+	encode
+
+	handle /api/* {
+		# API requests are small. The server reads auth request bodies whole, so cap them here.
+		request_body {
+			max_size 64KB
+		}
+		# Caddy passes the Host header through unchanged; the server checks it.
+		reverse_proxy server:3000 {
+			# A single client address, the form Better Auth's sign-in limit reads.
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	# There is no `log` directive, so the access log stays off and request URLs are not recorded.
+}
+
+{$YS_SITE:http://localhost} {
+	import app
+}
+
+http://127.0.0.1 {
+	redir {$YS_REDIRECT_URL:http://localhost}{uri}
+}
