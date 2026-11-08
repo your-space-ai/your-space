@@ -1,0 +1,2 @@
+server/drizzle/meta/** linguist-generated=true
+server/src/db/auth-schema.ts linguist-generated=true
