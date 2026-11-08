@@ -95,7 +95,7 @@ reset password), plus the "no owner yet" and error states.
 | II. User control and hosting choice | Pass | Self-hosted Compose with a guide. Server-managed accounts with no external identity service. Recovery works without email. |
 | III. Identity, permissions, ownership explicit | Pass | Account, workspace, membership, and ownership are separate tables or roles. Actions are credited to an `actor`. Denied requests change nothing. |
 | IV. Apps directly installable | N/A | No apps in this feature (spec 002). |
-| V. Protect private data | Pass | Secrets come from `.env`, which is not committed. Codes and tokens are stored hashed or by Better Auth. Logs exclude credentials. Tests use synthetic data. |
+| V. Protect private data | Pass | Secrets come from `.env`, which is not committed. Passwords are stored as Better Auth scrypt hashes, and link tokens only as SHA-256 hashes (`verification.storeIdentifier`). Logs exclude credentials. Tests use synthetic data. |
 | VI. Proportionate discipline | Pass | Auth, owner creation, and data-integrity behavior gets automated tests plus the quickstart run on real hosts. Rationale is recorded in research.md. |
 | VII. Reuse before building | Pass | Each requirement maps to a library feature (below). The custom code is listed and justified. No new dependency beyond the decision record and this review's choices. |
 

@@ -2,6 +2,7 @@
 // SC-007, SC-008; contracts/operator-commands.md).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import { storedIdentifier } from "../src/auth.ts";
 import { account, member, organization, session, user, verification } from "../src/db/auth-schema.ts";
 import { actor, event, installation } from "../src/db/schema.ts";
 import { runCommand } from "./helpers/commands.ts";
@@ -73,7 +74,7 @@ async function issue() {
 }
 
 const tokenRows = (token: string) =>
-  t.db.select().from(verification).where(eq(verification.identifier, `reset-password:${token}`));
+  t.db.select().from(verification).where(eq(verification.identifier, storedIdentifier(`reset-password:${token}`)));
 
 describe("set-password link and reset-link", () => {
   it("cancels create-owner's unused set-password link when reset-link issues a new one", async () => {
@@ -342,7 +343,7 @@ describe("reset-link", () => {
       const expired = await t.db
         .update(verification)
         .set({ expiresAt: new Date(Date.now() - 60_000) })
-        .where(eq(verification.identifier, `reset-password:${link.token}`))
+        .where(eq(verification.identifier, storedIdentifier(`reset-password:${link.token}`)))
         .returning();
       expect(expired).toHaveLength(1);
       const before = { state: await protectedState(), events: (await counts(t.db)).events };

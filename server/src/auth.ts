@@ -5,6 +5,7 @@
 //   `sendResetPassword`, so the network can neither create accounts nor request reset links.
 // - `createCommandAuth` exists only inside the create-owner and reset-link processes. Sign-up is on
 //   and `sendResetPassword` hands the link to the command, which prints it. It is never mounted.
+import { createHash } from "node:crypto";
 import { and, eq, like, ne } from "drizzle-orm";
 import { betterAuth, type User } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -19,6 +20,17 @@ export const PASSWORD_MIN_LENGTH = 12;
 export const PASSWORD_MAX_LENGTH = 128;
 /** Set-password and reset links work for 30 minutes. */
 export const LINK_LIFETIME_SECONDS = 30 * 60;
+
+/**
+ * How Better Auth stores a verification identifier such as `reset-password:<token>`: the type
+ * prefix, then a SHA-256 hash of the whole identifier. A copy of the database can't open a link
+ * that is still valid, and the prefix still finds a user's links. Better Auth's own "hashed"
+ * option would hash the prefix too.
+ */
+export function storedIdentifier(identifier: string): string {
+  const prefix = identifier.slice(0, identifier.indexOf(":") + 1);
+  return prefix + createHash("sha256").update(identifier).digest("base64url");
+}
 
 export interface AuthDeps {
   config: Pick<Config, "publicUrl" | "authSecret">;
@@ -93,7 +105,7 @@ function buildAuth(deps: AuthDeps, onLink?: OnLink) {
                 and(
                   like(authSchema.verification.identifier, "reset-password:%"),
                   eq(authSchema.verification.value, user.id),
-                  ne(authSchema.verification.identifier, `reset-password:${token}`),
+                  ne(authSchema.verification.identifier, storedIdentifier(`reset-password:${token}`)),
                 ),
               );
             const expiresAt = new Date(Date.now() + LINK_LIFETIME_SECONDS * 1000);
@@ -104,6 +116,9 @@ function buildAuth(deps: AuthDeps, onLink?: OnLink) {
       onPasswordReset: async ({ user }) => {
         await recordPasswordReset(db, user.id);
       },
+    },
+    verification: {
+      storeIdentifier: { hash: async (identifier) => storedIdentifier(identifier) },
     },
     session: {
       // Library defaults, stated so they are visible: 7 days, extended daily while used.

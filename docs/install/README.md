@@ -339,7 +339,8 @@ For devices on your own network, use [Tailscale](#use-tailscale): it needs no do
   per password), never the password itself.
 - **Set-password and reset links** carry a random 24-character token, too long to guess. The token
   is in the part of the link after `#`, which browsers never send to a server, so it doesn't appear
-  in server or proxy logs.
+  in server or proxy logs. The database keeps only a hash of it, so a copy of the database can't
+  open a link that still works.
 
 ## Restarts and Your Data
 

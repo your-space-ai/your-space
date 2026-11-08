@@ -2,7 +2,7 @@
 import pg from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { createCommandAuth } from "../src/auth.ts";
+import { createCommandAuth, storedIdentifier } from "../src/auth.ts";
 import { createOwner } from "../src/owner/create-owner.ts";
 import { account, member, organization, user, verification } from "../src/db/auth-schema.ts";
 import { actor, event, installation } from "../src/db/schema.ts";
@@ -72,7 +72,9 @@ describe("create-owner", () => {
     // The link is Better Auth's reset token, valid for 30 minutes.
     const tokens = await t.db.select().from(verification);
     expect(tokens).toHaveLength(1);
-    expect(tokens[0]!.identifier).toBe(`reset-password:${result.json.token}`);
+    // Stored only as a hash, so a copy of the database can't open the link.
+    expect(tokens[0]!.identifier).toBe(storedIdentifier(`reset-password:${result.json.token}`));
+    expect(JSON.stringify(tokens)).not.toContain(result.json.token);
   });
 
   it("prints the human-readable output by default", async () => {
