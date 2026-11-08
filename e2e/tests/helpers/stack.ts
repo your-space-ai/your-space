@@ -1,7 +1,7 @@
 // Drives the Compose stack the journeys run against: the published compose.yaml with locally
 // built images (deploy/compose.build.yaml). Set YS_E2E_COMPOSE to an executable that wraps
 // `docker compose` to use a different setup.
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -54,14 +54,32 @@ export async function compose(
   }
 }
 
-/** A fresh installation: removes the containers and volumes, then starts and waits for health. */
-export async function resetStack(): Promise<void> {
-  await compose(["down", "-v", "--remove-orphans"], { timeout: 120_000 });
-  await compose(["up", "-d", "--wait"], { timeout: 240_000 });
+/** Runs a compose command with text on its standard input, as a heredoc in the guide does. */
+export function composeWithInput(args: string[], input: string, env: Record<string, string> = {}): Promise<Result> {
+  const [program, base] = composeCommand();
+  return new Promise((resolve, reject) => {
+    const child = spawn(program, [...base, ...args], { env: { ...process.env, ...env } });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve({ code, stdout, stderr });
+      else reject(new Error(`docker compose ${args.join(" ")} failed (${code}):\n${stderr}`));
+    });
+    child.stdin.end(input);
+  });
 }
 
-export async function up(): Promise<void> {
-  await compose(["up", "-d", "--wait"], { timeout: 240_000 });
+/** A fresh installation: removes the containers and volumes, then starts and waits for health. */
+export async function resetStack(env: Record<string, string> = {}): Promise<void> {
+  await compose(["down", "-v", "--remove-orphans"], { timeout: 120_000 });
+  await compose(["up", "-d", "--wait"], { timeout: 240_000, env });
+}
+
+export async function up(env: Record<string, string> = {}): Promise<void> {
+  await compose(["up", "-d", "--wait"], { timeout: 240_000, env });
 }
 
 export interface LinkOutput {

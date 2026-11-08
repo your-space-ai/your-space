@@ -43,9 +43,10 @@ if (import.meta.main) {
   }
   out.success(
     { ok: true, secrets: shown.map(({ name, source, value }) => ({ name, source, value })) },
+    // Every line is valid in .env, so a generated secret's line can be copied there as it is.
     [
-      ...shown.flatMap(({ name, label, source, value }) => [`${name} (${label}, ${SOURCE_TEXT[source]}):`, `  ${value}`]),
-      "Keep these private. To manage a generated one yourself, copy its line into .env; Your Space then uses .env.",
+      ...shown.flatMap(({ name, label, source, value }) => [`# ${label}, ${SOURCE_TEXT[source]}`, `${name}=${value}`]),
+      "# Keep these private. To manage a generated one yourself, copy its line into .env; Your Space then uses .env.",
     ],
   );
 }

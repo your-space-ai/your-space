@@ -14,15 +14,18 @@ a single-use link where the owner sets their password. The owner signs in over H
 device, sessions survive restarts, and `reset-link` prints a new link if the password is lost.
 Sign-up is always off; there is no setup page.
 
-The stack is three containers:
+The stack is three containers, after a one-shot step:
 
+- **secrets** runs first on each start and exits. It generates the auth secret and database
+  password into the `ys-secrets` volume unless `.env` sets them ([R16](research.md#r16-platform-secrets)).
 - **Caddy** handles HTTPS and serves the web client.
 - **The Node.js/Express server** is the API.
 - **PostgreSQL** stores all state.
 
 Better Auth supplies accounts, sessions, password hashing, and password reset. Its
 organization plugin supplies the workspace, membership, and owner role. Custom code is limited to
-the two operator commands, a status endpoint, and a small actor and event record.
+the operator commands (`create-owner`, `reset-link`, `show-secrets`), the secrets step, a status
+endpoint, and a small actor and event record.
 
 ## Technical Context
 

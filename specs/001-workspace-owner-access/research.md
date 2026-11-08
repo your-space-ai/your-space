@@ -408,9 +408,18 @@ that settled each question.
     itself with the password percent-encoded.
   - "The database exists" means a `PG_VERSION` file within three levels of the `ys-postgres` volume,
     so a later PostgreSQL major version's layout doesn't look like a new installation.
-  - `docker compose exec server show-secrets` prints both values and their source;
-    `docker compose run --rm secrets --new auth-secret` (or `database-password`) replaces a
-    generated one ([operator commands](contracts/operator-commands.md#the-secrets-step)).
+  - A value set in `.env` is used exactly as given, since PostgreSQL receives the same string; the
+    step refuses one with spaces around it rather than trimming it. The step always creates both
+    folders in the volume, because PostgreSQL's mount needs its folder even when `.env` supplies
+    the password.
+  - `docker compose exec server show-secrets` prints both values and their source, as lines that
+    can be pasted into `.env`. `docker compose run --rm secrets --new auth-secret` (or
+    `database-password`) replaces a generated one and leaves a secret set in `.env` alone. A
+    running server keeps the secrets it started with, so a replacement takes effect when the
+    server restarts ([operator commands](contracts/operator-commands.md#the-secrets-step)).
+  - The guide gives PostgreSQL a new password with `psql` over its local socket, reading the
+    password inside the container and turning off error-statement logging for that session, so the
+    password never appears in a command line or a log.
   - The server refuses `BETTER_AUTH_SECRETS` and `AUTH_SECRET` in its environment: Better Auth
     reads them by itself and would replace the secret Your Space gives it.
   - Set-password and reset tokens are stored only as SHA-256 hashes (`verification.storeIdentifier`),

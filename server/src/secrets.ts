@@ -73,9 +73,13 @@ export const SECRETS = [AUTH_SECRET, DATABASE_PASSWORD];
 
 export type Source = "env" | "generated";
 
-/** The value set in .env, if any. An empty line counts as no line. */
+/**
+ * The value set in .env, exactly as given, or undefined for no line or an empty one. PostgreSQL
+ * receives the same string, so nothing is trimmed here; the secrets step refuses a value with
+ * spaces around it instead.
+ */
 export function fromEnv(spec: SecretSpec, env: NodeJS.ProcessEnv): string | undefined {
-  const value = env[spec.env]?.trim();
+  const value = env[spec.env];
   return value ? value : undefined;
 }
 
@@ -127,7 +131,7 @@ export class SecretsError extends Error {
   }
 }
 
-export type Action = "from_env" | "kept" | "generated" | "replaced";
+export type Action = "from_env" | "kept" | "generated" | "replaced" | "not_replaced";
 
 export interface SettleOptions {
   /** The ys-secrets volume. */
@@ -135,19 +139,30 @@ export interface SettleOptions {
   /** The ys-postgres volume, read-only. */
   databaseDir: string;
   env: NodeJS.ProcessEnv;
-  /** Secrets to replace with new generated values (`--new`). */
+  /** Secrets to replace with new generated values (`--new`). One set in .env is left as it is. */
   replace?: SecretSpec[];
   /** Set owners as well as modes. Needs root; tests that run as another user turn it off. */
   chown?: boolean;
 }
 
-function recovery(spec: SecretSpec): string {
-  if (spec === AUTH_SECRET) {
+const RESTORE = "restore the ys-secrets volume from a backup, or put the old values back in .env";
+
+function recovery(missing: SecretSpec[]): string {
+  if (missing.length > 1) {
+    return [
+      "The auth secret and the database password aren't in .env or in the ys-secrets volume, but this",
+      "installation already has a database. Your Space won't make new ones without asking, because the",
+      "database only accepts the password it was created with. To recover, do one of these:",
+      `  - ${RESTORE} as BETTER_AUTH_SECRET and POSTGRES_PASSWORD;`,
+      '  - or start with new ones by following "Lost Secrets" in the installation guide.',
+    ].join("\n");
+  }
+  if (missing[0] === AUTH_SECRET) {
     return [
       "The auth secret isn't in .env or in the ys-secrets volume, but this installation already has a",
       "database. Your Space won't make a new one without asking, because a missing volume usually means",
       "something went wrong. To recover, do one of these:",
-      "  - restore the ys-secrets volume from a backup, or put the old value back in .env as BETTER_AUTH_SECRET;",
+      `  - ${RESTORE} as BETTER_AUTH_SECRET;`,
       "  - or start with a new auth secret, which signs out every device and changes nothing else:",
       "      docker compose run --rm secrets --new auth-secret",
     ].join("\n");
@@ -155,16 +170,22 @@ function recovery(spec: SecretSpec): string {
   return [
     "The database password isn't in .env or in the ys-secrets volume, but the database already exists,",
     "and it only accepts the password it was created with. Your Space won't make a new one. To recover:",
-    "  - restore the ys-secrets volume from a backup, or put the password back in .env as POSTGRES_PASSWORD;",
+    `  - ${RESTORE} as POSTGRES_PASSWORD;`,
     '  - or set a new one by following "Lost Secrets" in the installation guide.',
   ].join("\n");
 }
 
-function writeSecret(spec: SecretSpec, root: string, value: string, chown: boolean): void {
+/** The folder for one secret, with its owner and mode. PostgreSQL mounts its folder, so it must exist. */
+function ensureFolder(spec: SecretSpec, root: string, chown: boolean): string {
   const dir = join(root, spec.dir);
   mkdirSync(dir, { recursive: true, mode: spec.dirMode });
   chmodSync(dir, spec.dirMode);
   if (chown) chownSync(dir, spec.uid, spec.gid);
+  return dir;
+}
+
+function writeSecret(spec: SecretSpec, root: string, value: string, chown: boolean): void {
+  const dir = ensureFolder(spec, root, chown);
   // A random name, written then renamed, so a crash never leaves a half-written secret or a
   // leftover file that blocks the next start.
   const temporary = join(dir, `.${spec.file}.${randomUUID()}.tmp`);
@@ -186,16 +207,8 @@ function writeSecret(spec: SecretSpec, root: string, value: string, chown: boole
   }
 }
 
-function removeLeftovers(spec: SecretSpec, root: string): void {
-  const dir = join(root, spec.dir);
-  let names: string[];
-  try {
-    names = readdirSync(dir);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-    throw error;
-  }
-  for (const name of names) {
+function removeLeftovers(dir: string): void {
+  for (const name of readdirSync(dir)) {
     if (name.startsWith(".") && name.endsWith(".tmp")) rmSync(join(dir, name), { force: true });
   }
 }
@@ -205,43 +218,49 @@ function generate(): string {
   return randomBytes(32).toString("base64url");
 }
 
+/** A problem with a value set in .env, or undefined when it can be used as given. */
+function checkGiven(spec: SecretSpec, value: string): string | undefined {
+  if (value.trim() !== value) {
+    return `${spec.env} in .env starts or ends with a space. Remove the spaces, or the line to let Your Space generate one.`;
+  }
+  if (value.length < spec.minLength) {
+    return (
+      `${spec.env} in .env must be at least ${spec.minLength} characters. Remove the line to let Your ` +
+      "Space generate one, or make one with: openssl rand -base64 32"
+    );
+  }
+  return undefined;
+}
+
 /**
  * Settles each secret for this start and returns what happened to each. Throws SecretsError, with
- * a message that says what to do, when a secret can't be settled.
+ * a message that says what to do, when a secret can't be settled. Nothing is written unless every
+ * secret can be settled.
  */
 export function settleSecrets(options: SettleOptions): { spec: SecretSpec; action: Action }[] {
   const { dir, databaseDir, env, replace = [], chown = true } = options;
-  const outcomes: { spec: SecretSpec; action: Action }[] = [];
-  let existing: boolean | undefined;
+  const plan: { spec: SecretSpec; action: Action }[] = [];
+  const missing: SecretSpec[] = [];
   for (const spec of SECRETS) {
-    removeLeftovers(spec, dir);
     const given = fromEnv(spec, env);
-    if (replace.includes(spec)) {
-      if (given) {
-        throw new SecretsError(`${spec.env} is set in .env, so Your Space uses it as given. Change it there instead.`);
-      }
-      writeSecret(spec, dir, generate(), chown);
-      outcomes.push({ spec, action: "replaced" });
-      continue;
-    }
     if (given) {
-      if (given.length < spec.minLength) {
-        throw new SecretsError(
-          `${spec.env} in .env must be at least ${spec.minLength} characters. Remove the line to let Your ` +
-            "Space generate one, or make one with: openssl rand -base64 32",
-        );
-      }
-      outcomes.push({ spec, action: "from_env" });
-      continue;
+      const problem = checkGiven(spec, given);
+      if (problem) throw new SecretsError(problem);
+      plan.push({ spec, action: replace.includes(spec) ? "not_replaced" : "from_env" });
+    } else if (replace.includes(spec)) {
+      plan.push({ spec, action: "replaced" });
+    } else if (readStored(spec, dir)) {
+      plan.push({ spec, action: "kept" });
+    } else {
+      plan.push({ spec, action: "generated" });
+      missing.push(spec);
     }
-    if (readStored(spec, dir)) {
-      outcomes.push({ spec, action: "kept" });
-      continue;
-    }
-    existing ??= databaseExists(databaseDir);
-    if (existing) throw new SecretsError(recovery(spec));
-    writeSecret(spec, dir, generate(), chown);
-    outcomes.push({ spec, action: "generated" });
   }
-  return outcomes;
+  if (missing.length > 0 && databaseExists(databaseDir)) throw new SecretsError(recovery(missing));
+
+  for (const { spec, action } of plan) {
+    removeLeftovers(ensureFolder(spec, dir, chown));
+    if (action === "generated" || action === "replaced") writeSecret(spec, dir, generate(), chown);
+  }
+  return plan;
 }

@@ -4,10 +4,14 @@ This guide installs Your Space with Docker Compose, creates its owner, and keeps
 need access to the server's command line: that access, not a web page, is what makes you the
 owner.
 
-Your Space runs as three containers:
+Your Space runs as three containers, after a short step that runs first:
 
+- **secrets** runs once on each start, before the others, and exits. It generates the auth secret
+  and the database password on the first start (see [Secrets](#secrets)), so `docker compose ps -a`
+  lists it as exited.
 - **caddy** serves the web client and handles HTTPS, including getting certificates.
-- **server** is the API. It also holds the two operator commands, `create-owner` and `reset-link`.
+- **server** is the API. It also holds the operator commands `create-owner`, `reset-link`, and
+  `show-secrets`.
 - **postgres** stores everything: your account, your workspace, and your sessions.
 
 ## Before You Start
@@ -103,7 +107,8 @@ To see the secrets in use and where each comes from:
 docker compose exec server show-secrets
 ```
 
-To manage a generated secret yourself, copy its line from that output into `.env`.
+Every line it prints is valid in `.env`, so to manage a generated secret yourself, copy its line
+there. To replace a secret later, see [Replace a Secret](#replace-a-secret).
 
 ## 3. Start
 
@@ -118,6 +123,7 @@ all three services running, with `server` and `postgres` marked `healthy`. If th
 | You see | What to do |
 | --- | --- |
 | `service "secrets" didn't complete successfully` | Run `docker compose logs secrets`. It says what's wrong with a secret and how to fix it; see [Lost Secrets](#lost-secrets) |
+| `server` keeps restarting, and `docker compose logs server` says "PostgreSQL refused the database password" | The database password changed after the database was created. Change `POSTGRES_PASSWORD` in `.env` back, or [give PostgreSQL the new one](#give-postgresql-the-database-password) |
 | `dependency failed to start: container your-space-server-1 is unhealthy` | Run `docker compose logs server`. An `Invalid configuration` message names the setting to fix. Fix `.env` and run `docker compose up -d` again. No port was opened meanwhile |
 | `Set YS_DOMAIN (your own domain) or YS_PROXY_URL (your own proxy or Tailscale) in .env, not both` | Remove one of the two lines. Every `docker compose` command stops with this message until you do |
 | `address already in use` or `port is already allocated`, for port 80 or 8080 | Another program uses the port. Add `YS_PORT=8081` (or any free port) to `.env` |
@@ -375,7 +381,7 @@ Your settings are in `.env`, next to `compose.yaml`. Keep it with the volumes:
 - Setting or changing `BETTER_AUTH_SECRET` signs out every device. Nothing else is lost.
 - Don't change `POSTGRES_PASSWORD` once the database exists. PostgreSQL keeps the password it was
   created with, so the server would stop with "PostgreSQL refused the database password". Change it
-  back, or follow [Lost Secrets](#lost-secrets) to set a new one.
+  back, or [give PostgreSQL the new one](#give-postgresql-the-database-password).
 
 These keep everything, including your sessions:
 
@@ -453,16 +459,51 @@ Ways to recover, best first:
    ```sh
    docker compose run --rm secrets --new auth-secret --new database-password
    docker compose up -d --wait postgres
-   docker compose exec postgres sh -c 'psql -U yourspace -d yourspace -c "ALTER ROLE yourspace PASSWORD '\''$(cat /run/ys-secrets/password)'\''"'
-   docker compose up -d
    ```
 
-   The first command makes both secrets. The next two start the database and give it the new
-   password, through a connection that works only inside its container. The last starts the rest.
+   Then [give PostgreSQL the database password](#give-postgresql-the-database-password), and start
+   the rest with `docker compose up -d`. A secret set in `.env` is left as it is by `--new`, so these
+   steps work whichever secrets you set there.
 
-If only the auth secret is missing, because you set `POSTGRES_PASSWORD` in `.env`, the first
-command with just `--new auth-secret` and then `docker compose up -d` is enough. A secret set in
-`.env` can't be replaced this way; change it in `.env`.
+### Give PostgreSQL the Database Password
+
+PostgreSQL keeps the password it was created with. After a new generated password, or after you
+change `POSTGRES_PASSWORD` in `.env`, give it the password now in use (the one in `.env` if set,
+otherwise the generated one). With Your Space started, run this in the folder with `compose.yaml`,
+all lines at once:
+
+```sh
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U yourspace -d yourspace <<'EOF'
+SET log_min_error_statement = panic;
+\set pw `if [ -n "$POSTGRES_PASSWORD" ]; then printf '%s' "$POSTGRES_PASSWORD"; else cat /run/ys-secrets/password; fi`
+SELECT :'pw' <> '' AS found \gset
+\if :found
+ALTER ROLE yourspace PASSWORD :'pw';
+\else
+\echo 'No database password in .env or ys-secrets, so nothing was changed.'
+\endif
+EOF
+```
+
+It prints `ALTER ROLE` when done. It connects through PostgreSQL's own socket inside its container,
+which needs no password, and it reads the password inside the container, so the password never
+appears in a command line or a log. Then restart the server so it reconnects:
+`docker compose restart server`.
+
+### Replace a Secret
+
+To replace a generated secret, for example because it may have leaked:
+
+- **Auth secret:** `docker compose run --rm secrets --new auth-secret`, then
+  `docker compose restart server`. Every device is signed out when the server restarts, and nothing
+  else changes.
+- **Database password:** `docker compose run --rm secrets --new database-password`, then
+  [give PostgreSQL the database password](#give-postgresql-the-database-password) and restart the
+  server.
+
+A secret set in `.env` is changed in `.env` instead. After changing `BETTER_AUTH_SECRET`, run
+`docker compose up -d`; after changing `POSTGRES_PASSWORD`, run `docker compose up -d` and then give
+PostgreSQL the database password as above.
 
 ## Recover the Owner Account
 

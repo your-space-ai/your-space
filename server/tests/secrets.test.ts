@@ -46,17 +46,26 @@ describe("settleSecrets on a new installation", () => {
     expect([stored(AUTH_SECRET), stored(DATABASE_PASSWORD)]).toEqual(first);
   });
 
-  it("uses a value set in .env as given, and writes nothing for it", () => {
+  it("uses a value set in .env as given and copies it nowhere, but still makes the empty folders PostgreSQL mounts", () => {
     const outcomes = settle({ BETTER_AUTH_SECRET: "x".repeat(40), POSTGRES_PASSWORD: "p@ss/w#rd %41" });
     expect(actions(outcomes)).toEqual(["BETTER_AUTH_SECRET:from_env", "POSTGRES_PASSWORD:from_env"]);
-    expect(readdirSync(secretsDir)).toEqual([]);
+    expect(readdirSync(secretsDir).sort()).toEqual(["auth", "postgres"]);
+    for (const spec of [AUTH_SECRET, DATABASE_PASSWORD]) {
+      expect(readdirSync(join(secretsDir, spec.dir))).toEqual([]);
+      expect(statSync(join(secretsDir, spec.dir)).mode & 0o777).toBe(spec.dirMode);
+    }
   });
 
   it("treats an empty line in .env as no line", () => {
-    expect(actions(settle({ BETTER_AUTH_SECRET: "", POSTGRES_PASSWORD: "  " }))).toEqual([
+    expect(actions(settle({ BETTER_AUTH_SECRET: "", POSTGRES_PASSWORD: "" }))).toEqual([
       "BETTER_AUTH_SECRET:generated",
       "POSTGRES_PASSWORD:generated",
     ]);
+  });
+
+  it.each(["  ", " leading", "trailing "])("refuses a value in .env with spaces around it (%j), since PostgreSQL would get them too", (value) => {
+    expect(() => settle({ POSTGRES_PASSWORD: value })).toThrow(/POSTGRES_PASSWORD in \.env starts or ends with a space/);
+    expect(readdirSync(secretsDir)).toEqual([]);
   });
 
   it("refuses a too-short auth secret in .env before anything starts", () => {
@@ -74,7 +83,7 @@ describe("settleSecrets on a new installation", () => {
 describe("settleSecrets when a secret is missing next to an existing database", () => {
   beforeEach(() => makeDatabase("18", "docker"));
 
-  it("stops with recovery steps for the auth secret, and generates nothing", () => {
+  it("stops with one message naming both secrets when the whole volume is gone, and writes nothing", () => {
     let error: unknown;
     try {
       settle();
@@ -82,8 +91,13 @@ describe("settleSecrets when a secret is missing next to an existing database", 
       error = caught;
     }
     expect(error).toBeInstanceOf(SecretsError);
-    expect((error as Error).message).toMatch(/already has a\s+database/);
-    expect((error as Error).message).toContain("docker compose run --rm secrets --new auth-secret");
+    expect((error as Error).message).toMatch(/^The auth secret and the database password aren't in \.env or in the ys-secrets volume/);
+    expect((error as Error).message).toContain('"Lost Secrets"');
+    expect(readdirSync(secretsDir)).toEqual([]);
+  });
+
+  it("offers a new auth secret when only that one is missing", () => {
+    expect(() => settle({ POSTGRES_PASSWORD: "given" })).toThrow(/docker compose run --rm secrets --new auth-secret/);
     expect(readdirSync(secretsDir)).toEqual([]);
   });
 
@@ -110,8 +124,12 @@ describe("settleSecrets when a secret is missing next to an existing database", 
     expect(stored(AUTH_SECRET)).not.toBe(before);
   });
 
-  it("won't replace a secret that .env sets", () => {
-    expect(() => settle({ BETTER_AUTH_SECRET: "x".repeat(40) }, [AUTH_SECRET])).toThrow(/is set in \.env, so Your Space uses it as given/);
+  it("leaves a secret that .env sets as it is when asked to replace it", () => {
+    expect(actions(settle({ BETTER_AUTH_SECRET: "x".repeat(40), POSTGRES_PASSWORD: "given" }, [AUTH_SECRET]))).toEqual([
+      "BETTER_AUTH_SECRET:not_replaced",
+      "POSTGRES_PASSWORD:from_env",
+    ]);
+    expect(readdirSync(join(secretsDir, "auth"))).toEqual([]);
   });
 });
 

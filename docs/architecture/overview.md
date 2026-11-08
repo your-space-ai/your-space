@@ -1,6 +1,6 @@
 # Your Space Architecture Overview
 
-**Last updated**: 2026-11-03
+**Last updated**: 2026-11-08
 
 This is a picture of Your Space as a running system for the first public release, layer by layer.
 It is a view of the [architecture and product decisions](decisions.md), not a separate source of
@@ -55,7 +55,7 @@ work from the roadmap.
 ┌───────▼───────────────────────┐ ┌─────────────────────▼──────────────────────┐
 │ 5. PLATFORM DATA              │ │ 6. APPS (SDKs or public contracts)         │
 │  PostgreSQL (Drizzle)         │ │ ┌──────────────────────┐ ┌───────────────┐ │
-│  Secrets store (spec)         │ │ │ MANAGED              │ │ EXTERNAL      │ │
+│  Platform secrets volume      │ │ │ MANAGED              │ │ EXTERNAL      │ │
 │  Backups and snapshots        │ │ │ Your Space runs it:  │ │ hosted        │ │
 └───────────────────────────────┘ │ │ own containers, DB,  │ │ anywhere;     │ │
                                   │ │ storage · no ports · │ │ accepts only  │ │
@@ -93,8 +93,12 @@ work from the roadmap.
    [agent access through Your Space](decisions.md#agent-access-through-your-space),
    [Your Space updates, backup, and restore](decisions.md#your-space-updates-backup-and-restore), and
    [activity log](decisions.md#activity-log).
-5. **Platform data.** PostgreSQL through Drizzle, a secrets store for app settings, and backups and
-   snapshots. See [server and database](decisions.md#server-and-database).
+5. **Platform data.** PostgreSQL through Drizzle, and backups and snapshots. The platform's own
+   secrets (the auth secret and the database password) are generated into a separate `ys-secrets`
+   volume by a one-shot step that runs before the database and the server, unless the owner sets
+   them ([2026-11-08 decision](decisions.md#installation-and-hosting)). App settings and secrets
+   are expected to live in PostgreSQL, sealed with a key from that volume (spec 002). See
+   [server and database](decisions.md#server-and-database).
 6. **Apps.** Managed apps run in their own isolated containers with resource limits and approved
    outbound access. External apps are hosted elsewhere and accept only identity verified by Your
    Space. See [platform and independent apps](decisions.md#platform-and-independent-apps) and
@@ -115,7 +119,8 @@ work from the roadmap.
 - How each app gets its own origin: a subdomain by default, a port where wildcard DNS is
   unavailable. This is decided in spec 002, "install an app and use it" (see the
   [spec map](../spec-map.md)).
-- How the secrets store works.
+- How app settings and secrets are stored and handed to apps (spec 002). The platform's own
+  secrets are decided.
 - How outbound network limits for apps are enforced.
 - Whether the gateway enforces per-action roles declared by apps.
 
