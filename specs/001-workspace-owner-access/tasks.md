@@ -67,7 +67,7 @@ depends on these.
 - [X] T062 Make sign-out from Your Space's own pages delete the session first in `server/src/app.ts`, and report a storage failure as 503 instead of success (FR-009, FR-016). `server/tests/outage.test.ts` covers storage failing mid-request (a reset, sign-out, a lost connection) and the organization routes closed over HTTP
 - [X] T015 Implement `server/src/owner/installation.ts`: read the `installation` row and return `claimed` or `unclaimed`, or throw `StorageUnavailable` when the query fails or the row is missing ([research R10](research.md#r10-storage-unavailable-handling-fr-013))
 - [X] T016 [P] Add `server/tests/helpers/db.ts`: create a fresh database per test file, run migrations, and expose helpers to stop and restore the connection; and the other helpers in `server/tests/helpers/`: `state.ts` (the identity and ownership records the tests compare), `commands.ts` (runs the operator commands as processes), and `env.ts` (shared settings)
-- [ ] T017 [P] Add `server/Dockerfile` (`node:26-slim`, production dependencies, `bin/` on `PATH`, `CMD ["node", "src/index.ts"]`) and a `.dockerignore` that keeps `node_modules`, `.env`, docs, and specs out of the build context
+- [X] T017 [P] Add `server/Dockerfile` (`node:26-slim`, production dependencies, `bin/` on `PATH`, `CMD ["node", "src/index.ts"]`) and a `.dockerignore` that keeps `node_modules`, `.env`, docs, and specs out of the build context
 - [X] T018 [P] Add `deploy/Caddyfile`:
   - site address `{$YS_SITE}` from the mode file, with `encode`, and `http://127.0.0.1` redirecting to the public address
   - `/api/*` to `server:3000`, with request bodies capped at 64 KB

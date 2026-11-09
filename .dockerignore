@@ -2,8 +2,8 @@
 **/dist
 .git
 .github
-.env
-.env.*
+**/.env
+**/.env.*
 **/*.log
 e2e/test-results
 e2e/playwright-report
