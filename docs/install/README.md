@@ -32,8 +32,11 @@ Windows is not supported as a server.
 
 **Checked so far:** steps 2 to 5 and the later sections were checked only with locally built
 images on Linux on Intel/AMD (x86_64) with Docker Engine 29 and Compose 5.6, in Chromium, Firefox,
-and WebKit. Downloading from a release, the published images, macOS, ARM machines such as Apple
-Silicon, IPv6, and HTTPS with a real domain or Tailscale have not been checked yet.
+and WebKit. Each setup's published ports and the generated secrets were checked on Compose 5.6 and
+2.26.0, and the this-machine and own-proxy setups also with a running stack. Downloading from
+a release, the published images, macOS, ARM machines such as Apple Silicon, IPv6, and HTTPS with a
+real domain or Tailscale have not been checked yet. [VERIFICATION.md](VERIFICATION.md) lists
+exactly what was tested, with versions.
 
 Check Docker before you go on:
 

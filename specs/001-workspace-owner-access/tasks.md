@@ -47,7 +47,7 @@ depends on these.
 
 - [X] T058 [P] Implement `server/src/secrets.ts`: each platform secret from `.env` as given, otherwise the copy in `ys-secrets`, otherwise, for a new installation, generated; stop with recovery steps when the database exists but a secret is missing; replace a generated secret on request ([research R16](research.md#r16-platform-secrets)). Test it in `server/tests/secrets.test.ts`
 - [X] T006 Implement `server/src/config.ts`: derive the setup and public address from the optional `YS_DOMAIN`, `YS_PROXY_URL`, and `YS_PORT` ([research R9](research.md#r9-https-and-the-caddy-configuration)), refuse unknown `YS_*` keys, read the auth secret and database password from `.env` or the `ys-secrets` volume ([research R16](research.md#r16-platform-secrets)), and validate them and `DATABASE_URL` at startup; exit with a clear message when one is missing or malformed
-- [ ] T007 [P] Implement `server/src/log.ts`: one JSON line per event to stdout, never including request bodies, cookies, `Authorization` headers, passwords, or tokens
+- [X] T007 [P] Implement `server/src/log.ts`: one JSON line per event to stdout, never including request bodies, cookies, `Authorization` headers, passwords, or tokens
 - [X] T059 [P] `server/tests/config.test.ts`: each setup line and the public address it gives, refused values and setting names with messages that say what to fix, Better Auth's own secret settings refused, and the secrets read from `.env` or the volume
 - [X] T008 Implement `server/src/db/client.ts`: a `pg` pool and Drizzle instance from `DATABASE_URL`, with a pool `error` handler so losing the database never crashes the process
 - [X] T009 Implement `server/src/auth.ts` with one shared options builder ([research R3, R4](research.md#r3-authentication-with-better-auth)):
@@ -232,14 +232,14 @@ out every session, without email.
 
 **Purpose**: Shared rules from the spec map, release evidence, and multi-architecture images.
 
-- [ ] T051 [P] `server/tests/logs.test.ts` and an e2e log check in `e2e/tests/logs.spec.ts`: after exercising create-owner, sign-in, failures, and recovery, server and Caddy logs contain no passwords, tokens, set-password links, or session values (cross-cutting scenario 2)
+- [X] T051 [P] `server/tests/logs.test.ts` and an e2e log check in `e2e/tests/logs.spec.ts`: after exercising create-owner, sign-in, failures, and recovery, server and Caddy logs contain no passwords, tokens, set-password links, or session values (cross-cutting scenario 2)
 - [ ] T052 [P] Add `.github/workflows/images.yml`: Docker Buildx with QEMU builds and publishes `your-space-server` and `your-space-web` for `linux/amd64` and `linux/arm64` to GitHub Container Registry; point `deploy/stack.yaml` at the published tags (FR-022)
-- [ ] T070 Add a `release-files` job to `.github/workflows/images.yml` that attaches `your-space.tar.gz` (`compose.yaml`, `stack.yaml`, `modes/`, and `env.example`, with `stack.yaml` pinned to the release's image version) to each release, and the Download section of `docs/install/README.md` that fetches and unpacks it
+- [X] T070 Add a `release-files` job to `.github/workflows/images.yml` that attaches `your-space.tar.gz` (`compose.yaml`, `stack.yaml`, `modes/`, and `env.example`, with `stack.yaml` pinned to the release's image version) to each release, and the Download section of `docs/install/README.md` that fetches and unpacks it
 - [X] T053 [P] Add an e2e job to `.github/workflows/ci.yml` that builds both images locally with `deploy/compose.build.yaml` (T020), starts `deploy/compose.yaml`, and runs Playwright in all three browsers
-- [ ] T054 Capture outbound traffic while running quickstart sections 1, 3, and 5, and confirm the only outbound connections are certificate requests for a configured domain (cross-cutting scenario 5, SC-013); record the method and result in `docs/install/VERIFICATION.md`
+- [X] T054 Capture outbound traffic while running quickstart sections 1, 3, and 5, and confirm the only outbound connections are certificate requests for a configured domain (cross-cutting scenario 5, SC-013); record the method and result in `docs/install/VERIFICATION.md`
 - [ ] T055 Run [quickstart.md](quickstart.md) on an Apple Silicon Mac and an Intel/AMD Linux host with the published images, including HTTPS with a real domain and Tailscale, and record versions, environments, results, and limitations in `docs/install/VERIFICATION.md` (SC-010, SC-011)
 - [ ] T056 Finish `docs/install/README.md`: list the supported hosts and browsers verified in T055 (FR-001)
-- [ ] T057 Self-review and an independent review of the full diff against the constitution, spec, and plan; then confirm each delivered 001 roadmap item in `docs/roadmap.md` is checked with its date and the link to the pull request that verified it. The overview tree is never checked.
+- [X] T057 Self-review and an independent review of the full diff against the constitution, spec, and plan; then confirm each delivered 001 roadmap item in `docs/roadmap.md` is checked with its date and the link to the pull request that verified it. The overview tree is never checked.
 
 ---
 

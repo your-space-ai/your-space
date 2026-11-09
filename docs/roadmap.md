@@ -23,9 +23,9 @@ full pre-public scope by layer, and the [architecture overview](architecture/ove
 resulting system. Automatic app updates, building apps from source, alternative deployment-file
 formats, and a workspace MCP endpoint are post-open-source work.
 
-**Next step:** Deliver spec 001 through its stack of pull requests, then write spec 002, "install an
-app and use it". Every pre-public item below has a priority; Low items move to post-open-source work
-first if the timeline slips.
+**Next step:** Write spec 002, "install an app and use it". Journey 001's remaining tasks (T052,
+T055, and T056) close after the first release. Every pre-public item below has a priority; Low items
+move to post-open-source work first if the timeline slips.
 
 The pre-public section is grouped into layers. Within each layer, each parent checkbox represents a
 capability and its nested checkboxes track specific functionality.
@@ -185,7 +185,11 @@ Your Space: first public release
   - [ ] [Low] Keep the manual Compose procedure documented as an advanced alternative to the CLI.
   - [ ] [High] Publish Your Space images for both ARM (including Apple Silicon) and Intel/AMD machines.
 
-  The manual install is part of the owner-access feature ([spec 001](../specs/001-workspace-owner-access/spec.md)).
+  The manual install is part of the owner-access feature
+  ([spec 001](../specs/001-workspace-owner-access/spec.md)). Its guide and images are written, but
+  installing, other-device access, and the published ARM and Intel/AMD images stay unchecked until
+  they are verified on real hosts (task T055 in the
+  [001 task list](../specs/001-workspace-owner-access/tasks.md)).
 
 - [ ] **HTTPS**
 
