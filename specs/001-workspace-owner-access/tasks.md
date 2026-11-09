@@ -149,24 +149,24 @@ and [section 3](quickstart.md#3-sign-in-remote-access-sign-out-story-2).
 
 ### Tests for User Story 2
 
-- [ ] T034 [P] [US2] `server/tests/session.test.ts`:
+- [X] T034 [P] [US2] `server/tests/session.test.ts`:
   - correct sign-in creates a session and a wrong password does not;
   - `get-session` without a cookie returns no session;
   - after sign-out, replaying the cookie fails;
   - an expired session fails;
   - with an `https` public address the cookie is `__Secure-`, `Secure`, and `HttpOnly`, with no `Domain` attribute;
   - in production mode the 4th sign-in within 10 seconds returns 429.
-- [ ] T035 [P] [US2] `e2e/tests/us2-sign-in.spec.ts`: wrong password is refused; sign in reaches home; sign out returns to sign-in; a replayed session cookie is refused; a stopped server shows the "server unreachable" state, not an empty workspace
+- [X] T035 [P] [US2] `e2e/tests/us2-sign-in.spec.ts`: wrong password is refused; sign in reaches home; sign out returns to sign-in; a replayed session cookie is refused; a stopped server shows the "server unreachable" state, not an empty workspace
 
 ### Implementation for User Story 2
 
-- [ ] T036 [P] [US2] Implement `web/src/pages/SignIn.tsx`: email and password with native validation, Better Auth `signIn.email`, and clear errors for wrong credentials and rate limiting
-- [ ] T037 [P] [US2] Implement `web/src/pages/Home.tsx`: workspace name from `organization.list`, the owner's name and email, and sign out; nothing else (FR-027)
+- [X] T036 [P] [US2] Implement `web/src/pages/SignIn.tsx`: email and password with native validation, Better Auth `signIn.email`, and clear errors for wrong credentials and rate limiting
+- [X] T037 [P] [US2] Implement `web/src/pages/Home.tsx`: workspace name from `organization.list`, the owner's name and email, and sign out; nothing else (FR-027)
 - [ ] T038 [US2] Extend `web/src/router.tsx`: the root `beforeLoad` sends signed-out visitors to `/sign-in` and signed-in visitors away from it; an expired session mid-use returns to sign-in without reporting success (FR-016)
-- [ ] T067 [US2] Add the other setups: `deploy/modes/mode.domain.yaml` (ports 80 and 443 on every IPv4 address), `deploy/modes/mode.proxy.yaml` (`127.0.0.1:8080` and the `your-space_edge` network), and `deploy/modes/mode.domain.proxy.yaml` (stops Compose when both keys are set); the `YS_DOMAIN` and `YS_PROXY_URL` lines in `deploy/.env.example`; and their checks in `e2e/tests/setups.spec.ts` ([research R9](research.md#r9-https-and-the-caddy-configuration))
-- [ ] T068 [US2] Pass visitors' addresses to the sign-in limit in `deploy/Caddyfile`: `X-Forwarded-For` set to `{client_ip}` on `/api/*`, and `trusted_proxies` (strict, `private_ranges`) on the `:8080` proxy listener only ([research R9](research.md#r9-https-and-the-caddy-configuration))
-- [ ] T039 [US2] Add the remote-access sections to `docs/install/README.md`: the configure and start rows for `YS_DOMAIN` and `YS_PROXY_URL`, and which line opens which ports; your own domain, with certificate troubleshooting through `docker compose logs caddy`; your own proxy; and Tailscale (`tailscale serve` with `YS_PROXY_URL`), including proxies in containers through the `your-space_edge` network and the `Host` check, and why plain `http://<LAN IP>` is not supported (FR-028)
-- [ ] T069 [US2] Add a Sign-In and Sessions section to `docs/install/README.md`: session lifetime, sign-out, the sign-in limit, password rules and hashing (scrypt with Better Auth defaults), and how links are stored (FR-009 to FR-011)
+- [X] T067 [US2] Add the other setups: `deploy/modes/mode.domain.yaml` (ports 80 and 443 on every IPv4 address), `deploy/modes/mode.proxy.yaml` (`127.0.0.1:8080` and the `your-space_edge` network), and `deploy/modes/mode.domain.proxy.yaml` (stops Compose when both keys are set); the `YS_DOMAIN` and `YS_PROXY_URL` lines in `deploy/.env.example`; and their checks in `e2e/tests/setups.spec.ts` ([research R9](research.md#r9-https-and-the-caddy-configuration))
+- [X] T068 [US2] Pass visitors' addresses to the sign-in limit in `deploy/Caddyfile`: `X-Forwarded-For` set to `{client_ip}` on `/api/*`, and `trusted_proxies` (strict, `private_ranges`) on the `:8080` proxy listener only ([research R9](research.md#r9-https-and-the-caddy-configuration))
+- [X] T039 [US2] Add the remote-access sections to `docs/install/README.md`: the configure and start rows for `YS_DOMAIN` and `YS_PROXY_URL`, and which line opens which ports; your own domain, with certificate troubleshooting through `docker compose logs caddy`; your own proxy; and Tailscale (`tailscale serve` with `YS_PROXY_URL`), including proxies in containers through the `your-space_edge` network and the `Host` check, and why plain `http://<LAN IP>` is not supported (FR-028)
+- [X] T069 [US2] Add a Sign-In and Sessions section to `docs/install/README.md`: session lifetime, sign-out, the sign-in limit, password rules and hashing (scrypt with Better Auth defaults), and how links are stored (FR-009 to FR-011)
 
 **Checkpoint**: User Stories 1 and 2 both work; a second device signs in over HTTPS.
 

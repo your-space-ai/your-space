@@ -235,14 +235,15 @@ Your Space: first public release
   - [x] [High] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
   - [x] [High] Prevent duplicate owners and keep sign-up closed; new people join only by invitation. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
   - [ ] [High] Reach an accurate empty workspace and distinguish unavailable services from empty or unclaimed state.
-  - [ ] [High] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation.
-  - [ ] [High] Keep the platform session in host-only cookies so it is never sent to app origins.
+  - [x] [High] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation. (2026-11-08, [PR #13](https://github.com/your-space-ai/your-space/pull/13))
+  - [x] [High] Keep the platform session in host-only cookies so it is never sent to app origins. (2026-11-08, [PR #13](https://github.com/your-space-ai/your-space/pull/13))
   - [ ] [High] Recover the existing owner account through an operator command without requiring email delivery or a standalone CLI.
   - [ ] [High] Preserve identity and revoke existing sessions after successful password recovery.
 
   The owner-access feature ([spec 001](../specs/001-workspace-owner-access/spec.md)) is owner-only and
   web-only. Password rules, session and credential lifetimes, and failed-attempt behavior are settled
-  in the [001 plan](../specs/001-workspace-owner-access/plan.md#settled-values).
+  in the [001 plan](../specs/001-workspace-owner-access/plan.md#settled-values) and documented in the
+  [installation guide](install/README.md#sign-in-and-sessions).
 
 - [ ] **Workspace members**
 
