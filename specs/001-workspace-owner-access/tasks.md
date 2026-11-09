@@ -61,7 +61,7 @@ depends on these.
 - [X] T011 Define `installation`, `actor`, and `event` in `server/src/db/schema.ts` per [data-model.md](data-model.md): single-row check on `installation`, a `claimed` row requires `workspace_id` and `claimed_at`, `workspace_id` references `organization.id` `on delete restrict`
 - [X] T012 Add `server/drizzle.config.ts`, generate the first migration into `server/drizzle/`, and append inserts for the `installation` row (`state = 'unclaimed'`) and the `operator` actor
 - [X] T063 [P] Mark the generated files `server/drizzle/meta/**` and `server/src/db/auth-schema.ts` as `linguist-generated` in `.gitattributes`
-- [ ] T013 Implement `server/src/migrate.ts` (`drizzle-orm` `migrate()` under a PostgreSQL advisory lock, logging old and new schema versions) and `server/src/index.ts` (validate config, migrate, then listen on port 3000)
+- [X] T013 Implement `server/src/migrate.ts` (`drizzle-orm` `migrate()` under a PostgreSQL advisory lock, logging old and new schema versions) and `server/src/index.ts` (validate config, migrate, then listen on port 3000)
 - [X] T014 Implement `server/src/app.ts`: Express 5 with `trust proxy` set to 1 hop, Better Auth via `toNodeHandler(auth)` at `/api/auth/*splat` mounted before `express.json()`, then JSON routes, and an error handler that returns `{ error, message }` without stack traces
 - [X] T061 Refuse `/api` requests whose `Host` isn't the public address with 421 `wrong_host` in `server/src/app.ts`, with `/api/health` exempt for Docker's health check ([http-api](contracts/http-api.md#host-check)); test it in `server/tests/host.test.ts`
 - [X] T062 Make sign-out from Your Space's own pages delete the session first in `server/src/app.ts`, and report a storage failure as 503 instead of success (FR-009, FR-016). `server/tests/outage.test.ts` covers storage failing mid-request (a reset, sign-out, a lost connection) and the organization routes closed over HTTP
@@ -85,7 +85,7 @@ depends on these.
 - [X] T065 [P] `e2e/tests/setups.spec.ts`: this machine, with and without `YS_PORT`, publishes only its loopback port, the server and database publish nothing, and the secrets step has no network while each service mounts only what it reads, all read with `docker compose config`. A `setups` job in `.github/workflows/ci.yml` runs it on Compose 2.26.0 and on the runner's version
 - [X] T066 `e2e/tests/secrets.spec.ts` against the Compose stack: an empty `.env` gets generated secrets that survive restarts; a lost `ys-secrets` volume stops start-up and the guide's steps recover the workspace; secrets set in `.env` are used as given, and a changed password is recovered with the guide's command. Write the Secrets, Lost Secrets, Give PostgreSQL the Database Password, and Replace a Secret sections of `docs/install/README.md`
 - [X] T021 Implement `web/src/auth-client.ts` (Better Auth `createAuthClient` with `organizationClient`), `web/src/queries.ts` (TanStack Query hooks for `/api/status`, the session, and the workspace that unwrap `{ data, error }`), and `web/src/main.tsx` (QueryClient and RouterProvider)
-- [ ] T022 [P] Implement `web/src/components/ErrorState.tsx` with the failure kinds in `web/src/errors.ts` (storage unavailable, server unreachable, wrong address (421), session expired, each with a next step) and `web/src/styles.css` (plain CSS)
+- [X] T022 [P] Implement `web/src/components/ErrorState.tsx` with the failure kinds in `web/src/errors.ts` (storage unavailable, server unreachable, wrong address (421), session expired, each with a next step) and `web/src/styles.css` (plain CSS)
 
 **Checkpoint**: `docker compose up` starts all three services healthy, and migrations apply, once
 T029 adds `/api/health`, which the server's health check calls, and T030 and T032 add NoOwnerYet and
@@ -131,7 +131,7 @@ on a clean stack.
   - collect the new password with native validation (12 to 128 characters);
   - post it with Better Auth `resetPassword`;
   - on success go to sign-in; on an invalid or expired link, explain how to get a new one with `reset-link`.
-- [ ] T032 [US1] Implement `web/src/router.tsx` with routes `/sign-in`, `/`, and `/reset-password`; the root `beforeLoad` shows NoOwnerYet when there is no owner and ErrorState when storage is unavailable
+- [X] T032 [US1] Implement `web/src/router.tsx` with routes `/sign-in`, `/`, and `/reset-password`; the root `beforeLoad` shows NoOwnerYet when there is no owner and ErrorState when storage is unavailable
 - [X] T033 [US1] Write `docs/install/README.md` sections for prerequisites, configuring this machine (`YS_PORT` and refused settings), starting the stack, `create-owner`, and setting the password (FR-001)
 
 **Checkpoint**: User Story 1 works end to end on localhost, once T036 and T037 (Phase 4) and T049
@@ -162,7 +162,7 @@ and [section 3](quickstart.md#3-sign-in-remote-access-sign-out-story-2).
 
 - [X] T036 [P] [US2] Implement `web/src/pages/SignIn.tsx`: email and password with native validation, Better Auth `signIn.email`, and clear errors for wrong credentials and rate limiting
 - [X] T037 [P] [US2] Implement `web/src/pages/Home.tsx`: workspace name from `organization.list`, the owner's name and email, and sign out; nothing else (FR-027)
-- [ ] T038 [US2] Extend `web/src/router.tsx`: the root `beforeLoad` sends signed-out visitors to `/sign-in` and signed-in visitors away from it; an expired session mid-use returns to sign-in without reporting success (FR-016)
+- [X] T038 [US2] Extend `web/src/router.tsx`: the root `beforeLoad` sends signed-out visitors to `/sign-in` and signed-in visitors away from it; an expired session mid-use returns to sign-in without reporting success (FR-016)
 - [X] T067 [US2] Add the other setups: `deploy/modes/mode.domain.yaml` (ports 80 and 443 on every IPv4 address), `deploy/modes/mode.proxy.yaml` (`127.0.0.1:8080` and the `your-space_edge` network), and `deploy/modes/mode.domain.proxy.yaml` (stops Compose when both keys are set); the `YS_DOMAIN` and `YS_PROXY_URL` lines in `deploy/.env.example`; and their checks in `e2e/tests/setups.spec.ts` ([research R9](research.md#r9-https-and-the-caddy-configuration))
 - [X] T068 [US2] Pass visitors' addresses to the sign-in limit in `deploy/Caddyfile`: `X-Forwarded-For` set to `{client_ip}` on `/api/*`, and `trusted_proxies` (strict, `private_ranges`) on the `:8080` proxy listener only ([research R9](research.md#r9-https-and-the-caddy-configuration))
 - [X] T039 [US2] Add the remote-access sections to `docs/install/README.md`: the configure and start rows for `YS_DOMAIN` and `YS_PROXY_URL`, and which line opens which ports; your own domain, with certificate troubleshooting through `docker compose logs caddy`; your own proxy; and Tailscale (`tailscale serve` with `YS_PROXY_URL`), including proxies in containers through the `your-space_edge` network and the `Host` check, and why plain `http://<LAN IP>` is not supported (FR-028)
@@ -181,17 +181,17 @@ unavailable" and never "no owner yet".
 
 ### Tests for User Story 3
 
-- [ ] T040 [US3] `e2e/tests/us3-restart.spec.ts`:
+- [X] T040 [US3] `e2e/tests/us3-restart.spec.ts`:
   - after `docker compose restart` and after `down` then `up`, user, workspace, and membership IDs match and an existing session still works;
   - with Postgres stopped, the web shows "storage unavailable", `/api/status` returns 503, and `create-owner` exits 3;
   - after Postgres restarts, everything returns unchanged.
-- [ ] T041 [P] [US3] `server/tests/migrations.test.ts`: a database at the first migration upgrades to a later test migration in place, records the new version in `drizzle.__drizzle_migrations`, and keeps all identities and claim state (cross-cutting scenario 8)
+- [X] T041 [P] [US3] `server/tests/migrations.test.ts`: a database at the first migration upgrades to a later test migration in place, records the new version in `drizzle.__drizzle_migrations`, and keeps all identities and claim state (cross-cutting scenario 8)
 
 ### Implementation for User Story 3
 
-- [ ] T042 [US3] Make `server/src/owner/routes.ts` and `server/src/index.ts` keep serving 503 while the database is down and recover when it returns, without a restart
-- [ ] T043 [US3] Add a retry action to the storage-unavailable state in `web/src/components/ErrorState.tsx` that refetches `/api/status`
-- [ ] T044 [US3] Add a restart and storage section to `docs/install/README.md`: the named volumes, safe `restart` and `down`/`up`, a clear warning that `down -v` deletes the workspace, and recovery after a database outage
+- [X] T042 [US3] Make `server/src/owner/routes.ts` and `server/src/index.ts` keep serving 503 while the database is down and recover when it returns, without a restart
+- [X] T043 [US3] Add a retry action to the storage-unavailable state in `web/src/components/ErrorState.tsx` that refetches `/api/status`
+- [X] T044 [US3] Add a restart and storage section to `docs/install/README.md`: the named volumes, safe `restart` and `down`/`up`, a clear warning that `down -v` deletes the workspace, and recovery after a database outage
 
 **Checkpoint**: All data survives restarts and recreation; outages are reported honestly.
 
@@ -215,14 +215,14 @@ out every session, without email.
   - issuing a link alone changes nothing;
   - `recovery.link_issued` and `recovery.password_reset` events reference actors;
   - `POST /api/auth/request-password-reset` over HTTP is refused.
-- [ ] T046 [P] [US4] `e2e/tests/us4-recover.spec.ts`: sign in on two browser contexts, run `reset-link`, set a new password through the link, both old sessions are signed out, the new password works and the old one does not
+- [X] T046 [P] [US4] `e2e/tests/us4-recover.spec.ts`: sign in on two browser contexts, run `reset-link`, set a new password through the link, both old sessions are signed out, the new password works and the old one does not
 
 ### Implementation for User Story 4
 
 - [X] T047 [US4] Implement `server/src/recovery/reset-link.ts`: find the owner through the `owner` membership, call `requestPasswordReset` through `createCommandAuth`, and record `recovery.link_issued` against the operator actor
-- [ ] T048 [US4] Implement `server/src/commands/reset-link.ts` (`--json`, exit codes 0 to 4) and the `server/bin/reset-link` wrapper
+- [X] T048 [US4] Implement `server/src/commands/reset-link.ts` (`--json`, exit codes 0 to 4) and the `server/bin/reset-link` wrapper
 - [X] T049 [US4] Record `recovery.password_reset` against the owner's actor using Better Auth's `emailAndPassword.onPasswordReset` option in `server/src/auth.ts`
-- [ ] T050 [US4] Add a recovery section to `docs/install/README.md`: running `reset-link`, link lifetime, and that using it signs out every device
+- [X] T050 [US4] Add a recovery section to `docs/install/README.md`: running `reset-link`, link lifetime, and that using it signs out every device
 
 **Checkpoint**: All four stories work independently.
 
