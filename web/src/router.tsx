@@ -3,15 +3,21 @@
 import type { QueryClient } from "@tanstack/react-query";
 import {
   createRootRouteWithContext,
+  createRoute,
   createRouter,
+  Navigate,
   Outlet,
+  redirect,
   useRouter,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { useState } from "react";
 import { ErrorState } from "./components/ErrorState.tsx";
 import { failureKind } from "./errors.ts";
+import { Home } from "./pages/Home.tsx";
 import { NoOwnerYet } from "./pages/NoOwnerYet.tsx";
+import { ResetPassword } from "./pages/ResetPassword.tsx";
+import { SignIn, type SignInNotice } from "./pages/SignIn.tsx";
 import { sessionQuery, statusQuery } from "./queries.ts";
 
 interface RouterContext {
@@ -51,12 +57,44 @@ function RootError({ error }: ErrorComponentProps) {
   return <ErrorState kind={failureKind(error)} onRetry={retry} retrying={retrying} />;
 }
 
-const routeTree = rootRoute.addChildren([]);
+const homeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  beforeLoad: ({ context }) => {
+    if (context.owner && !context.session) throw redirect({ to: "/sign-in" });
+  },
+  component: Home,
+});
+
+const NOTICES: SignInNotice[] = ["password_set", "signed_out", "expired"];
+
+const signInRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/sign-in",
+  validateSearch: (search: Record<string, unknown>): { notice?: SignInNotice } => {
+    const notice = NOTICES.find((n) => n === search.notice);
+    return notice ? { notice } : {};
+  },
+  beforeLoad: ({ context }) => {
+    if (context.owner && context.session) throw redirect({ to: "/" });
+  },
+  component: SignIn,
+});
+
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/reset-password",
+  component: ResetPassword,
+});
+
+const routeTree = rootRoute.addChildren([homeRoute, signInRoute, resetPasswordRoute]);
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
     routeTree,
     context: { queryClient },
+    // Unknown addresses go to the home route, which sends signed-out visitors to sign-in.
+    defaultNotFoundComponent: () => <Navigate to="/" replace />,
   });
 }
 
