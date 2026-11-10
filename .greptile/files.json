@@ -1,0 +1,36 @@
+{
+  "files": [
+    {
+      "path": ".specify/memory/constitution.md",
+      "description": "The project's principles; every change must follow them"
+    },
+    {
+      "path": "AGENTS.md",
+      "description": "How specs, decisions, the roadmap and the architecture overview are kept in step"
+    },
+    {
+      "path": "docs/architecture/decisions.md",
+      "description": "Accepted project-wide decisions and their reasons"
+    },
+    {
+      "path": "specs/001-workspace-owner-access/spec.md",
+      "description": "Journey 001's requirements and acceptance scenarios",
+      "scope": ["server/**", "web/**", "e2e/**", "deploy/**"]
+    },
+    {
+      "path": "specs/001-workspace-owner-access/plan.md",
+      "description": "Journey 001's technical plan: the libraries chosen and the custom code allowed",
+      "scope": ["server/**", "web/**", "e2e/**", "deploy/**", "package.json", "*/package.json"]
+    },
+    {
+      "path": "specs/001-workspace-owner-access/contracts/http-api.md",
+      "description": "The HTTP API contract",
+      "scope": ["server/src/**"]
+    },
+    {
+      "path": "specs/001-workspace-owner-access/contracts/operator-commands.md",
+      "description": "The operator commands' contract: arguments, output and exit codes",
+      "scope": ["server/src/commands/**", "server/bin/**"]
+    }
+  ]
+}

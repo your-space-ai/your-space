@@ -1,0 +1,7 @@
+{
+  "strictness": 2,
+  "commentTypes": ["logic", "syntax"],
+  "autoReview": ["open"],
+  "ignorePatterns": "package-lock.json\nserver/drizzle/meta/**\nserver/src/db/auth-schema.ts",
+  "instructions": "Your Space is a self-hosted workspace platform: an Express server, PostgreSQL through Drizzle, Better Auth, a React web client served by Caddy, all run with Docker Compose. Journey 001 is delivered as a stack of pull requests, each adding one layer on top of the one below; review each pull request on its own diff. Report bugs, security problems, data-integrity risks, and breaks of the project's rules in .greptile/rules.md. Don't comment on wording, naming or style, and don't suggest refactors the change doesn't need."
+}
