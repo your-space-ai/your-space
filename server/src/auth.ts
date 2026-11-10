@@ -6,7 +6,7 @@
 // - `createCommandAuth` exists only inside the create-owner and reset-link processes. Sign-up is on
 //   and `sendResetPassword` hands the link to the command, which prints it. It is never mounted.
 import { createHash } from "node:crypto";
-import { and, eq, like, ne } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 import { betterAuth, type User } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
@@ -30,6 +30,26 @@ export const LINK_LIFETIME_SECONDS = 30 * 60;
 export function storedIdentifier(identifier: string): string {
   const prefix = identifier.slice(0, identifier.indexOf(":") + 1);
   return prefix + createHash("sha256").update(identifier).digest("base64url");
+}
+
+/**
+ * Cancels the account's set-password and reset links issued before the one with this token, so
+ * only the newest works. "Before" means created earlier, with the row ID breaking ties. So when two
+ * links are stored before either command cancels the other (two reset-link commands at once), the
+ * newer one survives, as if the commands had run one after the other.
+ */
+export async function cancelEarlierLinks(db: Db, userId: string, token: string): Promise<void> {
+  const links = authSchema.verification;
+  const own = storedIdentifier(`reset-password:${token}`);
+  await db
+    .delete(links)
+    .where(
+      and(
+        like(links.identifier, "reset-password:%"),
+        eq(links.value, userId),
+        sql`(${links.createdAt}, ${links.id}) < (select own.created_at, own.id from verification own where own.identifier = ${own})`,
+      ),
+    );
 }
 
 export interface AuthDeps {
@@ -98,16 +118,7 @@ function buildAuth(deps: AuthDeps, onLink?: OnLink) {
       resetPasswordTokenExpiresIn: LINK_LIFETIME_SECONDS,
       sendResetPassword: onLink
         ? async ({ user, token }) => {
-            // Only the newest link works: cancel any earlier unused set-password or reset link.
-            await db
-              .delete(authSchema.verification)
-              .where(
-                and(
-                  like(authSchema.verification.identifier, "reset-password:%"),
-                  eq(authSchema.verification.value, user.id),
-                  ne(authSchema.verification.identifier, storedIdentifier(`reset-password:${token}`)),
-                ),
-              );
+            await cancelEarlierLinks(db, user.id, token);
             const expiresAt = new Date(Date.now() + LINK_LIFETIME_SECONDS * 1000);
             expiresAt.setMilliseconds(0);
             await onLink({ user, token, url: linkFor(config.publicUrl, token), expiresAt });
