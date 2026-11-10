@@ -1,0 +1,53 @@
+name: Code review
+
+# Claude reviews a pull request when it's opened or marked ready, and again whenever someone with
+# write access comments "@claude review" on it, e.g. after a fix round. It only posts review
+# comments; it doesn't change code. It runs on the owner's Claude subscription while the
+# repository is private (see "AI code review" in docs/architecture/decisions.md).
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: code-review-${{ github.event.pull_request.number || github.event.issue.number }}
+
+jobs:
+  review:
+    if: >-
+      (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '@claude review'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    env:
+      PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/pull/${{ env.PR }}/head
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ env.PR }}
+
+            Review this pull request by following .github/code-review.md. The checkout is the
+            pull request's head; read its diff with `gh pr diff`, and its description and earlier
+            comments with `gh pr view --comments` and the pull request's review comments API.
+
+            Post each finding as an inline comment on the line it concerns, with its severity, what
+            goes wrong and the evidence. Don't repeat a finding already raised in an earlier
+            comment unless it's still unfixed and you have something new to add. Finish with one
+            summary comment (`gh pr comment`) that lists the findings, or says there are none, and
+            notes which earlier findings are now fixed.
+          claude_args: >-
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(gh api repos/${{ github.repository }}/pulls/:*),Read,Grep,Glob"
