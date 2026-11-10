@@ -44,7 +44,7 @@ describe("Host guard", () => {
       const body = (await response.json()) as { error: string; message: string };
       expect(body.error).toBe("wrong_host");
       expect(body.message).toContain("set up for https://space.example.test");
-      expect(body.message).toContain("proxy_set_header Host $host");
+      expect(body.message).toContain("proxy_set_header Host $http_host");
     },
   );
 

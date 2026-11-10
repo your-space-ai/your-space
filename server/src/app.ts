@@ -27,7 +27,7 @@ export function createApp({ auth, db }: AppDeps): express.Express {
     if (req.path === "/health" || req.headers.host?.toLowerCase() === publicUrl.host) return next();
     res.status(421).json({
       error: "wrong_host",
-      message: `Your Space is set up for ${publicOrigin}, and this request named a different address. If you use your own proxy, set it to pass the original Host header (nginx: proxy_set_header Host $host).`,
+      message: `Your Space is set up for ${publicOrigin}, and this request named a different address. If you use your own proxy, set it to pass the original Host header (nginx: proxy_set_header Host $http_host).`,
     });
   });
 
