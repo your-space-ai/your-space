@@ -1,4 +1,14 @@
 <!--
+Sync Impact Report (2026-11-10): 1.2.0 -> 1.3.0 (minor: materially expanded section)
+- Expanded: Development Workflow now says code lands with its first use. In a stack of pull
+  requests, each file, top-level function or component, script, and configuration entry arrives in
+  the first pull request where something runs it, or where a developer first needs it to run,
+  develop, or test the app. Code inside a function is not split across pull requests.
+- Rationale: code that lands before anything runs it can't be checked by its own pull request, and
+  reviewers end up judging it without seeing it work.
+- Impact: journey 001's stack (#8 to #15) was rearranged to follow it on 2026-11-10; later journeys
+  plan their stacks this way.
+
 Sync Impact Report (2026-11-07): 1.1.1 -> 1.2.0 (minor: materially expanded principle)
 - Expanded: II. Preserve User Control and Hosting Choice now requires configuration to be optional:
   safe defaults that suit most installations, an owner's configuration that starts empty and holds
@@ -159,6 +169,14 @@ repeatable requirements where practical.
 Passing a checklist establishes only what that checklist evaluates; it does not substitute for
 demonstrated working behavior.
 
+Code lands with its first use. When a change is delivered as a stack of pull requests, each file,
+top-level function or component, script, and configuration entry arrives in the first pull request
+where something runs it: code that runs calls or renders it, a test runs it, CI or the deployment
+runs it, or a developer first needs it there to run, develop, or test the app, as with a migration
+generator or a local start script. Code that runs may reach it only from an error path or an event
+handler; code inside a function is not split across pull requests. Anything that would land earlier
+moves up to the pull request that first uses it.
+
 ## Governance
 
 This constitution guides feature specifications, technical plans, implementation, and review.
@@ -172,4 +190,4 @@ clarifications and other non-semantic changes.
 When a proposal conflicts with the constitution, resolve the conflict explicitly by revising the
 proposal or amending the relevant principle.
 
-**Version**: 1.2.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-11-07
+**Version**: 1.3.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-11-10

@@ -4,7 +4,7 @@
 
 **Recorded**: 2026-10-28
 
-**Last updated**: 2026-11-08
+**Last updated**: 2026-11-10
 
 **Scope**: Project-wide direction, independent of any feature specification
 
@@ -567,7 +567,11 @@ This refines the sequence above without changing scope: it groups existing pre-p
 
 **Decision update (2026-11-08):** A journey is delivered as a stack of pull requests into `main`. The first carries the specification and its supporting documents (plan, research, contracts, and the task list) with no task checked. Each later one adds one layer that passes its own checks, checks only the tasks it verifies, and checks roadmap items only for what it delivers. A spec on `main` describes agreed design; only checked tasks, checked roadmap items, and the verification record claim delivered work, so a spec never claims work that doesn't exist yet. This supersedes the earlier wording that the CLI or streamlined local setup gets its own implementation PR; each is specified in its journey (2026-11-02) and delivered the same way.
 
+**Decision update (2026-11-10):** In a stack, code lands with its first use: each file, top-level function or component, script, and configuration entry arrives in the first pull request where something runs it (code that runs, a test, CI, or the deployment) or where a developer first needs it to run, develop, or test the app. Code inside a function is not split across pull requests, so error paths and event handlers land with their function. Anything that would land earlier moves up. Code that lands before it runs can't be checked by its own pull request, and reviewers end up judging it without seeing it work. Added to the constitution's Development Workflow (version 1.3.0).
+
 **Decision update (2026-11-10):** Claude reviews each pull request through the Claude Code GitHub Action when it is opened or marked ready, and again when someone with write access comments `@claude review`, such as after a fix round. It reports bugs, security and data-integrity problems, and breaks of the project's rules, checked against the constitution, this record, and the journey's spec and plan, and skips style; its guide is `.github/code-review.md`. Its findings are review comments, resolved before the pull request merges, and it changes no code. While the repository is private it runs on the owner's Claude subscription, so reviews add no cost and draw on that subscription's usage limits. The alternatives cost more for how often this project pushes: Greptile charges a credit per review beyond a small free allowance, Copilot code review spends credits on each review, and CodeRabbit adds a monthly seat price with hourly limits. Claude also writes much of this code, so its review is a weaker second opinion than an independent reviewer's, and GitHub doesn't give the subscription token to workflows for pull requests from forks. Before the repository is public, review therefore moves to the free open-source plan of Greptile or CodeRabbit, which reviews contributors' pull requests too.
+
+**Decision update (2026-11-10):** CircleCI runs the checks on Linux on Arm (aarch64), the second architecture Your Space ships images for, while GitHub Actions covers x86_64: the server's checks from the first code layer, and the whole Compose stack with the browser journeys in Chromium once the stack exists. Its macOS and Windows machines are left for the desktop app, since they can't run the Docker stack. CircleCI's free plan covers this while the repository is private (30,000 credits a month); it builds pull requests from forks without the project's secrets, and the jobs need none.
 
 ## Choices Still Open
 
