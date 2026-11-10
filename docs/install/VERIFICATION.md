@@ -4,7 +4,7 @@ This records what was checked for [spec 001](../../specs/001-workspace-owner-acc
 with which versions, and what was not checked. The [installation guide](README.md) claims support only
 for what is listed here as verified (SC-010).
 
-**Date:** 2026-11-08 · **Branch:** `claude/001-9-record`
+**Date:** 2026-11-08 · **Pull request:** [#15](https://github.com/your-space-ai/your-space/pull/15)
 
 ## Summary
 
