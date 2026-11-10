@@ -7,7 +7,7 @@ demonstrates the core experience. This checklist captures work to implement, pro
 before that release. More requirements and the exact launch bar remain under discussion.
 
 The [roadmap](roadmap.md) tracks product delivery, and the [architecture and product decisions](architecture/decisions.md)
-record agreed direction. The [owner access specification under review](https://github.com/your-space-ai/your-space/pull/3)
+record agreed direction. The [owner access specification](../specs/001-workspace-owner-access/spec.md)
 defines the first feature's acceptance criteria. This checklist does not expand that specification;
 new capabilities need their own specifications and implementation work.
 
@@ -71,11 +71,13 @@ is chosen instead, explicitly decide which items apply and describe what is not 
 
 - [ ] **Install and use the owner workspace**
   - [ ] Implement the owner-access specification and its manual Docker Compose pathway, including
-    browser setup, one owner and workspace, sign-in, sign-out, and server-enforced access.
+    owner creation by a server command with the password set in the browser, one owner and
+    workspace, sign-in, sign-out, and server-enforced access.
   - [ ] Document and test installation from a clean state on each claimed host and architecture,
     including prerequisites, configuration, startup, and actionable failure handling.
-  - [ ] Verify operator-only setup authority, single-use and expiry behavior, concurrent claim and
-    retry handling, and denial of unauthorized or duplicate claims.
+  - [ ] Verify that only the operator's server command can create the owner, that set-password links
+    are single-use and expire, that concurrent runs and reruns create no duplicates, and that
+    network-only attempts to create an account are denied.
   - [ ] Verify protected requests are denied without valid authentication, including direct API
     requests; test session expiry, sign-out, and invalidation.
   - [ ] Verify the platform session uses host-only cookies that are not sent to app origins.
@@ -129,7 +131,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
   - [ ] Review default network exposure, access to operator commands and setup credentials, encrypted
     remote access, and the documented deployment's configuration for supported environments.
   - [ ] Verify the server, CLI, and desktop app send no telemetry, make no automatic outbound
-    requests other than update checks, and stop update checks when the owner turns them off.
+    requests other than update checks and the built-in proxy's certificate requests for an
+    owner-configured domain, and stop update checks when the owner turns them off.
   - [ ] Review dependencies and container images for known vulnerabilities, remediate release
     blockers, and document accepted risks and how updates are monitored.
   - [ ] Publish a private vulnerability reporting channel and a realistic response policy, including
@@ -140,8 +143,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
 - [ ] **Prepare a usable project and contributor experience**
   - [ ] Write a README that explains the product, release maturity, supported capabilities and
     environments, prerequisites, installation entry point, and known limitations. State that Your
-    Space collects no telemetry and that update checks to GitHub are its only automatic outbound
-    requests.
+    Space collects no telemetry and that update checks to GitHub and the built-in proxy's
+    certificate requests for an owner-configured domain are its only automatic outbound requests.
   - [ ] Provide accurate installation, configuration, restart, remote access, troubleshooting,
     owner recovery, and uninstall guidance for the actual release.
   - [ ] Document where durable data lives, and how to back up, restore, and move a workspace
@@ -222,8 +225,9 @@ belong in the journey specifications listed in the [spec map](spec-map.md). Road
   - [ ] In local mode, verify Docker detection with a download link when missing, stack startup when
     the app opens, and owner-triggered Your Space updates.
   - [ ] Verify the desktop app uninstalls a local workspace through the CLI's uninstall command.
-  - [ ] Verify the desktop app completes local-mode owner setup by submitting the setup code from the
-    CLI on the user's behalf, through the same setup flow as every other installation.
+  - [ ] Verify the desktop app completes local-mode owner setup by running the owner command through
+    the CLI and setting the password on the user's behalf, through the same flow as every other
+    installation.
   - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off,
     and state the Docker Desktop license terms.
   - [ ] Verify supported clients connect to the same workspace and handle authentication and failures;
