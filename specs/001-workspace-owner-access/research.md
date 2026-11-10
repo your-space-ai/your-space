@@ -229,8 +229,10 @@ that settled each question.
   setup it picked in `server.listening`.
 
   Proxy trust follows the listener: only the `:8080` server trusts `X-Forwarded-For`, from
-  `private_ranges`, in Caddy's strict mode (read from the right), so a proxy that appends to the
-  header can't be fooled by a visitor on the internet or a tailnet. The API refuses a request whose
+  `private_ranges`, in Caddy's strict mode (read from the right). Caddy skips private addresses as
+  proxies, so the outer proxy must replace the header: if it appended, a visitor on the local
+  network could put a made-up address in front of their own. Caddy, Traefik, `tailscale serve` and
+  the guide's nginx lines all replace it. The API refuses a request whose
   `Host` isn't the public address with 421 (`/api/health` excepted), which catches proxies that
   rewrite `Host` and DNS-rebinding pages. `http://127.0.0.1` redirects to the public address.
 

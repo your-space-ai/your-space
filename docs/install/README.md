@@ -292,10 +292,11 @@ for other services.
    proxy_set_header X-Forwarded-For $remote_addr;
    ```
 
-Your Space reads the visitor's address only from connections to port 8080, and only from the right
-end of `X-Forwarded-For`, so visitors on the internet or on Tailscale can't fake it even if your
-proxy appends to the header instead of replacing it. Visitors on your own network, with addresses
-such as `192.168.1.20`, look like proxies, so behind a proxy they share one sign-in limit.
+Your Space reads the visitor's address only from connections to port 8080. Visitors on your own
+network, with addresses such as `192.168.1.20`, look like proxies, so behind a proxy they share one
+sign-in limit. Don't let your proxy add to an `X-Forwarded-For` the visitor sent (in nginx,
+`$proxy_add_x_forwarded_for`): a device on your own network could then put a made-up address in
+front of its own and get a fresh sign-in limit for every guess.
 
 ### Use Tailscale
 

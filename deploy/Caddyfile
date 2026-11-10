@@ -6,8 +6,10 @@
 {
 	servers :8080 {
 		# Only port 8080, where your own proxy forwards, accepts the visitor address a proxy reports.
-		# Strict mode reads X-Forwarded-For from the right, so a proxy that appends to it (nginx's
-		# $proxy_add_x_forwarded_for) can't be fooled by a visitor who sends their own.
+		# Strict mode reads X-Forwarded-For from the right and skips private addresses as proxies, so
+		# the proxy must replace the header with the visitor's address. If it appended to it instead
+		# (nginx's $proxy_add_x_forwarded_for), a visitor on the local network could put a made-up
+		# address in front of their own (docs/install/README.md).
 		trusted_proxies static private_ranges
 		trusted_proxies_strict
 	}
