@@ -84,7 +84,7 @@ depends on these.
 - [X] T064 Implement `server/src/commands/show-secrets.ts`, with the output and exit codes the commands share in `server/src/commands/output.ts`, and the `server/bin/show-secrets` wrapper: print both platform secrets and where each comes from, as lines valid in `.env` ([operator commands](contracts/operator-commands.md#show-secrets)); test `describeSecrets` in `server/tests/secrets.test.ts`
 - [X] T065 [P] `e2e/tests/setups.spec.ts`: this machine, with and without `YS_PORT`, publishes only its loopback port, the server and database publish nothing, and the secrets step has no network while each service mounts only what it reads, all read with `docker compose config`. A `setups` job in `.github/workflows/ci.yml` runs it on Compose 2.26.0 and on the runner's version
 - [X] T066 `e2e/tests/secrets.spec.ts` against the Compose stack: an empty `.env` gets generated secrets that survive restarts; a lost `ys-secrets` volume stops start-up and the guide's steps recover the workspace; secrets set in `.env` are used as given, and a changed password is recovered with the guide's command. Write the Secrets, Lost Secrets, Give PostgreSQL the Database Password, and Replace a Secret sections of `docs/install/README.md`
-- [ ] T021 Implement `web/src/auth-client.ts` (Better Auth `createAuthClient` with `organizationClient`), `web/src/queries.ts` (TanStack Query hooks for `/api/status`, the session, and the workspace that unwrap `{ data, error }`), and `web/src/main.tsx` (QueryClient and RouterProvider)
+- [X] T021 Implement `web/src/auth-client.ts` (Better Auth `createAuthClient` with `organizationClient`), `web/src/queries.ts` (TanStack Query hooks for `/api/status`, the session, and the workspace that unwrap `{ data, error }`), and `web/src/main.tsx` (QueryClient and RouterProvider)
 - [ ] T022 [P] Implement `web/src/components/ErrorState.tsx` with the failure kinds in `web/src/errors.ts` (storage unavailable, server unreachable, wrong address (421), session expired, each with a next step) and `web/src/styles.css` (plain CSS)
 
 **Checkpoint**: `docker compose up` starts all three services healthy, and migrations apply, once
@@ -112,7 +112,7 @@ on a clean stack.
   - a rerun after a run stopped before the final transaction finishes with one owner.
 - [X] T024 [P] [US1] `server/tests/signup-closed.test.ts`: `POST /api/auth/sign-up/email` is refused before and after the owner exists, and creating an organization over HTTP is refused
 - [X] T025 [P] [US1] `server/tests/status.test.ts`: `GET /api/status` returns `{ owner: false }`, then `{ owner: true }`, and 503 `storage_unavailable` when the database is down or the row is missing; `GET /api/health` returns 200 or 503; with the helpers `server/tests/helpers/server.ts` (the Express app on a random port) and `owner.ts` (an owner with a known password), which T024, T061, T062 and the later stories' server tests reuse
-- [ ] T026 [P] [US1] `e2e/tests/us1-create-owner.spec.ts`: a fresh stack shows "no owner yet" with no form; run `create-owner --json` through `docker compose exec`; open the link; set the password; sign in; the home screen shows the workspace, name, email, and sign out only, with the shared set-password and sign-in steps in `e2e/tests/helpers/ui.ts`
+- [X] T026 [P] [US1] `e2e/tests/us1-create-owner.spec.ts`: a fresh stack shows "no owner yet" with no form; run `create-owner --json` through `docker compose exec`; open the link; set the password; sign in; the home screen shows the workspace, name, email, and sign out only, with the shared set-password and sign-in steps in `e2e/tests/helpers/ui.ts`
 
 ### Implementation for User Story 1
 
@@ -126,13 +126,13 @@ on a clean stack.
 - [X] T028 [US1] Implement `server/src/commands/create-owner.ts` (`util.parseArgs` for `--email`, `--name`, `--json`; human and JSON output; exit codes 0 to 4) with the shared output in `server/src/commands/output.ts` (T064), and the `server/bin/create-owner` wrapper
 - [X] T029 [P] [US1] Implement `server/src/owner/routes.ts`: `GET /api/status` and `GET /api/health` per [http-api](contracts/http-api.md); register them in `server/src/app.ts`
 - [X] T030 [P] [US1] Implement `web/src/pages/NoOwnerYet.tsx`: explains running `create-owner` and has no form
-- [ ] T031 [US1] Implement `web/src/pages/ResetPassword.tsx`:
+- [X] T031 [US1] Implement `web/src/pages/ResetPassword.tsx`:
   - read the token from `location.hash`, then clear the hash;
   - collect the new password with native validation (12 to 128 characters);
   - post it with Better Auth `resetPassword`;
   - on success go to sign-in; on an invalid or expired link, explain how to get a new one with `reset-link`.
 - [ ] T032 [US1] Implement `web/src/router.tsx` with routes `/sign-in`, `/`, and `/reset-password`; the root `beforeLoad` shows NoOwnerYet when there is no owner and ErrorState when storage is unavailable
-- [ ] T033 [US1] Write `docs/install/README.md` sections for prerequisites, configuring this machine (`YS_PORT` and refused settings), starting the stack, `create-owner`, and setting the password (FR-001)
+- [X] T033 [US1] Write `docs/install/README.md` sections for prerequisites, configuring this machine (`YS_PORT` and refused settings), starting the stack, `create-owner`, and setting the password (FR-001)
 
 **Checkpoint**: User Story 1 works end to end on localhost, once T036 and T037 (Phase 4) and T049
 (Phase 6) exist.

@@ -231,9 +231,9 @@ Your Space: first public release
 
   **Source:** [Authentication and initial claim](architecture/decisions.md#authentication-and-initial-claim) and [sessions, persistence, and recovery](architecture/decisions.md#sessions-persistence-and-recovery). The setup code and browser claim were replaced by a server command 2026-11-03.
 
-  - [ ] [High] Create the owner with a server command that prints a single-use set-password link; the network alone can never create an account or the owner.
-  - [ ] [High] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct.
-  - [ ] [High] Prevent duplicate owners and keep sign-up closed; new people join only by invitation.
+  - [x] [High] Create the owner with a server command that prints a single-use set-password link; the network alone can never create an account or the owner. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
+  - [x] [High] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
+  - [x] [High] Prevent duplicate owners and keep sign-up closed; new people join only by invitation. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
   - [ ] [High] Reach an accurate empty workspace and distinguish unavailable services from empty or unclaimed state.
   - [ ] [High] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation.
   - [ ] [High] Keep the platform session in host-only cookies so it is never sent to app origins.
