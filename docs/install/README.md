@@ -415,7 +415,8 @@ never takes a missing database for a new installation, so it never offers to cre
 | --- | --- |
 | The web page | "Your Space can't read its storage", with a **Try again** button |
 | `<your address>/api/status` | HTTP status 503 and `{"state":"storage_unavailable"}` |
-| `create-owner` and `reset-link` | Exit status 3 and "The database could not be read." Nothing was changed |
+| `create-owner` | Exit status 3 and "The database could not be read." Nothing was changed |
+| `reset-link` | Exit status 3 and "The database could not be read." No link is printed, and an earlier unused link may have stopped working: run `reset-link` again once the database is back |
 | `docker compose ps` | `server` turns `unhealthy` |
 
 To find the cause:
