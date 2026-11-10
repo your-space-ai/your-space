@@ -2,7 +2,7 @@
 import { expect, test } from "@playwright/test";
 import { evidence } from "./helpers/evidence.ts";
 import { createOwner, resetStack, serverCommand, sql } from "./helpers/stack.ts";
-import { PASSWORD, setPassword, signIn } from "./helpers/ui.ts";
+import { PASSWORD, signIn } from "./helpers/ui.ts";
 
 test.describe.configure({ mode: "serial" });
 
