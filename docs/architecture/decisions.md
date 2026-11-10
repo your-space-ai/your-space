@@ -4,7 +4,7 @@
 
 **Recorded**: 2026-10-28
 
-**Last updated**: 2026-11-08
+**Last updated**: 2026-11-10
 
 **Scope**: Project-wide direction, independent of any feature specification
 
@@ -566,6 +566,8 @@ This is a developing release roadmap, not a complete acceptance specification or
 This refines the sequence above without changing scope: it groups existing pre-public items into journeys and orders the work after the CLI.
 
 **Decision update (2026-11-08):** A journey is delivered as a stack of pull requests into `main`. The first carries the specification and its supporting documents (plan, research, contracts, and the task list) with no task checked. Each later one adds one layer that passes its own checks, checks only the tasks it verifies, and checks roadmap items only for what it delivers. A spec on `main` describes agreed design; only checked tasks, checked roadmap items, and the verification record claim delivered work, so a spec never claims work that doesn't exist yet. This supersedes the earlier wording that the CLI or streamlined local setup gets its own implementation PR; each is specified in its journey (2026-11-02) and delivered the same way.
+
+**Decision update (2026-11-10):** In a stack, code lands with its first use: each file, top-level function or component, script, and configuration entry arrives in the first pull request where something runs it (code that runs, a test, CI, or the deployment) or where a developer first needs it to run, develop, or test the app. Code inside a function is not split across pull requests, so error paths and event handlers land with their function. Anything that would land earlier moves up. Code that lands before it runs can't be checked by its own pull request, and reviewers end up judging it without seeing it work. Added to the constitution's Development Workflow (version 1.3.0).
 
 ## Choices Still Open
 
