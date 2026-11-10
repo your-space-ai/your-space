@@ -33,7 +33,7 @@ One repository with npm workspaces: `server/`, `web/`, `e2e/`, plus `deploy/` an
 **Purpose**: Create the workspaces and tooling.
 
 - [ ] T001 Create root `package.json` with npm workspaces `server`, `web`, `e2e` and its `package-lock.json`, plus root `tsconfig.base.json` (TypeScript 7, `strict`, `erasableSyntaxOnly`, `rewriteRelativeImportExtensions`) and `.gitignore` (`node_modules`, `dist`, `.env`)
-- [X] T002 Create `server/package.json` (Node 26, `"type": "module"`) with runtime dependencies `express`, `better-auth`, `drizzle-orm`, `pg`, and dev dependencies `drizzle-kit`, `vitest`, `@types/express`, `@types/pg`, plus `server/tsconfig.json` and `server/vitest.config.ts`
+- [ ] T002 Create `server/package.json` (Node 26, `"type": "module"`) with runtime dependencies `express`, `better-auth`, `drizzle-orm`, `pg`, and dev dependencies `drizzle-kit`, `vitest`, `@types/express`, `@types/pg`, plus `server/tsconfig.json` and `server/vitest.config.ts`
 - [ ] T003 [P] Create the Vite React app in `web/` (`web/package.json`, `web/tsconfig.json`, `web/vite.config.ts`, `web/index.html`) with `react`, `react-dom`, `@tanstack/react-router`, `@tanstack/react-query`, `better-auth`
 - [ ] T004 [P] Create `e2e/package.json` and `e2e/playwright.config.ts` with Chromium, Firefox, and WebKit projects and a base URL of `http://localhost` (`YS_PORT` moves it), plus `e2e/tsconfig.json`, `e2e/global-setup.ts` (builds the images), `e2e/stack.env` (the stack's settings, empty on purpose), and the `stack` and `evidence` helpers in `e2e/tests/helpers/`
 - [ ] T005 [P] Add `.github/workflows/ci.yml`: install, `tsc --noEmit` in every workspace, server tests with a PostgreSQL 18 service container, web build
