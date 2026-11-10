@@ -1,16 +1,13 @@
 # Your Space: Caddy (HTTPS and the web client), the API server, and PostgreSQL.
 #
-# Leave .env without these lines to use Your Space on this machine, at http://localhost. One line
-# picks another setup (docs/install/README.md):
-#   YS_DOMAIN=space.example.com     your own domain, with HTTPS from Let's Encrypt
-#   YS_PROXY_URL=https://...        behind your own proxy or Tailscale
-#   YS_PORT=8081                    a different local port, when another program has 80 (or 8080)
-# The line you write picks the matching file in modes/, where each port address is written out.
+# Your Space runs on this machine, at http://localhost. If another program already uses port 80,
+# set another port in .env (docs/install/README.md):
+#   YS_PORT=8081
+# modes/mode.yaml writes out each port address.
 name: your-space
 
 include:
   - path:
       - stack.yaml
-      # Neither key: modes/mode.yaml. YS_DOMAIN: mode.domain.yaml. YS_PROXY_URL: mode.proxy.yaml.
-      # Both: mode.domain.proxy.yaml, which stops every command with a message.
+      # The mode file for the setup in .env: modes/mode.yaml when none is set.
       - modes/mode${YS_DOMAIN:+.domain}${YS_PROXY_URL:+.proxy}.yaml

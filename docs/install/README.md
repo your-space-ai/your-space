@@ -67,9 +67,8 @@ on this machine, at `http://localhost`, and generates its own secrets (see [Secr
 | --- | --- | --- |
 | Use it on this machine only (the default) | nothing | Plain HTTP at `http://localhost`, reachable only from this machine |
 
-If another program already uses port 80 on this machine (or 8080 with `YS_PROXY_URL`), also add
-`YS_PORT=8081`, or any free port. Your Space then answers at `http://localhost:8081`. `YS_PORT`
-doesn't apply to your own domain, which needs ports 80 and 443.
+If another program already uses port 80 on this machine, also add `YS_PORT=8081`, or any free
+port. Your Space then answers at `http://localhost:8081`.
 
 ### Secrets
 

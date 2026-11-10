@@ -1,7 +1,5 @@
 # Your Space's Caddy configuration (research R9). The mode file Compose picks (deploy/modes/) sets:
 #   YS_SITE          http://localhost        plain HTTP for this machine only (the default)
-#                    https://<YS_DOMAIN>     automatic HTTPS from Let's Encrypt; HTTP redirects to it
-#                    http://:8080            plain HTTP behind your own proxy or `tailscale serve`
 #   YS_REDIRECT_URL  where http://127.0.0.1 sends people: sign-in works at one address only
 (app) {
 	encode
