@@ -1,0 +1,9 @@
+# This machine only: nothing in .env. Plain HTTP on the loopback address, which no other device
+# can reach (FR-015). YS_PORT moves it when another program already has port 80.
+services:
+  caddy:
+    ports:
+      - "127.0.0.1:${YS_PORT:-80}:80"
+    environment:
+      YS_SITE: http://localhost
+      YS_REDIRECT_URL: http://localhost:${YS_PORT:-80}
