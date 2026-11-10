@@ -50,6 +50,27 @@ const SETUPS: Setup[] = [
     site: "http://localhost",
     server: { YS_DOMAIN: "", YS_PROXY_URL: "", YS_PORT: "8081" },
   },
+  {
+    name: "your own domain (YS_DOMAIN)",
+    env: { YS_DOMAIN: "space.example.com" },
+    ports: ["0.0.0.0:80->80/tcp", "0.0.0.0:443->443/tcp", "0.0.0.0:443->443/udp"],
+    site: "https://space.example.com",
+    server: { YS_DOMAIN: "space.example.com", YS_PROXY_URL: "", YS_PORT: "" },
+  },
+  {
+    name: "your own proxy or Tailscale (YS_PROXY_URL)",
+    env: { YS_PROXY_URL: "https://myserver.tail1234.ts.net" },
+    ports: ["127.0.0.1:8080->8080/tcp"],
+    site: "http://:8080",
+    server: { YS_DOMAIN: "", YS_PROXY_URL: "https://myserver.tail1234.ts.net", YS_PORT: "" },
+  },
+  {
+    name: "your own proxy on another port (YS_PROXY_URL, YS_PORT=8090)",
+    env: { YS_PROXY_URL: "https://space.example.com", YS_PORT: "8090" },
+    ports: ["127.0.0.1:8090->8080/tcp"],
+    site: "http://:8080",
+    server: { YS_DOMAIN: "", YS_PROXY_URL: "https://space.example.com", YS_PORT: "8090" },
+  },
 ];
 
 for (const setup of SETUPS) {
@@ -67,6 +88,17 @@ for (const setup of SETUPS) {
   });
 }
 
+test("only the proxy setup joins the edge network, where a proxy in a container finds it as your-space", async () => {
+  const proxy = await config({ YS_PROXY_URL: "https://space.example.com" });
+  expect(proxy.services.caddy!.networks?.edge?.aliases).toEqual(["your-space"]);
+  expect(Object.keys(proxy.services.server!.networks ?? { default: null })).toEqual(["default"]);
+  const others: Record<string, string>[] = [{}, { YS_DOMAIN: "space.example.com" }];
+  for (const env of others) {
+    const other = await config(env);
+    expect(Object.keys(other.networks ?? {})).not.toContain("edge");
+  }
+});
+
 test("the secrets step has no network, and PostgreSQL and the server get only what they read", async () => {
   const { services } = await config({});
   const secrets = services.secrets as Service & { network_mode?: string; read_only?: boolean; cap_drop?: string[] };
@@ -83,4 +115,13 @@ test("the secrets step has no network, and PostgreSQL and the server get only wh
   expect(mounts("caddy")).toEqual([]);
   expect(services.postgres!.depends_on?.secrets?.condition).toBe("service_completed_successfully");
   expect(services.server!.depends_on?.secrets?.condition).toBe("service_completed_successfully");
+});
+
+test("setting both YS_DOMAIN and YS_PROXY_URL stops Compose with a message", async () => {
+  const result = await compose(["config"], {
+    allowFailure: true,
+    env: { YS_DOMAIN: "space.example.com", YS_PROXY_URL: "https://space.example.com", YS_PORT: "" },
+  });
+  expect(result.code).not.toBe(0);
+  expect(result.stderr).toContain("Set YS_DOMAIN (your own domain) or YS_PROXY_URL (your own proxy or Tailscale) in .env, not both");
 });
