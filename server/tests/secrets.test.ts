@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
+import { describeSecrets } from "../src/commands/show-secrets.ts";
 import { AUTH_SECRET, DATABASE_PASSWORD, databaseExists, SecretsError, settleSecrets } from "../src/secrets.ts";
 
 let secretsDir: string;
@@ -153,5 +154,21 @@ describe("databaseExists", () => {
   it.each([[["18", "docker"]], [["data"]], [[]]])("finds a data directory at %j, whatever the PostgreSQL version's layout", (path) => {
     makeDatabase(...path);
     expect(databaseExists(databaseDir)).toBe(true);
+  });
+});
+
+describe("describeSecrets (show-secrets)", () => {
+  it("shows each value and where it comes from", () => {
+    settle();
+    const { shown, missing } = describeSecrets({ BETTER_AUTH_SECRET: "y".repeat(40) }, secretsDir);
+    expect(missing).toEqual([]);
+    expect(shown).toEqual([
+      { name: "BETTER_AUTH_SECRET", label: "auth secret", source: "env", value: "y".repeat(40) },
+      { name: "POSTGRES_PASSWORD", label: "database password", source: "generated", value: stored(DATABASE_PASSWORD) },
+    ]);
+  });
+
+  it("names the settings that have no value yet", () => {
+    expect(describeSecrets({}, secretsDir).missing).toEqual(["BETTER_AUTH_SECRET", "POSTGRES_PASSWORD"]);
   });
 });

@@ -57,16 +57,16 @@ depends on these.
   - export `auth`, the public instance with sign-up off and no `sendResetPassword`
   - export `createCommandAuth(onLink)`, the command-only instance with sign-up on and `sendResetPassword` calling `onLink`
 - [ ] T060 Store set-password and reset tokens in `server/src/auth.ts` only as SHA-256 hashes (`verification.storeIdentifier`), and have the commands' `sendResetPassword` delete any earlier unused link for the account, so only the newest link works ([research R8](research.md#r8-owner-recovery-link), [R16](research.md#r16-platform-secrets))
-- [ ] T010 Generate `server/src/db/auth-schema.ts` with `npx auth@1.7.18 generate` (`npm run auth:generate -w server`) from `server/src/db/auth-generate.ts`, which builds the instance in `server/src/auth.ts`
-- [ ] T011 Define `installation`, `actor`, and `event` in `server/src/db/schema.ts` per [data-model.md](data-model.md): single-row check on `installation`, a `claimed` row requires `workspace_id` and `claimed_at`, `workspace_id` references `organization.id` `on delete restrict`
-- [ ] T012 Add `server/drizzle.config.ts`, generate the first migration into `server/drizzle/`, and append inserts for the `installation` row (`state = 'unclaimed'`) and the `operator` actor
-- [ ] T063 [P] Mark the generated files `server/drizzle/meta/**` and `server/src/db/auth-schema.ts` as `linguist-generated` in `.gitattributes`
+- [X] T010 Generate `server/src/db/auth-schema.ts` with `npx auth@1.7.18 generate` (`npm run auth:generate -w server`) from `server/src/db/auth-generate.ts`, which builds the instance in `server/src/auth.ts`
+- [X] T011 Define `installation`, `actor`, and `event` in `server/src/db/schema.ts` per [data-model.md](data-model.md): single-row check on `installation`, a `claimed` row requires `workspace_id` and `claimed_at`, `workspace_id` references `organization.id` `on delete restrict`
+- [X] T012 Add `server/drizzle.config.ts`, generate the first migration into `server/drizzle/`, and append inserts for the `installation` row (`state = 'unclaimed'`) and the `operator` actor
+- [X] T063 [P] Mark the generated files `server/drizzle/meta/**` and `server/src/db/auth-schema.ts` as `linguist-generated` in `.gitattributes`
 - [ ] T013 Implement `server/src/migrate.ts` (`drizzle-orm` `migrate()` under a PostgreSQL advisory lock, logging old and new schema versions) and `server/src/index.ts` (validate config, migrate, then listen on port 3000)
 - [ ] T014 Implement `server/src/app.ts`: Express 5 with `trust proxy` set to 1 hop, Better Auth via `toNodeHandler(auth)` at `/api/auth/*splat` mounted before `express.json()`, then JSON routes, and an error handler that returns `{ error, message }` without stack traces
 - [ ] T061 Refuse `/api` requests whose `Host` isn't the public address with 421 `wrong_host` in `server/src/app.ts`, with `/api/health` exempt for Docker's health check ([http-api](contracts/http-api.md#host-check)); test it in `server/tests/host.test.ts`
 - [ ] T062 Make sign-out from Your Space's own pages delete the session first in `server/src/app.ts`, and report a storage failure as 503 instead of success (FR-009, FR-016). `server/tests/outage.test.ts` covers storage failing mid-request (a reset, sign-out, a lost connection) and the organization routes closed over HTTP
-- [ ] T015 Implement `server/src/owner/installation.ts`: read the `installation` row and return `claimed` or `unclaimed`, or throw `StorageUnavailable` when the query fails or the row is missing ([research R10](research.md#r10-storage-unavailable-handling-fr-013))
-- [ ] T016 [P] Add `server/tests/helpers/db.ts`: create a fresh database per test file, run migrations, and expose helpers to stop and restore the connection; and the other helpers in `server/tests/helpers/`: `state.ts` (the identity and ownership records the tests compare), `commands.ts` (runs the operator commands as processes), and `env.ts` (shared settings)
+- [X] T015 Implement `server/src/owner/installation.ts`: read the `installation` row and return `claimed` or `unclaimed`, or throw `StorageUnavailable` when the query fails or the row is missing ([research R10](research.md#r10-storage-unavailable-handling-fr-013))
+- [X] T016 [P] Add `server/tests/helpers/db.ts`: create a fresh database per test file, run migrations, and expose helpers to stop and restore the connection; and the other helpers in `server/tests/helpers/`: `state.ts` (the identity and ownership records the tests compare), `commands.ts` (runs the operator commands as processes), and `env.ts` (shared settings)
 - [ ] T017 [P] Add `server/Dockerfile` (`node:26-slim`, production dependencies, `bin/` on `PATH`, `CMD ["node", "src/index.ts"]`) and a `.dockerignore` that keeps `node_modules`, `.env`, docs, and specs out of the build context
 - [ ] T018 [P] Add `deploy/Caddyfile`:
   - site address `{$YS_SITE}` from the mode file, with `encode`, and `http://127.0.0.1` redirecting to the public address
@@ -103,7 +103,7 @@ on a clean stack.
 
 ### Tests for User Story 1
 
-- [ ] T023 [P] [US1] `server/tests/create-owner.test.ts`:
+- [X] T023 [P] [US1] `server/tests/create-owner.test.ts`:
   - success creates exactly one user, organization, `owner` member, human actor, `owner.created` event, and a `claimed` installation;
   - `--json` output matches [operator-commands](contracts/operator-commands.md);
   - a second run exits 2 `owner_exists`;
@@ -116,7 +116,7 @@ on a clean stack.
 
 ### Implementation for User Story 1
 
-- [ ] T027 [US1] Implement `server/src/owner/create-owner.ts` per [data-model.md](data-model.md#creating-the-owner):
+- [X] T027 [US1] Implement `server/src/owner/create-owner.ts` per [data-model.md](data-model.md#creating-the-owner):
   - validate the name and email with the rules in `server/src/owner/rules.ts`;
   - stop with `owner_exists` if claimed;
   - sign up with a random password, or reuse an existing account for that email;

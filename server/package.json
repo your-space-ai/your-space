@@ -8,10 +8,19 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "auth:generate": "npx -y auth@1.7.18 generate --config src/db/auth-generate.ts --output src/db/auth-schema.ts --yes"
+  },
+  "dependencies": {
+    "better-auth": "^1.7.18",
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
     "vitest": "^5.1.0"
   }
 }
