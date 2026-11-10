@@ -3,7 +3,21 @@ name: CI
 on:
   push:
     branches: [main]
+  # Pull requests that change only docs or specs don't run CI. The install guide is the exception:
+  # secrets.spec.ts checks its commands.
   pull_request:
+    paths:
+      - "**"
+      - "!**/*.md"
+      - "!docs/**"
+      - "!specs/**"
+      - "!.specify/**"
+      - "docs/install/README.md"
+
+# A newer push to the same pull request cancels the run it replaces.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -39,6 +53,9 @@ jobs:
       - run: npm run build
 
   setups:
+    # While the repository is private, Actions minutes are limited: in a stack of pull requests,
+    # only the one based on main runs this job; the ones above run it when they reach main.
+    if: github.event_name != 'pull_request' || github.base_ref == github.event.repository.default_branch
     # Each setup's Compose files (deploy/modes/) must resolve on the oldest Compose the installation
     # guide supports, as well as on the runner's own. This only reads the configuration.
     runs-on: ubuntu-24.04
@@ -67,6 +84,9 @@ jobs:
           YS_E2E_SKIP_BUILD: "1"
 
   e2e:
+    # While the repository is private, Actions minutes are limited: in a stack of pull requests,
+    # only the one based on main runs this job; the ones above run it when they reach main.
+    if: github.event_name != 'pull_request' || github.base_ref == github.event.repository.default_branch
     needs: check
     runs-on: ubuntu-24.04
     # Argos authenticates the screenshot upload with GitHub's OIDC token. Pull requests from forks
