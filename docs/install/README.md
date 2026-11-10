@@ -72,8 +72,9 @@ use it from other devices, add one line:
 | Use your own domain | `YS_DOMAIN=space.example.com` | Ports 80 and 443 open to the network. Caddy gets and renews a Let's Encrypt certificate and redirects HTTP to HTTPS. See [Use Your Own Domain](#use-your-own-domain) |
 | Use your own proxy or Tailscale | `YS_PROXY_URL=https://<the proxy's address>` | Caddy serves plain HTTP on `127.0.0.1:8080` only; your proxy or Tailscale handles HTTPS. See [Use Your Own Reverse Proxy](#use-your-own-reverse-proxy) or [Use Tailscale](#use-tailscale) |
 
-If another program already uses port 80 on this machine, also add `YS_PORT=8081`, or any free
-port. Your Space then answers at `http://localhost:8081`.
+If another program already uses port 80 on this machine (or 8080 with `YS_PROXY_URL`), also add
+`YS_PORT=8081`, or any free port. Your Space then answers at `http://localhost:8081`. `YS_PORT`
+doesn't apply to your own domain, which needs ports 80 and 443.
 
 Which line you write decides which ports open: only `YS_DOMAIN` opens any to the network. The
 server checks every line when it starts and refuses to start, with a message that says what to fix,
