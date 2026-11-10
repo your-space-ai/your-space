@@ -87,4 +87,14 @@ test("reset-link sets a new password and signs out every device", async ({ brows
   });
   expect(request.status()).toBe(400);
   expect(await sql("select count(*) from verification")).toEqual(["0"]);
+
+  // A new link opened in the same tab replaces the failed one: only the fragment changes, so the
+  // page doesn't reload.
+  const fresh = await resetLink();
+  await reuse.goto(fresh.url);
+  await expect(reuse.getByRole("heading", { name: "Choose your password" })).toBeVisible();
+  await reuse.getByLabel("New password").fill("yet another passphrase here");
+  await reuse.getByLabel("Confirm the password").fill("yet another passphrase here");
+  await reuse.getByRole("button", { name: "Set password" }).click();
+  await expect(reuse).toHaveURL(/\/sign-in\?notice=password_set$/);
 });
