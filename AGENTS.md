@@ -39,8 +39,8 @@ When a feature specification referenced through an in-review PR is merged, repla
 in the roadmap and readiness documents with links to the maintained specification.
 
 Write pull request descriptions with the [template](.github/pull_request_template.md). Its visible
-part answers four questions in a minute: what the PR changes and why (Summary), where to look
-(Review focus), whether its checks and reviews pass (Status), and what the reviewer must decide
-(Decisions needed). Everything else goes in collapsed sections, and a section that doesn't apply is
-left out; keep the visible part to about a screen. Keep the description current as the PR changes:
-update Status and the collapsed sections rather than appending history.
+part answers three questions in a minute: what the PR changes and why (Summary), where to look
+(Review focus), and what the reviewer must decide (Decisions needed). Keep it to about a screen.
+Everything else goes in collapsed sections, and a section that doesn't apply is left out. CI, code
+review and visual evidence show in the PR's checks, so the description doesn't repeat them. Keep
+the description current as the PR changes rather than appending history.

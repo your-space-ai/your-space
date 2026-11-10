@@ -1,6 +1,6 @@
 <!--
 Pull request descriptions in this repository: a reviewer gets the gist from the visible part in a
-minute, and opens a collapsed section only for the detail they need. Keep the four visible sections
+minute, and opens a collapsed section only for the detail they need. Keep the three visible sections
 short, about a screen, and put everything else inside <details>. Leave out a collapsed section that
 doesn't apply. See AGENTS.md.
 -->
@@ -12,14 +12,6 @@ doesn't apply. See AGENTS.md.
 ## Review focus
 
 <!-- Up to five bullets, in reading order: the files or behaviour that most need a human eye. -->
-
-## Status
-
-| Check | Result |
-| --- | --- |
-| CI | <!-- pass/fail, with a link to the run --> |
-| Code review | <!-- e.g. "2 findings, both resolved" --> |
-| Visual evidence | <!-- the Argos check, or "n/a: no UI" --> |
 
 ## Decisions needed
 
@@ -56,7 +48,8 @@ doesn't apply. See AGENTS.md.
 <details>
 <summary>Checks</summary>
 
-<!-- Every check with its command and result, on which commit; what wasn't run, and why. -->
+<!-- Checks run outside CI, each with its command and result, on which commit; what wasn't run, and
+why. CI, code review and Argos results show in the PR's checks, so don't repeat them here. -->
 
 </details>
 
