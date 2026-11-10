@@ -31,5 +31,5 @@ export function failureForStatus(status: number): FailureKind {
 /** What to do when the server is set up for another address than the one in the address bar. */
 export const WRONG_ADDRESS_FIX =
   "If you run this server behind your own proxy, set the proxy to pass the original Host header " +
-  "(nginx: `proxy_set_header Host $host`). Otherwise check that `YS_DOMAIN` or `YS_PROXY_URL` in `.env` " +
+  "(nginx: `proxy_set_header Host $http_host`). Otherwise check that `YS_DOMAIN` or `YS_PROXY_URL` in `.env` " +
   "is the address you opened.";
