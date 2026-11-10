@@ -287,7 +287,7 @@ for other services.
    Caddy and Traefik do both by default. In nginx, add:
 
    ```nginx
-   proxy_set_header Host $host;
+   proxy_set_header Host $http_host;
    proxy_set_header X-Forwarded-For $remote_addr;
    ```
 
@@ -308,6 +308,8 @@ reach. You need no domain and no ports open to the internet.
    ```sh
    tailscale serve --bg --https=443 http://127.0.0.1:8080
    ```
+
+   If you set `YS_PORT`, use that port instead of `8080`.
 
    It prints the server's address, such as `https://myserver.tail1234.ts.net`. If it says HTTPS
    isn't enabled for your tailnet, follow the link it prints. `--bg` keeps it serving after you
