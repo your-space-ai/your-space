@@ -17,6 +17,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -207,9 +208,20 @@ function writeSecret(spec: SecretSpec, root: string, value: string, chown: boole
   }
 }
 
+// A secret is written in milliseconds, so a temporary file this old was left by a run that
+// stopped part-way. A younger one may belong to another run still writing, so it stays.
+const LEFTOVER_AGE_MS = 60_000;
+
 function removeLeftovers(dir: string): void {
   for (const name of readdirSync(dir)) {
-    if (name.startsWith(".") && name.endsWith(".tmp")) rmSync(join(dir, name), { force: true });
+    if (!name.startsWith(".") || !name.endsWith(".tmp")) continue;
+    const path = join(dir, name);
+    try {
+      if (Date.now() - statSync(path).mtimeMs >= LEFTOVER_AGE_MS) rmSync(path, { force: true });
+    } catch (error) {
+      // Another run renamed or removed it first.
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
 }
 

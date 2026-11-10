@@ -117,6 +117,12 @@ describe("loadConfig: refused values", () => {
     expect(only({ YS_PROXY_URL: proxyUrl })).toMatch(message);
   });
 
+  it("leaves a YS_PROXY_URL it can't read out of the message, since it may hold a password", () => {
+    const message = only({ YS_PROXY_URL: "https://user:private-password@space.example.com:bad" });
+    expect(message).toMatch(/isn't a valid address/);
+    expect(message).not.toMatch(/private-password/);
+  });
+
   it.each(["0", "65536", "80a", "-1", "8.5"])("refuses YS_PORT=%s", (port) => {
     expect(only({ YS_PORT: port })).toMatch(/YS_PORT must be a port number from 1 to 65535/);
   });

@@ -110,7 +110,8 @@ function checkProxyUrl(value: string, problems: string[]): string {
   try {
     url = new URL(value.trim());
   } catch {
-    problems.push(`YS_PROXY_URL isn't a valid address: "${value}". Write the HTTPS address your proxy serves, like https://space.example.com.`);
+    // The value may hold a password, so the message leaves it out.
+    problems.push("YS_PROXY_URL isn't a valid address. Write the HTTPS address your proxy serves, like https://space.example.com.");
     return "";
   }
   if (url.protocol !== "https:") {

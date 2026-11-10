@@ -1,7 +1,7 @@
 // The two platform secrets (research R16): a value set in .env is used as given and never copied;
 // otherwise the copy in ys-secrets; otherwise, for a new installation, a generated one. A missing
 // secret next to an existing database stops start-up instead of making a new one.
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -73,9 +73,19 @@ describe("settleSecrets on a new installation", () => {
 
   it("removes a temporary file left by an interrupted start instead of failing", () => {
     mkdirSync(join(secretsDir, "auth"));
-    writeFileSync(join(secretsDir, "auth", ".secret.1.tmp"), "half");
+    const leftover = join(secretsDir, "auth", ".secret.1.tmp");
+    writeFileSync(leftover, "half");
+    const old = new Date(Date.now() - 5 * 60_000);
+    utimesSync(leftover, old, old);
     settle();
     expect(readdirSync(join(secretsDir, "auth"))).toEqual(["secret"]);
+  });
+
+  it("leaves a temporary file another run is still writing", () => {
+    mkdirSync(join(secretsDir, "auth"));
+    writeFileSync(join(secretsDir, "auth", ".secret.2.tmp"), "half");
+    settle();
+    expect(readdirSync(join(secretsDir, "auth")).sort()).toEqual([".secret.2.tmp", "secret"]);
   });
 });
 
