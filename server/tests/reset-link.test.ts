@@ -164,6 +164,8 @@ describe("reset-link", () => {
       expect(human.code).toBe(3);
       expect(human.stdout).toBe("");
       expect(human.stderr).toContain("could not be read");
+      expect(human.stderr).toContain("an earlier unused link may have stopped working");
+      expect(human.stderr).not.toContain("Nothing was changed");
       await t.restore();
 
       expect(await protectedState()).toEqual(before.state);

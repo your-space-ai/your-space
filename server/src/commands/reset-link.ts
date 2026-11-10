@@ -56,7 +56,9 @@ async function main(argv: string[]): Promise<number> {
     }
     out.failure(
       { ok: false, error: "storage_unavailable", message: STORAGE_MESSAGE },
-      `${STORAGE_MESSAGE} Nothing was changed. Check the database with: docker compose ps`,
+      // The database can fail after the new link is stored, which cancels an earlier unused link.
+      `${STORAGE_MESSAGE} No link was printed, and an earlier unused link may have stopped working. ` +
+        "Check the database with: docker compose ps, then run reset-link again.",
     );
     return EXIT.storage;
   } catch (error) {
