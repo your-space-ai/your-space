@@ -96,7 +96,7 @@ With a running stack and locally built images (2026-11-08):
   `http://localhost:18291/sign-in`, and the same port on the host's network address was refused.
 - **Your own proxy, with `YS_PROXY_URL=https://space.example.test` and `YS_PORT=18292`:** only
   `127.0.0.1:18292` was published. A request with `Host: space.example.test` answered 200; one with
-  any other `Host` got 421 and the message about `proxy_set_header Host $host`. A container on the
+  any other `Host` got 421 and the message saying to pass the original `Host` header. A container on the
   stack's edge network reached `http://your-space:8080`, with the same two answers.
 - **A misspelled key (`YS_DOMIAN`) and `YS_DOMAIN=myserver.tail1234.ts.net`:** `docker compose up
   -d --wait` failed with "dependency failed to start: container ... is unhealthy", Caddy stayed
