@@ -110,12 +110,6 @@ export async function createOwner(email = "sam@example.com", name = "Sam Rivera"
   return result.json as LinkOutput;
 }
 
-export async function resetLink(): Promise<LinkOutput> {
-  const result = await serverCommand("reset-link");
-  if (result.code !== 0) throw new Error(`reset-link exited ${result.code}: ${result.stdout}${result.stderr}`);
-  return result.json as LinkOutput;
-}
-
 /** Runs SQL in the stack's database and returns the rows as tab-separated lines. */
 export async function sql(query: string): Promise<string[]> {
   const result = await compose(["exec", "-T", "postgres", "psql", "-U", "yourspace", "-d", "yourspace", "-At", "-F", "\t", "-c", query]);

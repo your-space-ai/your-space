@@ -1,0 +1,3 @@
+#!/bin/sh
+# Creates the owner: docker compose exec server create-owner --email <email> --name "<name>" [--json]
+exec node "$(dirname "$(readlink -f "$0")")/../src/commands/create-owner.ts" "$@"
