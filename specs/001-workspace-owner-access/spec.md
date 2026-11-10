@@ -6,7 +6,7 @@
 
 **Last updated**: 2026-11-11
 
-**Status**: Accepted design, delivered as a stack of pull requests into `main`; [tasks.md](tasks.md) shows what has been delivered
+**Status**: Delivered and checked in a development environment; verification on real hosts and of the published images (tasks T052, T055, and T056) follows the first release; [tasks.md](tasks.md) shows what has been delivered
 
 **Journey**: 001 "Set up my space", the first of eight journeys in the [spec map](../../docs/spec-map.md)
 
