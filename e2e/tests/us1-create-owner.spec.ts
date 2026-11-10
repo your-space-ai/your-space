@@ -28,7 +28,9 @@ test("a fresh install offers no way to create an account, and create-owner makes
   // The operator creates the owner on the server.
   const created = await createOwner("Sam@Example.com", "Sam Rivera");
   expect(created.email).toBe("sam@example.com");
-  expect(created.url).toMatch(/^http:\/\/localhost\/reset-password#token=[A-Za-z0-9]{24}$/);
+  // The link uses the address the stack serves, which YS_PORT can move.
+  expect(created.url.startsWith(`${testInfo.project.use.baseURL}/reset-password#token=`)).toBe(true);
+  expect(created.url).toMatch(/#token=[A-Za-z0-9]{24}$/);
 
   // Running create-owner again changes nothing; sign-up stays closed.
   const again = await serverCommand("create-owner", ["--email", "other@example.com", "--name", "Other"]);
