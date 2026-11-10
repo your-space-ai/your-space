@@ -1,6 +1,7 @@
 // Set the first password or a new one with a link from create-owner or reset-link (T031).
 // The token is in the URL fragment, which browsers never send to a server. It is read once and
-// then cleared from the address bar, and posted in the request body.
+// then cleared from the address bar, and posted in the request body. A new link opened in the same
+// tab changes only the fragment, so the page reads the token again when the fragment changes.
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
@@ -21,7 +22,7 @@ function readToken(): string | null {
 }
 
 export function ResetPassword() {
-  const [token] = useState(readToken);
+  const [token, setToken] = useState(readToken);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -29,9 +30,23 @@ export function ResetPassword() {
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    if (window.location.hash) {
-      window.history.replaceState(window.history.state, "", window.location.pathname);
+    function clearFragment() {
+      if (window.location.hash) {
+        window.history.replaceState(window.history.state, "", window.location.pathname);
+      }
     }
+    function onHashChange() {
+      const next = readToken();
+      if (next) {
+        setToken(next);
+        setLinkInvalid(false);
+        setError(null);
+      }
+      clearFragment();
+    }
+    clearFragment();
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
   if (!token || linkInvalid) {
