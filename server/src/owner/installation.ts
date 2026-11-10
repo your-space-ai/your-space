@@ -32,7 +32,3 @@ export async function readInstallation(db: Db): Promise<Installation> {
   }
   return row;
 }
-
-export async function readInstallationState(db: Db): Promise<InstallationState> {
-  return (await readInstallation(db)).state;
-}
