@@ -69,6 +69,11 @@ jobs:
   e2e:
     needs: check
     runs-on: ubuntu-24.04
+    # Argos authenticates the screenshot upload with GitHub's OIDC token. Pull requests from forks
+    # get no OIDC token, so Argos falls back to looking up this run on GitHub (tokenless).
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -87,6 +92,6 @@ jobs:
           path: |
             e2e/playwright-report
             e2e/test-results
-          retention-days: 14
+          retention-days: 30
       - if: failure()
         run: docker compose -p ys-e2e --env-file e2e/stack.env -f deploy/compose.yaml -f deploy/compose.build.yaml logs --no-color
