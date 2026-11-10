@@ -1,6 +1,16 @@
 # Your Space's Caddy configuration (research R9). The mode file Compose picks (deploy/modes/) sets:
 #   YS_SITE          http://localhost        plain HTTP for this machine only (the default)
 #   YS_REDIRECT_URL  where http://127.0.0.1 sends people: sign-in works at one address only
+{
+	servers :8080 {
+		# Only port 8080, where your own proxy forwards, accepts the visitor address a proxy reports.
+		# Strict mode reads X-Forwarded-For from the right, so a proxy that appends to it (nginx's
+		# $proxy_add_x_forwarded_for) can't be fooled by a visitor who sends their own.
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+	}
+}
+
 (app) {
 	encode
 
