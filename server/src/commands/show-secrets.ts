@@ -43,7 +43,9 @@ if (import.meta.main) {
   }
   out.success(
     { ok: true, secrets: shown.map(({ name, source, value }) => ({ name, source, value })) },
-    // Every line is valid in .env, so a generated secret's line can be copied there as it is.
+    // A generated secret uses only letters, digits, - and _, so its line can be copied into .env as
+    // it is. A secret set in .env is printed as Your Space reads it, which may differ from how .env
+    // writes it (quoted, or with $$ for $).
     [
       ...shown.flatMap(({ name, label, source, value }) => [`# ${label}, ${SOURCE_TEXT[source]}`, `${name}=${value}`]),
       "# Keep these private. To manage a generated one yourself, copy its line into .env; Your Space then uses .env.",
