@@ -1,9 +1,8 @@
 <!--
 Pull request descriptions in this repository: a reviewer gets the gist from the visible part in a
 minute, and opens a collapsed section only for the detail they need. Keep the four visible sections
-short (the "PR description" check allows 2,500 characters and 40 lines outside the collapsed
-sections) and put everything else inside <details>. Leave out a collapsed section that doesn't
-apply. See AGENTS.md, "Pull Request Descriptions".
+short, about a screen, and put everything else inside <details>. Leave out a collapsed section that
+doesn't apply. See AGENTS.md.
 -->
 
 ## Summary

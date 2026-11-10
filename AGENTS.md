@@ -42,7 +42,5 @@ Write pull request descriptions with the [template](.github/pull_request_templat
 part answers four questions in a minute: what the PR changes and why (Summary), where to look
 (Review focus), whether its checks and reviews pass (Status), and what the reviewer must decide
 (Decisions needed). Everything else goes in collapsed sections, and a section that doesn't apply is
-left out. The `PR description` check fails a description whose visible part is missing one of the
-four sections or has more than 2,500 characters or 40 lines, and reruns when the description is
-edited. Keep the description current as the PR changes: update Status and the collapsed sections
-rather than appending history.
+left out; keep the visible part to about a screen. Keep the description current as the PR changes:
+update Status and the collapsed sections rather than appending history.
