@@ -58,6 +58,25 @@ jobs:
       # settings.
       YS_ARGOS_UPLOAD: "1"
     steps:
+      - run:
+          # While Actions and CircleCI time are limited, a stack of pull requests runs the browser
+          # tests once: on the pull request based on main, and on main itself. GitHub's webhook says
+          # main for every pull request in a stack, so the pull request's own base comes from the
+          # API, read with a read-only token kept in the project settings.
+          name: Bottom of the stack
+          command: |
+            if [ -z "${CIRCLE_PULL_REQUEST:-}" ]; then
+              echo "Not a pull request: running the browser tests."
+              exit 0
+            fi
+            api=$(echo "$CIRCLE_PULL_REQUEST" | sed -E 's#https://github.com/([^/]+/[^/]+)/pull/([0-9]+)#https://api.github.com/repos/\1/pulls/\2#')
+            base=$(curl -fsS -H "Authorization: Bearer $GITHUB_PR_READ_TOKEN" \
+              -H "Accept: application/vnd.github+json" "$api" | jq -r .base.ref)
+            echo "This pull request is based on $base."
+            if [ "$base" != main ]; then
+              echo "It isn't the bottom of its stack, so it skips the browser tests until it reaches main."
+              circleci-agent step halt
+            fi
       - checkout
       - node26:
           arch: x64
@@ -115,7 +134,8 @@ parameters:
     description: Run the Arm browser tests on a branch other than main.
 
 workflows:
-  # Every pull request and every push to main.
+  # Every pull request and every push to main; the job stops early on pull requests above the
+  # bottom of a stack.
   e2e:
     jobs:
       - e2e
