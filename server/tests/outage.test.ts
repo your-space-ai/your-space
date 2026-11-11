@@ -22,9 +22,9 @@ afterAll(async () => {
 });
 
 async function signIn(): Promise<string> {
-  const response = await server.request("/api/auth/sign-in/email", {
+  const response = await server.request("/api/auth/sign-in/username", {
     method: "POST",
-    body: JSON.stringify({ email: OWNER.email, password: OWNER.password }),
+    body: JSON.stringify({ username: OWNER.username, password: OWNER.password }),
   });
   expect(response.status).toBe(200);
   return cookieHeader(response);
@@ -94,7 +94,7 @@ describe("storage failing mid-request", () => {
 
     expect(await t.db.select().from(session)).toEqual(before);
     const current = await server.request("/api/auth/get-session", { headers: { cookie } });
-    expect(((await current.json()) as { user: { email: string } }).user.email).toBe(OWNER.email);
+    expect(((await current.json()) as { user: { username: string } }).user.username).toBe(OWNER.username);
 
     // Once storage is back, sign-out works and the session is gone.
     const signOut = await server.request("/api/auth/sign-out", { method: "POST", body: "{}", headers: { cookie } });
@@ -146,7 +146,7 @@ describe("storage failing mid-request", () => {
 describe("organization routes over HTTP", () => {
   it.each([
     ["/organization/update-member-role", { memberId: "x", role: "member" }],
-    ["/organization/remove-member", { memberIdOrEmail: OWNER.email }],
+    ["/organization/remove-member", { memberIdOrEmail: "sam@users.invalid" }],
     ["/organization/leave", { organizationId: "x" }],
     ["/organization/delete", { organizationId: "x" }],
     ["/organization/update", { data: { name: "Renamed" } }],

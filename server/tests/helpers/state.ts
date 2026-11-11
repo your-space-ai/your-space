@@ -22,7 +22,7 @@ export async function counts(db: Db) {
 
 export async function snapshot(db: Db) {
   const rows = await db.execute<Record<string, unknown>>(sql`select
-      u.id as user_id, u.email, u.name, u.email_verified,
+      u.id as user_id, u.username, u.email, u.name, u.email_verified,
       o.id as workspace_id, o.name as workspace_name,
       m.id as member_id, m.role,
       i.state, i.workspace_id as claimed_workspace_id,

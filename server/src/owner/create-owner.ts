@@ -11,10 +11,10 @@ import { isStorageError } from "../db/client.ts";
 import { member, organization, user } from "../db/auth-schema.ts";
 import { installation } from "../db/schema.ts";
 import { readInstallation, StorageUnavailable } from "./installation.ts";
-import { validateOwnerInput, type FieldErrors, type OwnerInput } from "./rules.ts";
+import { ownEmail, placeholderEmail, validateOwnerInput, type FieldErrors, type OwnerInput } from "./rules.ts";
 
 export type CreateOwnerResult =
-  | { ok: true; name: string; email: string; url: string; token: string; expiresAt: Date }
+  | { ok: true; name: string; username: string; email: string | null; url: string; token: string; expiresAt: Date }
   | { ok: false; error: "invalid_input"; fields: FieldErrors }
   | { ok: false; error: "owner_exists" }
   | { ok: false; error: "storage_unavailable" };
@@ -22,7 +22,10 @@ export type CreateOwnerResult =
 // Any fixed number works; it only has to be the same in every create-owner process.
 const CREATE_OWNER_LOCK_KEY = 7_959_002;
 
-export async function createOwner(deps: AuthDeps, input: Partial<OwnerInput>): Promise<CreateOwnerResult> {
+export async function createOwner(
+  deps: AuthDeps,
+  input: { name?: string; username?: string; email?: string },
+): Promise<CreateOwnerResult> {
   const valid = validateOwnerInput(input);
   if (!valid.ok) return { ok: false, error: "invalid_input", fields: valid.fields };
   const { db } = deps;
@@ -48,7 +51,7 @@ export async function createOwner(deps: AuthDeps, input: Partial<OwnerInput>): P
   }
 }
 
-async function createOwnerLocked(deps: AuthDeps, { name, email }: OwnerInput): Promise<CreateOwnerResult> {
+async function createOwnerLocked(deps: AuthDeps, { name, username, email }: OwnerInput): Promise<CreateOwnerResult> {
   const { db } = deps;
 
   let link: IssuedLink | undefined;
@@ -61,26 +64,31 @@ async function createOwnerLocked(deps: AuthDeps, { name, email }: OwnerInput): P
     if ((await readInstallation(db)).state === "claimed") return { ok: false, error: "owner_exists" };
 
     // 2. The account, with a random password that is never shown. The set-password link is the way in.
-    const existing = await db.select().from(user).where(eq(user.email, email)).limit(1);
+    // Without an email, the account holds a reserved address that can't receive mail.
+    const existing = await db.select().from(user).where(eq(user.username, username)).limit(1);
     let owner = existing[0];
     if (!owner) {
-      const others = await db.select({ email: user.email }).from(user).limit(1);
+      const others = await db.select({ username: user.username }).from(user).limit(1);
       if (others[0]) {
         // Only create-owner creates accounts, so this is an earlier run that stopped partway.
         return {
           ok: false,
           error: "invalid_input",
           fields: {
-            email: `An earlier create-owner run that didn't finish used ${others[0].email}. Run it again with that email.`,
+            username: `An earlier create-owner run that didn't finish used ${others[0].username}. Run it again with that username.`,
           },
         };
       }
       const password = randomBytes(64).toString("base64url");
       try {
-        owner = (await auth.api.signUpEmail({ body: { name, email, password } })).user as typeof user.$inferSelect;
+        const body = { name, username, email: email ?? placeholderEmail(username), password };
+        owner = (await auth.api.signUpEmail({ body })).user as typeof user.$inferSelect;
       } catch (error) {
-        if (error instanceof APIError && (error.body as { code?: string } | undefined)?.code === "INVALID_EMAIL") {
-          return { ok: false, error: "invalid_input", fields: { email: "Not a valid email address." } };
+        const code = error instanceof APIError ? (error.body as { code?: string } | undefined)?.code : undefined;
+        if (code === "INVALID_EMAIL") return { ok: false, error: "invalid_input", fields: { email: "Not a valid email address." } };
+        // The rules above match the username plugin's, so these are a backstop.
+        if (code === "INVALID_USERNAME" || code === "USERNAME_TOO_SHORT" || code === "USERNAME_TOO_LONG") {
+          return { ok: false, error: "invalid_input", fields: { username: "Not a valid username." } };
         }
         throw error;
       }
@@ -115,7 +123,15 @@ async function createOwnerLocked(deps: AuthDeps, { name, email }: OwnerInput): P
       });
     if (!claimed) return { ok: false, error: "owner_exists" };
 
-    return { ok: true, name: owner.name, email: owner.email, url: issued.url, token: issued.token, expiresAt: issued.expiresAt };
+    return {
+      ok: true,
+      name: owner.name,
+      username: owner.username ?? username,
+      email: ownEmail(owner.email),
+      url: issued.url,
+      token: issued.token,
+      expiresAt: issued.expiresAt,
+    };
   } catch (error) {
     if (error instanceof StorageUnavailable || isStorageError(error)) return { ok: false, error: "storage_unavailable" };
     throw error;

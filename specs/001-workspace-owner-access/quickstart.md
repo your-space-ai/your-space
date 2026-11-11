@@ -28,17 +28,18 @@ Expected:
 
 - `http://localhost` (or your domain) says there is no owner yet and explains `create-owner`. It has
   no form.
-- `docker compose exec server create-owner --email you@example.com --name "Sam Rivera"` prints a
+- `docker compose exec server create-owner --username sam --name "Sam Rivera"` prints a
   set-password link. With `--json`, it prints JSON, including the link and token, and exits 0.
 - Opening the link and setting a password takes you to sign-in. After signing in, the home screen
-  shows "&lt;name&gt;'s space", your name and email, and sign out, and nothing else.
+  shows "&lt;name&gt;'s space", your name and username, and sign out, and nothing else.
 - Running `create-owner` again exits 2 with `owner_exists`.
 
 Negative checks:
 
 - `POST /api/auth/sign-up/email` is refused before and after the owner exists.
+- `POST /api/auth/sign-in/email` returns 404: only the username signs in.
 - Opening the same link a second time fails.
-- Killing `create-owner` partway, then rerunning it with the same email, gives one owner and one
+- Killing `create-owner` partway, then rerunning it with the same username, gives one owner and one
   workspace.
 
 ## 2. HTTPS With a Domain (Story 1, scenario 9)

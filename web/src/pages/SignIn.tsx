@@ -1,4 +1,4 @@
-// Sign in with email and password (T036).
+// Sign in with username and password (T036).
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
@@ -15,7 +15,7 @@ const NOTICE_TEXT: Record<SignInNotice, string> = {
 };
 
 function messageFor(status: number): string {
-  if (status === 401) return "That email and password don't match.";
+  if (status === 401) return "That username and password don't match.";
   if (status === 429) return "Too many sign-in attempts. Wait a few seconds, then try again.";
   if (status === 0 || status === 502 || status === 504) return "Can't reach Your Space. Check your connection and try again.";
   if (status === 503) return "Your Space can't read its storage right now. Try again shortly.";
@@ -37,8 +37,8 @@ export function SignIn() {
     setPending(true);
     setError(null);
     try {
-      const result = await authClient.signIn.email({
-        email: String(form.get("email")),
+      const result = await authClient.signIn.username({
+        username: String(form.get("username")),
         password: String(form.get("password")),
       });
       if (result.error) {
@@ -74,8 +74,16 @@ export function SignIn() {
       ) : null}
       <form onSubmit={onSubmit}>
         <label>
-          Email
-          <input name="email" type="email" autoComplete="username" required maxLength={254} />
+          Username
+          <input
+            name="username"
+            type="text"
+            autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
+            required
+            maxLength={30}
+          />
         </label>
         <label>
           Password

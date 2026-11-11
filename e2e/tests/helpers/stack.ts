@@ -84,7 +84,8 @@ export async function up(env: Record<string, string> = {}): Promise<void> {
 
 export interface LinkOutput {
   ok: true;
-  email: string;
+  username: string;
+  email?: string | null;
   url: string;
   token: string;
   expiresAt: string;
@@ -104,8 +105,8 @@ export async function serverCommand(
   return { ...result, json };
 }
 
-export async function createOwner(email = "sam@example.com", name = "Sam Rivera"): Promise<LinkOutput> {
-  const result = await serverCommand("create-owner", ["--email", email, "--name", name]);
+export async function createOwner(username = "sam", name = "Sam Rivera"): Promise<LinkOutput> {
+  const result = await serverCommand("create-owner", ["--username", username, "--name", name]);
   if (result.code !== 0) throw new Error(`create-owner exited ${result.code}: ${result.stdout}${result.stderr}`);
   return result.json as LinkOutput;
 }

@@ -482,7 +482,7 @@ These capabilities are not required for the first public release. Their order an
   **Deferred (2026-11-02):** [Sessions, persistence, and recovery](architecture/decisions.md#sessions-persistence-and-recovery).
 
   - [ ] Let the owner add their own email (SMTP) settings to enable email delivery.
-  - [ ] Verify member email addresses when email is configured.
+  - [ ] Verify owner and member email addresses when email is configured.
   - [ ] Send password-reset links to verified addresses through the existing recovery mechanism.
 
   No installation requires email. The first public release needs a member recovery path that works without it.

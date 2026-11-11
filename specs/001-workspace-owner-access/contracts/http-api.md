@@ -59,7 +59,7 @@ Your Space uses these unchanged. The web client calls them through Better Auth's
 
 | Endpoint | Used for |
 | --- | --- |
-| `POST /api/auth/sign-in/email` | Sign in (Story 2) |
+| `POST /api/auth/sign-in/username` | Sign in with the username, without regard to case (Story 2) |
 | `POST /api/auth/sign-out` | Sign out; deletes the session row (FR-009). While storage is unavailable it returns `503 { "error": "storage_unavailable" }` and the session stays as it was, because Better Auth would otherwise report a sign-out it could not carry out |
 | `GET /api/auth/get-session` | Current session and user, for routing and the home screen |
 | `POST /api/auth/reset-password` | Sets the first password or a new one; the token is sent in the request body (Stories 1 and 4). Password: 12 to 128 characters |
@@ -68,6 +68,9 @@ Your Space uses these unchanged. The web client calls them through Better Auth's
 Better Auth's other routes stay as the library ships them. Its configuration keeps them from
 creating accounts or adding people (FR-005; [research R4](../research.md#r4-owner-first-then-invite-only)):
 
+- `POST /api/auth/sign-in/email` and `POST /api/auth/is-username-available` are turned off with
+  `disabledPaths` and answer `404`: only the username signs in (FR-007), and the network can't ask
+  whether a username exists.
 - `POST /api/auth/sign-up/email` is refused because `disableSignUp` is on. The owner is created by
   the `create-owner` command, whose Better Auth instance exists only in that command's process.
 - `POST /api/auth/request-password-reset` is refused because the public instance has no

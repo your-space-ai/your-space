@@ -107,23 +107,23 @@ on a clean stack.
   - success creates exactly one user, organization, `owner` member, human actor, `owner.created` event, and a `claimed` installation;
   - `--json` output matches [operator-commands](contracts/operator-commands.md);
   - a second run exits 2 `owner_exists`;
-  - invalid name or email exits 1;
+  - an invalid name, username or email exits 1, and an email given is stored unverified;
   - storage down exits 3 and changes nothing;
   - a rerun after a run stopped before the final transaction finishes with one owner.
 - [X] T024 [P] [US1] `server/tests/signup-closed.test.ts`: `POST /api/auth/sign-up/email` is refused before and after the owner exists, and creating an organization over HTTP is refused
 - [X] T025 [P] [US1] `server/tests/status.test.ts`: `GET /api/status` returns `{ owner: false }`, then `{ owner: true }`, and 503 `storage_unavailable` when the database is down or the row is missing; `GET /api/health` returns 200 or 503; with the helpers `server/tests/helpers/server.ts` (the Express app on a random port) and `owner.ts` (an owner with a known password), which T024, T061, T062 and the later stories' server tests reuse
-- [X] T026 [P] [US1] `e2e/tests/us1-create-owner.spec.ts`: a fresh stack shows "no owner yet" with no form; run `create-owner --json` through `docker compose exec`; open the link; set the password; sign in; the home screen shows the workspace, name, email, and sign out only, with the shared set-password and sign-in steps in `e2e/tests/helpers/ui.ts`
+- [X] T026 [P] [US1] `e2e/tests/us1-create-owner.spec.ts`: a fresh stack shows "no owner yet" with no form; run `create-owner --json` through `docker compose exec`; open the link; set the password; sign in; the home screen shows the workspace, name, username, and sign out only, with the shared set-password and sign-in steps in `e2e/tests/helpers/ui.ts`
 
 ### Implementation for User Story 1
 
 - [X] T027 [US1] Implement `server/src/owner/create-owner.ts` per [data-model.md](data-model.md#creating-the-owner):
-  - validate the name and email with the rules in `server/src/owner/rules.ts`;
+  - validate the name, username and optional email with the rules in `server/src/owner/rules.ts`;
   - stop with `owner_exists` if claimed;
-  - sign up with a random password, or reuse an existing account for that email;
+  - sign up with a random password, or reuse an existing account for that username;
   - create or reuse the organization "&lt;name&gt;'s space";
   - in one transaction, create the actor and event (`server/src/actors.ts`) and claim the installation;
   - request the reset link through `createCommandAuth`.
-- [X] T028 [US1] Implement `server/src/commands/create-owner.ts` (`util.parseArgs` for `--email`, `--name`, `--json`; human and JSON output; exit codes 0 to 4) with the shared output in `server/src/commands/output.ts` (T064), and the `server/bin/create-owner` wrapper
+- [X] T028 [US1] Implement `server/src/commands/create-owner.ts` (`util.parseArgs` for `--username`, `--name`, `--email`, `--json`; human and JSON output; exit codes 0 to 4) with the shared output in `server/src/commands/output.ts` (T064), and the `server/bin/create-owner` wrapper
 - [X] T029 [P] [US1] Implement `server/src/owner/routes.ts`: `GET /api/status` and `GET /api/health` per [http-api](contracts/http-api.md); register them in `server/src/app.ts`
 - [X] T030 [P] [US1] Implement `web/src/pages/NoOwnerYet.tsx`: explains running `create-owner` and has no form
 - [X] T031 [US1] Implement `web/src/pages/ResetPassword.tsx`:
@@ -160,13 +160,14 @@ and [section 3](quickstart.md#3-sign-in-remote-access-sign-out-story-2).
 
 ### Implementation for User Story 2
 
-- [X] T036 [P] [US2] Implement `web/src/pages/SignIn.tsx`: email and password with native validation, Better Auth `signIn.email`, and clear errors for wrong credentials and rate limiting
-- [X] T037 [P] [US2] Implement `web/src/pages/Home.tsx`: workspace name from `organization.list`, the owner's name and email, and sign out; nothing else (FR-027)
+- [X] T036 [P] [US2] Implement `web/src/pages/SignIn.tsx`: username and password with native validation, Better Auth `signIn.username`, and clear errors for wrong credentials and rate limiting
+- [X] T037 [P] [US2] Implement `web/src/pages/Home.tsx`: workspace name from `organization.list`, the owner's name, username, and email if they gave one, and sign out; nothing else (FR-027)
 - [ ] T038 [US2] Extend `web/src/router.tsx`: the root `beforeLoad` sends signed-out visitors to `/sign-in` and signed-in visitors away from it; an expired session mid-use returns to sign-in without reporting success (FR-016)
 - [X] T067 [US2] Add the other setups: `deploy/modes/mode.domain.yaml` (ports 80 and 443 on every IPv4 address), `deploy/modes/mode.proxy.yaml` (`127.0.0.1:8080` and the `your-space_edge` network), and `deploy/modes/mode.domain.proxy.yaml` (stops Compose when both keys are set); the `YS_DOMAIN` and `YS_PROXY_URL` lines in `deploy/.env.example`; and their checks in `e2e/tests/setups.spec.ts` ([research R9](research.md#r9-https-and-the-caddy-configuration))
 - [X] T068 [US2] Pass visitors' addresses to the sign-in limit in `deploy/Caddyfile`: `X-Forwarded-For` set to `{client_ip}` on `/api/*`, and `trusted_proxies` (strict, `private_ranges`) on the `:8080` proxy listener only ([research R9](research.md#r9-https-and-the-caddy-configuration))
 - [X] T039 [US2] Add the remote-access sections to `docs/install/README.md`: the configure and start rows for `YS_DOMAIN` and `YS_PROXY_URL`, and which line opens which ports; your own domain, with certificate troubleshooting through `docker compose logs caddy`; your own proxy; and Tailscale (`tailscale serve` with `YS_PROXY_URL`), including proxies in containers through the `your-space_edge` network and the `Host` check, and why plain `http://<LAN IP>` is not supported (FR-028)
 - [X] T069 [US2] Add a Sign-In and Sessions section to `docs/install/README.md`: session lifetime, sign-out, the sign-in limit, password rules and hashing (scrypt with Better Auth defaults), and how links are stored (FR-009 to FR-011)
+- [X] T071 [US2] Sign in with a username ([research R17](research.md#r17-username-sign-in), FR-003, FR-007): Better Auth's `username` plugin in `server/src/auth.ts` with `/sign-in/email` and `/is-username-available` in `disabledPaths`; migration `server/drizzle/0001_username.sql`; `create-owner --username --name [--email]` with the `users.invalid` placeholder; `reset-link` reporting the username; `usernameClient` in `web/src/auth-client.ts`; and the server and e2e tests above
 
 **Checkpoint**: User Stories 1 and 2 both work; a second device signs in over HTTPS.
 

@@ -132,30 +132,33 @@ the command to create one. There is no sign-up form: nobody can make an account 
 ## 4. Create the Owner
 
 ```sh
-docker compose exec server create-owner --email you@example.com --name "Your Name"
+docker compose exec server create-owner --username you --name "Your Name"
 ```
 
 It prints a link:
 
 ```text
-Owner created: Your Name <you@example.com>
+Owner created: Your Name (username you)
 Set your password here (expires 2026-11-04T02:45:00Z, works once):
 http://localhost/reset-password#token=...
 If it expires, run: docker compose exec server reset-link
 ```
 
 The command creates your account, your workspace ("Your Name's space"), and your ownership of it.
-Your email is your sign-in name. Your Space doesn't send email, so the address stays unverified;
-that doesn't limit anything.
+You sign in with the username. An email address is optional: add `--email you@example.com` to
+store one. Your Space doesn't send email yet, so the address stays unverified and is never used to
+sign in; a later release uses it for verification and recovery links.
 
 Account rules:
 
 - **Name:** 1 to 100 characters, without control characters such as tabs or line breaks.
-- **Email:** up to 254 characters: letters, digits, and `_ ' + -` in parts separated by single dots,
-  then `@` and a domain such as `example.com`. It is stored in lowercase.
+- **Username:** 3 to 30 letters, digits, `_` or `.`, with each `.` between other characters. It is stored in lowercase, and signing in
+  ignores case, so `You` and `you` are the same username.
+- **Email (optional):** up to 254 characters: letters, digits, and `_ ' + -` in parts separated by
+  single dots, then `@` and a domain such as `example.com`. It is stored in lowercase.
 
 Running `create-owner` again does nothing and says the installation already has an owner. If the
-command was interrupted (for example, the server stopped), run it again with the same email: it
+command was interrupted (for example, the server stopped), run it again with the same username: it
 finishes the job without creating duplicates.
 
 For scripts, add `--json`. The output is one JSON object, including the link and its token, and the
@@ -164,7 +167,7 @@ exit status says what happened:
 | Exit status | Meaning |
 | --- | --- |
 | 0 | Done |
-| 1 | Invalid input, such as a malformed email |
+| 1 | Invalid input, such as a username with a space in it |
 | 2 | The installation already has an owner |
 | 3 | The database could not be read. No owner was created; once the database is back, run the same command again |
 | 4 | Something unexpected went wrong; nothing was reported as done |
@@ -175,12 +178,12 @@ the exact output.
 ## 5. Set Your Password and Sign In
 
 Open the link in a browser within 30 minutes. Choose a password of 12 to 128 characters; a long
-passphrase is a good choice. Then sign in with your email and that password.
+passphrase is a good choice. Then sign in with your username and that password.
 
 The link works once. If it expires or you lose it, run
 `docker compose exec server reset-link` for a new one.
 
-You now see your workspace, your name and email, and a way to sign out. The workspace is empty:
+You now see your workspace, your name and username, and a way to sign out. The workspace is empty:
 installing apps comes in a later release.
 
 ## Certificates
@@ -218,7 +221,7 @@ A plain `http://` address on your network is not one of them; see
 [Plain HTTP on Your Network Is Not Supported](#plain-http-on-your-network-is-not-supported).
 
 After you change `.env`, apply it with `docker compose up -d`. Then open the address on the other
-device and sign in with the same email and password. It's the same account and workspace, so there
+device and sign in with the same username and password. It's the same account and workspace, so there
 is nothing to set up again.
 
 ### Use Your Own Domain

@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-28
 
-**Last updated**: 2026-11-08
+**Last updated**: 2026-11-11
 
 **Status**: Accepted design, delivered as a stack of pull requests into `main`; [tasks.md](tasks.md) shows what has been delivered
 
@@ -73,7 +73,7 @@ its owner.
    create an account. Missing prerequisites produce actionable instructions rather than an apparent
    successful installation.
 2. **Given** an installation without an owner, **When** the operator runs the documented
-   owner-creation command with a valid name and email, **Then** exactly one account, one workspace,
+   owner-creation command with a valid name and username, **Then** exactly one account, one workspace,
    and their ownership and membership relationships exist, and the command prints a short-lived,
    single-use set-password link to the operator.
 3. **Given** a valid set-password link, **When** the owner sets a valid password, **Then** they can
@@ -85,8 +85,9 @@ its owner.
 6. **Given** the owner-creation command was interrupted, **When** the operator runs it again with the
    same details, **Then** it finishes creating that owner without duplicates, and an installation is
    never marked as having an owner without its account and workspace.
-7. **Given** no email delivery service is configured, **When** the owner is created, **Then** the
-   email serves as the login identifier, remains unverified, and does not block access.
+7. **Given** no email delivery service is configured, **When** the owner is created with or without
+   an email address, **Then** the username serves as the login identifier, any email address given
+   remains unverified, and neither blocks access.
 8. **Given** a script runs the owner-creation command, **When** it completes or fails, **Then** the
    script receives machine-readable output, including the set-password link, and a meaningful exit
    status, so the CLI and desktop app can set the password on the user's behalf.
@@ -108,8 +109,9 @@ workspace access from another device, direct protected requests, session expiry,
 
 **Acceptance Scenarios**:
 
-1. **Given** a claimed installation, **When** the owner signs in with the correct email and
-   password, **Then** the existing workspace opens under the same account identity.
+1. **Given** a claimed installation, **When** the owner signs in with the correct username and
+   password, **Then** the existing workspace opens under the same account identity. Usernames are
+   compared without regard to case, and an email address is never accepted in their place.
 2. **Given** incorrect credentials, **When** sign-in is attempted, **Then** access is denied
    without exposing protected workspace data or changing ownership.
 3. **Given** no authorized session, **When** a caller requests protected data directly rather
@@ -180,8 +182,9 @@ complete the issued password-reset flow, and verify identity preservation and se
    access is attempted, **Then** issuing the link alone has not changed the password or ownership.
 5. **Given** only browser or network access without operator authority or a valid reset link,
    **When** someone attempts recovery, **Then** they cannot obtain a usable recovery credential.
-6. **Given** recovery completes for an unverified email address, **When** account state is read,
-   **Then** the email remains unverified. Server access is not proof of mailbox ownership.
+6. **Given** recovery completes for an owner with an unverified email address, **When** account
+   state is read, **Then** the email remains unverified. Server access is not proof of mailbox
+   ownership.
 
 ### Cross-Cutting Verification Scenarios
 
@@ -249,9 +252,10 @@ by the user stories.
   becoming the owner. Every installation, local or server, MUST use this one command. It MUST support
   scripted use (machine-readable output and exit status) so the CLI (spec 003), and the desktop app
   through the CLI (spec 008), can wrap it without a separate path.
-- **FR-003**: The owner-creation command MUST take a name and email and validate them according to
-  documented account rules. The owner MUST set their password through a short-lived, single-use
-  set-password link that the command prints; password rules MUST be documented.
+- **FR-003**: The owner-creation command MUST take a name and a username, and MAY take an email
+  address, and validate them according to documented account rules. The owner MUST set their
+  password through a short-lived, single-use set-password link that the command prints; password
+  rules MUST be documented.
 - **FR-004**: Owner creation MUST establish one owner account, one workspace, and consistent
   membership and ownership. Rerunning the command after an interruption MUST finish the same owner
   without duplicates, and an installation MUST NOT be marked as having an owner without its required
@@ -262,8 +266,10 @@ by the user stories.
 - **FR-006**: Your Space MUST provide one server-managed authentication and session system for
   local and remote access. Initial self-hosted operation MUST NOT require an external identity
   service or a separately implemented local authentication mode.
-- **FR-007**: Email MUST be the owner login identifier. Setup and recovery MUST function without
-  email delivery. An address MUST NOT be marked verified without proof of mailbox control.
+- **FR-007**: The username MUST be the owner login identifier; an email address MUST NOT sign in.
+  An email address is optional, and only for later verification and recovery links (deferred email
+  delivery). Setup and recovery MUST function without an email address or email delivery. An
+  address MUST NOT be marked verified without proof of mailbox control.
 - **FR-008**: The owner MUST be able to sign in, reach the existing workspace, and sign out.
   Protected access MUST be enforced by the server even when the interface is bypassed.
 - **FR-009**: Sessions MUST expire and support server-enforced invalidation. Sign-out MUST
@@ -335,8 +341,8 @@ These are domain concepts, not prescribed database tables or framework types.
 - **Installation**: A running deployment with claim state (whether its owner exists), durable
   configuration, and a server address. Its claim state must not be inferred from whether storage
   happens to respond.
-- **Owner account**: The human identity with name, email, verification state, and authentication
-  credentials. Its stable identity survives password changes and recovery.
+- **Owner account**: The human identity with name, username, an optional email address and its
+  verification state, and authentication credentials. Its stable identity survives password changes and recovery.
 - **Workspace**: The durable context owned by that account; distinct from both account and deployment.
 - **Membership**: The explicit relationship between a human account and workspace. This feature
   creates only the owner's membership; additional members are future work.
@@ -366,8 +372,8 @@ These are domain concepts, not prescribed database tables or framework types.
   the owner can sign in again without repeating setup. Unexpired, unrevoked sessions remain valid.
 - **SC-006**: Storage-failure exercises never reopen setup or overwrite a claim, and restoring
   storage makes the existing account and workspace recoverable.
-- **SC-007**: Owner setup and password recovery both succeed with no email delivery configured,
-  while the address remains unverified without separate mailbox proof.
+- **SC-007**: Owner setup and password recovery both succeed with no email address and no email
+  delivery configured, and an address given remains unverified without separate mailbox proof.
 - **SC-008**: Recovery preserves the existing owner and workspace. Used and expired recovery
   links cannot reset the password, and recovery does not create a replacement owner.
 - **SC-009**: A browser on another device reaches the same server and workspace over HTTPS, through

@@ -8,7 +8,7 @@ import { member, user } from "../db/auth-schema.ts";
 import { readInstallation, StorageUnavailable } from "../owner/installation.ts";
 
 export type ResetLinkResult =
-  | { ok: true; email: string; url: string; token: string; expiresAt: Date }
+  | { ok: true; username: string; url: string; token: string; expiresAt: Date }
   | { ok: false; error: "no_owner" }
   | { ok: false; error: "storage_unavailable" };
 
@@ -25,7 +25,7 @@ export async function issueResetLink(deps: AuthDeps): Promise<ResetLinkResult> {
 
     // The owner is found through the ownership role, not a hard-coded account (FR-014).
     const owners = await db
-      .select({ id: user.id, email: user.email })
+      .select({ id: user.id, email: user.email, username: user.username })
       .from(member)
       .innerJoin(user, eq(user.id, member.userId))
       .where(and(eq(member.organizationId, claim.workspaceId), eq(member.role, "owner")))
@@ -33,13 +33,14 @@ export async function issueResetLink(deps: AuthDeps): Promise<ResetLinkResult> {
     const owner = owners[0];
     if (!owner) throw new StorageUnavailable("The installation is claimed but its owner record is missing.");
 
+    // The reset flow looks the account up by its stored email, the placeholder included; it sends nothing.
     await auth.api.requestPasswordReset({ body: { email: owner.email } });
     if (!link) throw new Error("Better Auth did not issue a reset link.");
 
     // If this fails the link is not printed, so nobody holds it and it expires unused.
     await recordEvent(db, "recovery.link_issued", await operatorActorId(db), owner.id);
 
-    return { ok: true, email: owner.email, url: link.url, token: link.token, expiresAt: link.expiresAt };
+    return { ok: true, username: owner.username ?? "", url: link.url, token: link.token, expiresAt: link.expiresAt };
   } catch (error) {
     if (error instanceof StorageUnavailable || isStorageError(error)) return { ok: false, error: "storage_unavailable" };
     throw error;
