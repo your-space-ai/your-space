@@ -23,6 +23,28 @@ permissions:
   contents: read
 
 jobs:
+  scope:
+    # GitHub runs every pull request in a stack as if it targeted main, so github.base_ref can't
+    # tell the bottom of a stack from the pull requests above it. The pull request's own base
+    # branch, read from the API, can.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      bottom: ${{ steps.base.outputs.bottom }}
+    steps:
+      - id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          MAIN: ${{ github.event.repository.default_branch }}
+        run: |
+          base=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .base.ref)
+          echo "This pull request is based on $base."
+          if [ "$base" = "$MAIN" ]; then echo "bottom=true" >> "$GITHUB_OUTPUT"; else echo "bottom=false" >> "$GITHUB_OUTPUT"; fi
+
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -57,7 +79,8 @@ jobs:
     # While the repository is private, Actions minutes are limited: in a stack of pull requests,
     # only the one based on main runs this job; the ones above run it when they reach main. A push
     # to main skips it, since the pull request it merges has just run it on the same code.
-    if: github.event_name == 'pull_request' && github.base_ref == github.event.repository.default_branch
+    if: needs.scope.outputs.bottom == 'true'
+    needs: scope
     timeout-minutes: 10
     # Each setup's Compose files (deploy/modes/) must resolve on the oldest Compose the installation
     # guide supports, as well as on the runner's own. This only reads the configuration.
@@ -90,9 +113,9 @@ jobs:
     # While the repository is private, Actions minutes are limited: in a stack of pull requests,
     # only the one based on main runs this job; the ones above run it when they reach main. A push
     # to main skips it, since the pull request it merges has just run it on the same code.
-    if: github.event_name == 'pull_request' && github.base_ref == github.event.repository.default_branch
+    if: needs.scope.outputs.bottom == 'true'
     timeout-minutes: 30
-    needs: check
+    needs: [check, scope]
     runs-on: ubuntu-24.04
     # Argos authenticates the screenshot upload with GitHub's OIDC token. Pull requests from forks
     # get no OIDC token, so Argos falls back to looking up this run on GitHub (tokenless).
