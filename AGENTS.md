@@ -46,6 +46,6 @@ review and visual evidence show in the PR's checks, so the description doesn't r
 the description current as the PR changes rather than appending history.
 
 While the repository is private, GitHub Actions minutes are limited. Run the checks locally before
-pushing, and push a stack of pull requests once per round of fixes rather than after each fix. In
-CI, only the pull request based on `main` runs the browser tests; the ones above it run them when
-they reach `main`.
+pushing, and push a stack of pull requests once per round of fixes rather than after each fix. The
+browser tests run on CircleCI, and the Compose setups checks on GitHub Actions. In a stack, only the
+pull request based on `main` runs them; the ones above it run them when they reach `main`.

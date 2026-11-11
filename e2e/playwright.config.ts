@@ -16,9 +16,9 @@ export default defineConfig({
   reporter: [
     ["list"],
     ["html", { open: "never" }],
-    // Uploads each story screenshot to Argos from GitHub Actions only, so Argos compares one
-    // environment's renderings, and authenticates with GitHub's OIDC token or tokenless check.
-    ["@argos-ci/playwright/reporter", createArgosReporterOptions({ uploadToArgos: !!process.env.GITHUB_ACTIONS })],
+    // Uploads each story screenshot to Argos only from CircleCI's x86 e2e job, which sets
+    // YS_ARGOS_UPLOAD, so Argos compares one environment's renderings. ARGOS_TOKEN authenticates it.
+    ["@argos-ci/playwright/reporter", createArgosReporterOptions({ uploadToArgos: process.env.YS_ARGOS_UPLOAD === "1" })],
   ],
   use: {
     baseURL,
