@@ -29,12 +29,17 @@ jobs:
     steps:
       - checkout
       - run:
+          # The Arm machine image has no nvm, so install the latest Node 26 from nodejs.org.
           name: Node 26
           command: |
-            export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"
-            nvm install 26
-            nvm alias default 26
-            echo 'export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"' >> "$BASH_ENV"
+            base=https://nodejs.org/dist/latest-v26.x
+            cd /tmp
+            curl -fsSLO "$base/SHASUMS256.txt"
+            file=$(grep -o 'node-v26[^ ]*-linux-arm64\.tar\.xz' SHASUMS256.txt)
+            curl -fsSLO "$base/$file"
+            grep " $file\$" SHASUMS256.txt | sha256sum -c -
+            sudo tar -xJf "$file" -C /usr/local --strip-components=1
+            which node && node --version
       - run: npm ci
       - run:
           name: Chromium
@@ -49,10 +54,22 @@ jobs:
       - store_artifacts:
           path: e2e/playwright-report
 
+parameters:
+  arm-e2e:
+    type: boolean
+    default: false
+    description: Run the Arm browser tests on a branch other than main.
+
 workflows:
   arm64:
     jobs:
       - check-arm64
-      - e2e-arm64:
-          requires:
-            - check-arm64
+  # The Arm browser tests are slow, so they run after a merge to main rather than on every pull
+  # request. Start them on a branch by triggering a pipeline with arm-e2e set to true.
+  arm64-e2e:
+    when:
+      or:
+        - equal: [main, << pipeline.git.branch >>]
+        - << pipeline.parameters.arm-e2e >>
+    jobs:
+      - e2e-arm64
