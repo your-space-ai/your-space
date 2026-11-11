@@ -63,8 +63,8 @@ through `YS_E2E_COMPOSE`.
   Compose stack, including `docker compose restart`, `down`/`up` recreation, a stopped database,
   and a stopped server.
 
-Screenshots of each story step in each browser are in Argos, which CI uploads them to on every run,
-and each CI run's `playwright-report` artifact holds a video of every journey.
+Screenshots of each story step in each browser are in Argos, which CircleCI's `e2e` job uploads
+them to, and that job's `playwright-report` artifact holds a video of every journey.
 
 ## Each Setup Opens Only Its Own Ports
 
