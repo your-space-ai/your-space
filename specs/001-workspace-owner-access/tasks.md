@@ -32,11 +32,11 @@ One repository with npm workspaces: `server/`, `web/`, `e2e/`, plus `deploy/` an
 
 **Purpose**: Create the workspaces and tooling.
 
-- [ ] T001 Create root `package.json` with npm workspaces `server`, `web`, `e2e` and its `package-lock.json`, plus root `tsconfig.base.json` (TypeScript 7, `strict`, `erasableSyntaxOnly`, `rewriteRelativeImportExtensions`) and `.gitignore` (`node_modules`, `dist`, `.env`)
+- [X] T001 Create root `package.json` with npm workspaces `server`, `web`, `e2e` and its `package-lock.json`, plus root `tsconfig.base.json` (TypeScript 7, `strict`, `erasableSyntaxOnly`, `rewriteRelativeImportExtensions`) and `.gitignore` (`node_modules`, `dist`, `.env`)
 - [X] T002 Create `server/package.json` (Node 26, `"type": "module"`) with runtime dependencies `express`, `better-auth`, `drizzle-orm`, `pg`, and dev dependencies `drizzle-kit`, `vitest`, `@types/express`, `@types/pg`, plus `server/tsconfig.json` and `server/vitest.config.ts`
-- [ ] T003 [P] Create the Vite React app in `web/` (`web/package.json`, `web/tsconfig.json`, `web/vite.config.ts`, `web/index.html`) with `react`, `react-dom`, `@tanstack/react-router`, `@tanstack/react-query`, `better-auth`
-- [ ] T004 [P] Create `e2e/package.json` and `e2e/playwright.config.ts` with Chromium, Firefox, and WebKit projects and a base URL of `http://localhost` (`YS_PORT` moves it), plus `e2e/tsconfig.json`, `e2e/global-setup.ts` (builds the images), `e2e/stack.env` (the stack's settings, empty on purpose), and the `stack` and `evidence` helpers in `e2e/tests/helpers/`
-- [ ] T005 [P] Add `.github/workflows/ci.yml`: install, `tsc --noEmit` in every workspace, server tests with a PostgreSQL 18 service container, web build
+- [X] T003 [P] Create the Vite React app in `web/` (`web/package.json`, `web/tsconfig.json`, `web/vite.config.ts`, `web/index.html`) with `react`, `react-dom`, `@tanstack/react-router`, `@tanstack/react-query`, `better-auth`
+- [X] T004 [P] Create `e2e/package.json` and `e2e/playwright.config.ts` with Chromium, Firefox, and WebKit projects and a base URL of `http://localhost` (`YS_PORT` moves it), plus `e2e/tsconfig.json`, `e2e/global-setup.ts` (builds the images), `e2e/stack.env` (the stack's settings, empty on purpose), and the `stack` and `evidence` helpers in `e2e/tests/helpers/`
+- [X] T005 [P] Add `.github/workflows/ci.yml`: install, `tsc --noEmit` in every workspace, server tests with a PostgreSQL 18 service container, web build
 
 ---
 
@@ -46,7 +46,7 @@ One repository with npm workspaces: `server/`, `web/`, `e2e/`, plus `deploy/` an
 depends on these.
 
 - [X] T058 [P] Implement `server/src/secrets.ts`: each platform secret from `.env` as given, otherwise the copy in `ys-secrets`, otherwise, for a new installation, generated; stop with recovery steps when the database exists but a secret is missing; replace a generated secret on request ([research R16](research.md#r16-platform-secrets)). Test it in `server/tests/secrets.test.ts`
-- [ ] T006 Implement `server/src/config.ts`: derive the setup and public address from the optional `YS_DOMAIN`, `YS_PROXY_URL`, and `YS_PORT` ([research R9](research.md#r9-https-and-the-caddy-configuration)), refuse unknown `YS_*` keys, read the auth secret and database password from `.env` or the `ys-secrets` volume ([research R16](research.md#r16-platform-secrets)), and validate them and `DATABASE_URL` at startup; exit with a clear message when one is missing or malformed
+- [X] T006 Implement `server/src/config.ts`: derive the setup and public address from the optional `YS_DOMAIN`, `YS_PROXY_URL`, and `YS_PORT` ([research R9](research.md#r9-https-and-the-caddy-configuration)), refuse unknown `YS_*` keys, read the auth secret and database password from `.env` or the `ys-secrets` volume ([research R16](research.md#r16-platform-secrets)), and validate them and `DATABASE_URL` at startup; exit with a clear message when one is missing or malformed
 - [ ] T007 [P] Implement `server/src/log.ts`: one JSON line per event to stdout, never including request bodies, cookies, `Authorization` headers, passwords, or tokens
 - [X] T059 [P] `server/tests/config.test.ts`: each setup line and the public address it gives, refused values and setting names with messages that say what to fix, Better Auth's own secret settings refused, and the secrets read from `.env` or the volume
 - [X] T008 Implement `server/src/db/client.ts`: a `pg` pool and Drizzle instance from `DATABASE_URL`, with a pool `error` handler so losing the database never crashes the process
@@ -67,23 +67,23 @@ depends on these.
 - [X] T062 Make sign-out from Your Space's own pages delete the session first in `server/src/app.ts`, and report a storage failure as 503 instead of success (FR-009, FR-016). `server/tests/outage.test.ts` covers storage failing mid-request (a reset, sign-out, a lost connection) and the organization routes closed over HTTP
 - [X] T015 Implement `server/src/owner/installation.ts`: read the `installation` row and return `claimed` or `unclaimed`, or throw `StorageUnavailable` when the query fails or the row is missing ([research R10](research.md#r10-storage-unavailable-handling-fr-013))
 - [X] T016 [P] Add `server/tests/helpers/db.ts`: create a fresh database per test file, run migrations, and expose helpers to stop and restore the connection; and the other helpers in `server/tests/helpers/`: `state.ts` (the identity and ownership records the tests compare), `commands.ts` (runs the operator commands as processes), and `env.ts` (shared settings)
-- [ ] T017 [P] Add `server/Dockerfile` (`node:26-slim`, production dependencies, `bin/` on `PATH`, `CMD ["node", "src/index.ts"]`) and a `.dockerignore` that keeps `node_modules`, `.env`, docs, and specs out of the build context
-- [ ] T018 [P] Add `deploy/Caddyfile`:
+- [X] T017 [P] Add `server/Dockerfile` (`node:26-slim`, production dependencies, `bin/` on `PATH`, `CMD ["node", "src/index.ts"]`) and a `.dockerignore` that keeps `node_modules`, `.env`, docs, and specs out of the build context
+- [X] T018 [P] Add `deploy/Caddyfile`:
   - site address `{$YS_SITE}` from the mode file, with `encode`, and `http://127.0.0.1` redirecting to the public address
   - `/api/*` to `server:3000`, with request bodies capped at 64 KB
   - the web files served with `try_files {path} /index.html`
   - no access log
-- [ ] T019 [P] Add `web/Dockerfile`: build with Vite, then `caddy:2.11` with `dist/` and `deploy/Caddyfile`
-- [ ] T020 Add `deploy/compose.yaml`, `deploy/stack.yaml`, `deploy/modes/mode.yaml`, and `deploy/.env.example` for this machine, and `deploy/compose.build.yaml`, which builds both images from this repository for development, CI, and the browser tests:
+- [X] T019 [P] Add `web/Dockerfile`: build with Vite, then `caddy:2.11` with `dist/` and `deploy/Caddyfile`
+- [X] T020 Add `deploy/compose.yaml`, `deploy/stack.yaml`, `deploy/modes/mode.yaml`, and `deploy/.env.example` for this machine, and `deploy/compose.build.yaml`, which builds both images from this repository for development, CI, and the browser tests:
   - services `caddy` (web image), `server`, and `postgres:18`;
   - named volumes `ys-postgres` (mounted at `/var/lib/postgresql`), `ys-caddy-data`, and `ys-secrets`;
   - `compose.yaml` includes the mode file picked by which of `YS_DOMAIN` and `YS_PROXY_URL` is set; `modes/mode.yaml`, for neither, publishes `127.0.0.1` only, with literal port addresses ([research R9](research.md#r9-https-and-the-caddy-configuration));
   - a one-shot `secrets` service running `server/src/commands/secrets-step.ts` that settles the auth secret and database password into `ys-secrets` unless `.env` sets them, with no network ([research R16](research.md#r16-platform-secrets));
   - health checks: `pg_isready` and `/api/health`;
   - `postgres` and `server` start after the secrets step, `server` after Postgres is healthy, and `caddy` after the server is healthy.
-- [ ] T064 Implement `server/src/commands/show-secrets.ts`, with the output and exit codes the commands share in `server/src/commands/output.ts`, and the `server/bin/show-secrets` wrapper: print both platform secrets and where each comes from, as lines valid in `.env` ([operator commands](contracts/operator-commands.md#show-secrets)); test `describeSecrets` in `server/tests/secrets.test.ts`
-- [ ] T065 [P] `e2e/tests/setups.spec.ts`: this machine, with and without `YS_PORT`, publishes only its loopback port, the server and database publish nothing, and the secrets step has no network while each service mounts only what it reads, all read with `docker compose config`. A `setups` job in `.github/workflows/ci.yml` runs it on Compose 2.26.0 and on the runner's version
-- [ ] T066 `e2e/tests/secrets.spec.ts` against the Compose stack: an empty `.env` gets generated secrets that survive restarts; a lost `ys-secrets` volume stops start-up and the guide's steps recover the workspace; secrets set in `.env` are used as given, and a changed password is recovered with the guide's command. Write the Secrets, Lost Secrets, Give PostgreSQL the Database Password, and Replace a Secret sections of `docs/install/README.md`
+- [X] T064 Implement `server/src/commands/show-secrets.ts`, with the output and exit codes the commands share in `server/src/commands/output.ts`, and the `server/bin/show-secrets` wrapper: print both platform secrets and where each comes from, as lines valid in `.env` ([operator commands](contracts/operator-commands.md#show-secrets)); test `describeSecrets` in `server/tests/secrets.test.ts`
+- [X] T065 [P] `e2e/tests/setups.spec.ts`: this machine, with and without `YS_PORT`, publishes only its loopback port, the server and database publish nothing, and the secrets step has no network while each service mounts only what it reads, all read with `docker compose config`. A `setups` job in `.github/workflows/ci.yml` runs it on Compose 2.26.0 and on the runner's version
+- [X] T066 `e2e/tests/secrets.spec.ts` against the Compose stack: an empty `.env` gets generated secrets that survive restarts; a lost `ys-secrets` volume stops start-up and the guide's steps recover the workspace; secrets set in `.env` are used as given, and a changed password is recovered with the guide's command. Write the Secrets, Lost Secrets, Give PostgreSQL the Database Password, and Replace a Secret sections of `docs/install/README.md`
 - [ ] T021 Implement `web/src/auth-client.ts` (Better Auth `createAuthClient` with `organizationClient`), `web/src/queries.ts` (TanStack Query hooks for `/api/status`, the session, and the workspace that unwrap `{ data, error }`), and `web/src/main.tsx` (QueryClient and RouterProvider)
 - [ ] T022 [P] Implement `web/src/components/ErrorState.tsx` with the failure kinds in `web/src/errors.ts` (storage unavailable, server unreachable, wrong address (421), session expired, each with a next step) and `web/src/styles.css` (plain CSS)
 
@@ -123,9 +123,9 @@ on a clean stack.
   - create or reuse the organization "&lt;name&gt;'s space";
   - in one transaction, create the actor and event (`server/src/actors.ts`) and claim the installation;
   - request the reset link through `createCommandAuth`.
-- [ ] T028 [US1] Implement `server/src/commands/create-owner.ts` (`util.parseArgs` for `--email`, `--name`, `--json`; human and JSON output; exit codes 0 to 4) with the shared output in `server/src/commands/output.ts` (T064), and the `server/bin/create-owner` wrapper
+- [X] T028 [US1] Implement `server/src/commands/create-owner.ts` (`util.parseArgs` for `--email`, `--name`, `--json`; human and JSON output; exit codes 0 to 4) with the shared output in `server/src/commands/output.ts` (T064), and the `server/bin/create-owner` wrapper
 - [X] T029 [P] [US1] Implement `server/src/owner/routes.ts`: `GET /api/status` and `GET /api/health` per [http-api](contracts/http-api.md); register them in `server/src/app.ts`
-- [ ] T030 [P] [US1] Implement `web/src/pages/NoOwnerYet.tsx`: explains running `create-owner` and has no form
+- [X] T030 [P] [US1] Implement `web/src/pages/NoOwnerYet.tsx`: explains running `create-owner` and has no form
 - [ ] T031 [US1] Implement `web/src/pages/ResetPassword.tsx`:
   - read the token from `location.hash`, then clear the hash;
   - collect the new password with native validation (12 to 128 characters);
@@ -235,7 +235,7 @@ out every session, without email.
 - [ ] T051 [P] `server/tests/logs.test.ts` and an e2e log check in `e2e/tests/logs.spec.ts`: after exercising create-owner, sign-in, failures, and recovery, server and Caddy logs contain no passwords, tokens, set-password links, or session values (cross-cutting scenario 2)
 - [ ] T052 [P] Add `.github/workflows/images.yml`: Docker Buildx with QEMU builds and publishes `your-space-server` and `your-space-web` for `linux/amd64` and `linux/arm64` to GitHub Container Registry; point `deploy/stack.yaml` at the published tags (FR-022)
 - [ ] T070 Add a `release-files` job to `.github/workflows/images.yml` that attaches `your-space.tar.gz` (`compose.yaml`, `stack.yaml`, `modes/`, and `env.example`, with `stack.yaml` pinned to the release's image version) to each release, and the Download section of `docs/install/README.md` that fetches and unpacks it
-- [ ] T053 [P] Add an e2e job to `.github/workflows/ci.yml` that builds both images locally with `deploy/compose.build.yaml` (T020), starts `deploy/compose.yaml`, and runs Playwright in all three browsers
+- [X] T053 [P] Add an e2e job to `.github/workflows/ci.yml` that builds both images locally with `deploy/compose.build.yaml` (T020), starts `deploy/compose.yaml`, and runs Playwright in all three browsers
 - [ ] T054 Capture outbound traffic while running quickstart sections 1, 3, and 5, and confirm the only outbound connections are certificate requests for a configured domain (cross-cutting scenario 5, SC-013); record the method and result in `docs/install/VERIFICATION.md`
 - [ ] T055 Run [quickstart.md](quickstart.md) on an Apple Silicon Mac and an Intel/AMD Linux host with the published images, including HTTPS with a real domain and Tailscale, and record versions, environments, results, and limitations in `docs/install/VERIFICATION.md` (SC-010, SC-011)
 - [ ] T056 Finish `docs/install/README.md`: list the supported hosts and browsers verified in T055 (FR-001)

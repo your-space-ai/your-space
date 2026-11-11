@@ -22,7 +22,54 @@ jobs:
               -e TEST_DATABASE_URL=postgres://yourspace:yourspace@127.0.0.1:5432/yourspace \
               node:26-slim sh -c 'npm ci && npm run typecheck && npm test'
 
+  e2e-arm64:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: arm.medium
+    steps:
+      - checkout
+      - run:
+          # The Arm machine image has no nvm, so install the latest Node 26 from nodejs.org.
+          name: Node 26
+          command: |
+            base=https://nodejs.org/dist/latest-v26.x
+            cd /tmp
+            curl -fsSLO "$base/SHASUMS256.txt"
+            file=$(grep -o 'node-v26[^ ]*-linux-arm64\.tar\.xz' SHASUMS256.txt)
+            curl -fsSLO "$base/$file"
+            grep " $file\$" SHASUMS256.txt | sha256sum -c -
+            sudo tar -xJf "$file" -C /usr/local --strip-components=1
+            which node && node --version
+      - run: npm ci
+      - run:
+          name: Chromium
+          command: npx playwright install --with-deps chromium
+          working_directory: e2e
+      - run:
+          # Builds both images for Arm, then runs the journeys against deploy/compose.yaml.
+          name: Browser journeys in Chromium on Arm
+          command: npx playwright test --project chromium
+          working_directory: e2e
+          no_output_timeout: 30m
+      - store_artifacts:
+          path: e2e/playwright-report
+
+parameters:
+  arm-e2e:
+    type: boolean
+    default: false
+    description: Run the Arm browser tests on a branch other than main.
+
 workflows:
   arm64:
     jobs:
       - check-arm64
+  # The Arm browser tests are slow, so they run after a merge to main rather than on every pull
+  # request. Start them on a branch by triggering a pipeline with arm-e2e set to true.
+  arm64-e2e:
+    when:
+      or:
+        - equal: [main, << pipeline.git.branch >>]
+        - << pipeline.parameters.arm-e2e >>
+    jobs:
+      - e2e-arm64

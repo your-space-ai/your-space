@@ -44,3 +44,8 @@ part answers three questions in a minute: what the PR changes and why (Summary),
 Everything else goes in collapsed sections, and a section that doesn't apply is left out. CI, code
 review and visual evidence show in the PR's checks, so the description doesn't repeat them. Keep
 the description current as the PR changes rather than appending history.
+
+While the repository is private, GitHub Actions minutes are limited. Run the checks locally before
+pushing, and push a stack of pull requests once per round of fixes rather than after each fix. In
+CI, only the pull request based on `main` runs the browser tests; the ones above it run them when
+they reach `main`.

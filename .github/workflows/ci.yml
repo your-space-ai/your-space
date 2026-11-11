@@ -3,14 +3,51 @@ name: CI
 on:
   push:
     branches: [main]
+  # Pull requests that change only docs or specs don't run CI. The install guide is the exception:
+  # secrets.spec.ts checks its commands.
   pull_request:
+    paths:
+      - "**"
+      - "!**/*.md"
+      - "!docs/**"
+      - "!specs/**"
+      - "!.specify/**"
+      - "docs/install/README.md"
+
+# A newer push to the same pull request cancels the run it replaces.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
+  scope:
+    # GitHub runs every pull request in a stack as if it targeted main, so github.base_ref can't
+    # tell the bottom of a stack from the pull requests above it. The pull request's own base
+    # branch, read from the API, can.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      bottom: ${{ steps.base.outputs.bottom }}
+    steps:
+      - id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          MAIN: ${{ github.event.repository.default_branch }}
+        run: |
+          base=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .base.ref)
+          echo "This pull request is based on $base."
+          if [ "$base" = "$MAIN" ]; then echo "bottom=true" >> "$GITHUB_OUTPUT"; else echo "bottom=false" >> "$GITHUB_OUTPUT"; fi
+
   check:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:18
@@ -36,3 +73,73 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npm run build
+
+  setups:
+    # While the repository is private, Actions minutes are limited: in a stack of pull requests,
+    # only the one based on main runs this job; the ones above run it when they reach main. A push
+    # to main skips it, since the pull request it merges has just run it on the same code.
+    if: needs.scope.outputs.bottom == 'true'
+    needs: scope
+    timeout-minutes: 10
+    # Each setup's Compose files (deploy/modes/) must resolve on the oldest Compose the installation
+    # guide supports, as well as on the runner's own. This only reads the configuration.
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        compose: ["2.26.0", runner]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - if: matrix.compose != 'runner'
+        run: |
+          mkdir -p ~/.docker/cli-plugins
+          base=https://github.com/docker/compose/releases/download/v${{ matrix.compose }}
+          curl -fsSL -o docker-compose-linux-x86_64 "$base/docker-compose-linux-x86_64"
+          curl -fsSL -o docker-compose-linux-x86_64.sha256 "$base/docker-compose-linux-x86_64.sha256"
+          sha256sum -c docker-compose-linux-x86_64.sha256
+          install -m 755 docker-compose-linux-x86_64 ~/.docker/cli-plugins/docker-compose
+      - run: docker compose version
+      - run: npx playwright test tests/setups.spec.ts --project chromium
+        working-directory: e2e
+        env:
+          YS_E2E_SKIP_BUILD: "1"
+
+  e2e:
+    # While the repository is private, Actions minutes are limited: in a stack of pull requests,
+    # only the one based on main runs this job; the ones above run it when they reach main. A push
+    # to main skips it, since the pull request it merges has just run it on the same code.
+    if: needs.scope.outputs.bottom == 'true'
+    timeout-minutes: 30
+    needs: [check, scope]
+    runs-on: ubuntu-24.04
+    # Argos authenticates the screenshot upload with GitHub's OIDC token. Pull requests from forks
+    # get no OIDC token, so Argos falls back to looking up this run on GitHub (tokenless).
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox webkit
+        working-directory: e2e
+      # Builds both images, then runs the journeys against deploy/compose.yaml in all three browsers.
+      - run: npm run e2e
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 7
+      - if: failure()
+        run: docker compose -p ys-e2e --env-file e2e/stack.env -f deploy/compose.yaml -f deploy/compose.build.yaml logs --no-color

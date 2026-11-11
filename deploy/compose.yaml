@@ -1,0 +1,13 @@
+# Your Space: Caddy (HTTPS and the web client), the API server, and PostgreSQL.
+#
+# Your Space runs on this machine, at http://localhost. If another program already uses port 80,
+# set another port in .env (docs/install/README.md):
+#   YS_PORT=8081
+# modes/mode.yaml writes out each port address.
+name: your-space
+
+include:
+  - path:
+      - stack.yaml
+      # The mode file for the setup in .env: modes/mode.yaml when none is set.
+      - modes/mode${YS_DOMAIN:+.domain}${YS_PROXY_URL:+.proxy}.yaml

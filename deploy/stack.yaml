@@ -1,0 +1,113 @@
+# The services every setup shares. compose.yaml adds the file from modes/ that publishes ports.
+# All durable state is in the three named volumes below (FR-023). `docker compose down -v` deletes
+# them, and the workspace with them.
+services:
+  secrets:
+    # Settles the auth secret and the database password before anything else starts, then exits
+    # (research R16): a value set in .env is used as given and never copied; otherwise the copy in
+    # ys-secrets; otherwise, for a new installation, a generated one. No network, and root only to
+    # give each file to the user that reads it.
+    image: ghcr.io/your-space-ai/your-space-server:${YS_VERSION:-latest}
+    entrypoint: ["node", "src/commands/secrets-step.ts"]
+    user: "0:0"
+    network_mode: none
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - ys-secrets:/run/ys-secrets
+      # Read-only, to tell a new installation from one whose secrets went missing.
+      - ys-postgres:/pgdata:ro
+
+  caddy:
+    image: ghcr.io/your-space-ai/your-space-web:${YS_VERSION:-latest}
+    restart: unless-stopped
+    volumes:
+      - ys-caddy-data:/data
+    depends_on:
+      # Caddy opens its ports only once the server has accepted the settings, so a wrong value
+      # never publishes anything or asks Let's Encrypt for a certificate.
+      server:
+        condition: service_healthy
+
+  server:
+    image: ghcr.io/your-space-ai/your-space-server:${YS_VERSION:-latest}
+    restart: unless-stopped
+    env_file:
+      # The whole .env, so the server can refuse a misspelled or unknown setting by name instead of
+      # silently using another setup.
+      - path: .env
+        required: false
+    environment:
+      # The values Compose used to pick the mode file, so the server always agrees with it.
+      YS_DOMAIN: ${YS_DOMAIN:-}
+      YS_PROXY_URL: ${YS_PROXY_URL:-}
+      YS_PORT: ${YS_PORT:-}
+      # Used when set in .env; otherwise the server reads the generated copies in ys-secrets.
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      DATABASE_URL: postgres://yourspace@postgres:5432/yourspace
+    volumes:
+      - ys-secrets:/run/ys-secrets:ro
+    depends_on:
+      secrets:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 1s
+      retries: 3
+
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    # The password set in .env if there is one, otherwise the generated file. The image refuses
+    # both at once, and reads the password only when it creates the database.
+    entrypoint:
+      - sh
+      - -c
+      - '[ -n "$${POSTGRES_PASSWORD}" ] || [ ! -f /run/ys-secrets/password ] || export POSTGRES_PASSWORD_FILE=/run/ys-secrets/password; exec docker-entrypoint.sh "$$@"'
+      - postgres-entrypoint
+    command: ["postgres"]
+    environment:
+      POSTGRES_USER: yourspace
+      POSTGRES_DB: yourspace
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      # PostgreSQL 18's official image keeps its data under /var/lib/postgresql.
+      - ys-postgres:/var/lib/postgresql
+      # Only its own folder of ys-secrets, never the auth secret (Compose 2.26 or newer).
+      - type: volume
+        source: ys-secrets
+        target: /run/ys-secrets
+        read_only: true
+        volume:
+          subpath: postgres
+    depends_on:
+      secrets:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "yourspace", "-d", "yourspace"]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 10
+
+volumes:
+  ys-postgres:
+  ys-caddy-data:
+  # The generated auth secret and database password. Keep it with ys-postgres.
+  ys-secrets:

@@ -42,7 +42,7 @@ The web client is built by Vite 8.
 | Database | Drizzle ORM 0.45 (Apache-2.0), `pg` 8 (MIT) | Queries, schema, runtime migrations |
 | Web | React 19, Vite 8, TanStack Router 1, TanStack Query 5 (all MIT) | UI, build, routes with redirects, server state |
 | Proxy | Caddy 2.11 (Apache-2.0) | Automatic HTTPS, static files, routing `/api` |
-| Dev only | Drizzle Kit, Better Auth CLI (`auth`), TypeScript, Vitest 5, Playwright 1.64 | Migrations, schema generation, type checks, tests |
+| Dev only | Drizzle Kit, Better Auth CLI (`auth`), TypeScript, Vitest 5, Playwright 1.64, `@argos-ci/playwright` 7 (MIT) | Migrations, schema generation, type checks, tests; Argos uploads the browser tests' screenshots from CI |
 
 That is 8 runtime npm packages: `express`, `better-auth`, `drizzle-orm`, and `pg` on the server, and
 `react`, `react-dom`, `@tanstack/react-router`, and `@tanstack/react-query` in the web client.
