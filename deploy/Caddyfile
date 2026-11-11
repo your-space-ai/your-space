@@ -1,6 +1,20 @@
 # Your Space's Caddy configuration (research R9). The mode file Compose picks (deploy/modes/) sets:
 #   YS_SITE          http://localhost        plain HTTP for this machine only (the default)
+#                    https://<YS_DOMAIN>     automatic HTTPS from Let's Encrypt; HTTP redirects to it
+#                    http://:8080            plain HTTP behind your own proxy or `tailscale serve`
 #   YS_REDIRECT_URL  where http://127.0.0.1 sends people: sign-in works at one address only
+{
+	servers :8080 {
+		# Only port 8080, where your own proxy forwards, accepts the visitor address a proxy reports.
+		# Strict mode reads X-Forwarded-For from the right and skips private addresses as proxies, so
+		# the proxy must replace the header with the visitor's address. If it appended to it instead
+		# (nginx's $proxy_add_x_forwarded_for), a visitor on the local network could put a made-up
+		# address in front of their own (docs/install/README.md).
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+	}
+}
+
 (app) {
 	encode
 
