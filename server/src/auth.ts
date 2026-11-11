@@ -97,7 +97,7 @@ const DISABLED_ORGANIZATION_PATHS = [
 // which would tell anyone on the network whether an account exists.
 const DISABLED_SIGN_IN_PATHS = ["/sign-in/email", "/is-username-available"];
 
-/** Usernames: 3 to 30 letters, digits, `_` or `.`, compared without case (Better Auth's defaults). */
+/** Usernames: 3 to 30 letters, digits, `_` or `.`, compared without case. owner/rules.ts also keeps each `.` between other characters. */
 export const USERNAME_MIN_LENGTH = 3;
 export const USERNAME_MAX_LENGTH = 30;
 

@@ -152,7 +152,7 @@ sign in; a later release uses it for verification and recovery links.
 Account rules:
 
 - **Name:** 1 to 100 characters, without control characters such as tabs or line breaks.
-- **Username:** 3 to 30 letters, digits, `_` or `.`. It is stored in lowercase, and signing in
+- **Username:** 3 to 30 letters, digits, `_` or `.`, with each `.` between other characters. It is stored in lowercase, and signing in
   ignores case, so `You` and `you` are the same username.
 - **Email (optional):** up to 254 characters: letters, digits, and `_ ' + -` in parts separated by
   single dots, then `@` and a domain such as `example.com`. It is stored in lowercase.

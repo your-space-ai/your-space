@@ -101,8 +101,8 @@ Failure, `--json`:
 Rules:
 
 - **Name:** 1 to 100 characters after trimming.
-- **Username:** 3 to 30 letters, digits, `_` or `.`, stored lowercase. The owner signs in with it,
-  without regard to case.
+- **Username:** 3 to 30 letters, digits, `_` or `.`, with each `.` between other characters, stored
+  lowercase. The owner signs in with it, without regard to case.
 - **Email (optional):** a valid address of up to 254 characters, stored lowercase and unverified.
   It never signs in. Without one, the account holds `<username>@users.invalid`, a reserved address
   that can't receive mail and is never shown or reported; an address at `users.invalid` is refused.

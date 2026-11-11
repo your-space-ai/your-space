@@ -465,7 +465,9 @@ that settled each question.
   (part of `better-auth`, no new package) adds a unique `username` column and
   `POST /api/auth/sign-in/username`. It is configured with `minUsernameLength: 3`,
   `maxUsernameLength: 30` and `displayUsername: false`, so the username is stored lowercase and
-  compared without case. `/sign-in/email` and `/is-username-available` are in `disabledPaths`. An
+  compared without case. `create-owner` also keeps each `.` between other characters, because the
+  placeholder address is built from the username and Better Auth refuses an address with a
+  leading, trailing or doubled dot. `/sign-in/email` and `/is-username-available` are in `disabledPaths`. An
   email address is optional; without one, `create-owner` gives the account
   `<username>@users.invalid`.
 - **Rationale:**

@@ -222,7 +222,7 @@ These are the exact settings the spec left to the plan.
 | --- | --- |
 | Password | 12 to 128 characters; scrypt N=16384, r=16, p=1 |
 | Name | 1 to 100 characters |
-| Username | 3 to 30 letters, digits, `_` or `.`; stored lowercase and compared without case; unique |
+| Username | 3 to 30 letters, digits, `_` or `.`, each `.` between other characters; stored lowercase and compared without case; unique |
 | Email | optional; valid address up to 254 characters, stored lowercase, never verified here; without one, the account holds `<username>@users.invalid`, which is never shown |
 | Session | 7 days, extended daily while used; database-backed; no cookie cache |
 | Owner creation | `create-owner --username --name [--email]`; prints a set-password link (30 minutes, single use) |

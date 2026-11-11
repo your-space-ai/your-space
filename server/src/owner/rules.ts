@@ -28,8 +28,10 @@ export function ownEmail(email: string): string | null {
 // domain ending in a top-level domain of 2 or more letters.
 const EMAIL_PATTERN =
   /^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/;
-// The username plugin's own rule, so a username this accepts is never refused later.
-const USERNAME_PATTERN = /^[a-z0-9_.]+$/;
+// The username plugin's characters, with each `.` between two other characters: the placeholder
+// email is built from the username, and Better Auth refuses an address with a leading, trailing or
+// doubled dot.
+const USERNAME_PATTERN = /^[a-z0-9_]+(?:\.[a-z0-9_]+)*$/;
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 
@@ -59,7 +61,8 @@ export function validateOwnerInput(input: {
   if (username.length === 0) fields.username = "Enter a username.";
   else if (username.length < USERNAME_MIN_LENGTH || username.length > USERNAME_MAX_LENGTH)
     fields.username = `Use ${USERNAME_MIN_LENGTH} to ${USERNAME_MAX_LENGTH} characters.`;
-  else if (!USERNAME_PATTERN.test(username)) fields.username = "Use only letters, digits, _ and . in a username.";
+  else if (!USERNAME_PATTERN.test(username))
+    fields.username = "Use only letters, digits, _ and . in a username, with each . between other characters.";
 
   let email: string | null = null;
   if (input.email !== undefined) {

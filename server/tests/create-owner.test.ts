@@ -122,6 +122,10 @@ describe("create-owner", () => {
     [["--username", "s".repeat(31), "--name", "Sam"], "username"],
     [["--username", "sam rivera", "--name", "Sam"], "username"],
     [["--username", "sam-rivera", "--name", "Sam"], "username"],
+    // A dot only between other characters, so the placeholder address is always valid.
+    [["--username", ".sam", "--name", "Sam"], "username"],
+    [["--username", "sam.", "--name", "Sam"], "username"],
+    [["--username", "sam..rivera", "--name", "Sam"], "username"],
     [["--username", "sam", "--name", "   "], "name"],
     [["--username", "sam", "--name", "x".repeat(101)], "name"],
     [["--name", "Sam"], "username"],
