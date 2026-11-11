@@ -6,7 +6,7 @@ import { PASSWORD, setPassword, signIn } from "./helpers/ui.ts";
 
 test.describe.configure({ mode: "serial" });
 
-const EMAIL = "sam@example.com";
+const USERNAME = "sam";
 const NEW_PASSWORD = "a brand new passphrase for sam";
 
 test.beforeAll(async () => {
@@ -19,17 +19,17 @@ test("reset-link sets a new password and signs out every device", async ({ brows
   const laptop = await first.newPage();
   const phone = await second.newPage();
 
-  const { url } = await createOwner(EMAIL, "Sam Rivera");
+  const { url } = await createOwner(USERNAME, "Sam Rivera");
   await setPassword(laptop, url);
-  await signIn(laptop, EMAIL);
+  await signIn(laptop, USERNAME);
   await expect(laptop.getByRole("heading", { name: "Sam Rivera's space" })).toBeVisible();
-  await signIn(phone, EMAIL);
+  await signIn(phone, USERNAME);
   await expect(phone.getByRole("heading", { name: "Sam Rivera's space" })).toBeVisible();
   const before = await identities();
 
   // Issuing a link changes nothing by itself.
   const link = await resetLink();
-  expect(link.email).toBe(EMAIL);
+  expect(link.username).toBe(USERNAME);
   await laptop.reload();
   await expect(laptop.getByRole("heading", { name: "Sam Rivera's space" })).toBeVisible();
   expect(await sql("select count(*) from session")).toEqual(["2"]);
@@ -54,7 +54,7 @@ test("reset-link sets a new password and signs out every device", async ({ brows
   }
   expect(await sql("select count(*) from session")).toEqual(["0"]);
 
-  // Same account and workspace; the email is still unverified.
+  // Same account and workspace; its stored address is still unverified.
   expect(await identities()).toEqual(before);
   expect(await sql(`select email_verified from "user"`)).toEqual(["f"]);
   expect(await sql("select type from event order by created_at")).toEqual([
@@ -66,9 +66,9 @@ test("reset-link sets a new password and signs out every device", async ({ brows
 
   // The old password no longer works and the new one does (pacing for the sign-in limit).
   await laptop.waitForTimeout(11_000);
-  await signIn(laptop, EMAIL, PASSWORD);
-  await expect(laptop.getByRole("alert")).toHaveText("That email and password don't match.");
-  await signIn(laptop, EMAIL, NEW_PASSWORD);
+  await signIn(laptop, USERNAME, PASSWORD);
+  await expect(laptop.getByRole("alert")).toHaveText("That username and password don't match.");
+  await signIn(laptop, USERNAME, NEW_PASSWORD);
   await expect(laptop.getByRole("heading", { name: "Sam Rivera's space" })).toBeVisible();
   await evidence(laptop, testInfo, "us4-3-signed-in-with-new-password");
 
@@ -83,7 +83,7 @@ test("reset-link sets a new password and signs out every device", async ({ brows
   // Without server access there is no way to get a link from the web.
   const request = await reuse.request.post("/api/auth/request-password-reset", {
     headers: { origin: "http://localhost" },
-    data: { email: EMAIL },
+    data: { email: `${USERNAME}@users.invalid` },
   });
   expect(request.status()).toBe(400);
   expect(await sql("select count(*) from verification")).toEqual(["0"]);

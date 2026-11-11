@@ -7,7 +7,7 @@ import { setPassword, signIn } from "./helpers/ui.ts";
 
 test.describe.configure({ mode: "serial" });
 
-const EMAIL = "sam@example.com";
+const USERNAME = "sam";
 let before: string[];
 
 test.beforeAll(async () => {
@@ -20,9 +20,9 @@ async function expectHome(page: import("@playwright/test").Page) {
 }
 
 test("restart and recreation keep the account, workspace, ownership, and session", async ({ page }, testInfo) => {
-  const { url } = await createOwner(EMAIL, "Sam Rivera");
+  const { url } = await createOwner(USERNAME, "Sam Rivera");
   await setPassword(page, url);
-  await signIn(page, EMAIL);
+  await signIn(page, USERNAME);
   await expectHome(page);
   before = await identities();
   expect(before).toHaveLength(1);
@@ -42,13 +42,13 @@ test("restart and recreation keep the account, workspace, ownership, and session
   await expectHome(page);
   await evidence(page, testInfo, "us3-1-home-after-recreate");
 
-  const again = await serverCommand("create-owner", ["--email", "other@example.com", "--name", "Other"]);
+  const again = await serverCommand("create-owner", ["--username", "other", "--name", "Other"]);
   expect(again.code).toBe(2);
   expect(again.json.error).toBe("owner_exists");
 });
 
 test("with the database stopped it reports a storage problem, then recovers unchanged", async ({ page }, testInfo) => {
-  await signIn(page, EMAIL);
+  await signIn(page, USERNAME);
   await expectHome(page);
   await compose(["stop", "postgres"]);
   try {
@@ -67,7 +67,7 @@ test("with the database stopped it reports a storage problem, then recovers unch
     expect(status.status()).toBe(503);
     expect(await status.json()).toEqual({ state: "storage_unavailable" });
 
-    const create = await serverCommand("create-owner", ["--email", "other@example.com", "--name", "Other"]);
+    const create = await serverCommand("create-owner", ["--username", "other", "--name", "Other"]);
     expect(create.code).toBe(3);
     expect(create.json.error).toBe("storage_unavailable");
     const reset = await serverCommand("reset-link");

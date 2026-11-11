@@ -124,9 +124,9 @@ describe("schema migrations", () => {
     const oldBuild = await startServer(t.db, { publicUrl: PUBLIC_URL });
     let cookie: string;
     try {
-      const signIn = await oldBuild.request("/api/auth/sign-in/email", {
+      const signIn = await oldBuild.request("/api/auth/sign-in/username", {
         method: "POST",
-        body: JSON.stringify({ email: OWNER.email, password: OWNER.password }),
+        body: JSON.stringify({ username: OWNER.username, password: OWNER.password }),
       });
       expect(signIn.status).toBe(200);
       cookie = cookieHeader(signIn);
@@ -137,7 +137,7 @@ describe("schema migrations", () => {
     expect(await schemaVersion(t.pool)).toBe(CURRENT_VERSION);
     expect(await recorded(t.db)).toEqual(SHIPPED_ROWS);
     const before = await records(t.db);
-    expect(before.snapshot).toMatchObject({ email: OWNER.email, role: "owner", state: "claimed" });
+    expect(before.snapshot).toMatchObject({ username: OWNER.username, role: "owner", state: "claimed" });
     expect(before.snapshot!.claimed_workspace_id).toBe(before.snapshot!.workspace_id);
     expect(before.counts).toMatchObject({ users: 1, organizations: 1, members: 1, sessions: 1, actors: 2 });
 
@@ -171,9 +171,9 @@ describe("schema migrations", () => {
     try {
       const current = await newBuild.request("/api/auth/get-session", { headers: { cookie } });
       expect(current.status).toBe(200);
-      const body = (await current.json()) as { session: { id: string }; user: { id: string; email: string } };
+      const body = (await current.json()) as { session: { id: string }; user: { id: string; username: string } };
       expect(body.session.id).toBe(before.sessions[0]!.id);
-      expect(body.user).toMatchObject({ id: before.users[0]!.id, email: OWNER.email });
+      expect(body.user).toMatchObject({ id: before.users[0]!.id, username: OWNER.username });
       expect(await (await newBuild.request("/api/status")).json()).toEqual({ owner: true });
     } finally {
       await newBuild.close();
