@@ -182,7 +182,7 @@ const forbidden = () =>
   new Map<string, string>([...Object.entries(PASSWORDS).map(([k, v]) => [`password ${k}`, v] as const), ...secrets]);
 
 const signIn = (password: string, ip: string) =>
-  call("/api/auth/sign-in/email", { body: { email: OWNER.email, password }, ip });
+  call("/api/auth/sign-in/username", { body: { username: OWNER.username, password }, ip });
 
 const resetPassword = (token: string, newPassword: string) =>
   call("/api/auth/reset-password", { body: { token, newPassword } });
@@ -208,8 +208,8 @@ describe("logs (cross-cutting scenario 2)", () => {
 
     // Setup: create-owner prints a set-password link; the token sets the first password.
     const created = await command("create-owner --json", "create-owner", [
-      "--email",
-      OWNER.email,
+      "--username",
+      OWNER.username,
       "--name",
       OWNER.name,
       "--json",
@@ -218,14 +218,14 @@ describe("logs (cross-cutting scenario 2)", () => {
     secret("create-owner token", created.json.token);
     secret("create-owner link", created.json.url);
 
-    const again = await command("create-owner (owner exists)", "create-owner", ["--email", OWNER.email, "--name", OWNER.name]);
+    const again = await command("create-owner (owner exists)", "create-owner", ["--username", OWNER.username, "--name", OWNER.name]);
     expect(again.code).toBe(2);
 
     // The human-mode success, on the second database.
     const humanOwner = await command(
       "create-owner",
       "create-owner",
-      ["--email", OWNER.email, "--name", OWNER.name],
+      ["--username", OWNER.username, "--name", OWNER.name],
       humanDb.url,
     );
     expect(humanOwner.code).toBe(0);
@@ -247,7 +247,7 @@ describe("logs (cross-cutting scenario 2)", () => {
 
     const current = await call("/api/auth/get-session", { cookie: first.cookie });
     expect(current.status).toBe(200);
-    expect(current.body.user.email).toBe(OWNER.email);
+    expect(current.body.user.username).toBe(OWNER.username);
     secret("get-session token", current.body.session.token);
     expect((await call("/api/auth/organization/list", { cookie: first.cookie })).status).toBe(200);
 
@@ -258,7 +258,7 @@ describe("logs (cross-cutting scenario 2)", () => {
 
     // Refused requests: asking for a reset link and signing up over HTTP.
     const reset = await call("/api/auth/request-password-reset", {
-      body: { email: OWNER.email, redirectTo: "/reset-password" },
+      body: { email: `${OWNER.username}@users.invalid`, redirectTo: "/reset-password" },
     });
     expect(reset.status).toBeGreaterThanOrEqual(400);
     const signUp = await call("/api/auth/sign-up/email", {
@@ -307,8 +307,8 @@ describe("logs (cross-cutting scenario 2)", () => {
     expect(limited).toBe(1);
 
     // Malformed JSON, to Better Auth and to the app's own routes.
-    const truncated = `{"email":"${OWNER.email}","password":"${PASSWORDS.malformed}"`;
-    const malformedAuth = await call("/api/auth/sign-in/email", { raw: truncated, ip: IP.malformed });
+    const truncated = `{"username":"${OWNER.username}","password":"${PASSWORDS.malformed}"`;
+    const malformedAuth = await call("/api/auth/sign-in/username", { raw: truncated, ip: IP.malformed });
     expect(malformedAuth.status).toBeGreaterThanOrEqual(400);
     expect(malformedAuth.status).toBeLessThan(500);
     const malformedApp = await call("/api/status", { method: "POST", raw: truncated });

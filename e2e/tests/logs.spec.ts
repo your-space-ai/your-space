@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 import { createOwner, logs, resetLink, resetStack, serverCommand } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
 
-const EMAIL = "sam@example.com";
+const USERNAME = "sam";
 const FIRST_PASSWORD = "first passphrase for the log check";
 const WRONG_PASSWORD = "wrong passphrase for the log check";
 const SECOND_PASSWORD = "second passphrase for the log check";
@@ -20,13 +20,13 @@ test("logs contain no credentials after the whole journey", async ({ page, conte
   await resetStack();
   const secrets: string[] = [FIRST_PASSWORD, WRONG_PASSWORD, SECOND_PASSWORD];
 
-  const created = await createOwner(EMAIL, "Sam Rivera");
+  const created = await createOwner(USERNAME, "Sam Rivera");
   secrets.push(created.token, created.url);
   await setPassword(page, created.url, FIRST_PASSWORD);
 
-  await signIn(page, EMAIL, WRONG_PASSWORD);
+  await signIn(page, USERNAME, WRONG_PASSWORD);
   await expect(page.getByRole("alert")).toBeVisible();
-  await signIn(page, EMAIL, FIRST_PASSWORD);
+  await signIn(page, USERNAME, FIRST_PASSWORD);
   await expect(page.getByRole("heading", { name: "Sam Rivera's space" })).toBeVisible();
   for (const cookie of await context.cookies()) {
     secrets.push(cookie.value, decodeURIComponent(cookie.value), decodeURIComponent(cookie.value).split(".")[0]!);
@@ -37,7 +37,7 @@ test("logs contain no credentials after the whole journey", async ({ page, conte
   // Refused requests: sign-up, an emailed reset link, a bad token.
   const origin = { origin: "http://localhost" };
   await page.request.post("/api/auth/sign-up/email", { headers: origin, data: { email: "x@example.com", name: "X", password: WRONG_PASSWORD } });
-  await page.request.post("/api/auth/request-password-reset", { headers: origin, data: { email: EMAIL } });
+  await page.request.post("/api/auth/request-password-reset", { headers: origin, data: { email: `${USERNAME}@users.invalid` } });
   await page.request.post("/api/auth/reset-password", { headers: origin, data: { token: "not-a-real-token", newPassword: WRONG_PASSWORD } });
 
   const reset = await resetLink();
