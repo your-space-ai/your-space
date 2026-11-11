@@ -112,8 +112,9 @@ jobs:
   e2e:
     # While the repository is private, Actions minutes are limited: in a stack of pull requests,
     # only the one based on main runs this job; the ones above run it when they reach main. A push
-    # to main skips it, since the pull request it merges has just run it on the same code.
-    if: needs.scope.outputs.bottom == 'true'
+    # to main runs it too. Argos compares a pull request's screenshots with the closest build in
+    # main's history, and a squash merge leaves the pull request's own build out of that history.
+    if: ${{ !cancelled() && needs.check.result == 'success' && (github.event_name == 'push' || needs.scope.outputs.bottom == 'true') }}
     timeout-minutes: 30
     needs: [check, scope]
     runs-on: ubuntu-24.04
