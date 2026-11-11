@@ -28,7 +28,7 @@ product behavior. This checklist is maintained by the Spec Kit specification wor
 - [x] Operator-only owner creation, duplicates, interruptions, and link replay are covered.
 - [x] Sign-in, direct protected access, sign-out, expiry, and remote browser access are covered.
 - [x] Persistence, storage failure, and recovery preserve existing identity and ownership.
-- [x] Email as a login identifier is distinct from mailbox verification and email delivery.
+- [x] The username is the login identifier; an optional email address is distinct from mailbox verification and email delivery.
 - [x] Operator recovery, invalid links, session revocation, and normal sign-in afterward are covered.
 - [x] Dependencies, assumptions, exclusions, and planning choices are explicit.
 

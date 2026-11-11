@@ -20,7 +20,8 @@ afterEach(async () => {
 });
 
 const create = (args: string[]) => runCommand("create-owner", args, { databaseUrl: t.url });
-const VALID = ["--email", "Sam@Example.COM", "--name", "Sam Rivera"];
+const VALID = ["--username", "Sam.Rivera", "--name", "Sam Rivera"];
+const WITH_EMAIL = [...VALID, "--email", "Sam@Example.COM"];
 
 describe("create-owner", () => {
   it("creates exactly one account, workspace, owner membership, actor, event, and claim", async () => {
@@ -30,9 +31,11 @@ describe("create-owner", () => {
     expect(result.code).toBe(0);
 
     // --json output matches the contract exactly.
-    expect(Object.keys(result.json).sort()).toEqual(["email", "expiresAt", "ok", "token", "url"]);
+    expect(Object.keys(result.json).sort()).toEqual(["email", "expiresAt", "ok", "token", "url", "username"]);
     expect(result.json.ok).toBe(true);
-    expect(result.json.email).toBe("sam@example.com");
+    // Stored in lower case. With no --email, the account holds a reserved address it never reports.
+    expect(result.json.username).toBe("sam.rivera");
+    expect(result.json.email).toBeNull();
     expect(result.json.token).toMatch(/^[A-Za-z0-9]{24}$/);
     expect(result.json.url).toBe(`${PUBLIC_URL}/reset-password#token=${result.json.token}`);
     expect(result.json.expiresAt).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
@@ -43,7 +46,7 @@ describe("create-owner", () => {
     expect(await counts(t.db)).toMatchObject({ users: 1, organizations: 1, members: 1, sessions: 0, actors: 2, events: 1 });
 
     const [owner] = await t.db.select().from(user);
-    expect(owner).toMatchObject({ name: "Sam Rivera", email: "sam@example.com", emailVerified: false });
+    expect(owner).toMatchObject({ name: "Sam Rivera", username: "sam.rivera", email: "sam.rivera@users.invalid", emailVerified: false });
 
     const [workspace] = await t.db.select().from(organization);
     expect(workspace!.name).toBe("Sam Rivera's space");
@@ -81,7 +84,7 @@ describe("create-owner", () => {
     const result = await create(VALID);
     expect(result.code).toBe(0);
     const lines = result.stdout.trim().split("\n");
-    expect(lines[0]).toBe("Owner created: Sam Rivera <sam@example.com>");
+    expect(lines[0]).toBe("Owner created: Sam Rivera (username sam.rivera)");
     expect(lines[1]).toMatch(/^Set your password here \(expires \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ, works once\):$/);
     expect(lines[2]).toMatch(new RegExp(`^${PUBLIC_URL}/reset-password#token=[A-Za-z0-9]{24}$`));
     expect(lines[3]).toBe("If it expires, run: docker compose exec server reset-link");
@@ -91,7 +94,7 @@ describe("create-owner", () => {
     expect((await create([...VALID, "--json"])).code).toBe(0);
     const before = await counts(t.db);
 
-    for (const args of [VALID, ["--email", "other@example.com", "--name", "Someone Else"]]) {
+    for (const args of [VALID, ["--username", "someone", "--name", "Someone Else"]]) {
       const again = await create([...args, "--json"]);
       expect(again.code).toBe(2);
       expect(again.json).toEqual({ ok: false, error: "owner_exists", message: "This installation already has an owner." });
@@ -102,20 +105,27 @@ describe("create-owner", () => {
     expect(human.stderr).toContain("already has an owner");
 
     expect(await counts(t.db)).toEqual(before);
-    expect(await t.db.select({ email: user.email }).from(user)).toEqual([{ email: "sam@example.com" }]);
+    expect(await t.db.select({ username: user.username }).from(user)).toEqual([{ username: "sam.rivera" }]);
   });
 
   it.each([
-    [["--email", "not-an-email", "--name", "Sam"], "email"],
+    [["--username", "sam", "--name", "Sam", "--email", "not-an-email"], "email"],
     // Valid for a browser's email field, refused by Better Auth's rule, so refused up front.
-    [["--email", "sam!x@example.com", "--name", "Sam"], "email"],
-    [["--email", "sam@example.c", "--name", "Sam"], "email"],
-    [["--email", "sam..x@example.com", "--name", "Sam"], "email"],
-    [["--email", `${"a".repeat(250)}@x.co`, "--name", "Sam"], "email"],
-    [["--email", "sam@example.com", "--name", "   "], "name"],
-    [["--email", "sam@example.com", "--name", "x".repeat(101)], "name"],
-    [["--name", "Sam"], "email"],
-    [["--email", "sam@example.com"], "name"],
+    [["--username", "sam", "--name", "Sam", "--email", "sam!x@example.com"], "email"],
+    [["--username", "sam", "--name", "Sam", "--email", "sam@example.c"], "email"],
+    [["--username", "sam", "--name", "Sam", "--email", "sam..x@example.com"], "email"],
+    [["--username", "sam", "--name", "Sam", "--email", `${"a".repeat(250)}@x.co`], "email"],
+    [["--username", "sam", "--name", "Sam", "--email", ""], "email"],
+    // The reserved placeholder domain can't be anyone's own address.
+    [["--username", "sam", "--name", "Sam", "--email", "sam@users.invalid"], "email"],
+    [["--username", "sa", "--name", "Sam"], "username"],
+    [["--username", "s".repeat(31), "--name", "Sam"], "username"],
+    [["--username", "sam rivera", "--name", "Sam"], "username"],
+    [["--username", "sam-rivera", "--name", "Sam"], "username"],
+    [["--username", "sam", "--name", "   "], "name"],
+    [["--username", "sam", "--name", "x".repeat(101)], "name"],
+    [["--name", "Sam"], "username"],
+    [["--username", "sam"], "name"],
   ])("exits 1 with invalid_input for %j and creates nothing", async (args, field) => {
     const result = await create([...args, "--json"]);
     expect(result.code).toBe(1);
@@ -133,8 +143,30 @@ describe("create-owner", () => {
   });
 
   it("accepts a name of exactly 100 characters", async () => {
-    const result = await create(["--email", "sam@example.com", "--name", "x".repeat(100), "--json"]);
+    const result = await create(["--username", "sam", "--name", "x".repeat(100), "--json"]);
     expect(result.code).toBe(0);
+  });
+
+  it("accepts usernames of 3 and 30 characters", async () => {
+    expect((await create(["--username", "sam", "--name", "Sam", "--json"])).code).toBe(0);
+    await t.destroy();
+    t = await createTestDatabase();
+    expect((await create(["--username", "s".repeat(30), "--name", "Sam", "--json"])).code).toBe(0);
+  });
+
+  it("stores an email given with --email, in lower case and unverified", async () => {
+    const result = await create([...WITH_EMAIL, "--json"]);
+    expect(result.code).toBe(0);
+    expect(result.json).toMatchObject({ ok: true, username: "sam.rivera", email: "sam@example.com" });
+    const [owner] = await t.db.select().from(user);
+    expect(owner).toMatchObject({ username: "sam.rivera", email: "sam@example.com", emailVerified: false });
+
+    const human = await create(WITH_EMAIL);
+    expect(human.code).toBe(2);
+    await t.destroy();
+    t = await createTestDatabase();
+    const printed = await create(WITH_EMAIL);
+    expect(printed.stdout.split("\n")[0]).toBe("Owner created: Sam Rivera (username sam.rivera, email sam@example.com, unverified)");
   });
 
   it("exits 3 with storage_unavailable when the database is down, and changes nothing", async () => {
@@ -159,6 +191,9 @@ describe("create-owner", () => {
     const commandAuth = () =>
       createCommandAuth({ config: { publicUrl: PUBLIC_URL, authSecret: TEST_SECRET }, db: t.db }, () => {});
 
+    // What an earlier run with VALID creates in step 2.
+    const EARLIER_ACCOUNT = { username: "sam.rivera", email: "sam.rivera@users.invalid", name: "Sam Rivera" };
+
     async function finishAndCheck(expectIds: { userId: string; workspaceId?: string }) {
       const result = await create([...VALID, "--json"]);
       expect(result.code).toBe(0);
@@ -176,7 +211,7 @@ describe("create-owner", () => {
     it("finishes after stopping once the account existed", async () => {
       const auth = commandAuth();
       const { user: created } = await auth.api.signUpEmail({
-        body: { email: "sam@example.com", name: "Sam Rivera", password: "a-random-password-for-the-test" },
+        body: { ...EARLIER_ACCOUNT, password: "a-random-password-for-the-test" },
       });
       await finishAndCheck({ userId: created.id });
     });
@@ -184,7 +219,7 @@ describe("create-owner", () => {
     it("finishes after stopping once the workspace and membership existed", async () => {
       const auth = commandAuth();
       const { user: created } = await auth.api.signUpEmail({
-        body: { email: "sam@example.com", name: "Sam Rivera", password: "a-random-password-for-the-test" },
+        body: { ...EARLIER_ACCOUNT, password: "a-random-password-for-the-test" },
       });
       const workspace = await auth.api.createOrganization({
         body: { name: "Sam Rivera's space", slug: created.id, userId: created.id },
@@ -195,13 +230,22 @@ describe("create-owner", () => {
     it("finishes after stopping between the workspace and its membership", async () => {
       const auth = commandAuth();
       const { user: created } = await auth.api.signUpEmail({
-        body: { email: "sam@example.com", name: "Sam Rivera", password: "a-random-password-for-the-test" },
+        body: { ...EARLIER_ACCOUNT, password: "a-random-password-for-the-test" },
       });
       const [workspace] = await t.db
         .insert(organization)
         .values({ name: "Sam Rivera's space", slug: created.id, createdAt: new Date() })
         .returning();
       await finishAndCheck({ userId: created.id, workspaceId: workspace!.id });
+    });
+
+    it("refuses a different username after an earlier run created the account, and names the earlier one", async () => {
+      await commandAuth().api.signUpEmail({ body: { ...EARLIER_ACCOUNT, password: "a-random-password-for-the-test" } });
+      const result = await create(["--username", "someone", "--name", "Someone", "--json"]);
+      expect(result.code).toBe(1);
+      expect(result.json).toMatchObject({ ok: false, error: "invalid_input" });
+      expect(result.json.fields.username).toContain("sam.rivera");
+      expect(await counts(t.db)).toMatchObject({ users: 1, organizations: 0 });
     });
 
     it("never marks the installation claimed without its workspace", async () => {
@@ -246,8 +290,8 @@ describe("create-owner run concurrently", () => {
     await holder.connect();
     await holder.query("select pg_advisory_lock(7959002)");
     const runs = Promise.all([
-      create(["--email", "a@example.com", "--name", "A", "--json"]),
-      create(["--email", "b@example.com", "--name", "B", "--json"]),
+      create(["--username", "alex", "--name", "A", "--json"]),
+      create(["--username", "blake", "--name", "B", "--json"]),
     ]);
     try {
       const deadline = Date.now() + 30_000;
@@ -284,7 +328,7 @@ describe("create-owner run concurrently", () => {
       await other.query(`update installation set state = 'claimed', workspace_id = $1, claimed_at = now() where id = 1`, [id]);
 
       const run = createOwner({ config: { publicUrl: PUBLIC_URL, authSecret: TEST_SECRET }, db: t.db }, {
-        email: "sam@example.com",
+        username: "sam",
         name: "Sam Rivera",
       });
       const deadline = Date.now() + 30_000;

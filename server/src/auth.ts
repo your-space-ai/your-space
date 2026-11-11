@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { and, eq, like, sql } from "drizzle-orm";
 import { betterAuth, type User } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { organization } from "better-auth/plugins";
+import { organization, username } from "better-auth/plugins";
 import type { Config } from "./config.ts";
 import type { Db } from "./db/client.ts";
 import * as authSchema from "./db/auth-schema.ts";
@@ -93,6 +93,14 @@ const DISABLED_ORGANIZATION_PATHS = [
   "update-member-role",
 ].map((name) => `/organization/${name}`);
 
+// The owner signs in with a username (FR-007). Email sign-in is off, and so is the username check,
+// which would tell anyone on the network whether an account exists.
+const DISABLED_SIGN_IN_PATHS = ["/sign-in/email", "/is-username-available"];
+
+/** Usernames: 3 to 30 letters, digits, `_` or `.`, compared without case (Better Auth's defaults). */
+export const USERNAME_MIN_LENGTH = 3;
+export const USERNAME_MAX_LENGTH = 30;
+
 /** The set-password or reset link. The token is in the fragment, which browsers never send to a server. */
 export function linkFor(publicUrl: string, token: string): string {
   return `${publicUrl}/reset-password#token=${encodeURIComponent(token)}`;
@@ -142,7 +150,7 @@ function buildAuth(deps: AuthDeps, onLink?: OnLink) {
       database: { generateId: "uuid" },
     },
     telemetry: { enabled: false },
-    disabledPaths: DISABLED_ORGANIZATION_PATHS,
+    disabledPaths: [...DISABLED_SIGN_IN_PATHS, ...DISABLED_ORGANIZATION_PATHS],
     // Unexpected errors (a lost database, for example) are thrown to the Express error handler,
     // which logs only their name and code. Otherwise Better Auth's router prints the raw error,
     // whose text can include query parameters such as a reset token (FR-010).
@@ -154,7 +162,11 @@ function buildAuth(deps: AuthDeps, onLink?: OnLink) {
         log(level, "auth.message", { message });
       },
     },
-    plugins: [organization({ allowUserToCreateOrganization: false })],
+    plugins: [
+      organization({ allowUserToCreateOrganization: false }),
+      // Stored in lower case; the owner's typed form isn't kept, so there's no display column.
+      username({ minUsernameLength: USERNAME_MIN_LENGTH, maxUsernameLength: USERNAME_MAX_LENGTH, displayUsername: false }),
+    ],
   });
 }
 

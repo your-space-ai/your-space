@@ -23,10 +23,10 @@ afterAll(async () => {
 });
 
 const signIn = (server: TestServer, host?: string) =>
-  server.request("/api/auth/sign-in/email", {
+  server.request("/api/auth/sign-in/username", {
     method: "POST",
     headers: host ? { host } : {},
-    body: JSON.stringify({ email: OWNER.email, password: OWNER.password }),
+    body: JSON.stringify({ username: OWNER.username, password: OWNER.password }),
   });
 
 describe("Host guard", () => {

@@ -10,24 +10,24 @@ import { PASSWORD, setPassword, signIn } from "./helpers/ui.ts";
 
 test.describe.configure({ mode: "serial" });
 
-const EMAIL = "sam@example.com";
+const USERNAME = "sam";
 
 test.beforeAll(async () => {
   await resetStack();
 });
 
 test("sign in, sign out, and a replayed session is refused", async ({ page, context }, testInfo) => {
-  const { url } = await createOwner(EMAIL, "Sam Rivera");
+  const { url } = await createOwner(USERNAME, "Sam Rivera");
   await setPassword(page, url);
 
   // A wrong password is refused and reveals nothing.
-  await signIn(page, EMAIL, "not the right password");
-  await expect(page.getByRole("alert")).toHaveText("That email and password don't match.");
+  await signIn(page, USERNAME, "not the right password");
+  await expect(page.getByRole("alert")).toHaveText("That username and password don't match.");
   await expect(page).toHaveURL(/\/sign-in/);
   await evidence(page, testInfo, "us2-1-wrong-password");
 
   // The right password opens the workspace.
-  await signIn(page, EMAIL);
+  await signIn(page, USERNAME);
   await expect(page.getByRole("heading", { name: "Sam Rivera's space" })).toBeVisible();
   await evidence(page, testInfo, "us2-2-home");
 
@@ -99,22 +99,22 @@ test("repeated failures are limited and the page says so", async ({ page }, test
   await page.waitForTimeout(11_000);
   await page.goto("/sign-in");
   for (let attempt = 0; attempt < 3; attempt++) {
-    await signIn(page, EMAIL, "not the right password");
-    await expect(page.getByRole("alert")).toHaveText("That email and password don't match.");
+    await signIn(page, USERNAME, "not the right password");
+    await expect(page.getByRole("alert")).toHaveText("That username and password don't match.");
   }
-  await signIn(page, EMAIL, PASSWORD);
+  await signIn(page, USERNAME, PASSWORD);
   await expect(page.getByRole("alert")).toHaveText("Too many sign-in attempts. Wait a few seconds, then try again.");
   await expect(page).toHaveURL(/\/sign-in/);
   await evidence(page, testInfo, "us2-3-rate-limited");
 
   // After the window passes, the right password works again.
   await page.waitForTimeout(11_000);
-  await signIn(page, EMAIL, PASSWORD);
+  await signIn(page, USERNAME, PASSWORD);
   await expect(page.getByRole("heading", { name: "Sam Rivera's space" })).toBeVisible();
 });
 
 test("a stopped server shows that it can't be reached, not an empty workspace", async ({ page }, testInfo) => {
-  await signIn(page, EMAIL);
+  await signIn(page, USERNAME);
   await expect(page.getByRole("heading", { name: "Sam Rivera's space" })).toBeVisible();
 
   await compose(["stop", "server"]);

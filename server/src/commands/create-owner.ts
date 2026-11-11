@@ -1,17 +1,18 @@
-// create-owner --email <email> --name <name> [--json] (T028).
+// create-owner --username <username> --name <name> [--email <email>] [--json] (T028).
 import { parseArgs } from "node:util";
 import { errorFields, log } from "../log.ts";
 import { createOwner } from "../owner/create-owner.ts";
 import { EXIT, formatTime, openForCommand, output, STORAGE_MESSAGE } from "./output.ts";
 
-const USAGE = 'Usage: create-owner --email <email> --name "<name>" [--json]';
+const USAGE = 'Usage: create-owner --username <username> --name "<name>" [--email <email>] [--json]';
 
 async function main(argv: string[]): Promise<number> {
-  let values: { email?: string; name?: string; json?: boolean; help?: boolean };
+  let values: { username?: string; email?: string; name?: string; json?: boolean; help?: boolean };
   try {
     ({ values } = parseArgs({
       args: argv,
       options: {
+        username: { type: "string" },
         email: { type: "string" },
         name: { type: "string" },
         json: { type: "boolean", default: false },
@@ -38,11 +39,12 @@ async function main(argv: string[]): Promise<number> {
   const { config, database } = opened;
 
   try {
-    const result = await createOwner({ config, db: database.db }, { email: values.email, name: values.name });
+    const result = await createOwner({ config, db: database.db }, { username: values.username, email: values.email, name: values.name });
     if (result.ok) {
       const expires = formatTime(result.expiresAt);
-      out.success({ ok: true, email: result.email, url: result.url, token: result.token, expiresAt: expires }, [
-        `Owner created: ${result.name} <${result.email}>`,
+      const json = { ok: true, username: result.username, email: result.email, url: result.url, token: result.token, expiresAt: expires };
+      out.success(json, [
+        `Owner created: ${result.name} (username ${result.username}${result.email ? `, email ${result.email}, unverified` : ""})`,
         `Set your password here (expires ${expires}, works once):`,
         result.url,
         "If it expires, run: docker compose exec server reset-link",
@@ -67,7 +69,7 @@ async function main(argv: string[]): Promise<number> {
         out.failure(
           { ok: false, error: "storage_unavailable", message: STORAGE_MESSAGE },
           `${STORAGE_MESSAGE} The installation still has no owner. Check the database with ` +
-            "`docker compose ps`; once it is back, run this command again with the same email.",
+            "`docker compose ps`; once it is back, run this command again with the same username.",
         );
         return EXIT.storage;
       }

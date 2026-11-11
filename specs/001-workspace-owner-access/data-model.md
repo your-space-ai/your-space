@@ -35,8 +35,10 @@ on a membership that spec 004 can extend to other members without touching exist
 
 ## Better Auth Tables (used as defined)
 
-- **`user`**: `id`, `name`, `email` (unique), `emailVerified` (always false in this feature,
-  FR-007), `image`, `createdAt`, `updatedAt`.
+- **`user`**: `id`, `name`, `username` (unique, lowercase; the sign-in name, FR-007), `email`
+  (unique; the owner's optional address, or `<username>@users.invalid` when none is given, which
+  can't receive mail and is never shown), `emailVerified` (always false in this feature), `image`,
+  `createdAt`, `updatedAt`. Migration `0001_username` adds `username`.
 - **`account`**: one `credential` row per user holding the scrypt password hash (`password`).
   Later sign-in methods add rows here without changing `user`.
 - **`session`**: `id`, `token` (unique), `userId`, `expiresAt`, `ipAddress`, `userAgent`,
@@ -111,7 +113,7 @@ Events never store codes, tokens, passwords, or session values (FR-010).
 1. Read `installation`. If it says `claimed`, exit with `owner_exists`.
 2. Create the account with `auth.api.signUpEmail` and a random password that is never shown. This
    runs on the command's own Better Auth instance, which has sign-up on. If an account with that
-   email already exists from an earlier interrupted run, reuse it.
+   username already exists from an earlier interrupted run, reuse it.
 3. Create the workspace with `auth.api.createOrganization`, passing the user's ID. The plugin makes
    the creator a member with the `owner` role. If the user already owns a workspace from an earlier
    run, reuse it.
@@ -120,7 +122,7 @@ Events never store codes, tokens, passwords, or session values (FR-010).
    `installation` to `claimed` with the workspace ID. A check constraint means it can never be
    claimed without a workspace. Then print the link.
 
-If a run stops partway, running it again with the same email reuses what exists and finishes.
+If a run stops partway, running it again with the same username reuses what exists and finishes.
 Because the link is issued before the claim, a failure at any step leaves the installation without
 an owner, so the command can report that nothing was claimed and a rerun finishes the job. A link
 issued by a failed run was never printed and expires unused.

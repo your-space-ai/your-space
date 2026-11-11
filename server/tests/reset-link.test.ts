@@ -32,9 +32,9 @@ const resetLink = (args: string[] = ["--json"]) =>
 const json = (response: Response): Promise<any> => response.json();
 
 const signIn = (password: string) =>
-  server.request("/api/auth/sign-in/email", {
+  server.request("/api/auth/sign-in/username", {
     method: "POST",
-    body: JSON.stringify({ email: OWNER.email, password }),
+    body: JSON.stringify({ username: OWNER.username, password }),
   });
 
 const reset = (token: unknown, newPassword = NEW_PASSWORD, s = server) =>
@@ -70,7 +70,7 @@ async function protectedState() {
 async function issue() {
   const result = await resetLink();
   expect(result.code).toBe(0);
-  return result.json as { ok: true; email: string; url: string; token: string; expiresAt: string };
+  return result.json as { ok: true; username: string; url: string; token: string; expiresAt: string };
 }
 
 const tokenRows = (token: string) =>
@@ -78,7 +78,7 @@ const tokenRows = (token: string) =>
 
 describe("set-password link and reset-link", () => {
   it("cancels create-owner's unused set-password link when reset-link issues a new one", async () => {
-    const created = await runCommand("create-owner", ["--email", OWNER.email, "--name", OWNER.name, "--json"], {
+    const created = await runCommand("create-owner", ["--username", OWNER.username, "--name", OWNER.name, "--json"], {
       databaseUrl: t.url,
       publicUrl: server.publicUrl,
     });
@@ -190,9 +190,9 @@ describe("reset-link", () => {
       expect(result.code).toBe(0);
 
       // Same shape and formats as create-owner.
-      expect(Object.keys(result.json).sort()).toEqual(["email", "expiresAt", "ok", "token", "url"]);
+      expect(Object.keys(result.json).sort()).toEqual(["expiresAt", "ok", "token", "url", "username"]);
       expect(result.json.ok).toBe(true);
-      expect(result.json.email).toBe(OWNER.email);
+      expect(result.json.username).toBe(OWNER.username);
       expect(result.json.token).toMatch(/^[A-Za-z0-9]{24}$/);
       expect(result.json.url).toBe(`${server.publicUrl}/reset-password#token=${result.json.token}`);
       expect(result.json.expiresAt).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
@@ -215,7 +215,7 @@ describe("reset-link", () => {
       const lines = result.stdout.trim().split("\n");
       expect(lines).toHaveLength(3);
       const heading = lines[0]!.match(
-        /^Password reset link for sam@example\.com \(expires (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ), works once\):$/,
+        /^Password reset link for sam \(expires (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ), works once\):$/,
       );
       expect(heading, lines[0]).not.toBeNull();
       const link = lines[1]!.match(new RegExp(`^${server.publicUrl}/reset-password#token=([A-Za-z0-9]{24})$`));
@@ -301,7 +301,7 @@ describe("reset-link", () => {
 
       const old = await signIn(OWNER.password);
       expect(old.status).toBe(401);
-      expect(await json(old)).toMatchObject({ code: "INVALID_EMAIL_OR_PASSWORD" });
+      expect(await json(old)).toMatchObject({ code: "INVALID_USERNAME_OR_PASSWORD" });
       const fresh = await signedIn(NEW_PASSWORD);
       expect(await currentUserId(fresh)).toBe(ownerId);
 
@@ -438,7 +438,7 @@ describe("reset-link", () => {
     it("refuses requesting a reset link over HTTP and creates no token", async () => {
       const before = { counts: await counts(t.db), tokens: await t.db.select().from(verification) };
       const bodies: string[] = [];
-      for (const email of [OWNER.email, "visitor@example.com"]) {
+      for (const email of ["sam@users.invalid", "visitor@example.com"]) {
         const response = await server.request("/api/auth/request-password-reset", {
           method: "POST",
           body: JSON.stringify({ email }),
@@ -449,7 +449,7 @@ describe("reset-link", () => {
         expect(text).not.toContain(ownerId);
         bodies.push(text);
       }
-      // The owner's email and an unknown one get the same answer, so it reveals no account (FR-020).
+      // The owner's stored address and an unknown one get the same answer, so it reveals no account (FR-020).
       expect(bodies[1]).toBe(bodies[0]);
       expect(await t.db.select().from(verification)).toEqual(before.tokens);
       expect(await counts(t.db)).toEqual(before.counts);

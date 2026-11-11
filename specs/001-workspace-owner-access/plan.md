@@ -9,7 +9,7 @@
 ## Summary
 
 The operator installs Your Space with Docker Compose and runs `create-owner` on the server with a
-name and email. That creates the owner account, one workspace, and the owner membership, and prints
+name and username, and optionally an email. That creates the owner account, one workspace, and the owner membership, and prints
 a single-use link where the owner sets their password. The owner signs in over HTTPS from any
 device, sessions survive restarts, and `reset-link` prints a new link if the password is lost.
 Sign-up is always off; there is no setup page.
@@ -123,7 +123,8 @@ Both use only documented options. Nothing sits in front of Better Auth and no ho
 | FR-002, FR-003 owner from a server command; first password | `auth.api.signUpEmail` in the command's own instance; Better Auth reset flow for the first password |
 | FR-004 owner, workspace, membership | `auth.api.signUpEmail`; organization plugin `auth.api.createOrganization` (creator gets `owner`) |
 | FR-005 closed registration | Better Auth `disableSignUp`; organization plugin `allowUserToCreateOrganization: false` |
-| FR-006, FR-008 one auth system, sign-in/out | Better Auth email and password, sessions |
+| FR-006, FR-008 one auth system, sign-in/out | Better Auth email and password with its username plugin; email sign-in off; sessions |
+| FR-007 username login, optional email | username plugin (`signIn.username`); `/sign-in/email` and `/is-username-available` in `disabledPaths`; a reserved `@users.invalid` address when no email is given |
 | FR-009 expiry, revocation, durable sessions | Better Auth database sessions (7 days, refreshed daily), sign-out deletes the row |
 | FR-010 password hashing | Better Auth scrypt (N=16384, r=16, p=1, 64-byte key, 16-byte salt) |
 | FR-011 attempt limits | Better Auth's built-in sign-in limits (defaults); set-password and reset tokens are too long to guess |
@@ -220,9 +221,11 @@ These are the exact settings the spec left to the plan.
 | Setting | Value |
 | --- | --- |
 | Password | 12 to 128 characters; scrypt N=16384, r=16, p=1 |
-| Name / email | 1 to 100 characters / valid address up to 254 characters, stored lowercase |
+| Name | 1 to 100 characters |
+| Username | 3 to 30 letters, digits, `_` or `.`; stored lowercase and compared without case; unique |
+| Email | optional; valid address up to 254 characters, stored lowercase, never verified here; without one, the account holds `<username>@users.invalid`, which is never shown |
 | Session | 7 days, extended daily while used; database-backed; no cookie cache |
-| Owner creation | `create-owner --email --name`; prints a set-password link (30 minutes, single use) |
+| Owner creation | `create-owner --username --name [--email]`; prints a set-password link (30 minutes, single use) |
 | Reset link | 30 minutes, single use, token in the URL fragment, revokes all sessions |
 | Sign-in limit | Better Auth default: 3 attempts per 10 seconds per IP |
 | Sign-up | Always off; new people join by owner invitation (spec 004) |

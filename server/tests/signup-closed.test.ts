@@ -30,10 +30,10 @@ describe("closed sign-up", () => {
     expect(await counts(t.db)).toMatchObject({ users: 0, organizations: 0, members: 0 });
   });
 
-  it("refuses sign-up after the owner exists, including with the owner's email", async () => {
+  it("refuses sign-up after the owner exists, including with the owner's stored address", async () => {
     await createOwnerWithPassword(t.db, OWNER, server.publicUrl);
     const before = await counts(t.db);
-    for (const email of ["visitor@example.com", OWNER.email]) {
+    for (const email of ["visitor@example.com", "sam@users.invalid"]) {
       const response = await signUp(email);
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({ code: "EMAIL_PASSWORD_SIGN_UP_DISABLED" });
@@ -49,9 +49,9 @@ describe("closed sign-up", () => {
     const anonymous = await server.request("/api/auth/organization/create", { method: "POST", body });
     expect(anonymous.status).toBe(404);
 
-    const signIn = await server.request("/api/auth/sign-in/email", {
+    const signIn = await server.request("/api/auth/sign-in/username", {
       method: "POST",
-      body: JSON.stringify({ email: OWNER.email, password: OWNER.password }),
+      body: JSON.stringify({ username: OWNER.username, password: OWNER.password }),
     });
     expect(signIn.status).toBe(200);
     const cookie = cookieHeader(signIn);

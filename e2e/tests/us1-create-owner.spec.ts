@@ -27,8 +27,10 @@ test("a fresh install offers no way to create an account, and create-owner makes
   expect(await sql(`select count(*) from "user"`)).toEqual(["0"]);
 
   // The operator creates the owner on the server.
-  const created = await createOwner("Sam@Example.com", "Sam Rivera");
-  expect(created.email).toBe("sam@example.com");
+  // No email: the owner signs in with a username, stored in lower case.
+  const created = await createOwner("Sam", "Sam Rivera");
+  expect(created.username).toBe("sam");
+  expect(created.email).toBeNull();
   // The link uses the address the stack serves, which YS_PORT can move.
   expect(created.url.startsWith(`${testInfo.project.use.baseURL}/reset-password#token=`)).toBe(true);
   expect(created.url).toMatch(/#token=[A-Za-z0-9]{24}$/);
@@ -44,11 +46,13 @@ test("a fresh install offers no way to create an account, and create-owner makes
   await expect(page).toHaveURL(/\/sign-in\?notice=password_set$/);
   await expect(page.getByText("Your password is set.")).toBeVisible();
 
-  // Sign in and reach the empty workspace: the workspace, name, email, and sign out only.
-  await signIn(page, "sam@example.com");
+  // Sign in and reach the empty workspace: the workspace, name, username, and sign out only.
+  await signIn(page, "sam");
   await expect(page.getByRole("heading", { name: "Sam Rivera's space" })).toBeVisible();
   await expect(page.locator('[data-field="name"]')).toHaveText("Sam Rivera");
-  await expect(page.locator('[data-field="email"]')).toHaveText("sam@example.com");
+  await expect(page.locator('[data-field="username"]')).toHaveText("sam");
+  // The account's reserved address isn't the owner's, so no email is shown.
+  await expect(page.locator('[data-field="email"]')).toHaveCount(0);
   await expect(page.getByRole("button")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   await expect(page.locator("a, input, select, textarea")).toHaveCount(0);
@@ -68,7 +72,7 @@ test("a fresh install offers no way to create an account, and create-owner makes
   await second.close();
 
   // Running create-owner again changes nothing; sign-up stays closed.
-  const again = await serverCommand("create-owner", ["--email", "other@example.com", "--name", "Other"]);
+  const again = await serverCommand("create-owner", ["--username", "other", "--name", "Other"]);
   expect(again.code).toBe(2);
   expect(again.json).toMatchObject({ ok: false, error: "owner_exists" });
   const signUpAfter = await page.request.post("/api/auth/sign-up/email", {

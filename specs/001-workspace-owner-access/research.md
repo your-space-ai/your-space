@@ -55,7 +55,8 @@ that settled each question.
   - Session: database-backed, 7-day expiry, refreshed daily (the library defaults), `cookieCache`
     off.
   - `baseURL` set to the public address derived in [R9](#r9-https-and-the-caddy-configuration); `advanced.database.generateId: "uuid"`.
-  - Plugins: `organization({ allowUserToCreateOrganization: false })` only.
+  - Plugins: `organization({ allowUserToCreateOrganization: false })` and `username(...)`
+    ([R17](#r17-username-sign-in)).
   - `telemetry: { enabled: false }`, set explicitly.
 - **Rationale:**
   - **Password hashing (cross-cutting scenario 1, FR-010):** scrypt with N=16384, r=16, p=1, a
@@ -120,8 +121,9 @@ that settled each question.
 ## R5. Creating the Owner With a Server Command
 
 - **Decision:**
-  - The operator runs `create-owner --email --name`. It creates the account, workspace, and owner
-    membership, marks the installation as having an owner, and prints a set-password link.
+  - The operator runs `create-owner --username --name`, with `--email` optional. It creates the
+    account, workspace, and owner membership, marks the installation as having an owner, and
+    prints a set-password link.
   - There is no setup code, no claim endpoint, and no setup page. Before an owner exists, the web
     client only explains how to run the command.
 - **Rationale:**
@@ -132,15 +134,15 @@ that settled each question.
     to claim.
   - **Fewest parts:** a server command closes that hole with less code than a setup code plus a
     browser form, which would need the code itself, the claim endpoint, and the form.
-  - **Fits the wrappers:** spec 003's CLI asks for the email during install. Spec 008's desktop app
-    asks for name, email, and password on one screen, runs the command, and sets the password with
+  - **Fits the wrappers:** spec 003's CLI asks for the username during install. Spec 008's desktop app
+    asks for name, username, and password on one screen, runs the command, and sets the password with
     the returned token. Both use the same command.
   - **Reruns:** each step reuses what an earlier, interrupted run created, so rerunning finishes the
     job. The installation is marked as having an owner only in the last step, in the same
     transaction as the actor and event, and a check constraint requires the workspace (FR-004).
     A PostgreSQL advisory lock makes runs take turns, so two runs started together (for example by
     a script and the operator) can't each create an account and workspace: the second waits, then
-    finds the owner and exits 2. Without it, two concurrent runs with different emails could leave a
+    finds the owner and exits 2. Without it, two concurrent runs with different usernames could leave a
     second, unused account.
 - **Alternatives:**
   - First visitor becomes owner: no code, but exactly the risk above.
@@ -185,7 +187,8 @@ that settled each question.
 ## R8. Owner Recovery Link
 
 - **Decision:**
-  - The `reset-link` command calls `auth.api.requestPasswordReset` for the owner's email.
+  - The `reset-link` command calls `auth.api.requestPasswordReset` with the owner's stored email
+    (the placeholder when the owner gave none; nothing is sent either way).
   - The `sendResetPassword` callback receives the token and prints
     `<public address>/reset-password#token=<token>`.
   - The reset page posts the token and new password to `/api/auth/reset-password` in the request
@@ -455,3 +458,34 @@ that settled each question.
 - **Later work this sets up:** a versioned key in `ys-secrets` that spec 002 could use for app
   secrets (how app settings and secrets are stored is decided there); backups (spec 006) encrypted
   to an owner-held key; and an app database role that isn't a superuser.
+
+## R17. Username Sign-In
+
+- **Decision (2026-11-11):** the owner signs in with a username. Better Auth's `username` plugin
+  (part of `better-auth`, no new package) adds a unique `username` column and
+  `POST /api/auth/sign-in/username`. It is configured with `minUsernameLength: 3`,
+  `maxUsernameLength: 30` and `displayUsername: false`, so the username is stored lowercase and
+  compared without case. `/sign-in/email` and `/is-username-available` are in `disabledPaths`. An
+  email address is optional; without one, `create-owner` gives the account
+  `<username>@users.invalid`.
+- **Rationale:**
+  - **Most installations have no email delivery** before owner-configured email (post-open-source),
+    so an address the owner can't verify adds a required field without a use.
+  - **Better Auth's `user.email` is required and unique**, and its username plugin still signs up
+    through `signUpEmail`. A reserved `.invalid` address (RFC 2606) meets that without a schema
+    fork: it can never receive mail, so no future email delivery can send to it. The web client
+    and the commands never show or report it, and `create-owner` refuses `users.invalid` as an
+    owner's own address.
+  - **No enumeration:** with email sign-in on, the placeholder address would be a second way to try
+    passwords; the availability check would answer whether a username exists. Both are off.
+  - **Same sign-in limit:** Better Auth's default rule covers every `/sign-in/*` path, so
+    `/sign-in/username` keeps 3 attempts per 10 seconds ([R7](#r7-failed-attempt-limits-fr-011)).
+  - **Recovery is unchanged:** `reset-link` issues the link through `requestPasswordReset` with the
+    stored address, which only looks the account up.
+  - **Migration:** `0001_username` adds the nullable, unique column. No installation was released
+    before it, so no account needs a backfilled username.
+- **Alternatives:**
+  - Email as the login (the earlier decision): a required address most owners can't verify.
+  - A custom user table without email: forks Better Auth's schema and its reset flow.
+  - Username or email sign-in once an address is verified: two identifiers to rate-limit and
+    explain, for an address that only carries links.

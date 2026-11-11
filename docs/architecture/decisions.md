@@ -166,8 +166,8 @@ These concepts do not prescribe a specific database schema.
 - Your Space defines and operates one server-managed authentication system across deployment modes.
 - Use Better Auth as the authentication library within that system.
 - Authentication must not depend on an external identity provider.
-- Initial account creation collects a name and email address; the owner then sets a password.
-- Email serves as a login identifier and is not treated as verified without mailbox verification.
+- Initial account creation collects a name and a username, and optionally an email address; the owner then sets a password.
+- The username is the login identifier. An email address never signs in, and is not treated as verified without mailbox verification.
 - Initial self-hosted setup does not require SMTP or another email-delivery service.
 - A server command run by the operator creates the owner account and workspace and prints a short-lived, single-use set-password link. Access to the server is the authority to create the owner.
 - Network access alone can never create an account or the owner: before an owner exists there is no setup page, and sign-up is always off.
@@ -175,14 +175,16 @@ These concepts do not prescribe a specific database schema.
   may be offered later as an optional feature.
 - Concurrent runs or reruns of the owner command must not create duplicate owners or replace an existing owner.
 
-Server access proves installation authority. It does not prove control of the supplied email address.
-Every installation uses the same owner command. In desktop local mode, the desktop app asks for the name, email, and password, runs the command through the CLI, and sets the password through the printed link on the user's behalf; the flow itself does not change.
+Server access proves installation authority. It does not prove control of a supplied email address.
+Every installation uses the same owner command. In desktop local mode, the desktop app asks for the name, username, and password, runs the command through the CLI, and sets the password through the printed link on the user's behalf; the flow itself does not change.
 
 **Decision update (2026-11-03):** The owner is created by a server command that prints a set-password link, replacing the setup code and browser claim form. Bots watch public certificate logs and complete the setup pages of new sites within minutes, so a fresh install must not be claimable over the network. A server command closes that hole with the fewest parts: no setup code, no claim endpoint, and no setup page. The set-password link reuses Better Auth's password-reset flow, so no temporary password exists. Better Auth has no "change password on first sign-in" feature, so a temporary password would need custom code. Sign-up stays off on the running server; the command creates the owner from its own process. This supersedes the earlier setup-code decisions: browser-guided owner setup, in which a temporary, single-use setup code from the operator-only installation procedure established the authority to claim an installation and successful setup then closed initial registration; initial account creation that also collected the password; and, in desktop local mode, the desktop app obtaining the setup code through the CLI and submitting it for the user. Server access now proves installation authority, as the setup code did; neither proves control of the email address.
 The same account model serves local and remote installations; deployment configuration may govern email delivery and verification policy.
 Separate local-only and hosted authentication implementations are not part of the direction.
 
 **Decision update (2026-11-03):** The [001 technical plan](../../specs/001-workspace-owner-access/plan.md) uses Better Auth's organization plugin for the workspace, membership, and owner role, and settles password rules, session and link lifetimes, and sign-in limits in its [settled values](../../specs/001-workspace-owner-access/plan.md#settled-values).
+
+**Decision update (2026-11-11):** The owner signs in with a username instead of an email address, superseding email as the login identifier. An email address is optional at owner creation and only for verification and recovery links once owner-configured email delivery exists (still post-open-source); it never signs in. Most self-hosted installations have no email delivery, so an address the owner can't verify adds a field without a use, and a username is shorter to type on every device. Better Auth's username plugin provides the sign-in; email sign-in and the username-availability check are turned off, so the network can't use either to probe for accounts. Better Auth's user table requires an email, so an owner who gives none holds a reserved `@users.invalid` address (RFC 2606), which can't receive mail and is never shown. Usernames are 3 to 30 letters, digits, `_` or `.`, compared without case. Whether invited members (spec 004) sign in the same way is settled in the members specification.
 
 ### Sessions, Persistence, and Recovery
 

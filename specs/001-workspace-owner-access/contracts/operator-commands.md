@@ -8,7 +8,7 @@ spec 008's desktop app wrap these commands without a separate path, so their out
 are a contract.
 
 ```sh
-docker compose exec server create-owner --email <email> --name <name> [--json]
+docker compose exec server create-owner --username <username> --name <name> [--email <email>] [--json]
 docker compose exec server reset-link [--json]
 docker compose exec server show-secrets [--json]
 docker compose run --rm secrets [--new auth-secret] [--new database-password]
@@ -27,7 +27,7 @@ command's own process ([research R4](../research.md#r4-owner-first-then-invite-o
 | Code | Meaning | Applies to |
 | --- | --- | --- |
 | 0 | Success | all three |
-| 1 | Usage error, or a name or email that fails the account rules | all three |
+| 1 | Usage error, or a name, username or email that fails the account rules | all three |
 | 2 | Not applicable in the current state: an owner already exists (`create-owner`) or doesn't exist yet (`reset-link`) | `create-owner`, `reset-link` |
 | 3 | Storage unavailable or unreadable. No owner was created and no link was printed; for `create-owner`, running it again finishes the job | `create-owner`, `reset-link` |
 | 4 | Unexpected error; nothing was reported as successful | both |
@@ -72,7 +72,7 @@ having an owner, and prints a set-password link.
 Human output, exit 0:
 
 ```text
-Owner created: Sam Rivera <sam@example.com>
+Owner created: Sam Rivera (username sam)
 Set your password here (expires 2026-11-04T02:45:00Z, works once):
 https://space.example.com/reset-password#token=<token>
 If it expires, run: docker compose exec server reset-link
@@ -81,8 +81,11 @@ If it expires, run: docker compose exec server reset-link
 `--json` output, exit 0:
 
 ```json
-{ "ok": true, "email": "sam@example.com", "url": "https://…/reset-password#token=…", "token": "…", "expiresAt": "2026-11-04T02:45:00Z" }
+{ "ok": true, "username": "sam", "email": null, "url": "https://…/reset-password#token=…", "token": "…", "expiresAt": "2026-11-04T02:45:00Z" }
 ```
+
+With `--email sam@example.com`, the first line reads `Owner created: Sam Rivera (username sam, email
+sam@example.com, unverified)` and `email` is that address. `email` is `null` when none was given.
 
 `token` is included so the CLI and desktop app can set the password for the user without opening the
 link.
@@ -90,7 +93,7 @@ link.
 Failure, `--json`:
 
 ```json
-{ "ok": false, "error": "invalid_input", "fields": { "email": "Not a valid email address." } }
+{ "ok": false, "error": "invalid_input", "fields": { "username": "Use 3 to 30 characters." } }
 { "ok": false, "error": "owner_exists", "message": "This installation already has an owner." }
 { "ok": false, "error": "storage_unavailable", "message": "The database could not be read." }
 ```
@@ -98,13 +101,17 @@ Failure, `--json`:
 Rules:
 
 - **Name:** 1 to 100 characters after trimming.
-- **Email:** a valid address of up to 254 characters, stored lowercase.
+- **Username:** 3 to 30 letters, digits, `_` or `.`, stored lowercase. The owner signs in with it,
+  without regard to case.
+- **Email (optional):** a valid address of up to 254 characters, stored lowercase and unverified.
+  It never signs in. Without one, the account holds `<username>@users.invalid`, a reserved address
+  that can't receive mail and is never shown or reported; an address at `users.invalid` is refused.
 - **Initial password:** the account starts with a random password that is never shown or stored
   anywhere else, so the set-password link is the only way in.
 - **Workspace name:** "&lt;name&gt;'s space".
-- **Rerun:** if a run stops partway, running it again with the same email reuses the account and
-  workspace it already created and finishes the job. With a different email it exits 1
-  (`invalid_input`), naming the email the earlier run used.
+- **Rerun:** if a run stops partway, running it again with the same username reuses the account and
+  workspace it already created and finishes the job. With a different username it exits 1
+  (`invalid_input`), naming the username the earlier run used.
 - **One at a time:** runs take turns through a database lock. Of two runs started together, one
   creates the owner and the other exits 2 (`owner_exists`).
 - **Event:** records an `owner.created` event credited to the operator actor.
@@ -117,12 +124,16 @@ sessions, or ownership until the link is used (FR-018).
 Human output, exit 0:
 
 ```text
-Password reset link for sam@example.com (expires 2026-11-04T01:45:00Z, works once):
+Password reset link for sam (expires 2026-11-04T01:45:00Z, works once):
 https://space.example.com/reset-password#token=<token>
 Using it signs out every existing session.
 ```
 
-`--json` output, exit 0: the same shape as `create-owner`.
+`--json` output, exit 0:
+
+```json
+{ "ok": true, "username": "sam", "url": "https://…/reset-password#token=…", "token": "…", "expiresAt": "2026-11-04T01:45:00Z" }
+```
 
 Failure, `--json`, exit 2 or 3:
 

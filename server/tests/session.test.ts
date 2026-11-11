@@ -28,9 +28,9 @@ afterAll(async () => {
 });
 
 const signIn = (s: TestServer, password = OWNER.password) =>
-  s.request("/api/auth/sign-in/email", {
+  s.request("/api/auth/sign-in/username", {
     method: "POST",
-    body: JSON.stringify({ email: OWNER.email, password }),
+    body: JSON.stringify({ username: OWNER.username, password }),
   });
 
 /** A response body as JSON, untyped like the command helper's `json`. */
@@ -81,7 +81,7 @@ describe("sign-in", () => {
     const response = await signIn(server);
     expect(response.status).toBe(200);
     const body = await json(response);
-    expect(body.user).toMatchObject({ id: ownerId, email: OWNER.email, name: OWNER.name });
+    expect(body.user).toMatchObject({ id: ownerId, username: OWNER.username, name: OWNER.name });
 
     const cookie = sessionCookie(response);
     expect(cookie).toBeDefined();
@@ -96,7 +96,7 @@ describe("sign-in", () => {
     // The cookie authorizes the owner's session and workspace.
     const current = await getSession(server, cookieHeader(response));
     expect(current.status).toBe(200);
-    expect(current.body.user).toMatchObject({ id: ownerId, email: OWNER.email });
+    expect(current.body.user).toMatchObject({ id: ownerId, username: OWNER.username });
     expect(current.body.session.token).toBe(body.token);
   });
 
@@ -107,7 +107,7 @@ describe("sign-in", () => {
     expect(response.status).toBe(401);
     const text = await response.text();
     const body = JSON.parse(text);
-    expect(body.code).toBe("INVALID_EMAIL_OR_PASSWORD");
+    expect(body.code).toBe("INVALID_USERNAME_OR_PASSWORD");
     for (const key of ["user", "session", "token"]) expect(body).not.toHaveProperty(key);
     expect(text).not.toContain(ownerId);
     expect(text).not.toContain(OWNER.name);
@@ -116,6 +116,33 @@ describe("sign-in", () => {
     expect(await counts(t.db)).toEqual(before.counts);
     expect(await snapshot(t.db)).toEqual(before.owner);
     expect(await t.db.select().from(account)).toEqual(before.accounts);
+  });
+});
+
+describe("username only", () => {
+  it("turns off email sign-in, even with the stored address and the right password", async () => {
+    const response = await server.request("/api/auth/sign-in/email", {
+      method: "POST",
+      body: JSON.stringify({ email: `${OWNER.username}@users.invalid`, password: OWNER.password }),
+    });
+    expect(response.status).toBe(404);
+    expect(response.headers.getSetCookie()).toEqual([]);
+  });
+
+  it("turns off the username check, so the network can't learn which accounts exist", async () => {
+    const response = await server.request("/api/auth/is-username-available", {
+      method: "POST",
+      body: JSON.stringify({ username: OWNER.username }),
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it("signs in without regard to case", async () => {
+    const response = await server.request("/api/auth/sign-in/username", {
+      method: "POST",
+      body: JSON.stringify({ username: OWNER.username.toUpperCase(), password: OWNER.password }),
+    });
+    expect(response.status).toBe(200);
   });
 });
 
@@ -252,10 +279,10 @@ describe("sign-in limit in production", () => {
 
   // Caddy sends the client address as a single X-Forwarded-For value.
   const attempt = (password: string, ip = "203.0.113.7") =>
-    fetch(`${base}/api/auth/sign-in/email`, {
+    fetch(`${base}/api/auth/sign-in/username`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: publicUrl, "x-forwarded-for": ip },
-      body: JSON.stringify({ email: OWNER.email, password }),
+      body: JSON.stringify({ username: OWNER.username, password }),
     });
 
   it("refuses the 4th sign-in from one address within 10 seconds with 429, even with the right password, and changes nothing", async () => {

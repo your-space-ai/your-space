@@ -39,8 +39,8 @@ async function main(argv: string[]): Promise<number> {
     const result = await issueResetLink({ config, db: database.db });
     if (result.ok) {
       const expires = formatTime(result.expiresAt);
-      out.success({ ok: true, email: result.email, url: result.url, token: result.token, expiresAt: expires }, [
-        `Password reset link for ${result.email} (expires ${expires}, works once):`,
+      out.success({ ok: true, username: result.username, url: result.url, token: result.token, expiresAt: expires }, [
+        `Password reset link for ${result.username} (expires ${expires}, works once):`,
         result.url,
         "Using it signs out every existing session.",
       ]);
@@ -50,7 +50,7 @@ async function main(argv: string[]): Promise<number> {
       const message = "This installation has no owner yet. Run create-owner.";
       out.failure(
         { ok: false, error: "no_owner", message },
-        'This installation has no owner yet. Create one with: docker compose exec server create-owner --email <email> --name "<name>"',
+        'This installation has no owner yet. Create one with: docker compose exec server create-owner --username <username> --name "<name>"',
       );
       return EXIT.notApplicable;
     }
