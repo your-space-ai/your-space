@@ -47,3 +47,14 @@ export const sessionQuery = queryOptions({
   queryFn: () => call(async () => unwrap(await authClient.getSession())),
   retry: false,
 });
+
+export const workspaceQuery = queryOptions({
+  queryKey: ["workspace"],
+  queryFn: () =>
+    call(async () => {
+      const organizations = unwrap(await authClient.organization.list());
+      // One workspace per installation in this feature.
+      return organizations?.[0] ?? null;
+    }),
+  retry: false,
+});
