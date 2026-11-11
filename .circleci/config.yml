@@ -1,6 +1,33 @@
 version: 2.1
 
-# Linux on Arm (aarch64), the other architecture Your Space ships for. GitHub Actions covers x86_64.
+# The browser tests on x86_64, which upload the story screenshots to Argos, and the checks on Linux
+# on Arm (aarch64), the other architecture Your Space ships for. GitHub Actions runs the typecheck,
+# server tests and build, and the Compose setups checks.
+
+commands:
+  node26:
+    description: Install the latest Node 26 from nodejs.org and put it first on the PATH.
+    parameters:
+      arch:
+        type: enum
+        enum: [x64, arm64]
+    steps:
+      - run:
+          # The Arm machine image has no nvm, and the x86 one's default Node may not be 26, so both
+          # jobs install it this way.
+          name: Node 26
+          command: |
+            base=https://nodejs.org/dist/latest-v26.x
+            cd /tmp
+            curl -fsSLO "$base/SHASUMS256.txt"
+            file=$(grep -o 'node-v26[^ ]*-linux-<< parameters.arch >>\.tar\.xz' SHASUMS256.txt)
+            curl -fsSLO "$base/$file"
+            grep " $file\$" SHASUMS256.txt | sha256sum -c -
+            sudo mkdir -p /opt/node26
+            sudo tar -xJf "$file" -C /opt/node26 --strip-components=1
+            echo 'export PATH=/opt/node26/bin:$PATH' >> "$BASH_ENV"
+            /opt/node26/bin/node --version
+
 jobs:
   check-arm64:
     machine:
@@ -22,28 +49,55 @@ jobs:
               -e TEST_DATABASE_URL=postgres://yourspace:yourspace@127.0.0.1:5432/yourspace \
               node:26-slim sh -c 'npm ci && npm run typecheck && npm test'
 
+  e2e:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: medium
+    environment:
+      # This job's screenshots are the ones Argos compares. ARGOS_TOKEN is set in the project
+      # settings.
+      YS_ARGOS_UPLOAD: "1"
+    steps:
+      - checkout
+      - node26:
+          arch: x64
+      - run: npm ci
+      - run:
+          name: Chromium, Firefox and WebKit
+          # A package mirror that doesn't answer can hold this step for half an hour, so it stops
+          # after 10 minutes.
+          command: timeout 10m npx playwright install --with-deps chromium firefox webkit
+          working_directory: e2e
+      - run:
+          # Builds both images, then runs the journeys against deploy/compose.yaml in all three
+          # browsers.
+          name: Browser journeys
+          command: timeout 30m npm run e2e
+      - run:
+          name: Stack logs
+          when: on_fail
+          command: >-
+            docker compose -p ys-e2e --env-file e2e/stack.env -f deploy/compose.yaml
+            -f deploy/compose.build.yaml logs --no-color
+      - store_artifacts:
+          path: e2e/playwright-report
+      - store_artifacts:
+          path: e2e/test-results
+
   e2e-arm64:
     machine:
       image: ubuntu-2404:current
     resource_class: arm.medium
     steps:
       - checkout
-      - run:
-          # The Arm machine image has no nvm, so install the latest Node 26 from nodejs.org.
-          name: Node 26
-          command: |
-            base=https://nodejs.org/dist/latest-v26.x
-            cd /tmp
-            curl -fsSLO "$base/SHASUMS256.txt"
-            file=$(grep -o 'node-v26[^ ]*-linux-arm64\.tar\.xz' SHASUMS256.txt)
-            curl -fsSLO "$base/$file"
-            grep " $file\$" SHASUMS256.txt | sha256sum -c -
-            sudo tar -xJf "$file" -C /usr/local --strip-components=1
-            which node && node --version
+      - node26:
+          arch: arm64
       - run: npm ci
       - run:
           name: Chromium
-          command: npx playwright install --with-deps chromium
+          # A package mirror that doesn't answer can hold this step for half an hour, so it stops
+          # after 10 minutes.
+          command: timeout 10m npx playwright install --with-deps chromium
           working_directory: e2e
       - run:
           # Builds both images for Arm, then runs the journeys against deploy/compose.yaml.
@@ -61,6 +115,10 @@ parameters:
     description: Run the Arm browser tests on a branch other than main.
 
 workflows:
+  # Every pull request and every push to main.
+  e2e:
+    jobs:
+      - e2e
   arm64:
     jobs:
       - check-arm64

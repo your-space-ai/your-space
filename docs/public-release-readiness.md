@@ -61,9 +61,13 @@ release plan. These checks are a proposed minimum for that alternative, not a pr
     expectations in the README, with links to the roadmap and relevant development instructions.
   - [ ] Review the security and safe-use implications of any runnable code and provide a private
     security reporting route appropriate to the project state.
-  - [ ] Run the browser tests and Compose setups checks on every pull request again, not only on
-    the one based on `main`: remove the stack condition in `.github/workflows/ci.yml` (see the CI
-    minutes decision in [journey-based specifications](architecture/decisions.md#journey-based-specifications)).
+  - [ ] Run the Compose setups checks on every pull request again, not only on the one based on
+    `main`: remove the stack condition in `.github/workflows/ci.yml` (see the CI minutes decision in
+    [journey-based specifications](architecture/decisions.md#journey-based-specifications)).
+  - [ ] Give pull requests from forks screenshots in Argos: CircleCI doesn't pass `ARGOS_TOKEN` to
+    them, so either run the browser tests for forks on GitHub Actions again, where Argos accepts a
+    tokenless upload, or choose another fork-safe route (see the CircleCI e2e decision in
+    [journey-based specifications](architecture/decisions.md#journey-based-specifications)).
   - [ ] Move AI code review from the Claude Code GitHub Action on the owner's subscription to the
     free open-source plan of Greptile or CodeRabbit, so pull requests from forks are reviewed too
     (see the AI code review decision in [journey-based specifications](architecture/decisions.md#journey-based-specifications)).
@@ -158,9 +162,13 @@ is chosen instead, explicitly decide which items apply and describe what is not 
   - [ ] Explain local development, tests, contribution and review expectations, issue reporting,
     maintainer support expectations, and where to find the roadmap and security policy.
   - [ ] Decide and publish the project's community participation expectations and contact paths.
-  - [ ] Run the browser tests and Compose setups checks on every pull request again, not only on
-    the one based on `main`: remove the stack condition in `.github/workflows/ci.yml` (see the CI
-    minutes decision in [journey-based specifications](architecture/decisions.md#journey-based-specifications)).
+  - [ ] Run the Compose setups checks on every pull request again, not only on the one based on
+    `main`: remove the stack condition in `.github/workflows/ci.yml` (see the CI minutes decision in
+    [journey-based specifications](architecture/decisions.md#journey-based-specifications)).
+  - [ ] Give pull requests from forks screenshots in Argos: CircleCI doesn't pass `ARGOS_TOKEN` to
+    them, so either run the browser tests for forks on GitHub Actions again, where Argos accepts a
+    tokenless upload, or choose another fork-safe route (see the CircleCI e2e decision in
+    [journey-based specifications](architecture/decisions.md#journey-based-specifications)).
   - [ ] Move AI code review from the Claude Code GitHub Action on the owner's subscription to the
     free open-source plan of Greptile or CodeRabbit, so pull requests from forks are reviewed too
     (see the AI code review decision in [journey-based specifications](architecture/decisions.md#journey-based-specifications)).
