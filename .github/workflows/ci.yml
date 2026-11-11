@@ -25,6 +25,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:18
@@ -54,8 +55,10 @@ jobs:
 
   setups:
     # While the repository is private, Actions minutes are limited: in a stack of pull requests,
-    # only the one based on main runs this job; the ones above run it when they reach main.
-    if: github.event_name != 'pull_request' || github.base_ref == github.event.repository.default_branch
+    # only the one based on main runs this job; the ones above run it when they reach main. A push
+    # to main skips it, since the pull request it merges has just run it on the same code.
+    if: github.event_name == 'pull_request' && github.base_ref == github.event.repository.default_branch
+    timeout-minutes: 10
     # Each setup's Compose files (deploy/modes/) must resolve on the oldest Compose the installation
     # guide supports, as well as on the runner's own. This only reads the configuration.
     runs-on: ubuntu-24.04
@@ -85,8 +88,10 @@ jobs:
 
   e2e:
     # While the repository is private, Actions minutes are limited: in a stack of pull requests,
-    # only the one based on main runs this job; the ones above run it when they reach main.
-    if: github.event_name != 'pull_request' || github.base_ref == github.event.repository.default_branch
+    # only the one based on main runs this job; the ones above run it when they reach main. A push
+    # to main skips it, since the pull request it merges has just run it on the same code.
+    if: github.event_name == 'pull_request' && github.base_ref == github.event.repository.default_branch
+    timeout-minutes: 30
     needs: check
     runs-on: ubuntu-24.04
     # Argos authenticates the screenshot upload with GitHub's OIDC token. Pull requests from forks
@@ -112,6 +117,6 @@ jobs:
           path: |
             e2e/playwright-report
             e2e/test-results
-          retention-days: 30
+          retention-days: 7
       - if: failure()
         run: docker compose -p ys-e2e --env-file e2e/stack.env -f deploy/compose.yaml -f deploy/compose.build.yaml logs --no-color
