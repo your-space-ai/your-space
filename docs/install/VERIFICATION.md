@@ -20,7 +20,7 @@ for what is listed here as verified (SC-010).
 | Idle stack memory under 512 MB (plan constraint) | Pass: 237 MiB (about 250 MB) |
 | Quickstart on an Apple Silicon Mac | **Not run** |
 | Quickstart on a real Intel/AMD Linux host, HTTPS with a real domain, Tailscale | **Not run** |
-| Published multi-architecture images (`images.yml`) | **Not run**: the workflow runs on GitHub after merge |
+| Published multi-architecture images (`images.yml`) | **Not run**: the workflow runs on GitHub on a release, or when started by hand |
 | IPv6 | **Not supported yet**; not run |
 
 ## Where It Ran

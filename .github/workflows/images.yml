@@ -2,9 +2,9 @@ name: Images
 
 # Builds and publishes the server and web images for Intel/AMD and ARM (FR-022), and attaches the
 # install files (your-space.tar.gz) to each release, where the installation guide downloads them.
+# It runs on a release, or when started by hand, not on every push to main: building the ARM image
+# through emulation is slow, and Actions minutes are limited while the repository is private.
 on:
-  push:
-    branches: [main]
   release:
     types: [published]
   workflow_dispatch:
@@ -39,13 +39,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
-          # Releases get their version, and full releases also `latest`. Pushes to main get `edge`.
-          # Every build also gets its commit SHA.
+          # Releases get their version, and full releases also `latest`. Every build also gets its
+          # commit SHA.
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
-            type=edge,branch=main
             type=sha
       - uses: docker/build-push-action@v6
         with:
