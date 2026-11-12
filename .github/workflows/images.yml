@@ -1,0 +1,82 @@
+name: Images
+
+# Builds and publishes the server and web images for Intel/AMD and ARM (FR-022), and attaches the
+# install files (your-space.tar.gz) to each release, where the installation guide downloads them.
+# It runs on a release, or when started by hand, not on every push to main: building the ARM image
+# through emulation is slow, and Actions minutes are limited while the repository is private.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: your-space-server
+            dockerfile: server/Dockerfile
+          - name: your-space-web
+            dockerfile: web/Dockerfile
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
+          # Releases get their version, and full releases also `latest`. Every build also gets its
+          # commit SHA.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
+            type=sha
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  release-files:
+    if: github.event_name == 'release'
+    needs: image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      # Each release's files run that release's images by default, so a later `docker compose pull`
+      # never pairs new images with old mode files. The tarball holds no .env, so unpacking it over
+      # an installation keeps the owner's settings. Its files sit at the top level, not in a folder.
+      - run: |
+          mkdir release
+          cp -r deploy/compose.yaml deploy/stack.yaml deploy/modes release/
+          sed -i "s/\${YS_VERSION:-latest}/\${YS_VERSION:-${TAG#v}}/g" release/stack.yaml
+          test "$(grep -c "YS_VERSION:-${TAG#v}}" release/stack.yaml)" -eq 3
+          if grep -rq "YS_VERSION:-latest" release; then exit 1; fi
+          cp deploy/.env.example release/env.example
+          tar -czf your-space.tar.gz -C release compose.yaml stack.yaml modes env.example
+          gh release upload "$TAG" your-space.tar.gz --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
