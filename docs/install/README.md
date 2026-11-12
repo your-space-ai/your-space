@@ -125,6 +125,7 @@ all three services running, with `server` and `postgres` marked `healthy`. If th
 | `Set YS_DOMAIN (your own domain) or YS_PROXY_URL (your own proxy or Tailscale) in .env, not both` | Remove one of the two lines. Every `docker compose` command stops with this message until you do |
 | `address already in use` or `port is already allocated`, for port 80 or 8080 | Another program uses the port. Add `YS_PORT=8081` (or any free port) to `.env` |
 | The same, for port 443 with your own domain | Another program uses the port, such as another web server. Stop it, or put Your Space behind it as [your own proxy](#use-your-own-reverse-proxy) |
+| `server` is `unhealthy` after it was running | Run `docker compose logs server postgres` and see [When the Database Is Down](#when-the-database-is-down) |
 
 Open your address (for example `http://localhost`). It says Your Space has no owner yet and shows
 the command to create one. There is no sign-up form: nobody can make an account from the web.
@@ -346,8 +347,9 @@ For devices on your own network, use [Tailscale](#use-tailscale): it needs no do
 
 - **Sessions** last 7 days and are extended, at most once a day, while you use Your Space. You're
   asked to sign in again only after about a week away.
+- **Restarts** don't sign you out. Sessions are stored in the database.
 - **Signing out** ends the session on that device only. To sign out every device, set a new
-  password with `reset-link`.
+  password with [`reset-link`](#recover-the-owner-account).
 - **Too many attempts:** after 3 sign-in attempts from one network address, each within 10 seconds
   of the one before and whether or not the password is right, Your Space refuses further attempts
   with "Too many sign-in attempts" until 10 seconds pass without an accepted attempt. Refused
@@ -362,6 +364,87 @@ For devices on your own network, use [Tailscale](#use-tailscale): it needs no do
   is in the part of the link after `#`, which browsers never send to a server, so it doesn't appear
   in server or proxy logs. The database keeps only a hash of it, so a copy of the database can't
   open a link that still works.
+
+## Restarts and Your Data
+
+Everything Your Space keeps is in three Docker volumes:
+
+| Volume | What it holds |
+| --- | --- |
+| `ys-postgres` | The database: your account, password hash, workspace, and sessions |
+| `ys-secrets` | The generated auth secret and database password. Keep it with `ys-postgres` |
+| `ys-caddy-data` | Caddy's HTTPS certificates |
+
+`docker volume ls` lists them as `your-space_ys-postgres`, `your-space_ys-secrets`, and
+`your-space_ys-caddy-data`. Nothing else is kept in the containers, so they can be removed and
+recreated at any time.
+
+Your settings are in `.env`, next to `compose.yaml`. Keep it with the volumes:
+
+- Setting or changing `BETTER_AUTH_SECRET` signs out every device. Nothing else is lost.
+- Don't change `POSTGRES_PASSWORD` once the database exists. PostgreSQL keeps the password it was
+  created with, so the server would stop with "PostgreSQL refused the database password". Change it
+  back, or [give PostgreSQL the new one](#give-postgresql-the-database-password).
+
+These keep everything, including your sessions:
+
+| To | Run |
+| --- | --- |
+| Restart Your Space | `docker compose restart` |
+| Remove and recreate the containers | `docker compose down`, then `docker compose up -d` |
+
+Afterwards `docker compose ps` shows the services running again, you're still signed in, and you
+never need to create the owner again. Your Space also starts by itself when Docker starts, for
+example after a reboot, unless you stopped it with `docker compose stop` or `docker compose down`.
+On macOS, that needs Docker Desktop set to start when you sign in.
+
+> [!WARNING]
+> `docker compose down -v` is not a restart. `-v` (`--volumes`) deletes all three volumes, and your
+> account and workspace with them: the next start has no owner. `docker volume rm` on these
+> volumes, or `docker volume prune --all` while Your Space is down, does the same. There is no
+> undo.
+
+Updating Your Space and backing it up aren't covered yet; they come in a later release.
+
+## When the Database Is Down
+
+If PostgreSQL stops or can't be read, Your Space reports a storage problem and changes nothing. It
+never takes a missing database for a new installation, so it never offers to create an owner again.
+
+| Where | What you see |
+| --- | --- |
+| The web page | "Your Space can't read its storage", with a **Try again** button |
+| `<your address>/api/status` | HTTP status 503 and `{"state":"storage_unavailable"}` |
+| `create-owner` | Exit status 3 and "The database could not be read." Nothing was changed |
+| `reset-link` | Exit status 3 and "The database could not be read." No link is printed, and an earlier unused link may have stopped working: run `reset-link` again once the database is back |
+| `docker compose ps` | `server` turns `unhealthy` |
+
+To find the cause:
+
+```sh
+docker compose ps
+docker compose logs postgres
+```
+
+`postgres` should be listed as `Up` and `(healthy)`. If it's missing, it has stopped
+(`docker compose ps -a` lists it). Its log says why it stopped or can't start, for example a full
+disk.
+
+To bring it back:
+
+```sh
+docker compose up -d
+```
+
+`docker compose start postgres` works too. Once `postgres` is healthy, the server reconnects by
+itself within a few seconds; you don't need to restart it. Select **Try again** in the browser: your
+account, workspace, and session are as they were.
+
+If the server itself restarted while the database was down, it waits about a minute for the
+database, then exits, and Docker keeps starting it again until the database is back. Meanwhile the
+web page says "Can't reach Your Space".
+
+Don't delete the `ys-postgres` volume to make the error go away: that deletes your workspace.
 
 ## Lost Secrets
 
@@ -425,3 +508,58 @@ To replace a generated secret, for example because it may have leaked:
 A secret set in `.env` is changed in `.env` instead. After changing `BETTER_AUTH_SECRET`, run
 `docker compose up -d`; after changing `POSTGRES_PASSWORD`, run `docker compose up -d` and then give
 PostgreSQL the database password as above.
+
+## Recover the Owner Account
+
+If you've lost the owner's password, or the set-password link from `create-owner` expired, get a
+new link. On the server, in the folder with `compose.yaml`, run:
+
+```sh
+docker compose exec server reset-link
+```
+
+It prints a link:
+
+```text
+Password reset link for you@example.com (expires 2026-11-04T01:45:00Z, works once):
+http://localhost/reset-password#token=...
+Using it signs out every existing session.
+```
+
+Open the link within 30 minutes and choose a new password of 12 to 128 characters. Then sign in
+with it.
+
+- **Server access is the proof.** Only someone who can run commands on this server can get a link;
+  the web page can't issue one. No email is sent or needed.
+- **The link works once, for 30 minutes.** Each run prints a new link and cancels the previous one
+  if it wasn't used, including the set-password link from `create-owner`. Only the newest link
+  works. Treat it like a password; Your Space doesn't log it.
+- **Running the command changes nothing by itself.** The old password keeps working, and nobody is
+  signed out, until someone uses the link.
+- **Using the link signs out every device.** Sign in again with the new password on each.
+- **Your account stays the same.** It keeps its username, workspace and ownership. An email you
+  gave stays unverified: server access doesn't prove you control the mailbox.
+
+For scripts, add `--json`, and `-T` so Docker doesn't attach a terminal:
+
+```sh
+docker compose exec -T server reset-link --json
+```
+
+```json
+{"ok":true,"username":"you","url":"http://localhost/reset-password#token=...","token":"...","expiresAt":"2026-11-04T01:45:00Z"}
+```
+
+| Exit status | Meaning |
+| --- | --- |
+| 0 | Done |
+| 1 | Invalid usage, such as an unknown option or an extra argument |
+| 2 | There is no owner yet. Run `create-owner` first |
+| 3 | The database could not be read; nothing was changed. See [When the Database Is Down](#when-the-database-is-down) |
+| 4 | Something unexpected went wrong; nothing was reported as done |
+
+If `docker compose exec` itself fails, for example because the server isn't running, the exit status
+is Docker's own and there is no JSON. Start Your Space with `docker compose up -d` and run
+`reset-link` again. The
+[command contract](../../specs/001-workspace-owner-access/contracts/operator-commands.md) lists the
+exact output.

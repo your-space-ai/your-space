@@ -1,0 +1,240 @@
+// T041: a newer build's migration upgrades an installation in place (FR-024, cross-cutting scenario 8).
+import { createHash } from "node:crypto";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import pg from "pg";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { asc, sql } from "drizzle-orm";
+import { account, member, organization, session, user, verification } from "../src/db/auth-schema.ts";
+import { createDatabase, type Db } from "../src/db/client.ts";
+import { actor, event, installation } from "../src/db/schema.ts";
+import { MIGRATIONS_FOLDER, runMigrations, schemaVersion } from "../src/migrate.ts";
+import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
+import { PUBLIC_URL } from "./helpers/env.ts";
+import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
+import { cookieHeader, startServer } from "./helpers/server.ts";
+import { counts, snapshot } from "./helpers/state.ts";
+
+// The shipped journal. The test migration goes after its last entry, so adding real migrations needs no change here.
+const JOURNAL = JSON.parse(readFileSync(join(MIGRATIONS_FOLDER, "meta", "_journal.json"), "utf8")) as {
+  entries: { idx: number; version: string; when: number; tag: string; breakpoints: boolean }[];
+};
+const LAST = JOURNAL.entries.at(-1)!;
+// The schema version of the current build, and of the newer build with one more migration.
+const CURRENT_VERSION = JOURNAL.entries.length;
+const NEWER_VERSION = CURRENT_VERSION + 1;
+
+// A later build's migration: a new column with a default on an identity table, and a new table.
+const UPGRADE_TAG = `${String(CURRENT_VERSION).padStart(4, "0")}_test_upgrade`;
+const UPGRADE_WHEN = LAST.when + 60_000;
+const UPGRADE_SQL = `ALTER TABLE "user" ADD COLUMN "test_locale" text DEFAULT 'en' NOT NULL;
+--> statement-breakpoint
+CREATE TABLE "test_upgrade" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"actor_id" uuid NOT NULL REFERENCES "actor"("id") ON DELETE restrict
+);
+`;
+
+// The rows drizzle records: each migration file's hash and its journal timestamp.
+const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+const SHIPPED_ROWS = JOURNAL.entries.map((e) => ({
+  hash: sha256(readFileSync(join(MIGRATIONS_FOLDER, `${e.tag}.sql`), "utf8")),
+  createdAt: e.when,
+}));
+const UPGRADE_ROW = { hash: sha256(UPGRADE_SQL), createdAt: UPGRADE_WHEN };
+const ALL_HASHES = [...SHIPPED_ROWS, UPGRADE_ROW].map((r) => r.hash);
+
+// The newer build's migrations folder: the shipped migrations plus the test migration.
+let newerBuild: string;
+beforeAll(() => {
+  newerBuild = mkdtempSync(join(tmpdir(), "ys-migrations-"));
+  cpSync(MIGRATIONS_FOLDER, newerBuild, { recursive: true });
+  writeFileSync(join(newerBuild, `${UPGRADE_TAG}.sql`), UPGRADE_SQL);
+  const upgrade = { idx: CURRENT_VERSION, version: LAST.version, when: UPGRADE_WHEN, tag: UPGRADE_TAG, breakpoints: true };
+  const journal = { ...JOURNAL, entries: [...JOURNAL.entries, upgrade] };
+  writeFileSync(join(newerBuild, "meta", "_journal.json"), JSON.stringify(journal, null, 2));
+});
+afterAll(() => {
+  rmSync(newerBuild, { recursive: true, force: true });
+});
+
+let t: TestDatabase;
+beforeEach(async () => {
+  t = await createTestDatabase();
+});
+afterEach(async () => {
+  vi.restoreAllMocks();
+  await t.destroy();
+});
+
+async function recorded(db: Db) {
+  const rows = await db.execute<{ id: number; hash: string; created_at: string }>(
+    sql`select id, hash, created_at from drizzle.__drizzle_migrations order by id`,
+  );
+  return rows.rows.map((r) => ({ hash: r.hash, createdAt: Number(r.created_at) }));
+}
+
+/** The db.migrate.* lines written to stdout so far, parsed. */
+function migrateLogs(calls: unknown[][]) {
+  return calls
+    .map(([line]) => String(line))
+    .filter((line) => line.startsWith("{"))
+    .map((line) => JSON.parse(line) as { event: string })
+    .filter((l) => l.event.startsWith("db.migrate."));
+}
+
+/** Waits until `n` connections to the test database are waiting for a lock. */
+async function lockWaits(n: number) {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    // Polled from the pool: inside a transaction, pg_stat_activity would keep showing its first reading.
+    const waiting = await t.pool.query<{ n: number }>(
+      "select count(*)::int as n from pg_stat_activity where datname = $1 and wait_event_type = 'Lock'",
+      [t.name],
+    );
+    if (waiting.rows[0]!.n >= n) return;
+    if (Date.now() > deadline) throw new Error(`expected ${n} connections waiting for a lock, saw ${waiting.rows[0]!.n}`);
+    await delay(20);
+  }
+}
+
+/** Every identity, ownership, claim, and session record, as the current schema reads them. */
+async function records(db: Db) {
+  return {
+    counts: await counts(db),
+    snapshot: await snapshot(db),
+    installation: await db.select().from(installation),
+    users: await db.select().from(user).orderBy(asc(user.id)),
+    accounts: await db.select().from(account).orderBy(asc(account.id)),
+    sessions: await db.select().from(session).orderBy(asc(session.id)),
+    verifications: await db.select().from(verification).orderBy(asc(verification.id)),
+    organizations: await db.select().from(organization).orderBy(asc(organization.id)),
+    members: await db.select().from(member).orderBy(asc(member.id)),
+    actors: await db.select().from(actor).orderBy(asc(actor.id)),
+    events: await db.select().from(event).orderBy(asc(event.id)),
+  };
+}
+
+describe("schema migrations", () => {
+  it("upgrades an installation in place and keeps identities, ownership, claim state, and sessions", async () => {
+    // An installation created by the current build, with a signed-in owner.
+    await createOwnerWithPassword(t.db, OWNER, PUBLIC_URL);
+    const oldBuild = await startServer(t.db, { publicUrl: PUBLIC_URL });
+    let cookie: string;
+    try {
+      const signIn = await oldBuild.request("/api/auth/sign-in/username", {
+        method: "POST",
+        body: JSON.stringify({ username: OWNER.username, password: OWNER.password }),
+      });
+      expect(signIn.status).toBe(200);
+      cookie = cookieHeader(signIn);
+    } finally {
+      await oldBuild.close();
+    }
+
+    expect(await schemaVersion(t.pool)).toBe(CURRENT_VERSION);
+    expect(await recorded(t.db)).toEqual(SHIPPED_ROWS);
+    const before = await records(t.db);
+    expect(before.snapshot).toMatchObject({ username: OWNER.username, role: "owner", state: "claimed" });
+    expect(before.snapshot!.claimed_workspace_id).toBe(before.snapshot!.workspace_id);
+    expect(before.counts).toMatchObject({ users: 1, organizations: 1, members: 1, sessions: 1, actors: 2 });
+
+    // The newer build starts against the same storage.
+    const logs = vi.spyOn(console, "log");
+    await runMigrations(t.pool, newerBuild);
+
+    expect(await schemaVersion(t.pool)).toBe(NEWER_VERSION);
+    expect(await recorded(t.db)).toEqual([...SHIPPED_ROWS, UPGRADE_ROW]);
+    // The upgrade is logged before and after, with the old and new schema versions.
+    const versions = { fromSchemaVersion: CURRENT_VERSION, toSchemaVersion: NEWER_VERSION };
+    expect(migrateLogs(logs.mock.calls)).toMatchObject([
+      { level: "info", event: "db.migrate.start", ...versions },
+      { level: "info", event: "db.migrate.done", ...versions },
+    ]);
+
+    // The migration applied in place: the existing user has the new column, and the new table works.
+    const locales = await t.db.execute<{ test_locale: string }>(sql`select test_locale from "user"`);
+    expect(locales.rows).toEqual([{ test_locale: "en" }]);
+    const table = await t.db.execute<{ table: string | null }>(sql`select to_regclass('public.test_upgrade') as table`);
+    expect(table.rows[0]!.table).toBe("test_upgrade");
+
+    // Nothing that existed changed.
+    expect(await records(t.db)).toEqual(before);
+
+    const ownerActor = before.actors.find((a) => a.kind === "human")!;
+    await t.db.execute(sql`insert into test_upgrade (actor_id) values (${ownerActor.id})`);
+
+    // The owner's existing session still works on the newer build.
+    const newBuild = await startServer(t.db, { publicUrl: PUBLIC_URL });
+    try {
+      const current = await newBuild.request("/api/auth/get-session", { headers: { cookie } });
+      expect(current.status).toBe(200);
+      const body = (await current.json()) as { session: { id: string }; user: { id: string; username: string } };
+      expect(body.session.id).toBe(before.sessions[0]!.id);
+      expect(body.user).toMatchObject({ id: before.users[0]!.id, username: OWNER.username });
+      expect(await (await newBuild.request("/api/status")).json()).toEqual({ owner: true });
+    } finally {
+      await newBuild.close();
+    }
+  });
+
+  it("does nothing when run again at the latest version", async () => {
+    await createOwnerWithPassword(t.db);
+    await runMigrations(t.pool, newerBuild);
+    const before = await records(t.db);
+
+    await runMigrations(t.pool, newerBuild);
+
+    expect(await schemaVersion(t.pool)).toBe(NEWER_VERSION);
+    expect((await recorded(t.db)).map((r) => r.hash)).toEqual(ALL_HASHES);
+    expect(await records(t.db)).toEqual(before);
+  });
+
+  it("applies the migration once when two servers start at the same time", async () => {
+    await createOwnerWithPassword(t.db);
+    const before = await records(t.db);
+    const logs = vi.spyOn(console, "log");
+    const first = createDatabase(t.url);
+    const second = createDatabase(t.url);
+    // Holds the user table, so the upgrade stops inside its migration until both servers have started.
+    const blocker = new pg.Client({ connectionString: t.url });
+    await blocker.connect();
+    let running: Promise<PromiseSettledResult<void>[]> | undefined;
+    try {
+      await blocker.query("begin");
+      await blocker.query('lock table "user" in access exclusive mode');
+      running = Promise.allSettled([runMigrations(first.pool, newerBuild), runMigrations(second.pool, newerBuild)]);
+      // One server waits for the table inside its migration, the other for the migration lock.
+      await lockWaits(2);
+      // Only one has started, and it logged the versions before migrating.
+      expect(migrateLogs(logs.mock.calls)).toMatchObject([
+        { event: "db.migrate.start", fromSchemaVersion: CURRENT_VERSION, toSchemaVersion: NEWER_VERSION },
+      ]);
+      await blocker.query("commit");
+      expect((await running).map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+    } finally {
+      // Closing the blocker releases the table if the test failed before the commit.
+      await blocker.end();
+      await running;
+      await first.pool.end();
+      await second.pool.end();
+    }
+
+    // The second server waited for the first, then found nothing to apply.
+    expect(migrateLogs(logs.mock.calls)).toMatchObject([
+      { event: "db.migrate.start", fromSchemaVersion: CURRENT_VERSION, toSchemaVersion: NEWER_VERSION },
+      { event: "db.migrate.done", fromSchemaVersion: CURRENT_VERSION, toSchemaVersion: NEWER_VERSION },
+      { event: "db.migrate.start", fromSchemaVersion: NEWER_VERSION, toSchemaVersion: NEWER_VERSION },
+      { event: "db.migrate.done", fromSchemaVersion: NEWER_VERSION, toSchemaVersion: NEWER_VERSION },
+    ]);
+    expect(await schemaVersion(t.pool)).toBe(NEWER_VERSION);
+    expect((await recorded(t.db)).map((r) => r.hash)).toEqual(ALL_HASHES);
+    const columns = await t.db.execute<{ n: number }>(
+      sql`select count(*)::int as n from information_schema.columns where table_schema = 'public' and table_name = 'user' and column_name = 'test_locale'`,
+    );
+    expect(columns.rows[0]!.n).toBe(1);
+    expect(await records(t.db)).toEqual(before);
+  });
+});
