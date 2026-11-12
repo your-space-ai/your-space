@@ -127,13 +127,15 @@ app's Compose file, check its status, restart the stack, and check it again.
    commit and state are shown, and the state matches what is running.
 3. **Given** an installed app, **When** Your Space is restarted or the stack is recreated with
    `docker compose down` and `up`, **Then** the app comes back with the same data.
-4. **Given** Your Space is stopped, **When** the operator checks the engine, **Then** none of the
-   apps it manages is running, and containers it doesn't manage are untouched; **When** Your Space
-   starts again, **Then** its apps come back.
-5. **Given** a link that isn't a public GitHub file, a file that isn't Compose, or an image missing
+4. **Given** the operator stops Your Space with the documented stop command, **When** they check the
+   engine, **Then** none of the apps it manages is running, and containers it doesn't manage are
+   untouched; **When** Your Space starts again, **Then** its apps come back.
+5. **Given** a running app, **When** Your Space is restarted or updated, **Then** the app keeps
+   running throughout, and Your Space reports its state correctly once it is back.
+6. **Given** a link that isn't a public GitHub file, a file that isn't Compose, or an image missing
    for this machine's architecture, **When** the operator runs the install command, **Then** nothing
    is installed, nothing runs, and the message says what is wrong.
-6. **Given** two installs of apps with the same service names, **When** both run, **Then** their
+7. **Given** two installs of apps with the same service names, **When** both run, **Then** their
    containers, networks and volumes don't collide.
 
 ### User Story 2 - Run Sure (Priority: P1)
@@ -366,9 +368,10 @@ real apps. Journey 004 (members and their app roles) and 005 (agents) depend on 
   Space recognizes a secret; see Q3]
 - **FR-007**: Apps must come back when Your Space starts, and Your Space must not report a state that
   doesn't match what is running.
-- **FR-008**: Your Space and the apps it manages start and stop as one unit: stopping Your Space
-  stops its apps, and starting it brings them back. Containers on the same engine that Your Space
-  doesn't manage are never touched.
+- **FR-008**: Stopping Your Space on purpose stops the apps it manages, and starting it brings them
+  back. Restarting or updating Your Space, or a crash, leaves its apps running: when Your Space
+  returns, it takes them back over without restarting them and corrects any recorded state that no
+  longer matches. Containers on the same engine that Your Space doesn't manage are never touched.
 - **FR-008a**: Clients don't change app state. Closing the web client or, later, the desktop app
   leaves apps as they are; only someone allowed to manage apps (the owner in this journey) starts
   or stops them.
@@ -533,5 +536,6 @@ request after agreement.
 10. **Q10, the second app**: Memos, or another app the owner uses.
 11. **Q11, deeper integration**: when the SDK, verified identity and app roles return, given that
     journey 004 assigns app roles and journey 005 delegates them to agents.
-12. **Q12, stopping Your Space (decided 2026-11-12)**: Your Space and the apps it manages come up and
-    go down as one unit, locally and on servers (FR-008). Clients never change app state (FR-008a).
+12. **Q12, stopping Your Space (decided 2026-11-12)**: stopping Your Space on purpose stops the apps
+    it manages, as one unit; restarting or updating it leaves them running, so updates don't take
+    apps down (FR-008). Clients never change app state (FR-008a).
