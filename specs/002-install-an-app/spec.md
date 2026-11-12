@@ -127,8 +127,9 @@ app's Compose file, check its status, restart the stack, and check it again.
    commit and state are shown, and the state matches what is running.
 3. **Given** an installed app, **When** Your Space is restarted or the stack is recreated with
    `docker compose down` and `up`, **Then** the app comes back with the same data.
-4. **Given** Your Space is stopped, **When** the operator checks the host, **Then** no app container
-   keeps running on its own.
+4. **Given** Your Space is stopped, **When** the operator checks the engine, **Then** none of the
+   apps it manages is running, and containers it doesn't manage are untouched; **When** Your Space
+   starts again, **Then** its apps come back.
 5. **Given** a link that isn't a public GitHub file, a file that isn't Compose, or an image missing
    for this machine's architecture, **When** the operator runs the install command, **Then** nothing
    is installed, nothing runs, and the message says what is wrong.
@@ -188,6 +189,10 @@ running.
    running when it isn't.
 5. **Given** a person who isn't signed in, or a request made directly to the API, **When** they try
    to install or list apps, **Then** they are refused and nothing changes.
+6. **Given** a signed-in owner, **When** they open the Engine page, **Then** they see the engine
+   connection Your Space uses, whether it is reachable, its version and its resources. Controls
+   for an engine Your Space provides itself (starting, stopping and sizing its virtual machine)
+   arrive with that virtual machine in journey 003 or 008.
 
 ### User Story 4 - Open an App (Priority: P1)
 
@@ -361,7 +366,12 @@ real apps. Journey 004 (members and their app roles) and 005 (agents) depend on 
   Space recognizes a secret; see Q3]
 - **FR-007**: Apps must come back when Your Space starts, and Your Space must not report a state that
   doesn't match what is running.
-- **FR-008**: An app must not keep running when Your Space is stopped. [NEEDS DISCUSSION: see Q12]
+- **FR-008**: Your Space and the apps it manages start and stop as one unit: stopping Your Space
+  stops its apps, and starting it brings them back. Containers on the same engine that Your Space
+  doesn't manage are never touched.
+- **FR-008a**: Clients don't change app state. Closing the web client or, later, the desktop app
+  leaves apps as they are; only someone allowed to manage apps (the owner in this journey) starts
+  or stops them.
 - **FR-009**: The install command must support scripted use (machine-readable output and exit
   status), as `create-owner` does, so journey 003's CLI can wrap it.
 
@@ -373,6 +383,8 @@ real apps. Journey 004 (members and their app roles) and 005 (agents) depend on 
   settings, and the trust warning before anything is downloaded or run.
 - **FR-012**: Installs must run in the background with visible progress, and end in running or a
   clear failure, including after a server restart.
+- **FR-012a**: An Engine page shows the engine connection's status, version and resources, whatever
+  kind of engine it is.
 
 **Opening apps (slice 4)**
 
@@ -512,13 +524,14 @@ request after agreement.
    pane, and when it falls back to its own tab.
 7. **Q7, outbound hosts**: how the owner learns which hosts an app needs (from the app's file or
    documentation, from blocked attempts shown in Your Space, or both).
-8. **Q8, test apps**: CI uses a small public multi-architecture image for fast checks, and Sure for
-   the journey test; which small image.
+8. **Q8, test apps (decided 2026-11-12)**: `traefik/whoami` (MIT) as the small web app for fast
+   checks, and `alpine` or `busybox` as the app that probes the isolation boundaries, each pinned to
+   an exact version; Sure for the full journey test. Tests serve fixture Compose files from a local
+   stand-in for GitHub, plus one real check against Sure's public repository.
 9. **Q9, limits**: default memory and CPU limits, and whether the owner can change them in this
    journey.
 10. **Q10, the second app**: Memos, or another app the owner uses.
 11. **Q11, deeper integration**: when the SDK, verified identity and app roles return, given that
     journey 004 assigns app roles and journey 005 delegates them to agents.
-12. **Q12, stopping Your Space**: apps run as their own Compose projects, so stopping Your Space's
-    stack wouldn't stop them by itself. Should stopping Your Space stop its apps (the draft's
-    position, so nothing runs unmanaged), or should apps keep running on their own?
+12. **Q12, stopping Your Space (decided 2026-11-12)**: Your Space and the apps it manages come up and
+    go down as one unit, locally and on servers (FR-008). Clients never change app state (FR-008a).
