@@ -5,6 +5,7 @@ COPY package.json package-lock.json tsconfig.base.json ./
 COPY server/package.json server/
 COPY web/package.json web/
 COPY e2e/package.json e2e/
+COPY runtime/package.json runtime/
 RUN npm ci --workspace web --no-audit --no-fund
 COPY web web
 RUN npm run build --workspace web
