@@ -411,7 +411,14 @@ export class AppsService {
       const message = error instanceof AppError || error instanceof RuntimeError ? error.message : "Something went wrong on the server.";
       if (!(error instanceof AppError || error instanceof RuntimeError)) log("error", "app.job_failed", errorFields(error));
       await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));
-      if (kind !== "remove") await this.db.update(app).set({ state: "failed", stateReason: message, updatedAt: new Date() }).where(eq(app.id, appId));
+      // Refused because Your Space is stopping: the app starts again with Your Space.
+      const stopping = error instanceof RuntimeError && error.status === 409;
+      if (kind !== "remove") {
+        await this.db
+          .update(app)
+          .set(stopping ? { state: "stopped", stateReason: message, updatedAt: new Date() } : { state: "failed", stateReason: message, updatedAt: new Date() })
+          .where(eq(app.id, appId));
+      }
     }
   }
 
@@ -448,6 +455,8 @@ export class AppsService {
   async reconcile(): Promise<void> {
     let reports;
     try {
+      // While Your Space is being stopped on purpose, its apps are meant to stop with it.
+      if ((await this.runtime.engine()).stopping) return;
       reports = await this.runtime.apps();
     } catch (error) {
       log("warn", "apps.reconcile_unavailable", errorFields(error));

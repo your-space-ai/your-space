@@ -1,6 +1,7 @@
 // The Docker adapter's rules (FR-D03, FR-D04): check an app's fully resolved Compose file, the JSON
 // from `docker compose config --format json`, and build the file Your Space runs. Pure functions, so
 // the rules are tested without Docker.
+import { createHash } from "node:crypto";
 
 export interface AppSpec {
   /** The Compose project, `ys-<app>`. */
@@ -287,6 +288,8 @@ export function egressConfig(hosts: string[]): string {
     `http_port ${EGRESS_PORT}`,
     "pid_filename none",
     "pinger_enable off",
+    // Each refused host is written at once, so it becomes an access request without delay.
+    "buffered_logs off",
     "cache deny all",
     "access_log stdio:/var/log/squid/access.log logformat=squid",
     "cache_log stdio:/var/log/squid/cache.log",
@@ -366,17 +369,31 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
     out.cpus = limit.cpus ?? DEFAULT_CPUS;
     out.oom_score_adj = 500;
     out.security_opt = ["no-new-privileges:true"];
-    if (isObject(service.depends_on)) out.depends_on = service.depends_on;
+    // Each service starts once the outbound proxy answers, so its first requests aren't lost.
+    out.depends_on = {
+      ...(isObject(service.depends_on) ? service.depends_on : {}),
+      [EGRESS_SERVICE]: { condition: "service_healthy", required: true },
+    };
     outServices[name] = out;
   }
 
   const egressHosts = [...new Set((spec.egress ?? []).map((h) => h.toLowerCase()))].sort();
+  const egress = egressConfig(egressHosts);
   outServices[EGRESS_SERVICE] = {
     image: spec.pins?.[`${EGRESS_IMAGE}:latest`] ? pinnedImage(EGRESS_IMAGE, spec.pins[`${EGRESS_IMAGE}:latest`]!) : `${EGRESS_IMAGE}:latest`,
     restart: "unless-stopped",
     networks: { app: {}, egress: {} },
     configs: [{ source: "egress", target: "/etc/squid/squid.conf" }],
-    labels: { ...labels, "ai.your-space.role": "egress" },
+    healthcheck: {
+      test: ["CMD", "bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${EGRESS_PORT}`],
+      interval: "10s",
+      timeout: "3s",
+      retries: 3,
+      start_period: "30s",
+      start_interval: "1s",
+    },
+    // Compose doesn't recreate a container when only its inline config changes; a label does.
+    labels: { ...labels, "ai.your-space.role": "egress", "ai.your-space.egress-config": createHash("sha256").update(egress).digest("hex").slice(0, 16) },
     mem_limit: EGRESS_MEMORY,
     cpus: EGRESS_CPUS,
     oom_score_adj: 500,
@@ -401,7 +418,7 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
       egress: { driver: "bridge", labels },
     },
     volumes: outVolumes,
-    configs: { egress: { content: escapeDollars(egressConfig(egressHosts)) } },
+    configs: { egress: { content: escapeDollars(egress) } },
   };
   return { services: summaries, adaptations, refusals, adapted };
 }

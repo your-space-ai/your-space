@@ -293,6 +293,16 @@ describe("apps API", () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(runtime.calls.filter((c) => c.method === "apply").length).toBe(before + 1);
 
+    // While Your Space is being stopped, stopped apps are left stopped.
+    runtime.running.delete("ys-whoami");
+    runtime.stopping = true;
+    const during = runtime.calls.length;
+    await server.apps!.reconcile();
+    expect(runtime.calls.length).toBe(during);
+    runtime.stopping = false;
+    await server.apps!.reconcile();
+    await new Promise((r) => setTimeout(r, 100));
+
     const [row] = await t.db.select().from(app).where(eq(app.name, "whoami"));
     await t.db.insert(installJob).values({ appId: row!.id, kind: "apply" });
     await server.apps!.recoverJobs();

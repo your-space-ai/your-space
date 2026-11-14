@@ -82,13 +82,18 @@ jobs:
           arch: x64
       - run: npm ci
       - run:
+          # Node, and so Playwright's API requests, resolve names through the system, which doesn't
+          # know *.localhost; browsers resolve those names themselves (RFC 6761).
+          name: Test names on this machine
+          command: echo "127.0.0.1 space.localhost app.space.localhost whoami.space.localhost probe.space.localhost" | sudo tee -a /etc/hosts
+      - run:
           name: Chromium, Firefox and WebKit
           # A package mirror that doesn't answer can hold this step for half an hour, so it stops
           # after 10 minutes.
           command: timeout 10m npx playwright install --with-deps chromium firefox webkit
           working_directory: e2e
       - run:
-          # Builds both images, then runs the journeys against deploy/compose.yaml in all three
+          # Builds the images, then runs the journeys against deploy/compose.yaml in all three
           # browsers.
           name: Browser journeys
           command: timeout 30m npm run e2e
@@ -97,7 +102,7 @@ jobs:
           when: on_fail
           command: >-
             docker compose -p ys-e2e --env-file e2e/stack.env -f deploy/compose.yaml
-            -f deploy/compose.build.yaml logs --no-color
+            -f deploy/compose.build.yaml -f e2e/compose.e2e.yaml logs --no-color
       - store_artifacts:
           path: e2e/playwright-report
       - store_artifacts:
@@ -113,13 +118,18 @@ jobs:
           arch: arm64
       - run: npm ci
       - run:
+          # Node, and so Playwright's API requests, resolve names through the system, which doesn't
+          # know *.localhost; browsers resolve those names themselves (RFC 6761).
+          name: Test names on this machine
+          command: echo "127.0.0.1 space.localhost app.space.localhost whoami.space.localhost probe.space.localhost" | sudo tee -a /etc/hosts
+      - run:
           name: Chromium
           # A package mirror that doesn't answer can hold this step for half an hour, so it stops
           # after 10 minutes.
           command: timeout 10m npx playwright install --with-deps chromium
           working_directory: e2e
       - run:
-          # Builds both images for Arm, then runs the journeys against deploy/compose.yaml.
+          # Builds the images for Arm, then runs the journeys against deploy/compose.yaml.
           name: Browser journeys in Chromium on Arm
           command: npx playwright test --project chromium
           working_directory: e2e

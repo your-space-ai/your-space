@@ -13,8 +13,10 @@ export class FakeRuntime implements Runtime {
   ];
   failApply: string | undefined;
 
+  stopping = false;
+
   async engine() {
-    return { reachable: true, version: "29.0.0", os: "linux", arch: "amd64", cpus: 4, memory: 8 * 1024 ** 3, connection: "unix:///var/run/docker.sock" };
+    return { stopping: this.stopping, reachable: true, version: "29.0.0", os: "linux", arch: "amd64", cpus: 4, memory: 8 * 1024 ** 3, connection: "unix:///var/run/docker.sock" };
   }
 
   async check(spec: AppSpec): Promise<CheckAnswer> {

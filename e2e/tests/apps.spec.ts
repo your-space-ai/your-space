@@ -1,6 +1,6 @@
 // Journey 002: install apps from their own Compose files and use them in Your Space. A stand-in for
 // GitHub serves the fixture apps (e2e/github); Sure and Twenty run by hand (verification record).
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { evidence } from "./helpers/evidence.ts";
 import { compose, createOwner, docker, resetStack, serverCommand, up } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
@@ -10,6 +10,16 @@ test.describe.configure({ mode: "serial" });
 const WHOAMI = "https://github.com/ys-fixtures/whoami/blob/main/compose.yaml";
 const PROBE = "https://github.com/ys-fixtures/probe/blob/main/compose.yaml";
 const LINK_LABEL = "Link to the app's Compose file";
+
+// The owner signs in once: sign-in allows three attempts per address in 10 seconds (journey 001).
+let ownerCookies: Awaited<ReturnType<BrowserContext["cookies"]>> = [];
+
+async function asOwner(page: Page): Promise<void> {
+  if (ownerCookies.length) return page.context().addCookies(ownerCookies);
+  await signIn(page, "sam");
+  await expect(page).toHaveURL(/\/$/);
+  ownerCookies = await page.context().cookies();
+}
 
 async function waitForJob(page: Page): Promise<void> {
   const job = page.locator("section.job");
@@ -30,7 +40,8 @@ test("the owner installs an app from its link, after a review and a trust warnin
   await resetStack();
   const owner = await createOwner();
   await setPassword(page, owner.url);
-  await signIn(page, "sam");
+  ownerCookies = [];
+  await asOwner(page);
 
   await page.goto("/apps");
   await expect(page.getByRole("heading", { name: "Apps", exact: true })).toBeVisible();
@@ -64,7 +75,7 @@ test("the owner installs an app from its link, after a review and a trust warnin
 });
 
 test("the app opens in a pane on its own origin, only for the signed-in owner", async ({ page, browser, browserName }) => {
-  await signIn(page, "sam");
+  await asOwner(page);
   await page.goto("/open/whoami");
   const pane = page.frameLocator('[data-testid="app-pane"]');
   let echoed: string;
@@ -99,7 +110,7 @@ test("the app opens in a pane on its own origin, only for the signed-in owner", 
 });
 
 test("the owner changes a setting, and secrets show only as set", async ({ page }, testInfo) => {
-  await signIn(page, "sam");
+  await asOwner(page);
   await page.goto("/apps/whoami");
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.locator("main")).not.toContainText("published-default-token");
@@ -115,25 +126,33 @@ test("the owner changes a setting, and secrets show only as set", async ({ page 
 test("an app can't reach Your Space, other apps, the host or the internet", async () => {
   const installed = await serverCommand("install-app", [PROBE]);
   expect(installed.code, installed.stderr).toBe(0);
+  // The network itself: -Y off bypasses the app's outbound proxy.
   const blocked = await inApp(
     "ys-probe-web-1",
     `t(){ if timeout 4 "$@" >/dev/null 2>&1; then echo reached; else echo blocked; fi; }
-     t wget -qO- http://server:3000/api/health
-     t wget -qO- http://ys-e2e-server-1:3001/gate
+     t wget -Y off -qO- http://server:3000/api/health
+     t wget -Y off -qO- http://ys-e2e-server-1:3001/gate
      t nc -z ys-e2e-postgres-1 5432
-     t wget -qO- http://ys-whoami-web-1/
-     t wget -qO- http://ys-whoami-ui/
+     t wget -Y off -qO- http://ys-whoami-web-1/
+     t wget -Y off -qO- http://ys-whoami-ui/
      t nc -z 172.17.0.1 2375
      t nc -z 1.1.1.1 443
      t test -S /var/run/docker.sock`,
   );
   expect(blocked.split("\n")).toEqual(Array(8).fill("blocked"));
+  // The outbound proxy refuses private addresses, so it is no way around the network either.
+  const viaProxy = await inApp(
+    "ys-probe-web-1",
+    `for u in http://ys-e2e-server-1:3000/api/health http://172.17.0.1:2375/ http://127.0.0.1:8080/; do
+       if timeout 6 wget -qO- "$u" >/dev/null 2>&1; then echo reached; else echo blocked; fi; done`,
+  );
+  expect(viaProxy.split("\n")).toEqual(Array(3).fill("blocked"));
   // A sanity check that the probe itself works: its own service answers.
-  expect(await inApp("ys-probe-web-1", "wget -qO- http://web:8080/")).toBe("ok");
+  expect(await inApp("ys-probe-web-1", "wget -Y off -qO- http://web:8080/")).toBe("ok");
 });
 
 test("blocked hosts become access requests the owner approves or dismisses", async ({ page }, testInfo) => {
-  await signIn(page, "sam");
+  await asOwner(page);
   // Two attempts the egress proxy refuses.
   await inApp("ys-probe-web-1", "http_proxy=http://ys-egress:3128 wget -T5 -qO- http://approve-me.example/ ; http_proxy=http://ys-egress:3128 wget -T5 -qO- http://dismiss-me.example/ ; true");
   await page.goto("/apps/probe");
@@ -162,7 +181,7 @@ test("blocked hosts become access requests the owner approves or dismisses", asy
 });
 
 test("the owner sees each service, its logs and limits, and the engine", async ({ page }) => {
-  await signIn(page, "sam");
+  await asOwner(page);
   await page.goto("/apps/whoami");
   await page.getByText("Advanced").click();
   await page.getByRole("button", { name: "Show logs" }).click();
@@ -176,12 +195,12 @@ test("the owner sees each service, its logs and limits, and the engine", async (
 
   await page.goto("/engine");
   await expect(page.getByRole("heading", { name: "Engine" })).toBeVisible();
-  await expect(page.locator("[data-field=reachable]")).toContainText(/yes/i);
+  await expect(page.locator("[data-field=reachable]")).toHaveText("Reachable");
   await expect(page.locator('tr[data-app="whoami"]')).toBeVisible();
 });
 
 test("two apps side by side on a large screen, one at a time on a phone", async ({ page }) => {
-  await signIn(page, "sam");
+  await asOwner(page);
   await page.goto("/open/whoami?with=probe");
   await expect(page.locator('[data-testid="app-pane"]')).toHaveCount(2);
   const [first, second] = await Promise.all([page.locator('[data-testid="app-pane"]').nth(0).boundingBox(), page.locator('[data-testid="app-pane"]').nth(1).boundingBox()]);
@@ -202,7 +221,7 @@ test("restarting Your Space leaves apps running; stopping it stops them, and sta
   await compose(["restart", "server", "runtime", "caddy"], { timeout: 120_000 });
   await up();
   expect(await inspect("ys-whoami-web-1", "{{.State.StartedAt}}")).toBe(started);
-  await signIn(page, "sam");
+  await asOwner(page);
   await page.goto("/apps");
   await expect(page.locator('li[data-app="whoami"]')).toHaveAttribute("data-app-state", "running");
 
@@ -217,11 +236,11 @@ test("restarting Your Space leaves apps running; stopping it stops them, and sta
 });
 
 test("removing an app keeps its data, which a reinstall reuses or the owner deletes", async ({ page }, testInfo) => {
-  await signIn(page, "sam");
+  await asOwner(page);
   await inApp("ys-probe-web-1", "echo kept > /data/note");
   await page.goto("/apps/probe");
-  await page.getByRole("button", { name: "Remove app" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Remove app" }).click();
+  await page.getByRole("button", { name: "Remove app", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remove app", exact: true }).click();
   await waitForJob(page);
   await page.goto("/apps");
   await expect(page.getByRole("heading", { name: "Kept data" })).toBeVisible();
@@ -237,12 +256,12 @@ test("removing an app keeps its data, which a reinstall reuses or the owner dele
   expect(await inApp("ys-probe-web-1", "cat /data/note")).toBe("kept");
 
   await page.goto("/apps/probe");
-  await page.getByRole("button", { name: "Remove app" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Remove app" }).click();
+  await page.getByRole("button", { name: "Remove app", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remove app", exact: true }).click();
   await waitForJob(page);
   await page.goto("/apps");
   await page.getByRole("button", { name: "Delete data of probe" }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByRole("alertdialog");
   await expect(dialog).toContainText("This can't be undone");
   await dialog.getByLabel("Type probe to confirm").fill("probe");
   await dialog.getByRole("button", { name: "Delete data" }).click();

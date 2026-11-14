@@ -84,9 +84,27 @@ describe("Sure's own file", () => {
     }
   });
 
+  it("starts each service once the outbound proxy answers, keeping the file's own order", () => {
+    expect(services.web!.depends_on).toMatchObject({
+      db: { condition: "service_healthy" },
+      redis: { condition: "service_healthy" },
+      "ys-egress": { condition: "service_healthy" },
+    });
+    expect(services.redis!.depends_on).toEqual({ "ys-egress": { condition: "service_healthy", required: true } });
+    expect(services["ys-egress"]!.depends_on).toBeUndefined();
+    expect(services["ys-egress"]!.healthcheck).toBeDefined();
+  });
+
   it("labels everything with the installation and the app", () => {
     expect((services.web!.labels as Record<string, string>)["ai.your-space.installation"]).toBe("your-space");
     expect((result.adapted!.volumes as Record<string, { labels: Record<string, string> }>)["postgres-data"]!.labels["ai.your-space.app"]).toBe("sure");
+  });
+
+  it("recreates the egress proxy when its approved hosts change", () => {
+    const label = (hosts: string[]) =>
+      ((adapt({ ...spec, egress: hosts }, sure).adapted!.services as Record<string, Service>)["ys-egress"]!.labels as Record<string, string>)["ai.your-space.egress-config"];
+    expect(label(["a.example"])).toBe(label(["a.example"]));
+    expect(label(["a.example"])).not.toBe(label(["a.example", "b.example"]));
   });
 
   it("gives the egress proxy only the approved hosts, in lower case", () => {
