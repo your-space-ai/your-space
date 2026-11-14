@@ -324,9 +324,13 @@ the machine.
    state, and its recent logs behind an advanced view.
 2. **Given** an app that uses too much memory, **When** it reaches its limit, **Then** only that app
    is affected, and its state says why it stopped.
-3. **Given** the default limits, **When** the owner changes an app's limits, **Then** the app restarts
-   with them. [NEEDS DISCUSSION: default limits and whether the owner can change them in this
-   journey; see Q9]
+3. **Given** an installed app, **When** the owner opens its advanced settings, **Then** they see each
+   service's memory and CPU limit (the fixed default, or the installation kit's value), and
+   changing one restarts that service with it.
+4. **Given** the machine runs short of memory, **When** the system has to stop something, **Then** it
+   stops an app's service before any of Your Space's own services.
+5. **Given** the Engine page, **When** the owner opens it, **Then** it shows the workspace's
+   resources and how much of them each app uses.
 
 ### User Story 9 - Remove an App and Delete Its Data (Priority: P2)
 
@@ -471,7 +475,13 @@ real apps. Journey 004 (members and their app roles) and 005 (agents) depend on 
 
 **Limits, status, logs and removal (slices 8 and 9)**
 
-- **FR-021**: Each app runs with memory and CPU limits.
+- **FR-021**: Each app's services run with memory and CPU limits: a fixed default per service, which
+  an installation kit can override and the owner can change behind an advanced control. Limits
+  that scale with the workspace's resources are left to explore.
+- **FR-021a**: A space has workspace resources: the CPU and memory it runs in, which are a managed
+  tier's VM, the VM Your Space provides on a Mac, or a server itself. The Engine page shows them and
+  each app's use. An app can never cause Your Space's own services to be stopped for lack of
+  memory.
 - **FR-022**: The owner can see each service's state and recent logs.
 - **FR-023**: Removing an app keeps its data; deleting retained data is a separate step that the
   owner confirms.
@@ -505,7 +515,8 @@ What is specific to the first runtime adapter. The research behind it is
   access are refused.
 - **FR-D05**: Each app's network is internal, with no route to the host (Docker 28's isolated gateway
   mode); outbound access goes only through an allowlisting proxy on the app's behalf.
-- **FR-D06**: Memory and CPU limits are applied to each service.
+- **FR-D06**: Memory and CPU limits are applied to each service, and Your Space's own containers are
+  the last the kernel stops when memory runs out (their out-of-memory priority is set accordingly).
 
 ### Key Entities
 
@@ -523,6 +534,7 @@ What is specific to the first runtime adapter. The research behind it is
 - **Installation kit**: the adjustments that make a particular app fit Your Space, kept outside Your
   Space and referring to the app's own files.
 - **Outbound approval**: an internet host the owner allowed an app to reach.
+- **Workspace resources**: the CPU and memory a space runs in, shared by Your Space and its apps.
 - **Retained data**: an app's named volumes kept after removal.
 
 ## Success Criteria
@@ -632,8 +644,11 @@ request after agreement.
    checks, and `alpine` or `busybox` as the app that probes the isolation boundaries, each pinned to
    an exact version; Sure for the full journey test. Tests serve fixture Compose files from a local
    stand-in for GitHub, plus one real check against Sure's public repository.
-9. **Q9, limits**: default memory and CPU limits, and whether the owner can change them in this
-   journey.
+9. **Q9, limits (decided 2026-11-14)**: fixed default limits per service, which an installation kit
+   can override and the owner can change behind an advanced control (FR-021). Resources belong to
+   the whole space first: a managed tier is a VM of a given size shared by Your Space and its apps,
+   and the local VM on a Mac has the same shape (FR-021a). Limits that scale with the workspace's
+   resources are worth exploring; the default numbers are set in the plan after measuring Sure.
 10. **Q10, the second app**: Memos, or another app the owner uses.
 11. **Q11, deeper integration**: when the SDK, verified identity and app roles return, given that
     journey 004 assigns app roles and journey 005 delegates them to agents.
