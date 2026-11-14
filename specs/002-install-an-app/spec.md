@@ -75,6 +75,8 @@ App authors can't be expected to add this, so Your Space's project maintains ins
 the apps it supports, in a repository separate from Your Space (for example
 `your-space-ai/install-kits`). A kit refers to the app's own files by link and exact commit and
 lists the adjustments; it never copies the app's code or files, so the app's license is untouched.
+A kit can set a setting to a value Your Space works out itself, such as the app's own address (Twenty
+needs it in `SERVER_URL`), so the owner isn't asked for it.
 Your Space reads a kit as another input, and contains no app-specific logic. An app with no kit
 installs if its own files are enough.
 
@@ -124,7 +126,7 @@ C, D and E feed the install.
 | 7 | Isolation, tested | | Tests show an app can't reach the platform, other apps or the host |
 | 8 | Limits, status and logs | O | Limits, per-service status and logs, behind an advanced view |
 | 9 | Remove and delete data | P | Removing keeps the data; deleting it is its own confirmed step |
-| 10 | A second app, side by side | | Two apps side by side, one in its own tab, and the phone layout |
+| 10 | A second app, side by side | | Twenty and Sure side by side, one in its own tab, and the phone layout |
 
 The spec pull request is the base of the stack; each slice after it is one pull request, and the
 user stories below are numbered to match the slices.
@@ -656,7 +658,13 @@ request after agreement.
    the whole space first: they are whatever the engine's machine provides, so a managed tier's VM, a
    local VM and a server are the same thing to Your Space (FR-021a). Limits that scale with the workspace's
    resources are worth exploring; the default numbers are set in the plan after measuring Sure.
-10. **Q10, the second app**: Memos, or another app the owner uses.
+10. **Q10, the second app (decided 2026-11-14)**: [Twenty](https://github.com/twentyhq/twenty), a CRM
+    the owner uses. Its Compose file (`packages/twenty-docker/docker-compose.yml`) has `server`,
+    `worker`, `db` (`postgres:16`) and `redis`, published for ARM and Intel/AMD, so with Sure it shows
+    two apps with the same service names kept apart. Its kit has to generate `APP_SECRET` and
+    `ENCRYPTION_KEY` and set `SERVER_URL` to the app's own address. Twenty is AGPL-3.0, except its
+    single sign-on code, which is under a commercial license, so level 1 sign-in would need Twenty's
+    enterprise license.
 11. **Q11, deeper integration (decided 2026-11-14)**: journey 002 is gate only (level 0). Your Space
     as an OpenID Connect provider (level 1, likely through Better Auth's OAuth provider plugin) and
     the SDK (level 2) come later, placed with journeys 004, 005 and 007.
