@@ -271,21 +271,29 @@ with it while generated secrets stayed hidden.
 
 ### User Story 6 - Approve Outbound Access (Priority: P2)
 
-As the owner, I decide which internet hosts an app can reach. It reaches none until I approve them.
+As the owner, I decide which internet hosts an app can reach. An app starts with only the hosts it
+needs to work, and asks for more as I use more of its features.
 
-**Independent Test**: With Sure installed and no hosts approved, check that it can't reach the
-internet; approve one host and check that only that host is reachable.
+**Independent Test**: Install Sure with its installation kit and check that only the kit's starter
+hosts are reachable; use a feature that needs another host, see the access request, approve it, and
+check that the host is now reachable and every other host still isn't.
 
 **Acceptance Scenarios**:
 
-1. **Given** a newly installed app, **When** it tries to reach the internet, **Then** the request
-   fails, and Your Space shows that it was blocked.
-2. **Given** the owner approves a host for an app, **When** the app reaches it, **Then** it succeeds,
-   and every other host still fails.
-3. **Given** an approved host, **When** the owner removes it, **Then** the app can no longer reach it.
-
-[NEEDS DISCUSSION: how the owner learns which hosts an app needs when its authors don't declare
-them; see Q7]
+1. **Given** an app with an installation kit, **When** the owner reviews the install, **Then** the
+   review lists the kit's starter hosts, the ones the app needs to work at all, and confirming the
+   install approves exactly those.
+2. **Given** an app without a kit, **When** it is installed, **Then** it starts with no outbound
+   access.
+3. **Given** an installed app, **When** it tries to reach a host it hasn't been allowed, **Then** the
+   attempt fails, and Your Space shows an access request naming the app, the host, and when and how
+   often it was tried.
+4. **Given** an access request, **When** the owner approves it, **Then** the app can reach that host
+   and every other unapproved host still fails; **When** the owner dismisses it, **Then** nothing
+   changes and repeated attempts don't raise it again.
+5. **Given** an approved host, **When** the owner removes it, **Then** the app can no longer reach it.
+6. **Given** any approval, dismissal or removal, **When** the activity is read, **Then** it names the
+   actor who made it.
 
 ### User Story 7 - Isolation, Tested (Priority: P1)
 
@@ -454,7 +462,10 @@ real apps. Journey 004 (members and their app roles) and 005 (agents) depend on 
 
 - **FR-018**: The owner can change an app's settings and secrets; Your Space applies them by
   restarting the affected services and keeps the app's data.
-- **FR-019**: Apps have no outbound network access until the owner approves hosts for them.
+- **FR-019**: Apps reach only the internet hosts approved for them. An installation kit can name
+  starter hosts that the install review shows and the confirmed install approves; anything else an
+  app tries to reach is blocked and becomes an access request the owner approves or dismisses.
+  Nothing is approved without the owner, and there is no "all internet" option in this journey.
 - **FR-020**: Apps must not reach Your Space's database, server, secrets or runtime manager, other
   apps, host folders, devices or Docker.
 
@@ -611,8 +622,12 @@ request after agreement.
    with Sure in Chromium, Firefox and WebKit; rewriting apps' cookies to `SameSite=None;
    Partitioned` was tested and rejected (it splits the pane's session from the app's own tab and
    weakens the app's CSRF protection). See research R2.
-7. **Q7, outbound hosts**: how the owner learns which hosts an app needs (from the app's file or
-   documentation, from blocked attempts shown in Your Space, or both).
+7. **Q7, outbound hosts (decided 2026-11-14)**: the installation kit opens the starter hosts an app
+   needs to work, shown in the install review; every other host an app tries is blocked and shown to
+   the owner as an access request to approve or dismiss (FR-019). Owners widen access as they use
+   more features, instead of exposing everything at install. Sure has 103 provider integrations
+   (bank sync, market data, AI, and optional usage feedback to PostHog), so a fixed list at install
+   wouldn't fit. An "all internet" option for apps such as feed readers is left for later.
 8. **Q8, test apps (decided 2026-11-12)**: `traefik/whoami` (MIT) as the small web app for fast
    checks, and `alpine` or `busybox` as the app that probes the isolation boundaries, each pinned to
    an exact version; Sure for the full journey test. Tests serve fixture Compose files from a local
