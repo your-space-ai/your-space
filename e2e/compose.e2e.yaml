@@ -1,0 +1,17 @@
+# For the browser tests only: a stand-in for GitHub that serves fixture apps and installation kits
+# (spec Q8), and the server's settings that point at it.
+services:
+  github:
+    image: node:26-slim
+    command: ["node", "/github/server.mjs"]
+    read_only: true
+    volumes:
+      # Relative to deploy/, the first Compose file's folder.
+      - ../e2e/github:/github:ro
+  server:
+    environment:
+      YS_E2E_GITHUB_API: http://github:8080
+      YS_E2E_GITHUB_RAW: http://github:8080
+    depends_on:
+      github:
+        condition: service_started

@@ -4,6 +4,7 @@
   "type": "module",
   "workspaces": [
     "server",
+    "runtime",
     "web",
     "e2e"
   ],
@@ -12,7 +13,7 @@
   },
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test --workspace server",
+    "test": "npm test --workspace server && npm test --workspace runtime",
     "build": "npm run build --workspace web",
     "e2e": "npm test --workspace e2e"
   },

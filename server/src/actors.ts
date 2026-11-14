@@ -32,8 +32,9 @@ export async function recordEvent(
   type: EventType,
   actorId: string,
   subjectUserId: string | null,
+  subjectAppId: string | null = null,
 ): Promise<void> {
-  await db.insert(event).values({ type, actorId, subjectUserId });
+  await db.insert(event).values({ type, actorId, subjectUserId, subjectAppId });
 }
 
 /**

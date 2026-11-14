@@ -7,8 +7,11 @@ import { ConfigError, loadConfig } from "./config.ts";
 import { createDatabase, isStorageError } from "./db/client.ts";
 import { errorFields, log } from "./log.ts";
 import { runMigrations } from "./migrate.ts";
+import { socketRuntime } from "./apps/runtime-client.ts";
+import { AppsService } from "./apps/service.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
+const RECONCILE_INTERVAL_MS = 15_000;
 const MIGRATE_ATTEMPTS = 30;
 
 let config;
@@ -57,7 +60,26 @@ for (let attempt = 1; ; attempt++) {
 }
 
 const auth = createAuth({ config, db });
+const apps = new AppsService(db, socketRuntime(), { publicUrl: config.publicUrl, authSecret: config.authSecret });
 const app = createApp({ auth, db });
+
+// Apps that should run are started, and recorded states corrected, at start and then regularly
+// (FR-007, FR-008). Each pass waits for the one before.
+await apps.recoverJobs().catch((error) => log("warn", "apps.recover_failed", errorFields(error)));
+let reconciling = false;
+async function reconcile(): Promise<void> {
+  if (reconciling) return;
+  reconciling = true;
+  try {
+    await apps.reconcile();
+  } catch (error) {
+    log("warn", "apps.reconcile_failed", errorFields(error));
+  } finally {
+    reconciling = false;
+  }
+}
+void reconcile();
+const reconcileTimer = setInterval(() => void reconcile(), RECONCILE_INTERVAL_MS);
 const server: Server = app.listen(PORT, "0.0.0.0", () => {
   // Which setup the .env produced, so `docker compose logs server` shows it.
   log("info", "server.listening", { port: PORT, setup: config.mode, address: config.publicUrl });
@@ -65,6 +87,7 @@ const server: Server = app.listen(PORT, "0.0.0.0", () => {
 
 function shutdown(signal: string): void {
   log("info", "server.stopping", { signal });
+  clearInterval(reconcileTimer);
   server.close(() => {
     void pool.end().finally(() => process.exit(0));
   });

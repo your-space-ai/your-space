@@ -1,0 +1,211 @@
+// What the runtime manager does with apps: check, apply, stop, and report.
+import { randomUUID } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { adapt, imageRef, type AppSpec, type CheckResult } from "./adapter.ts";
+import {
+  docker,
+  engine,
+  engineInfo,
+  engineJson,
+  EngineError,
+  inspectImage,
+  listContainers,
+  pullImage,
+  scrub,
+  type ImageCheck,
+} from "./engine.ts";
+
+export const INSTALLATION = process.env.YS_INSTALLATION || "your-space";
+const INSTALLATION_LABEL = `ai.your-space.installation=${INSTALLATION}`;
+
+export class SpecError extends Error {
+  readonly status = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = "SpecError";
+  }
+}
+
+const PROJECT = /^ys-[a-z][a-z0-9-]{0,29}$/;
+
+export function validateSpec(body: unknown): AppSpec {
+  const spec = body as Partial<AppSpec>;
+  if (!spec || typeof spec !== "object") throw new SpecError("The request needs an app.");
+  if (typeof spec.project !== "string" || !PROJECT.test(spec.project)) throw new SpecError("The project name isn't valid.");
+  if (typeof spec.app !== "string" || `ys-${spec.app}` !== spec.project) throw new SpecError("The app name doesn't match the project.");
+  if (typeof spec.compose !== "string" || spec.compose.length > 512 * 1024) throw new SpecError("The app's file is missing or too large.");
+  const env = spec.env ?? {};
+  if (typeof env !== "object" || Object.entries(env).some(([k, v]) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) || typeof v !== "string")) {
+    throw new SpecError("Settings must be names with text values.");
+  }
+  return { ...spec, installation: INSTALLATION, env } as AppSpec;
+}
+
+let stopping = false;
+
+export function isStopping(): boolean {
+  return stopping;
+}
+
+interface Resolved {
+  resolved: Record<string, unknown>;
+  profiled: string[];
+  variables: { name: string; required: boolean; default: string }[];
+}
+
+async function resolve(spec: AppSpec): Promise<Resolved> {
+  const dir = mkdtempSync("/tmp/ys-check-");
+  try {
+    writeFileSync(join(dir, "compose.yaml"), spec.compose, { mode: 0o600 });
+    const base = ["compose", "-p", spec.project, "--project-directory", dir, "-f", join(dir, "compose.yaml")];
+    const [plain, all, variables] = await Promise.all([
+      docker([...base, "config", "--format", "json"], spec.env, dir),
+      docker([...base, "--profile", "*", "config", "--format", "json"], spec.env, dir),
+      docker([...base, "config", "--variables", "--format", "json"], {}, dir),
+    ]);
+    if (plain.code !== 0) {
+      const message = scrub(plain.stderr, spec.env)
+        .split("\n")
+        .filter((l) => l.trim() && !/level=warning/.test(l))
+        .join(" ")
+        .slice(0, 600);
+      throw new SpecError(`The file isn't a Compose file Your Space can read: ${message || "Compose refused it."}`);
+    }
+    const resolved = JSON.parse(plain.stdout) as Record<string, unknown>;
+    const allServices = all.code === 0 ? Object.keys((JSON.parse(all.stdout) as { services?: object }).services ?? {}) : [];
+    const running = Object.keys((resolved.services as object) ?? {});
+    const vars =
+      variables.code === 0
+        ? Object.values(JSON.parse(variables.stdout) as Record<string, { Name: string; DefaultValue: string; Required: boolean }>).map((v) => ({
+            name: v.Name,
+            required: v.Required,
+            default: v.DefaultValue,
+          }))
+        : [];
+    return { resolved, profiled: allServices.filter((s) => !running.includes(s)), variables: vars };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+export interface CheckAnswer extends Omit<CheckResult, "adapted"> {
+  ok: boolean;
+  variables: Resolved["variables"];
+  images: ImageCheck[];
+}
+
+async function checkWithImages(spec: AppSpec): Promise<{ answer: CheckAnswer; adapted: CheckResult["adapted"] }> {
+  const { resolved, profiled, variables } = await resolve(spec);
+  const info = await engineInfo();
+  if (!info.reachable) throw new EngineError("The engine can't be reached.", 503);
+  const refs = [...new Set(Object.values((resolved.services as Record<string, { image?: string }>) ?? {}).map((s) => s.image).filter((i): i is string => !!i).map(imageRef))];
+  const pins: Record<string, string> = { ...(spec.pins ?? {}) };
+  const images = await Promise.all(
+    refs.map(async (ref) => {
+      if (pins[ref]) return { ref, digest: pins[ref], platforms: [], runsHere: true } satisfies ImageCheck;
+      const image = await inspectImage(ref, info.arch ?? "amd64");
+      if (image.digest) pins[ref] = image.digest;
+      return image;
+    }),
+  );
+  const result = adapt({ ...spec, pins }, resolved, profiled);
+  for (const image of images) {
+    if (image.error) result.refusals.push({ service: "", setting: "image", reason: `${image.ref} can't be found in its registry: ${image.error}` });
+    else if (!image.runsHere) result.refusals.push({ service: "", setting: "image", reason: `${image.ref} isn't published for this machine's processor (linux/${info.arch}).` });
+  }
+  const ok = result.refusals.length === 0;
+  return {
+    answer: { ok, services: result.services, adaptations: result.adaptations, refusals: result.refusals, variables, images },
+    adapted: ok ? result.adapted : null,
+  };
+}
+
+export async function check(spec: AppSpec): Promise<CheckAnswer> {
+  return (await checkWithImages(spec)).answer;
+}
+
+async function imagePresent(image: string): Promise<boolean> {
+  const answer = await engine("GET", `/images/${encodeURIComponent(image)}/json`);
+  return answer.status === 200;
+}
+
+export type Emit = (event: Record<string, unknown>) => void;
+
+/** Pulls what is missing and starts the app. */
+export async function apply(spec: AppSpec, emit: Emit): Promise<void> {
+  if (stopping) throw new EngineError("Your Space is stopping, so no app starts until it starts again.", 409);
+  emit({ step: "check" });
+  const { answer, adapted } = await checkWithImages(spec);
+  if (!adapted) {
+    throw new SpecError(answer.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`).join(" "));
+  }
+  const services = adapted.services as Record<string, { image: string }>;
+  const images = [...new Set(Object.values(services).map((s) => s.image))];
+  for (const image of images) {
+    if (await imagePresent(image)) continue;
+    emit({ step: "pull", image, progress: 0 });
+    await pullImage(image, (progress) => emit({ step: "pull", image, progress: Math.round(progress * 100) / 100 }));
+    emit({ step: "pull", image, progress: 1 });
+  }
+  emit({ step: "start" });
+  const dir = mkdtempSync(`/tmp/ys-${randomUUID().slice(0, 8)}-`);
+  try {
+    writeFileSync(join(dir, "compose.json"), JSON.stringify(adapted), { mode: 0o600 });
+    const up = await docker(["compose", "-p", spec.project, "--project-directory", dir, "-f", join(dir, "compose.json"), "up", "-d", "--remove-orphans", "--pull", "never"], {}, dir);
+    if (up.code !== 0) {
+      throw new EngineError(`Starting the app failed: ${scrub(up.stderr, spec.env).split("\n").filter((l) => l.trim()).slice(-3).join(" ").slice(0, 600)}`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  emit({ step: "started" });
+}
+
+export async function stop(project: string): Promise<void> {
+  const result = await docker(["compose", "-p", project, "stop"]);
+  if (result.code !== 0) throw new EngineError(`Stopping the app failed: ${result.stderr.trim().slice(0, 400)}`);
+}
+
+export interface ServiceState {
+  name: string;
+  role: "app" | "egress";
+  state: string;
+  health?: string;
+  exitCode?: number;
+  oomKilled?: boolean;
+}
+
+export async function listApps(): Promise<{ project: string; app: string; services: ServiceState[] }[]> {
+  const containers = await listContainers([INSTALLATION_LABEL]);
+  const byProject = new Map<string, { project: string; app: string; services: ServiceState[] }>();
+  for (const c of containers) {
+    const project = c.Labels["com.docker.compose.project"];
+    const app = c.Labels["ai.your-space.app"];
+    if (!project || !app) continue;
+    const entry = byProject.get(project) ?? { project, app, services: [] };
+    const service: ServiceState = {
+      name: c.Labels["com.docker.compose.service"] ?? c.Names[0] ?? c.Id,
+      role: c.Labels["ai.your-space.role"] === "egress" ? "egress" : "app",
+      state: c.State,
+    };
+    const health = /\((healthy|unhealthy|health: starting)\)/.exec(c.Status)?.[1];
+    if (health) service.health = health.replace("health: ", "");
+    if (c.State === "exited" || c.State === "dead" || c.State === "restarting") {
+      const detail = await engineJson<{ State: { ExitCode: number; OOMKilled: boolean } }>("GET", `/containers/${c.Id}/json`);
+      service.exitCode = detail.State.ExitCode;
+      service.oomKilled = detail.State.OOMKilled;
+    }
+    entry.services.push(service);
+    byProject.set(project, entry);
+  }
+  return [...byProject.values()];
+}
+
+/** Stops every app this installation manages, and refuses to start any until restarted. */
+export async function stopAll(): Promise<string[]> {
+  stopping = true;
+  const projects = (await listApps()).map((a) => a.project);
+  for (const project of projects) await stop(project);
+  return projects;
+}

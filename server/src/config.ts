@@ -29,7 +29,7 @@ export class ConfigError extends Error {
   }
 }
 
-const OWNER_KEYS = ["YS_DOMAIN", "YS_PROXY_URL", "YS_PORT", "YS_VERSION"];
+const OWNER_KEYS = ["YS_DOMAIN", "YS_PROXY_URL", "YS_PORT", "YS_VERSION", "YS_ENGINE_SOCKET"];
 
 // Better Auth reads these by itself, and they would replace the secret Your Space gives it.
 const FOREIGN_SECRET_KEYS: Record<string, string> = {

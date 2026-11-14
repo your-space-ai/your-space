@@ -6,21 +6,21 @@ it merges.
 
 ## Slice 1: Run an app from a link
 
-- [ ] T001 Runtime manager service with no network, on a Unix socket (`runtime/`, `deploy/stack.yaml`)
-- [ ] T002 Docker adapter: resolve with Compose, allowlist, adapted file (`runtime/src/adapter.ts`)
-- [ ] T003 Image pinning by digest without downloading; processor check (`runtime/src/engine.ts`)
-- [ ] T004 App records and migration (`server/src/db/schema.ts`, `server/drizzle/0002_apps.sql`)
-- [ ] T005 GitHub link to file at commit (`server/src/apps/github.ts`)
-- [ ] T006 `install-app` and `list-apps` commands with `--json`
-- [ ] T007 Reconcile at start and every 15 seconds; interrupted jobs end as failed
-- [ ] T008 `stop-apps`; restarts leave apps running
-- [ ] T009 GitHub stand-in and fixture apps for tests (`e2e/github`)
+- [x] T001 Runtime manager service with no network, on a Unix socket (`runtime/`, `deploy/stack.yaml`)
+- [x] T002 Docker adapter: resolve with Compose, allowlist, adapted file (`runtime/src/adapter.ts`)
+- [x] T003 Image pinning by digest without downloading; processor check (`runtime/src/engine.ts`)
+- [x] T004 App records and migration (`server/src/db/schema.ts`, `server/drizzle/0002_apps.sql`)
+- [x] T005 GitHub link to file at commit (`server/src/apps/github.ts`)
+- [x] T006 `install-app` and `list-apps` commands with `--json`
+- [x] T007 Reconcile at start and every 15 seconds; interrupted jobs end as failed
+- [x] T008 `stop-apps`; restarts leave apps running
+- [x] T009 GitHub stand-in and fixture apps for tests (`e2e/github`)
 
 ## Slice 2: Run Sure
 
-- [ ] T010 Installation kits: format, strict parsing, kits repository lookup (`server/src/apps/kits.ts`)
-- [ ] T011 Generated, derived and kit-set settings, encrypted at rest (`server/src/apps/settings.ts`)
-- [ ] T012 Sure installed from its own file with its kit (research R3)
+- [x] T010 Installation kits: format, strict parsing, kits repository lookup (`server/src/apps/kits.ts`)
+- [x] T011 Generated, derived and kit-set settings, encrypted at rest (`server/src/apps/settings.ts`)
+- [x] T012 Sure installed from its own file with its kit (research R3)
 - [x] T013 Publish Sure's and Twenty's kits (your-space-ai/your-space-app-kits#1, merged)
 
 ## Slice 3: Apps in Your Space

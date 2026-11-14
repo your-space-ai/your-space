@@ -1,0 +1,9 @@
+# A small web app for the browser tests: traefik/whoami (MIT) echoes each request it receives.
+services:
+  web:
+    image: traefik/whoami:latest
+    ports:
+      - "8000:80"
+    environment:
+      GREETING: ${GREETING:-hello}
+      API_TOKEN: ${API_TOKEN:-published-default-token}

@@ -1,6 +1,10 @@
 # The services every setup shares. compose.yaml adds the file from modes/ that publishes ports.
-# All durable state is in the three named volumes below (FR-023). `docker compose down -v` deletes
-# them, and the workspace with them.
+# All durable state is in the named volumes below (FR-023), and each installed app keeps its data in
+# its own named volumes. `docker compose down -v` deletes Your Space's volumes, and the workspace
+# with them; apps' volumes stay.
+#
+# To stop Your Space and its apps:  docker compose exec runtime stop-apps && docker compose stop
+# A restart or update of Your Space leaves its apps running (journey 002, FR-008).
 services:
   secrets:
     # Settles the auth secret and the database password before anything else starts, then exits
@@ -54,11 +58,15 @@ services:
       DATABASE_URL: postgres://yourspace@postgres:5432/yourspace
     volumes:
       - ys-secrets:/run/ys-secrets:ro
+      # The runtime manager's socket: the only way the server reaches apps' containers.
+      - ys-runtime:/run/ys-runtime
     depends_on:
       secrets:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
+      runtime:
+        condition: service_started
     healthcheck:
       test:
         - CMD
@@ -70,6 +78,26 @@ services:
       start_period: 30s
       start_interval: 1s
       retries: 3
+
+  runtime:
+    # The runtime manager (journey 002, FR-001): the only service that holds the engine's socket. It
+    # has no network at all; the server reaches it on a socket in the ys-runtime volume. Root, to
+    # use the engine's socket whatever group owns it. YS_ENGINE_SOCKET points at another engine's
+    # socket, such as rootless Docker's or Colima's.
+    image: ghcr.io/your-space-ai/your-space-runtime:${YS_VERSION:-latest}
+    restart: unless-stopped
+    network_mode: none
+    user: "0:0"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      # Labels every app with this installation, so two installations on one engine never mix.
+      YS_INSTALLATION: ${COMPOSE_PROJECT_NAME}
+    volumes:
+      - ${YS_ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+      - ys-runtime:/run/ys-runtime
 
   postgres:
     image: postgres:18
@@ -109,5 +137,7 @@ services:
 volumes:
   ys-postgres:
   ys-caddy-data:
+  # The runtime manager's socket. Holds nothing durable.
+  ys-runtime:
   # The generated auth secret and database password. Keep it with ys-postgres.
   ys-secrets:

@@ -368,9 +368,33 @@ For devices on your own network, use [Tailscale](#use-tailscale): it needs no do
   in server or proxy logs. The database keeps only a hash of it, so a copy of the database can't
   open a link that still works.
 
+## Apps
+
+**Install.** From the server, `docker compose exec server install-app <link>` installs an app from
+the GitHub link to its Compose file, for example
+`https://github.com/we-promise/sure/blob/main/compose.example.yml`.
+
+**Stop Your Space and its apps.** `docker compose restart` and updates leave apps running. To stop
+everything:
+
+```sh
+docker compose exec runtime stop-apps
+docker compose stop
+```
+
+`docker compose up -d` starts Your Space, and Your Space starts its apps.
+
+**Another Docker engine.** Your Space uses `/var/run/docker.sock`. To use another engine's socket,
+such as rootless Docker's or Colima's, set its path in `.env`:
+
+```sh
+YS_ENGINE_SOCKET=/run/user/1000/docker.sock
+```
+
 ## Restarts and Your Data
 
-Everything Your Space keeps is in three Docker volumes:
+Everything Your Space itself keeps is in three Docker volumes (a fourth, `ys-runtime`, holds
+nothing durable):
 
 | Volume | What it holds |
 | --- | --- |
@@ -400,6 +424,10 @@ Afterwards `docker compose ps` shows the services running again, you're still si
 never need to create the owner again. Your Space also starts by itself when Docker starts, for
 example after a reboot, unless you stopped it with `docker compose stop` or `docker compose down`.
 On macOS, that needs Docker Desktop set to start when you sign in.
+
+Apps keep their data in their own volumes, named after the app, such as `ys-sure_postgres-data`.
+`docker compose down -v` doesn't delete them, and doesn't stop the apps: stop them first with
+`docker compose exec runtime stop-apps`.
 
 > [!WARNING]
 > `docker compose down -v` is not a restart. `-v` (`--volumes`) deletes all three volumes, and your
