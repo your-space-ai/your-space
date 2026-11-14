@@ -191,3 +191,69 @@ when opened in its own tab.
   reload and in its own tab. Firefox showed Sure in the pane and signed up through to Sure's
   onboarding page. Both browsers resolve `*.localhost` to the machine itself, as RFC 6761 reserves
   `.localhost` for loopback names.
+
+## R3. What Building the Journey Showed
+
+Checked on 2026-11-14 while building the whole journey on one branch, on Docker Engine 29.9.2 with
+the Compose plugin v5.7.1 from the `docker:29-cli` image, in a Linux container with no internet
+access for app containers.
+
+### The runtime and the network
+
+- An `internal` bridge network with `com.docker.network.bridge.gateway_mode_ipv4=isolated` gives
+  containers a route only to their own subnet: no default route, no address of the host on the
+  bridge, and "Network is unreachable" for any outside address.
+- The engine's `GET /distribution/{name}/json` returns an image's index digest and platforms
+  without downloading it, so the review shows exact versions before anything is pulled. When the
+  registry refuses (Docker Hub's anonymous rate limit did, repeatedly), the runtime manager uses the
+  digest of an image already on the engine instead.
+- `docker compose down -p <project>` and `stop` work with the project name alone. Compose's resolved
+  JSON turns `$$VAR` into `$VAR`, so the adapter escapes `$` again when it writes the file it runs.
+- From inside a test app (busybox), with the outbound proxy bypassed: Your Space's server, gate and
+  database, other apps' containers and interface aliases, the host's Docker and SSH ports, the
+  internet, and a Docker socket are all out of reach. Through the outbound proxy, private and
+  loopback addresses are refused too. The browser journey repeats these probes.
+
+### The egress proxy
+
+- Squid 6.13 (`ubuntu/squid`) uses about 16 MB per app. It logs each refused request with
+  `TCP_DENIED/403` and the host, which become access requests.
+- Its file log is buffered unless `buffered_logs off`, which delayed access requests.
+- It takes 3 to 4 seconds to listen after starting, so an app's first requests failed; app
+  services now wait for its health check.
+- Compose doesn't recreate a container when only an inline `configs` content changes, so the
+  proxy carries a label with a hash of its configuration.
+
+### Cookies and panes on the local setup
+
+- `__Host-` cookies over plain HTTP on `space.localhost`: Chromium and Firefox keep them, WebKit
+  drops them. Your Space's own cookies are therefore `__Host-` only over HTTPS.
+- In WebKit, an app at `whoami.space.localhost` framed by `space.localhost` gets no cookies: the pass
+  set by the gate's handoff is dropped and the gate redirects until WebKit stops after 20
+  redirects. WebKit treats each `*.localhost` name as its own site, as it did with `.test` in R2,
+  and blocks third-party cookies. The same app in its own tab works. Your Space now notices a pane
+  that keeps asking for the same app (more than three times in 15 seconds, counted only for
+  requests the browser marks `Sec-Fetch-Dest: iframe`) and shows a page offering the app in its own
+  tab.
+- Node, and so Playwright's API requests, resolves names through the system, which doesn't know
+  `*.localhost`; browsers resolve those names themselves. Test machines add the test names to
+  `/etc/hosts`; owners need nothing.
+
+### Sure and Twenty from their own files
+
+- **Sure** (`compose.example.yml` at 70647cb):
+  - installed unchanged with its kit in 10 seconds once its images were on the machine;
+  - backups behind profiles left out; published port, fixed DNS servers and network replaced;
+  - memory once started: web 449 MiB, worker 426 MiB, PostgreSQL 60 MiB, Redis 8 MiB;
+  - sign-up in a pane worked in Chromium and Firefox and reached Sure's onboarding;
+  - its only blocked outbound attempts went to `us.i.posthog.com` (usage feedback), which became
+    an access request.
+- **Twenty** (`packages/twenty-docker/docker-compose.yml` at 1dd1c249):
+  - its file passes `STORAGE_TYPE` through empty when unset, which Twenty refuses; its own
+    `.env.example` sets `local`, so kits can now set plain values (`set:`);
+  - its entrypoint runs first-time setup only when the `core` schema is missing, so a first start
+    that fails after creating the schema leaves later starts broken until its data is deleted and
+    it is installed again;
+  - memory: server 706 MiB, worker 629 MiB, PostgreSQL 24 MiB, Redis 7 MiB;
+  - it tried `registry.npmjs.org`;
+  - it ran beside Sure, both with `db`, `redis` and `worker` services, without colliding.

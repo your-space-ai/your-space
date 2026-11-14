@@ -26,6 +26,8 @@ jobs:
             dockerfile: server/Dockerfile
           - name: your-space-web
             dockerfile: web/Dockerfile
+          - name: your-space-runtime
+            dockerfile: runtime/Dockerfile
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-qemu-action@v3

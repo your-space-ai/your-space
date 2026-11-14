@@ -88,9 +88,11 @@ service:
 `name@sha256:…`; every service on the `app` network with `HTTP_PROXY`, `HTTPS_PROXY` and lower-case
 forms pointing at `ys-egress:3128` and `NO_PROXY` listing the app's own services; `mem_limit`,
 `cpus`, `oom_score_adj: 500`, `security_opt: [no-new-privileges:true]`; labels
-`ai.your-space.installation` and `ai.your-space.app`. Networks: `app` is `internal` with
+`ai.your-space.installation` and `ai.your-space.app`; and a dependency on the egress proxy's health,
+so no service starts before it can reach approved hosts. Networks: `app` is `internal` with
 `com.docker.network.bridge.gateway_mode_ipv4=isolated` (no route to the host or out); `egress` is a
-normal bridge. Your Space's own services get `oom_score_adj: -500` (FR-D06).
+normal bridge. Apps' raised out-of-memory score makes the kernel stop them before Your Space's own
+services, which keep the default; a negative score would fail on rootless engines (FR-D06).
 
 **Pinning (FR-004).** The engine's `GET /distribution/{name}/json` returns the image index digest and
 its platforms without downloading anything, so the review can show exact versions. An image without
@@ -98,10 +100,11 @@ the engine's platform stops the install with a message.
 
 **Egress (FR-019, FR-D05).** Squid (`ubuntu/squid`, maintained by Canonical), one per app, with its
 configuration in the Compose file's inline `configs`: allow the approved host names, deny private and
-link-local addresses, deny everything else. Its access log records denials with the host; the
-runtime manager reads the recent log for the server, which turns new hosts into access requests.
-Changing the approved hosts re-applies the project, which recreates only the egress service. An app
-that ignores proxy settings has no route out at all. 16 MB of memory per app (measured).
+link-local addresses, deny everything else. Its access log, unbuffered, records denials with the
+host; the runtime manager reads the recent log for the server, which turns new hosts into access
+requests. Changing the approved hosts re-applies the project; a label with the configuration's hash
+makes Compose recreate only the egress service, and the app's services keep running. An app that
+ignores proxy settings has no route out at all. 16 MB of memory per app (research R3).
 
 **Stopping (FR-008).** The documented stop runs `docker compose exec runtime stop-apps` before
 `docker compose stop`: the runtime manager stops every app it manages and refuses to start any until
@@ -114,7 +117,7 @@ corrected.
 | Part | What it does |
 | --- | --- |
 | `apps/github.ts` | Turns `https://github.com/<owner>/<repo>/blob/<ref>/<path>` into the commit (GitHub API, `application/vnd.github.sha`) and the file at that commit (raw content). Refuses other hosts, private repos (404), files over 256 KB. |
-| `apps/kits.ts` | Reads `apps/<owner>/<repo>.yaml` from the kits repository at its current commit, or a kit link the owner gives. A kit names the source file it fits, the app's name, the interface service and port, values to generate, values to derive (`app_origin`), settings that are secret, starter outbound hosts, limits, and whether the app can run in a pane. Parsed with `yaml` and validated by hand. |
+| `apps/kits.ts` | Reads `apps/<owner>/<repo>.yaml` from the kits repository at its current commit, or a kit link the owner gives. A kit names the source file it fits, the app's name, the interface service and port, values to generate, values to derive (`app_origin`), plain values from the app's own example settings, settings that are secret, starter outbound hosts, limits, and whether the app can run in a pane. Parsed with `yaml` and validated by hand. |
 | `apps/settings.ts` | The file's variables become settings. Kit-generated values, and without a kit any variable whose name contains `SECRET`, `PASSWORD`, `TOKEN`, `KEY` and that has a published default, are generated (32 random bytes unless the kit says otherwise) and never use the default (FR-006). Values are encrypted with AES-256-GCM under a key derived from the auth secret. |
 | `apps/runtime-client.ts` | The runtime API client over the Unix socket. |
 | `apps/install.ts` | Preview (fetch, kit, settings, check, pin) and install (record, then a background job that streams the runtime's progress into `install_job`). |
@@ -140,6 +143,11 @@ corrected.
 
 Someone not signed in is sent to Your Space's sign-in at step 2.
 
+**When a browser blocks the pane's cookies.** WebKit on the plain-HTTP local setup treats each
+`*.localhost` name as its own site and drops the pass, so steps 1 to 3 repeat. Step 2 counts the
+requests the browser marks `Sec-Fetch-Dest: iframe`; more than three for the same app and session in
+15 seconds answer with a page that offers the app in its own tab, where it works (research R3).
+
 **Session cookie.** Over HTTPS, Your Space's cookies are `__Host-` cookies, which no app can set or
 overwrite. On the plain-HTTP local setup they are host-only cookies without the prefix: WebKit refuses
 `__Host-` over HTTP even on `*.localhost` (tested; Chromium and Firefox accept it). On that setup an
@@ -160,8 +168,8 @@ left for journey 003.
 ### Limits and resources (FR-021, FR-021a)
 
 Defaults per service: 1 GiB memory and 1 CPU; the egress proxy 64 MiB and 0.25 CPU. A kit can set
-others; the owner can change them in the app's advanced settings. The defaults are checked against
-Sure's measured use before the pull requests are opened. The Engine page reads the engine's CPUs and memory and each app's use from the engine.
+others; the owner can change them in the app's advanced settings. Sure's services use at most
+449 MiB; Twenty's server 706 MiB, so its kit sets 2 GiB (research R3). The Engine page reads the engine's CPUs and memory and each app's use from the engine.
 
 ### Removal (FR-023)
 
@@ -201,11 +209,12 @@ See [data-model.md](data-model.md): `app`, `app_setting`, `app_outbound`, `app_a
   fixtures, including Sure's.
 - **Browser (Playwright, Compose stack)**: a stand-in for GitHub serves fixture Compose files and
   kits (`YS_E2E_GITHUB_API`, `YS_E2E_GITHUB_RAW`, `YS_E2E_KITS`). Install whoami from the UI, open it
-  in a pane, sign out and be refused, isolation probes with busybox, egress requests and approval,
-  settings, removal and reuse, two apps side by side, the phone layout. On Linux, WebKit needs hosts
-  entries for the test names; Chromium and Firefox resolve `*.localhost` themselves.
-- **Real apps**: Sure and Twenty installed from their real files, run by hand before the pull
-  requests and recorded in the verification record.
+  in a pane (in WebKit, its own tab), sign out and be refused, isolation probes with busybox, egress
+  requests and approval, settings, limits, restart and stop, removal and reuse, two apps side by
+  side, the phone layout. Test machines add the test names to `/etc/hosts`, because Node and so
+  Playwright's API requests don't resolve `*.localhost`; browsers resolve them themselves.
+- **Real apps**: Sure and Twenty installed from their real files through the stand-in, run by hand
+  and recorded in research R3. Their kits go to the kits repository once it exists.
 
 ## Risks and Open Points
 

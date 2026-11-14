@@ -63,7 +63,7 @@ One row per app on this installation, kept after removal as the record of its re
 | --- | --- | --- |
 | id | uuid | |
 | app_id | uuid → app | |
-| kind | text | `install` or `apply` (settings, limits, outbound changes) |
+| kind | text | `install`, `apply` (start, settings, limits, outbound changes) or `remove` |
 | state | text | `running`, `succeeded` or `failed` |
 | steps | jsonb | `[{ "at", "message" }]`, never secret values |
 | error | text, null | |
