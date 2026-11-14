@@ -3,6 +3,9 @@ import { createServer, request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createApp } from "../../src/app.ts";
 import { createAuth, type Auth } from "../../src/auth.ts";
+import { Handoffs } from "../../src/apps/gate.ts";
+import type { Runtime } from "../../src/apps/runtime-client.ts";
+import { AppsService } from "../../src/apps/service.ts";
 import type { Db } from "../../src/db/client.ts";
 import { TEST_SECRET } from "./env.ts";
 
@@ -12,23 +15,45 @@ export interface TestServer {
   /** The address Better Auth was configured with (derived from YS_PORT or YS_PROXY_URL). */
   publicUrl: string;
   auth: Auth;
+  /** The apps service, when the server was started with a runtime. */
+  apps?: AppsService;
+  handoffs?: Handoffs;
   /** fetch against the server, with the Origin header a browser on publicUrl would send. */
   request(path: string, init?: RequestInit): Promise<Response>;
   close(): Promise<void>;
 }
 
-export async function startServer(db: Db, options: { publicUrl?: string } = {}): Promise<TestServer> {
+export interface AppsOptions {
+  runtime: Runtime;
+  /** Stands in for GitHub. */
+  fetch: typeof fetch;
+}
+
+export async function startServer(db: Db, options: { publicUrl?: string; apps?: AppsOptions } = {}): Promise<TestServer> {
   const server: Server = createServer();
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as AddressInfo).port;
   const url = `http://localhost:${port}`;
-  const publicUrl = options.publicUrl ?? url;
+  // The default local address. Node doesn't resolve *.localhost, so requests go to localhost and name
+  // this address in the Host header, as a browser would.
+  const publicUrl = options.publicUrl ?? `http://space.localhost:${port}`;
   const auth = createAuth({ config: { publicUrl, authSecret: TEST_SECRET }, db });
-  server.on("request", createApp({ auth, db }));
+  const handoffs = new Handoffs();
+  const apps = options.apps
+    ? new AppsService(db, options.apps.runtime, {
+        publicUrl,
+        authSecret: TEST_SECRET,
+        fetch: options.apps.fetch,
+        github: { api: "https://api.github.test", raw: "https://raw.github.test" },
+      })
+    : undefined;
+  server.on("request", createApp({ auth, db, apps: apps ? { service: apps, handoffs } : undefined }));
   return {
     url,
     publicUrl,
     auth,
+    apps,
+    handoffs,
     request(path, init = {}) {
       const headers = new Headers(init.headers);
       if (!headers.has("origin")) headers.set("origin", publicUrl);
@@ -47,9 +72,11 @@ export async function startServer(db: Db, options: { publicUrl?: string } = {}):
  * One HTTP request, without following redirects. Unlike fetch, it sends the Host header given, so
  * a test can be a browser on an https public address while the server listens on localhost.
  */
-function send(url: string, method: string, headers: Headers, body: RequestInit["body"]): Promise<Response> {
+export function send(url: string, method: string, headers: Headers, body: RequestInit["body"]): Promise<Response> {
   if (body !== undefined && body !== null && typeof body !== "string") throw new Error("send() takes a string body");
   return new Promise((resolve, reject) => {
+    // Node sends a DELETE body with neither a length nor chunks unless the length is given.
+    if (typeof body === "string") headers.set("content-length", String(Buffer.byteLength(body)));
     const req = httpRequest(url, { method, headers: Object.fromEntries(headers) }, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (chunk: Buffer) => chunks.push(chunk));

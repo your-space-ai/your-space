@@ -31,20 +31,20 @@ function only(env: Record<string, string | undefined>): string {
 }
 
 describe("loadConfig: which setup", () => {
-  it("with nothing set, serves this machine at http://localhost", () => {
-    expect(loadConfig(SECRETS)).toMatchObject({ mode: "local", publicUrl: "http://localhost" });
+  it("with nothing set, serves this machine at http://space.localhost", () => {
+    expect(loadConfig(SECRETS)).toMatchObject({ mode: "local", publicUrl: "http://space.localhost" });
   });
 
   it("treats an empty line the same as no line", () => {
     expect(loadConfig({ ...SECRETS, YS_DOMAIN: "", YS_PROXY_URL: " ", YS_PORT: "" })).toMatchObject({
       mode: "local",
-      publicUrl: "http://localhost",
+      publicUrl: "http://space.localhost",
     });
   });
 
   it.each([
-    ["8081", "http://localhost:8081"],
-    ["80", "http://localhost"],
+    ["8081", "http://space.localhost:8081"],
+    ["80", "http://space.localhost"],
   ])("with YS_PORT=%s, serves this machine at %s", (port, url) => {
     expect(loadConfig({ ...SECRETS, YS_PORT: port })).toMatchObject({ mode: "local", publicUrl: url });
   });
