@@ -184,3 +184,10 @@ when opened in its own tab.
   forwarding to an app (as Coder does), make Your Space's session a `__Host-` cookie so apps can't
   overwrite it, and drop any `Domain=` attribute from apps' `Set-Cookie` so an app can't set cookies
   for Your Space or other apps.
+
+- **No setup needed for `*.localhost` (rechecked 2026-11-14):** with the hosts-file entries for
+  `space.localhost` removed, so that the machine's own resolver didn't know the name, Chromium framed
+  Sure at `sure.space.localhost` inside `space.localhost`, signed up, and kept the session after a
+  reload and in its own tab. Firefox showed Sure in the pane and signed up through to Sure's
+  onboarding page. Both browsers resolve `*.localhost` to the machine itself, as RFC 6761 reserves
+  `.localhost` for loopback names.
