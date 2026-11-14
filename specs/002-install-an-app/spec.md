@@ -4,7 +4,8 @@
 
 **Created**: 2026-11-12
 
-**Status**: Draft for discussion. Nothing in it is delivered yet.
+**Status**: Draft for review. Every question is decided except the secrets screen (Q3), designed in
+slice 3. Nothing in it is delivered yet.
 
 **Journey**: 002 "Install an app and use it", the second of eight journeys in the
 [spec map](../../docs/spec-map.md)
@@ -32,14 +33,14 @@ uses it inside Your Space, without the app's authors changing anything. The firs
 
 An owner can install an app from a link to its Compose file in a public GitHub repository. Your
 Space reads the file at an exact commit, adapts it to its rules or refuses it with reasons, shows
-the owner what will run and the trust warning, and runs the app's containers on the same machine.
+the owner what will run and the trust warning, and runs the app's containers on its runtime.
 The owner opens the app in a pane inside Your Space, and only people signed in to Your Space can
 reach it.
 
 Apps are not written for Your Space. An app keeps its own interface, its own accounts and its own
 data; Your Space runs it, protects the platform and other apps from it, and controls who can reach
-it. Apps that want deeper integration (verified identity and roles from Your Space) are a later,
-opt-in slice, so that any app with a published image and a Compose file can be installed.
+it. Deeper integration (sign-in through Your Space, verified identity and roles) comes later, in
+levels apps opt into, so that any app with a published image and a Compose file can be installed.
 
 This journey is delivered as a stack of pull requests, one per slice. Each slice ends with something
 the owner can see working, tested end to end in the browser, and later slices build on it without
@@ -90,7 +91,7 @@ Your Space needs these components. Each slice brings in only what it uses.
 | B | Runtime manager | The only part of Your Space that holds the runtime connection; drives the runtime adapter to start, stop, report on and remove apps | A |
 | C | Source fetch | Turns a GitHub link into one file at an exact commit | |
 | D | App description and kits | Imports the app's own file into an app description, applies its installation kit, checks it against Your Space's rules, refuses the rest with reasons | |
-| E | Image pinning | Resolves each image to an exact version available for both ARM and Intel/AMD | |
+| E | Image pinning | Resolves each image to an exact version that runs on the runtime's processor type | |
 | F | Settings and secrets | Values for the file's variables; generates secrets; keeps them out of logs and output | A |
 | G | Restart recovery | Brings apps back when Your Space starts, and corrects recorded state that no longer matches | A, B |
 | H | Install jobs | Runs an install in the background and reports progress | A, B |
@@ -99,7 +100,7 @@ Your Space needs these components. Each slice brings in only what it uses.
 | K | App routing | Each app on its own origin through the built-in proxy, reached through its app endpoint | A, B |
 | L | Access gate | Only people signed in to Your Space reach an app's origin | K |
 | M | Panes | Your Space's navigation around the app in a pane | J, K, L |
-| N | Outbound control | No outbound access by default; owner-approved hosts only | B, F |
+| N | Outbound control | Only the kit's starter hosts and the hosts the owner approves; other attempts become access requests | B, F |
 | O | Limits and logs | Memory and CPU limits; per-service status and logs | B, J |
 | P | Removal and retained data | Removing keeps data; deleting it is a separate, confirmed step | A, B, J |
 
@@ -118,11 +119,11 @@ C, D and E feed the install.
 | --- | --- | --- | --- |
 | Base | Spec and plan | | This specification, its plan and research, the decision record and the constitution changes |
 | 1 | Run an app from a link | A, B, C, E, G; D for a small fixture app | A server command installs a small app from a GitHub link; it runs, and comes back after a restart |
-| 2 | Run Sure | D; F's generated secrets | The same command runs Sure's web, worker, database and Redis services |
+| 2 | Run Sure | D with Sure's installation kit; F's generated secrets | The same command runs Sure's web, worker, database and Redis services |
 | 3 | Apps in Your Space | H, I, J | An Apps area lists Sure and its state; installing from the UI with a review and trust warning |
 | 4 | Open an app | K, L, M | Sure opens in a pane on its own origin, reachable only through Your Space |
 | 5 | Change settings | F | The owner changes Sure's settings, such as an AI key; Sure restarts with them |
-| 6 | Outbound access | N | Sure starts with no internet access; the owner approves the hosts its features need |
+| 6 | Outbound access | N | Sure starts with its kit's starter hosts; anything else it tries becomes an access request |
 | 7 | Isolation, tested | | Tests show an app can't reach the platform, other apps or the host |
 | 8 | Limits, status and logs | O | Limits, per-service status and logs, behind an advanced view |
 | 9 | Remove and delete data | P | Removing keeps the data; deleting it is its own confirmed step |
@@ -136,7 +137,7 @@ user stories below are numbered to match the slices.
 ### User Story 1 - Run an App From a Link (Priority: P1)
 
 As the operator, I can give Your Space the GitHub link to an app's Compose file, and Your Space runs
-the app's containers on this machine and keeps them running across restarts.
+the app's containers on its runtime and keeps them running across restarts.
 
 **Why this priority**: Everything else in this journey depends on Your Space running containers
 safely. Controlling Docker is the most security-sensitive part of the journey, so it comes first and
@@ -184,8 +185,8 @@ check that its web, worker, database and Redis services are running and healthy.
    servers) and what it left out (for example the backup services behind profiles, which mount host
    folders), and runs the rest.
 2. **Given** the file sets a secret's default in plain text (Sure's `SECRET_KEY_BASE` and
-   `POSTGRES_PASSWORD`), **When** Your Space installs it, **Then** it generates a new value for each
-   and never uses the published default.
+   `POSTGRES_PASSWORD`), **When** Your Space installs it, **Then** it generates a new value for each,
+   as Sure's installation kit says, and never uses the published default.
 3. **Given** a running Sure, **When** its services start, **Then** they start in the order the file's
    health conditions require, and its database and Redis data live in named volumes.
 4. **Given** the install output and Your Space's logs, **When** they are read, **Then** no generated
@@ -310,8 +311,8 @@ host, even if the app misbehaves.
    the runtime manager, **Then** it can't.
 2. **Given** two installed apps, **When** one tries to reach the other's containers or volumes,
    **Then** it can't.
-3. **Given** an installed app, **When** it tries to reach host folders, devices or Docker, **Then** it
-   can't.
+3. **Given** an installed app, **When** it tries to reach host folders, devices or the runtime's own
+   controls (for Docker, its socket), **Then** it can't.
 4. **Given** a Compose file that asks for any of these, **When** it is installed, **Then** it is
    refused with the reason.
 
@@ -388,7 +389,7 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
   `build`, YAML anchors and `x-` sections, and `${VAR:-default}` and `${VAR:?error}` placeholders.
 - Two apps ask for the same service names, volume names or ports.
 - An app's interface sends headers that forbid framing, or sets cookies that a pane blocks.
-- Docker itself is restarted while apps run.
+- The runtime itself restarts while apps run.
 - The owner removes an app during its install.
 
 ## Requirements
@@ -412,8 +413,9 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
   Compose file, each image's exact version, and the actor who installed it.
 - **FR-004**: Every image must be pinned to an exact version. An app installs if its images run on
   the runtime's processor type (ARM or Intel/AMD); if not, the install stops with a clear message.
-- **FR-005**: Your Space must accept only Compose settings on an approved list. It may adapt a setting
-  only by a documented rule, and must refuse the install with reasons for anything else.
+- **FR-005**: Your Space runs only what its rules allow. It may adapt an app's file only by a
+  documented rule that applies to every app, and must refuse the install with reasons for anything
+  else. Each runtime adapter defines its rules; the Docker adapter's are FR-D03 and FR-D04.
 - **FR-006**: Published defaults for secrets are never used. An installation kit can say which
   values Your Space generates; generated values never appear in output, logs or the review. How the
   owner sees and sets these values is designed with the review screen in slice 3 (see Q3).
@@ -488,8 +490,8 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
 - **FR-021a**: A space has workspace resources: the CPU and memory of the engine it runs apps on, as
   the engine reports them. Your Space reads them the same way whatever the engine runs on (a server,
   a laptop, a VM Your Space provides, or a managed tier's VM) and never depends on which. The Engine
-  page shows them and each app's use. An app can never cause Your Space's own services to be stopped for lack of
-  memory.
+  page shows them and each app's use. An app can never cause Your Space's own services to be stopped
+  for lack of memory.
 - **FR-022**: The owner can see each service's state and recent logs.
 - **FR-023**: Removing an app keeps its data; deleting retained data is a separate step that the
   owner confirms.
@@ -541,7 +543,9 @@ What is specific to the first runtime adapter. The research behind it is
   engine.
 - **Installation kit**: the adjustments that make a particular app fit Your Space, kept outside Your
   Space and referring to the app's own files.
-- **Outbound approval**: an internet host the owner allowed an app to reach.
+- **Outbound approval**: an internet host an app may reach, from its kit's starter hosts or approved
+  by the owner.
+- **Access request**: an attempt by an app to reach a host it isn't allowed, waiting for the owner.
 - **Workspace resources**: the CPU and memory a space runs in, shared by Your Space and its apps.
 - **Retained data**: an app's named volumes kept after removal.
 
@@ -559,7 +563,8 @@ What is specific to the first runtime adapter. The research behind it is
 
 ## Assumptions
 
-- Your Space's own stack and its apps share one runtime in this journey, wherever it runs. An engine on another machine, and apps that someone already runs elsewhere, are later work.
+- Your Space's own stack and its apps share one runtime in this journey, wherever it runs. An engine
+  on another machine, and apps that someone already runs elsewhere, are later work.
 - The owner is the only person in this journey; members arrive in journey 004.
 - Only public GitHub repositories; private repositories and catalogs come later.
 - Apps run published images only; Your Space doesn't build images.
@@ -603,13 +608,15 @@ request after agreement.
    such as LLM services are its utilities, and installation kits make an appliance fit. Recorded in
    `docs/glossary.md` for future names.
 10. **No moving workspaces**: Your Space provides backup and restore, easy to script, and doesn't
-   move workspaces between installations itself; that's for the person or their agent. Recorded in
-   the decision record's backup section; it changes journey 006, not this journey.
+    move workspaces between installations itself; that's for the person or their agent. Recorded in
+    the decision record's backup section; it changes journey 006, not this journey.
 11. **Your Space's local address becomes `space.localhost`**: journey 001 serves this machine's
     setup at `localhost`. Slice 4 moves it to `space.localhost` (keeping `localhost` as a redirect),
     so apps can be same-site subdomains, and makes Your Space's session cookie a `__Host-` cookie.
+    Browsers allow `__Host-` cookies over HTTPS and on `*.localhost`, which they treat as secure;
+    Safari's handling on plain HTTP is checked with the other Safari tests.
 
-## Questions for Discussion
+## Decisions and Open Questions
 
 1. **Q1, Docker access (decided 2026-11-12)**: a runtime manager in Your Space's stack alone holds the
    engine connection (FR-001, FR-001a). It runs only files whose fully resolved form
@@ -656,8 +663,9 @@ request after agreement.
 9. **Q9, limits (decided 2026-11-14)**: fixed default limits per service, which an installation kit
    can override and the owner can change behind an advanced control (FR-021). Resources belong to
    the whole space first: they are whatever the engine's machine provides, so a managed tier's VM, a
-   local VM and a server are the same thing to Your Space (FR-021a). Limits that scale with the workspace's
-   resources are worth exploring; the default numbers are set in the plan after measuring Sure.
+   local VM and a server are the same thing to Your Space (FR-021a). Limits that scale with the
+   workspace's resources are worth exploring; the default numbers are set in the plan after
+   measuring Sure.
 10. **Q10, the second app (decided 2026-11-14)**: [Twenty](https://github.com/twentyhq/twenty), a CRM
     the owner uses. Its Compose file (`packages/twenty-docker/docker-compose.yml`) has `server`,
     `worker`, `db` (`postgres:16`) and `redis`, published for ARM and Intel/AMD, so with Sure it shows
