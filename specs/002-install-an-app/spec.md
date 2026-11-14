@@ -362,11 +362,16 @@ time on a phone.
 
 ### Later - Deeper Integration
 
-Not part of this journey's delivery. Apps that choose to integrate could receive the signed-in
-person's verified identity and app roles from Your Space, through the TypeScript SDK, instead of
-running their own accounts. This waits until several unmodified apps run, so the integration fits
-real apps. Journey 004 (members and their app roles) and 005 (agents) depend on what it decides.
-[NEEDS DISCUSSION: see Q11]
+Not part of this journey's delivery, which stops at level 0. Integration with apps comes in levels:
+
+| Level | What the owner gets | What the app needs |
+| --- | --- | --- |
+| 0. Gate only (this journey) | Only people signed in to Your Space reach the app; the app's own login still appears | Nothing |
+| 1. Your Space as an identity provider | Opening an app signs the person in as themselves | OpenID Connect support, set through the app's own settings by its installation kit (Sure has `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `OIDC_REDIRECT_URI`) |
+| 2. Built for Your Space | Verified identity and app roles from Your Space, and agents through the gateway | The TypeScript or Python SDK |
+
+Level 1 matters most once there are members (journey 004); level 2 is for developers' own apps
+(journey 007) and for agents (journey 005). Where each lands is settled with those journeys.
 
 ### Edge Cases
 
@@ -586,9 +591,10 @@ request after agreement.
    next to it and connects out to Your Space, so the app needs no open port and its authors change
    nothing. Your Space gives it routing, the access gate and panes, and doesn't manage or police
    the rest of its setup. This is later work; journey 002 builds the app endpoint it plugs into.
-7. **Apps keep their own sign-in**: Your Space controls who reaches an app, and verified identity
-   and app roles move to an opt-in integration in a later slice. This moves the TypeScript SDK and
-   app roles out of journey 002. [NEEDS DISCUSSION: see Q11]
+7. **Apps keep their own sign-in**: in this journey Your Space only controls who reaches an app.
+   Sign-in through Your Space (OpenID Connect, for apps that support it) and verified identity with
+   app roles through the SDK come later, in levels. This moves the TypeScript SDK, app roles and the
+   Tasks app out of journey 002.
 8. **Processor types**: an app installs if its images run on the machine's processor type,
    superseding the requirement that app images exist for both ARM and Intel/AMD.
 9. **A shared vocabulary**: Your Space is the home, apps are its appliances and furniture, providers
@@ -651,8 +657,9 @@ request after agreement.
    local VM and a server are the same thing to Your Space (FR-021a). Limits that scale with the workspace's
    resources are worth exploring; the default numbers are set in the plan after measuring Sure.
 10. **Q10, the second app**: Memos, or another app the owner uses.
-11. **Q11, deeper integration**: when the SDK, verified identity and app roles return, given that
-    journey 004 assigns app roles and journey 005 delegates them to agents.
+11. **Q11, deeper integration (decided 2026-11-14)**: journey 002 is gate only (level 0). Your Space
+    as an OpenID Connect provider (level 1, likely through Better Auth's OAuth provider plugin) and
+    the SDK (level 2) come later, placed with journeys 004, 005 and 007.
 12. **Q12, stopping Your Space (decided 2026-11-12)**: stopping Your Space on purpose stops the apps
     it manages, as one unit; restarting or updating it leaves them running, so updates don't take
     apps down (FR-008). Clients never change app state (FR-008a).
