@@ -29,8 +29,10 @@ new capabilities need their own specifications and implementation work.
 ## Release Scope and Promise
 
 - [ ] **Define the public release promise**
-  - [ ] Target people who can install Docker Desktop and the desktop app for a local workspace, or
-    install Docker and follow a guided CLI for a server or local workspace, without one-on-one help.
+  - [ ] Target people who can install the desktop app for a local workspace, or install Docker and
+    follow a guided CLI for a server or local workspace, without one-on-one help. Since 2026-11-14
+    Docker Desktop is not required: Your Space provides the engine
+    ([decision](architecture/decisions.md#installation-and-hosting)).
   - [ ] Record the intended users, release maturity, supported behaviors, and what is explicitly
     deferred; update the roadmap and decisions if the agreed direction changes.
   - [ ] For milestones that claim supported environments, define supported operating system versions,
@@ -43,8 +45,9 @@ workspace clients; at least one independently installed app; developer ability t
 additional apps; and external-agent access through the Your Space gateway. It also includes built-in
 HTTPS; built-in backup and restore; owner-triggered Your
 Space and app updates that roll back automatically if they fail; an activity log; uninstall; and
-signed desktop releases. Windows support and PWA installation are low priority. A small Tasks app is
-the first app. This scope does not change the owner-only first specification.
+signed desktop releases. Windows support and PWA installation are low priority. Sure, an existing
+open-source app installed unchanged from its own Compose file, is the first app, with Twenty as the
+second (replacing the Tasks app on 2026-11-14). This scope does not change the owner-only first specification.
 
 ## Early Source Publication: Building in Public
 
@@ -91,7 +94,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     network-only attempts to create an account are denied.
   - [ ] Verify protected requests are denied without valid authentication, including direct API
     requests; test session expiry, sign-out, and invalidation.
-  - [ ] Verify the platform session uses host-only cookies that are not sent to app origins.
+  - [ ] Verify the platform session uses host-only cookies that are not sent to app origins, and a
+    `__Host-` cookie over HTTPS that apps can't set or overwrite (spec 002).
   - [ ] Verify owner and workspace identity survive documented restart and service recreation
     with storage retained, and storage failure cannot reopen setup or appear as an empty workspace.
   - [ ] Verify operator recovery without email delivery preserves ownership and identity, rejects
@@ -238,20 +242,21 @@ belong in the journey specifications listed in the [spec map](spec-map.md). Road
     PWA clients.
   - [ ] Ship and test the Electron desktop app on macOS, Linux, and Windows; Windows is low priority.
     Support server hosts on macOS and Linux; on Windows, support the desktop app and a local workspace
-    through Docker Desktop.
+    in an engine Your Space provides (Docker Desktop no longer required, 2026-11-14).
   - [ ] Verify release builds are signed in CI: macOS with an Apple Developer ID and notarization,
     and Windows (low priority) through SignPath or Microsoft Artifact Signing. Verify a downloaded macOS build opens with
     the standard prompt and updates itself.
   - [ ] Verify the desktop app can connect to an existing server by URL, or set up, run, and connect to
     a local Your Space Docker Compose stack on the same machine through the CLI.
-  - [ ] In local mode, verify Docker detection with a download link when missing, stack startup when
+  - [ ] In local mode, verify Your Space provides a Docker-compatible engine (its own VM by default,
+    replacing Docker detection with a download link on 2026-11-14), stack startup when
     the app opens, and owner-triggered Your Space updates.
   - [ ] Verify the desktop app uninstalls a local workspace through the CLI's uninstall command.
   - [ ] Verify the desktop app completes local-mode owner setup by running the owner command through
     the CLI and setting the password on the user's behalf, through the same flow as every other
     installation.
   - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off,
-    and state the Docker Desktop license terms.
+    and state Docker Desktop's license terms for owners who choose it as their engine.
   - [ ] Verify supported clients connect to the same workspace and handle authentication and failures;
     a connection to the server is required.
   - [ ] Define and test supported devices, platforms, installation and accessibility expectations.
@@ -263,46 +268,45 @@ belong in the journey specifications listed in the [spec map](spec-map.md). Road
   Desktop packaging, self-update mechanics, and PWA offline behavior remain open.
 
 - [ ] **Independent apps and developer integration**
-  - [ ] Specify and implement the versioned app integration and SDK contract needed by the journey;
-    keep the app independently built, running, and maintained in its own repository.
+  - [ ] Specify and implement the versioned app integration and SDK contract (level 2, journeys 005
+    and 007); keep apps independently built, running, and maintained in their own repositories.
   - [ ] Let only the owner install and remove apps; support installing apps from public GitHub
-    repositories by pasting the deployment file's URL in the workspace UI. Private repository
-    support is post-public.
-  - [ ] Read the deployment file at the pasted URL and record the exact repository revision used for
-    installation; verify updates re-read the file from the same URL.
-  - [ ] Require published container images with exact images and versions declared in the app's
-    integration files, including declared database services; verify the installed image identities
-    match those declarations and are retained with installation provenance.
+    repositories by pasting the link to the app's own Compose file in the workspace UI. Private
+    repository support is post-public.
+  - [ ] Read the file at the exact commit the link resolves to and record it, with the installation
+    kit's commit; verify updates re-read the file from the same link.
+  - [ ] Pin every image, including database services, to its digest; verify the installed image
+    identities match the review and are retained with installation provenance.
   - [ ] Let the owner trigger updates of installed apps; verify app data is preserved, the installed
     revision and image provenance reflect the update, and additional access requires explicit approval.
-  - [ ] Read the app's name and requested access from the `x-your-space` section of its Compose
-    file.
-  - [ ] Accept only Compose settings on an approved list, starting with what the first app needs;
-    verify unlisted settings and settings that would break app isolation, such as host folder
-    mounts, devices, privileged mode, or host networking, are rejected.
+  - [ ] Apply installation kits from their separate repository, with no app-specific logic in Your
+    Space (replacing the `x-your-space` section, 2026-11-14).
+  - [ ] Check each app's fully resolved Compose file against the allowlist in the 002 plan; verify
+    unlisted settings and settings that would break app isolation, such as host folder mounts,
+    devices, privileged mode, or host networking, are refused with reasons.
   - [ ] Back up app data and record image versions before each update; verify a failed update
     automatically restores the previous image versions and the pre-update data.
-  - [ ] Have Your Space manage each app's Docker container or containers on the server host, including
-    an app-declared database service when needed. Apps integrate with Your Space through APIs.
+  - [ ] Have Your Space run each app's containers, including an app-declared database service, through
+    the runtime manager, the only part that holds the engine connection.
   - [ ] Isolate apps from host folders, devices, and Docker controls; verify the boundary for the
     supported deployment path and do not assume containers alone make untrusted code safe.
   - [ ] Warn the owner at installation, and state in the documentation, that an installed app is
     trusted with its own data; Your Space protects itself and other apps but is not a sandbox for
     hostile code.
-  - [ ] Verify the owner can provide and change app settings and secrets, and that secrets are not
-    exposed in logs, errors, or the deployment file.
-  - [ ] Verify apps have no outbound network access beyond what they declared and the owner approved,
-    and that an update asking for more needs new approval.
+  - [ ] Verify the owner can provide and change app settings and secrets, that published secret
+    defaults are never used, and that secrets are not exposed in logs, errors, or output.
+  - [ ] Verify apps reach only their kit's starter hosts and hosts the owner approved from access
+    requests, and that an update asking for more needs new approval.
   - [ ] Verify memory and CPU limits contain a misbehaving app, and that the owner can see app status
     and logs.
   - [ ] Verify installation on ARM and Intel/AMD hosts, and a clear error when an app has no image for
-    the machine.
-  - [ ] Verify an external app hosted elsewhere can be added, uses Your Space identity and the gateway,
-    and rejects requests without identity verified by Your Space.
+    the engine's processor type.
+  - [ ] Verify an app someone already runs elsewhere can be added through a connector and is reached
+    only through Your Space; whether it must also verify Your Space identity is open.
   - [ ] Provide persistent app-specific storage; keep data after uninstall and allow the owner to
     explicitly delete retained data through an administration UI.
-  - [ ] Install the Tasks app as the first independent app, exercise its core workflow inside the
-    Your Space interface, and verify its data survives a supported restart.
+  - [ ] Install Sure unchanged as the first app and Twenty beside it, use them inside the Your Space
+    interface, and verify their data survives a supported restart.
   - [ ] Enable a developer to create or adapt and install an additional independent app using the
     documented SDK and contracts; validate the process beyond the first app.
   - [ ] Publish TypeScript and Python SDKs and verify each with a working app.
@@ -315,11 +319,10 @@ belong in the journey specifications listed in the [spec map](spec-map.md). Road
   installation is explicitly [post-open-source
   work](roadmap.md#post-public-later-direction-and-enhancements). Owner-triggered app updates with
   automatic rollback of failed updates are required before publication; automatic app updates, backup
-  history, and manual rollback are post-open-source. The deployment file is a Docker Compose file;
-  alternative formats are post-open-source. App details go in an `x-your-space` section of that file.
-  The approved list of Compose settings is set when the first app is implemented. The section's
-  contents, image identity validation, owner-triggered update mechanics, and failed-update detection
-  remain open.
+  history, and manual rollback are post-open-source. Apps install from their own Compose files with
+  optional installation kits (2026-11-14); alternative formats are post-open-source. Spec 002's plan
+  sets the allowlist and the kit format. Owner-triggered update mechanics and failed-update
+  detection remain open.
 
 - [ ] **External agent access**
   - [ ] Implement external-agent access to the installed app through the supported identity and role integration.
