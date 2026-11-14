@@ -57,6 +57,7 @@ export const EGRESS_PORT = 3128;
 export const EGRESS_IMAGE = "ubuntu/squid";
 const EGRESS_MEMORY = 64 * 1024 * 1024;
 const EGRESS_CPUS = 0.25;
+const EGRESS_FILES = 4096;
 
 /** Kept as the app wrote them. */
 const ALLOWED = new Set([
@@ -290,6 +291,9 @@ export function egressConfig(hosts: string[]): string {
     "pinger_enable off",
     // Each refused host is written at once, so it becomes an access request without delay.
     "buffered_logs off",
+    // Squid sizes its tables by the open-file limit; a machine's Docker can allow a million, which
+    // alone exceeds the proxy's memory limit.
+    `max_filedescriptors ${EGRESS_FILES}`,
     "cache deny all",
     "access_log stdio:/var/log/squid/access.log logformat=squid",
     "cache_log stdio:/var/log/squid/cache.log",
@@ -384,6 +388,7 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
     restart: "unless-stopped",
     networks: { app: {}, egress: {} },
     configs: [{ source: "egress", target: "/etc/squid/squid.conf" }],
+    ulimits: { nofile: { soft: EGRESS_FILES, hard: EGRESS_FILES } },
     healthcheck: {
       test: ["CMD", "bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${EGRESS_PORT}`],
       interval: "10s",

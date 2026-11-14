@@ -107,6 +107,11 @@ describe("Sure's own file", () => {
     expect(label(["a.example"])).not.toBe(label(["a.example", "b.example"]));
   });
 
+  it("caps the egress proxy's open files, whatever the machine's Docker allows", () => {
+    expect(services["ys-egress"]!.ulimits).toEqual({ nofile: { soft: 4096, hard: 4096 } });
+    expect((result.adapted!.configs as { egress: { content: string } }).egress.content).toContain("max_filedescriptors 4096");
+  });
+
   it("gives the egress proxy only the approved hosts, in lower case", () => {
     const content = (result.adapted!.configs as { egress: { content: string } }).egress.content;
     expect(content).toContain("acl approved dstdomain api.openai.com");
