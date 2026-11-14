@@ -478,9 +478,10 @@ real apps. Journey 004 (members and their app roles) and 005 (agents) depend on 
 - **FR-021**: Each app's services run with memory and CPU limits: a fixed default per service, which
   an installation kit can override and the owner can change behind an advanced control. Limits
   that scale with the workspace's resources are left to explore.
-- **FR-021a**: A space has workspace resources: the CPU and memory it runs in, which are a managed
-  tier's VM, the VM Your Space provides on a Mac, or a server itself. The Engine page shows them and
-  each app's use. An app can never cause Your Space's own services to be stopped for lack of
+- **FR-021a**: A space has workspace resources: the CPU and memory of the engine it runs apps on, as
+  the engine reports them. Your Space reads them the same way whatever the engine runs on (a server,
+  a laptop, a VM Your Space provides, or a managed tier's VM) and never depends on which. The Engine
+  page shows them and each app's use. An app can never cause Your Space's own services to be stopped for lack of
   memory.
 - **FR-022**: The owner can see each service's state and recent logs.
 - **FR-023**: Removing an app keeps its data; deleting retained data is a separate step that the
@@ -646,8 +647,8 @@ request after agreement.
    stand-in for GitHub, plus one real check against Sure's public repository.
 9. **Q9, limits (decided 2026-11-14)**: fixed default limits per service, which an installation kit
    can override and the owner can change behind an advanced control (FR-021). Resources belong to
-   the whole space first: a managed tier is a VM of a given size shared by Your Space and its apps,
-   and the local VM on a Mac has the same shape (FR-021a). Limits that scale with the workspace's
+   the whole space first: they are whatever the engine's machine provides, so a managed tier's VM, a
+   local VM and a server are the same thing to Your Space (FR-021a). Limits that scale with the workspace's
    resources are worth exploring; the default numbers are set in the plan after measuring Sure.
 10. **Q10, the second app**: Memos, or another app the owner uses.
 11. **Q11, deeper integration**: when the SDK, verified identity and app roles return, given that
