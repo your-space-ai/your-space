@@ -33,6 +33,8 @@ export interface ServiceSummary {
   name: string;
   image: string;
   interface: boolean;
+  /** Container ports the file publishes or exposes, the first published first. */
+  ports: number[];
   volumes: string[];
   dependsOn: string[];
 }
@@ -270,6 +272,15 @@ function namedVolumes(service: Json): string[] {
   return service.volumes.filter((v): v is Json => isObject(v) && v.type === "volume" && typeof v.source === "string").map((v) => v.source as string);
 }
 
+function servicePorts(service: Json): number[] {
+  const ports: number[] = [];
+  for (const p of Array.isArray(service.ports) ? service.ports : []) {
+    const target = Number(isObject(p) ? p.target : String(p).split(":").pop());
+    if (Number.isInteger(target) && target > 0 && !ports.includes(target)) ports.push(target);
+  }
+  return ports;
+}
+
 /** The Squid configuration for an app's egress proxy (FR-019). */
 export function egressConfig(hosts: string[]): string {
   const lines = [
@@ -320,6 +331,7 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
       name,
       image: String((s as Json).image ?? ""),
       interface: spec.interface?.service === name,
+      ports: servicePorts(s as Json),
       volumes: namedVolumes(s as Json),
       dependsOn: dependsOn(s as Json),
     }));
