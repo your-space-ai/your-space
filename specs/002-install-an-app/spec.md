@@ -533,6 +533,9 @@ request after agreement.
    refers to the app's files without copying them.
 8. **Processor types**: an app installs if its images run on the machine's processor type,
    superseding the requirement that app images exist for both ARM and Intel/AMD.
+10. **No moving workspaces**: Your Space provides backup and restore, easy to script, and doesn't
+   move workspaces between installations itself; that's for the person or their agent. Recorded in
+   the decision record's backup section; it changes journey 006, not this journey.
 9. **A shared vocabulary**: Your Space is the home, apps are its appliances and furniture, providers
    such as LLM services are its utilities, and installation kits make an appliance fit. Recorded in
    `docs/glossary.md` for future names.

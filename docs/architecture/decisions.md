@@ -226,6 +226,8 @@ Invited members recover their passwords without email in the first release:
 
 **Decision update (2026-11-02):** Backup, restore, and moving a workspace between installations are required before publication, superseding their deferral. Without them, a lost disk or a bad change loses the workspace, including members' accounts and app data, and early users will put real data in the first release. A documented manual procedure, such as copying Docker volumes, was rejected in favor of the built-in implementation. Designing the data model and storage for consistent capture from the start keeps the work small.
 
+**Decision update (2026-11-14):** Your Space does not move workspaces for people. It provides backup and restore, made easy for a person or their agent to script, and a person who wants to move a workspace, for example from a laptop to a server, backs up one installation and restores into another themselves. Your Space doesn't perform or verify moves, and whether the target setup suits the workspace (its processor type, or whether its apps run there) is the person's to judge. This supersedes moving a workspace as a feature required before publication; backup and restore stay required. Moves cross too many differences between setups for Your Space to handle well, and the backup and restore they rely on are needed anyway.
+
 What counts as a failed Your Space update, snapshot contents and storage, how the CLI authenticates to a remote server, how a restore reaches a broken or fresh installation, and backup format and protection remain open.
 
 ### Reuse Before Building

@@ -82,7 +82,7 @@ Your Space: first public release
 │   │   └── [003] macOS + Linux · Windows (L)
 │   └── Backup, restore, and migration
 │       ├── [006] Backup and restore, produced by the server, driven by the CLI
-│       └── [006] Move a workspace, e.g. local → server (M)
+│       └── [006] Backup and restore easy to script, for people and their agents (M)
 │
 ├── 2. Identity and access
 │   ├── Owner setup and sessions
@@ -161,7 +161,7 @@ Your Space: first public release
 │   │   └── [008] Updates itself from GitHub releases (M)
 │   └── Desktop local mode (wraps the CLI)
 │       ├── [008] Detect Docker, set up, create the owner, start with the app, update
-│       ├── [008] Backup, restore, move to a server, uninstall (M)
+│       ├── [008] Backup, restore, uninstall (M)
 │       └── [008] Sleep/off availability and Docker Desktop license documented (M)
 │
 └── 6. Trust and release
@@ -222,7 +222,9 @@ Your Space: first public release
 
   - [ ] [High] Back up any installation through the CLI: the Your Space server produces the backup and returns it through its API, wherever the server runs.
   - [ ] [High] Restore a backup into an installation.
-  - [ ] [Medium] Move a workspace between installations, such as from a local machine to a server, through backup and restore.
+  - [ ] [Medium] Make backup and restore easy to script, so a person or their agent can move a workspace between installations themselves.
+
+    **Replaced (2026-11-14):** "Move a workspace between installations, such as from a local machine to a server, through backup and restore." Your Space doesn't perform or verify moves; see [Your Space updates, backup, and restore](architecture/decisions.md#your-space-updates-backup-and-restore).
 
   One owner-only implementation serves every installation and builds on the pre-update snapshot
   mechanism; the desktop app uses the same operation (see Desktop local mode). Design the data model
@@ -436,7 +438,9 @@ Your Space: first public release
   - [ ] [High] Detect Docker and link to the Docker Desktop download when it is missing.
   - [ ] [High] In local mode, create the owner through the CLI and set the password on the user's behalf, using the same owner command as every other installation.
   - [ ] [High] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
-  - [ ] [Medium] Back up and restore the local workspace, and move it to a server, through the CLI.
+  - [ ] [Medium] Back up and restore the local workspace through the CLI.
+
+    **Replaced (2026-11-14):** "…and move it to a server". Moving is a backup and a restore the person does themselves.
   - [ ] [Medium] Uninstall the local workspace through the CLI's uninstall command.
   - [ ] [Medium] Document that a local workspace is unavailable to others while its machine is asleep or off, and state the Docker Desktop license terms.
 

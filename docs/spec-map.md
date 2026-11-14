@@ -76,7 +76,8 @@ Roadmap layers: [1 Install and operate](roadmap.md#1-install-and-operate) ·
 
 **006 Keep my space safe over time**
 - Updating Your Space and apps, with automatic rollback when an update fails.
-- Backup, restore, and moving a workspace (for example, local to a server).
+- Backup and restore, easy for people and their agents to script; moving a workspace to another
+  installation is a backup and restore they do themselves.
 - Uninstall, which keeps data unless the owner confirms deletion.
 
 **007 Build my own app**

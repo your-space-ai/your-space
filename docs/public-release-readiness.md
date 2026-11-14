@@ -41,7 +41,7 @@ new capabilities need their own specifications and implementation work.
 local workspaces; a desktop app that drives the CLI to run a local workspace; web, desktop, and PWA
 workspace clients; at least one independently installed app; developer ability to create and install
 additional apps; and external-agent access through the Your Space gateway. It also includes built-in
-HTTPS; built-in backup, restore, and moving a workspace between installations; owner-triggered Your
+HTTPS; built-in backup and restore; owner-triggered Your
 Space and app updates that roll back automatically if they fail; an activity log; uninstall; and
 signed desktop releases. Windows support and PWA installation are low priority. A small Tasks app is
 the first app. This scope does not change the owner-only first specification.
@@ -158,8 +158,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     certificate requests for an owner-configured domain are its only automatic outbound requests.
   - [ ] Provide accurate installation, configuration, restart, remote access, troubleshooting,
     owner recovery, and uninstall guidance for the actual release.
-  - [ ] Document where durable data lives, and how to back up, restore, and move a workspace
-    between installations with the CLI.
+  - [ ] Document where durable data lives, how to back up and restore with the CLI, and how a person
+    or their agent can move a workspace with a backup and a restore.
   - [ ] Explain local development, tests, contribution and review expectations, issue reporting,
     maintainer support expectations, and where to find the roadmap and security policy.
   - [ ] Decide and publish the project's community participation expectations and contact paths.
@@ -211,8 +211,8 @@ belong in the journey specifications listed in the [spec map](spec-map.md). Road
     versions and the pre-update data snapshot.
   - [ ] Verify owner-only backup and restore through the CLI for local and remote installations,
     including members' accounts, credentials, and app data, and restore into a fresh installation.
-  - [ ] Verify moving a local workspace to a server through backup and restore, and that the desktop
-    app backs up and restores a local workspace through the same CLI operation.
+  - [ ] Verify that the desktop app backs up and restores a local workspace through the same CLI
+    operation.
   - [ ] Verify the CLI drives Docker Compose for server and local installations on macOS and Linux,
     and for local installations on Windows, and that the desktop app drives it in local mode.
   - [ ] Test the CLI on each claimed host for initial setup, repeat invocation, failures, and
