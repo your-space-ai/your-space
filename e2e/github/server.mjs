@@ -21,9 +21,11 @@ createServer(async (req, res) => {
   if (commit !== COMMIT || !owner || !repo || path.length === 0) return res.writeHead(404).end();
   const file = normalize(join(root, owner, repo, ...path));
   if (!file.startsWith(root)) return res.writeHead(404).end();
+  let body;
   try {
-    res.writeHead(200, { "Content-Type": "text/plain" }).end(await readFile(file));
+    body = await readFile(file);
   } catch {
-    res.writeHead(404).end();
+    return res.writeHead(404).end();
   }
+  res.writeHead(200, { "Content-Type": "text/plain" }).end(body);
 }).listen(8080);

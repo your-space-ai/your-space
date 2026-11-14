@@ -408,6 +408,13 @@ describe("apps API", () => {
 });
 
 describe("handoff codes", () => {
+  it("notice a pane that keeps starting over, as when the browser blocks its cookies", () => {
+    const handoffs = new Handoffs();
+    expect([1, 2, 3].map(() => handoffs.looping("sure", "s1"))).toEqual([false, false, false]);
+    expect(handoffs.looping("sure", "s1")).toBe(true);
+    expect(handoffs.looping("twenty", "s1")).toBe(false);
+  });
+
   it("expire, work once, and only for their app", () => {
     const handoffs = new Handoffs();
     const code = handoffs.issue("sure", "s1");

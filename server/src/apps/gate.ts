@@ -57,9 +57,28 @@ export function safeReturn(value: unknown): string {
   return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\") ? value : "/";
 }
 
+const LOOP_WINDOW_MS = 15_000;
+const LOOP_LIMIT = 3;
+
 /** One-time codes that carry a signed-in session from Your Space's origin to an app's. */
 export class Handoffs {
   private readonly codes = new Map<string, { app: string; sessionId: string; expiresAt: number }>();
+  private readonly recent = new Map<string, number[]>();
+
+  /**
+   * Whether the browser keeps asking for the same app without keeping its pass, which happens when
+   * it blocks the app's cookies in a pane (WebKit does on the plain-HTTP local setup, where it
+   * treats each *.localhost name as its own site). The app then has to open in its own tab.
+   */
+  looping(appName: string, sessionId: string): boolean {
+    const key = `${sessionId}:${appName}`;
+    const now = Date.now();
+    const times = (this.recent.get(key) ?? []).filter((t) => now - t < LOOP_WINDOW_MS);
+    times.push(now);
+    this.recent.set(key, times);
+    for (const [k, v] of this.recent) if (v.every((t) => now - t >= LOOP_WINDOW_MS)) this.recent.delete(k);
+    return times.length > LOOP_LIMIT;
+  }
 
   issue(appName: string, sessionId: string): string {
     const now = Date.now();
