@@ -56,7 +56,8 @@ first pull request.
 ## Concepts and Adapters
 
 Your Space is built around concepts, not around one technology, so that a technology can be swapped
-by adding an adapter rather than changing Your Space ([Changes to Shared Direction](#changes-to-shared-direction), item 5).
+by adding an adapter rather than changing Your Space
+([Changes to Shared Direction](#changes-to-shared-direction), item 5).
 
 | Concept | What Your Space knows | First adapter | Later adapters |
 | --- | --- | --- | --- |
