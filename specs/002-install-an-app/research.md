@@ -106,3 +106,41 @@ checked again before anyone relies on them.
   Colima (MIT), Lima (Apache-2.0), Rancher Desktop (Apache-2.0) and Podman (Apache-2.0).
 - So Your Space depends on a Docker-compatible engine, not on Docker Desktop, and on macOS can provide
   its own VM by default (journey 003 or 008 settles how).
+
+## R2. Apps in Panes: Framing, Cookies and App Addresses
+
+- **Test (2026-11-14):** Sure (`ghcr.io/we-promise/sure:stable`, with its own Postgres and Redis)
+  behind a Caddy proxy, framed by a stand-in for Your Space that sets a host-only platform cookie
+  (`ys_session`). Playwright 1.64 drove Chromium, Firefox and WebKit on Linux. In each setup the
+  test signed up to Sure inside the pane, reloaded the page, opened Sure in its own tab, and checked
+  whether Sure ever received the platform cookie. The proxy used Caddy's internal CA, and the
+  browsers ignored certificate errors.
+- **Framing:** Sure sends `X-Frame-Options: SAMEORIGIN` (Rails' default). Without changes every
+  browser refused to show it in the pane. With the proxy removing that header and sending
+  `Content-Security-Policy: frame-ancestors <Your Space's origin>`, every browser showed it in every
+  setup. So framing is solved at the proxy, without changing the app, and the app stays protected
+  from being framed by anyone else.
+- **Cookies:** where sign-up failed, Sure's log shows "Can't verify CSRF token authenticity": the
+  browser didn't send Sure's own `SameSite=Lax` session cookie with the form inside the frame,
+  because it treated the frame as a different site.
+
+| Setup | Your Space | App | Chromium | Firefox | WebKit | Platform cookie reaches the app |
+| --- | --- | --- | --- | --- | --- | --- |
+| Domain, subdomain per app | `https://space.example.com` | `https://sure.space.example.com` | works | works | works | no |
+| This machine, subdomain of localhost | `http://localhost:8080` | `http://sure.localhost:8080` | sign-in fails | not measured (the test hung) | sign-in fails | no |
+| This machine, named | `http://space.localhost:8080` | `http://sure.space.localhost:8080` | works | works | sign-in fails | no |
+| Port per app, one host name | `https://ports.test:9443` | `https://ports.test:9444` | works | works | works | **yes**, in the pane and in its own tab |
+| Baseline: no header change | | | refused | refused | refused | |
+
+"Works" means: shown in the pane, sign-up succeeded, still signed in after a reload, and signed in
+when opened in its own tab.
+
+- An earlier run with names under `.test` (not on the public suffix list) failed in WebKit for the
+  subdomain setup and passed with `example.com`, so whether two names count as the same site depends
+  on the public suffix list. Real domains behave like the `example.com` row.
+- **Ports share cookies.** Browsers don't separate cookies by port, so an app on another port of
+  Your Space's host receives the platform session, and could set cookies with the platform's names.
+  A port setup needs the proxy to strip Your Space's cookies from requests to apps and to refuse
+  apps' attempts to set them.
+- **Not tested:** Safari on macOS (WebKit on Linux differs from Safari in its domain handling),
+  Tailscale's own names, real certificates, and Firefox with `sure.localhost`.
