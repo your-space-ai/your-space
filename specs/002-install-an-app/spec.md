@@ -117,22 +117,18 @@ A ─┬─ B ─┬─ G
 C, D and E feed the install.
 ```
 
-| Pull request | Slice | Brings in | What the owner can see |
+| Pull request | Slices | Brings in | What the owner can see |
 | --- | --- | --- | --- |
 | Base | Spec and plan | | This specification, its plan and research, the decision record and the constitution changes |
-| 1 | Run an app from a link | A, B, C, E, G; D for a small fixture app | A server command installs a small app from a GitHub link; it runs, and comes back after a restart |
-| 2 | Run Sure | D with Sure's installation kit; F's generated secrets | The same command runs Sure's web, worker, database and Redis services |
-| 3 | Apps in Your Space | H, I, J | An Apps area lists Sure and its state; installing from the UI with a review and trust warning |
-| 4 | Open an app | K, L, M | Sure opens in a pane on its own origin, reachable only through Your Space |
-| 5 | Change settings | F | The owner changes Sure's settings, such as an AI key; Sure restarts with them |
-| 6 | Outbound access | N | Sure starts with its kit's starter hosts; anything else it tries becomes an access request |
-| 7 | Isolation, tested | | Tests show an app can't reach the platform, other apps or the host |
-| 8 | Limits, status and logs | O | Limits, per-service status and logs, behind an advanced view |
-| 9 | Remove and delete data | P | Removing keeps the data; deleting it is its own confirmed step |
-| 10 | A second app, side by side | | Twenty and Sure side by side, one in its own tab, and the phone layout |
+| 1 | 1, 2: Run an app from a link | A, B, C, D, E, F, G | A server command installs an app from a GitHub link, Sure included, with its kit and generated secrets; it runs on its sealed network and comes back after a restart |
+| 2 | 3: Apps in Your Space | H, I, J | An Apps area lists apps and their state; installing from the UI with a review and trust warning; the Engine page |
+| 3 | 4: Open an app | K, L, M | Apps open in a pane on their own origin, reachable only through Your Space, at `space.localhost` |
+| 4 | 5, 6: Settings and outbound access | F, N | The owner changes an app's settings; apps reach only approved hosts, and other attempts become access requests |
+| 5 | 7, 8: Isolation, limits, status and logs | O | Tests show an app can't reach the platform, other apps or the host; limits, per-service status and logs behind an advanced view |
+| 6 | 9, 10: Remove, and apps side by side | P | Removing keeps the data, and deleting it is its own confirmed step; two apps side by side, and the phone layout |
 
-The spec pull request is the base of the stack; each slice after it is one pull request, and the
-user stories below are numbered to match the slices.
+The spec pull request is the base of the stack. Small slices that share a screen go together, so
+the stack has six pull requests after it. The user stories below are numbered by slice.
 
 ## User Scenarios & Testing
 

@@ -21,7 +21,7 @@ branch; nothing is delivered until it merges.
 - [x] T010 Installation kits: format, strict parsing, kits repository lookup (`server/src/apps/kits.ts`)
 - [x] T011 Generated, derived and kit-set settings, encrypted at rest (`server/src/apps/settings.ts`)
 - [x] T012 Sure installed from its own file with its kit (research R3)
-- [ ] T013 Publish Sure's and Twenty's kits (your-space-ai/your-space-app-kits#1)
+- [x] T013 Publish Sure's and Twenty's kits (your-space-ai/your-space-app-kits#1, merged)
 
 ## Slice 3: Apps in Your Space
 
