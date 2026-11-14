@@ -531,14 +531,6 @@ request after agreement.
    Space-specific deployment file with an `x-your-space` section. Help a particular app needs comes
    from an installation kit that Your Space's project maintains in a separate repository; the kit
    refers to the app's files without copying them.
-8. **Processor types**: an app installs if its images run on the machine's processor type,
-   superseding the requirement that app images exist for both ARM and Intel/AMD.
-9. **A shared vocabulary**: Your Space is the home, apps are its appliances and furniture, providers
-   such as LLM services are its utilities, and installation kits make an appliance fit. Recorded in
-   `docs/glossary.md` for future names.
-10. **No moving workspaces**: Your Space provides backup and restore, easy to script, and doesn't
-   move workspaces between installations itself; that's for the person or their agent. Recorded in
-   the decision record's backup section; it changes journey 006, not this journey.
 3. **The first app is Sure**, an existing open-source app, instead of a Tasks app written for Your
    Space.
 4. **No Docker Desktop dependency**: Your Space needs a Docker-compatible engine, not Docker Desktop.
@@ -558,6 +550,14 @@ request after agreement.
 7. **Apps keep their own sign-in**: Your Space controls who reaches an app, and verified identity
    and app roles move to an opt-in integration in a later slice. This moves the TypeScript SDK and
    app roles out of journey 002. [NEEDS DISCUSSION: see Q11]
+8. **Processor types**: an app installs if its images run on the machine's processor type,
+   superseding the requirement that app images exist for both ARM and Intel/AMD.
+9. **A shared vocabulary**: Your Space is the home, apps are its appliances and furniture, providers
+   such as LLM services are its utilities, and installation kits make an appliance fit. Recorded in
+   `docs/glossary.md` for future names.
+10. **No moving workspaces**: Your Space provides backup and restore, easy to script, and doesn't
+   move workspaces between installations itself; that's for the person or their agent. Recorded in
+   the decision record's backup section; it changes journey 006, not this journey.
 
 ## Questions for Discussion
 
