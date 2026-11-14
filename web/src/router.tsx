@@ -1,5 +1,6 @@
 // Routes (T032, T038): /sign-in, / (home), and /reset-password. "No owner yet" and failures are
-// states of the root route, not routes of their own (research R12).
+// states of the root route, not routes of their own (research R12). Journey 002 adds the signed-in
+// layout around home, /apps, /apps/$name, /open/$name (an app's pane) and /engine.
 import type { QueryClient } from "@tanstack/react-query";
 import {
   createRootRouteWithContext,
@@ -13,6 +14,11 @@ import {
 } from "@tanstack/react-router";
 import { useState } from "react";
 import { ErrorState } from "./components/ErrorState.tsx";
+import { Layout } from "./components/Layout.tsx";
+import { AppDetail } from "./pages/AppDetail.tsx";
+import { AppPane } from "./pages/AppPane.tsx";
+import { Apps } from "./pages/Apps.tsx";
+import { Engine } from "./pages/Engine.tsx";
 import { failureKind } from "./errors.ts";
 import { Home } from "./pages/Home.tsx";
 import { NoOwnerYet } from "./pages/NoOwnerYet.tsx";
@@ -57,13 +63,53 @@ function RootError({ error }: ErrorComponentProps) {
   return <ErrorState kind={failureKind(error)} onRetry={retry} retrying={retrying} />;
 }
 
-const homeRoute = createRoute({
+// Every page after sign-in shares Your Space's navigation.
+const signedInRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/",
+  id: "signed-in",
   beforeLoad: ({ context }) => {
     if (context.owner && !context.session) throw redirect({ to: "/sign-in" });
   },
+  component: Layout,
+});
+
+const homeRoute = createRoute({
+  getParentRoute: () => signedInRoute,
+  path: "/",
   component: Home,
+});
+
+const appsRoute = createRoute({
+  getParentRoute: () => signedInRoute,
+  path: "/apps",
+  component: Apps,
+});
+
+const appDetailRoute = createRoute({
+  getParentRoute: () => signedInRoute,
+  path: "/apps/$name",
+  component: function AppDetailPage() {
+    const { name } = appDetailRoute.useParams();
+    return <AppDetail key={name} name={name} />;
+  },
+});
+
+const openRoute = createRoute({
+  getParentRoute: () => signedInRoute,
+  path: "/open/$name",
+  validateSearch: (search: Record<string, unknown>): { with?: string } =>
+    typeof search.with === "string" && /^[a-z][a-z0-9-]{0,29}$/.test(search.with) ? { with: search.with } : {},
+  component: function OpenPage() {
+    const { name } = openRoute.useParams();
+    const search = openRoute.useSearch();
+    return <AppPane name={name} beside={search.with} />;
+  },
+});
+
+const engineRoute = createRoute({
+  getParentRoute: () => signedInRoute,
+  path: "/engine",
+  component: Engine,
 });
 
 const NOTICES: SignInNotice[] = ["password_set", "signed_out", "expired"];
@@ -87,7 +133,11 @@ const resetPasswordRoute = createRoute({
   component: ResetPassword,
 });
 
-const routeTree = rootRoute.addChildren([homeRoute, signInRoute, resetPasswordRoute]);
+const routeTree = rootRoute.addChildren([
+  signedInRoute.addChildren([homeRoute, appsRoute, appDetailRoute, openRoute, engineRoute]),
+  signInRoute,
+  resetPasswordRoute,
+]);
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({

@@ -150,3 +150,374 @@ dt {
 dd {
   margin: 0;
 }
+
+/* Journey 002: the signed-in layout, apps, panes and the Engine page. */
+.shell {
+  display: grid;
+  grid-template-columns: 13rem 1fr;
+  grid-template-rows: 100vh;
+  height: 100vh;
+}
+
+.topbar {
+  display: none;
+}
+
+.brand {
+  font-weight: 700;
+}
+
+.nav {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.nav ul {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.nav li a {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.nav li a:hover,
+.nav li a[data-status="active"] {
+  background: var(--bg);
+}
+
+.nav ul[aria-label="Your apps"] {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.content {
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.page {
+  max-width: 56rem;
+  padding: 1.5rem 2rem 3rem;
+}
+
+.page h1 {
+  margin-top: 0.5rem;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.inline-heading {
+  display: inline;
+  margin: 0;
+}
+
+summary {
+  cursor: pointer;
+}
+
+.small {
+  font-size: 0.85em;
+}
+
+.badge {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 0 0.4em;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--panel);
+  font-size: 0.8em;
+  text-align: center;
+  margin-left: 0.4em;
+}
+
+.state {
+  font-size: 0.85em;
+  padding: 0.05em 0.5em;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.state-running {
+  border-color: #2e7d32;
+  color: #2e7d32;
+}
+
+.state-failed,
+.state-degraded {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.app-list,
+.rows {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+
+.app-list li,
+.rows li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.button.secondary-link,
+button.danger-outline {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+
+button.danger-outline {
+  color: var(--danger);
+}
+
+button.danger {
+  background: var(--danger);
+}
+
+.confirm {
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.warning {
+  border-color: #b26a00;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 1rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+td input {
+  width: 7rem;
+}
+
+select {
+  font: inherit;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+label.checkbox {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+label.checkbox small {
+  flex-basis: 100%;
+}
+
+form.inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+}
+
+.secret {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.fields {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.steps {
+  margin: 0 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.logs {
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre;
+}
+
+.kind {
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+/* Panes: the app fills the content area; two side by side on a wide screen. */
+.panes {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr auto;
+  height: 100vh;
+}
+
+.panes.two {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+.pane {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+}
+
+.pane-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.75rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9em;
+}
+
+.pane-bar button {
+  padding: 0.15rem 0.6rem;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.pane iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.beside {
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.beside label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+@media (max-width: 1099px) {
+  /* One app at a time below a wide screen. */
+  .panes.two {
+    grid-template-columns: 1fr;
+  }
+
+  .panes.two .pane + .pane {
+    display: none;
+  }
+}
+
+@media (max-width: 719px) {
+  .shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .menu-button {
+    padding: 0.3rem 0.75rem;
+  }
+
+  .nav {
+    display: none;
+    position: fixed;
+    top: 3rem;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    max-height: calc(100vh - 3rem);
+  }
+
+  .nav.open {
+    display: block;
+  }
+
+  .nav > .brand {
+    display: none;
+  }
+
+  .panes {
+    height: calc(100vh - 3rem);
+  }
+
+  .beside {
+    display: none;
+  }
+
+  .page {
+    padding: 1rem;
+  }
+}
