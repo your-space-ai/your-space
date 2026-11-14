@@ -243,9 +243,14 @@ then try to reach Sure's address while signed out of Your Space.
    **Then** they are sent to Your Space's sign-in and reach no part of the app.
 4. **Given** an app whose interface can't run in a pane, **When** the owner opens it, **Then** it
    opens in its own tab, behind the same access check.
-5. **Given** each setup from journey 001 (this machine, your own domain, your own proxy or
-   Tailscale), **When** the owner opens an app, **Then** its address works there.
-   [NEEDS DISCUSSION: app origins per setup; see Q5]
+5. **Given** each setup from journey 001, **When** the owner opens an app, **Then** it is at
+   `<app>.<Your Space's address>`: `sure.space.localhost` on this machine with no setup,
+   `sure.space.example.com` on your own domain after one wildcard DNS record, a Tailscale Service
+   name on Tailscale, and the forwarded wildcard name behind your own proxy.
+6. **Given** Sure in a pane, **When** its requests reach Sure, **Then** none of them carries Your
+   Space's sign-in cookie, and no cookie Sure sets reaches Your Space or another app.
+7. **Given** an app that sends a header forbidding framing, **When** it opens in a pane, **Then** it
+   shows, and no other site can frame it.
 
 ### User Story 5 - Change an App's Settings (Priority: P2)
 
@@ -419,21 +424,31 @@ real apps. Journey 004 (members and their app roles) and 005 (agents) depend on 
 **Opening apps (slice 4)**
 
 - **FR-013**: Each app's interface must run on its own origin, separate from Your Space and from other
-  apps.
+  apps, at `<app>.<Your Space's address>` in every setup. Ports and paths are not used for apps,
+  because browsers don't keep cookies apart by either. On this machine Your Space's address is
+  `space.localhost` rather than `localhost`, because browsers treat `localhost` and
+  `sure.localhost` as different sites; every `*.localhost` name reaches the machine itself with no
+  setup (RFC 6761).
 - **FR-013a**: Your Space reaches each app's interface through an app endpoint. Routing, the app
   origin, the access gate and panes must depend only on the endpoint, not on how it is reached. In
   this journey the only endpoint is a container on Your Space's engine; later endpoint types (an
   app on another engine, or an app someone already runs, reached through a connector) add to it
   without changing these.
 - **FR-014**: Only people signed in to Your Space may reach an app's origin. The platform session
-  stays on the platform's own host.
+  stays on the platform's own host: a `__Host-` cookie that apps can't overwrite. An app's origin
+  gets its own short-lived pass, issued by Your Space to someone already signed in, and the proxy
+  removes that pass before forwarding requests to the app.
+- **FR-014a**: The proxy removes Your Space's cookies from every request to an app, and removes any
+  `Domain` attribute from cookies an app sets, so no app's cookie reaches Your Space or another app.
 - **FR-015**: Apps must be reachable only through Your Space; app containers publish no ports of their
   own.
 - **FR-016**: Apps open in panes inside Your Space, with its navigation available, and in their own
   tab when they can't run in a pane.
 - **FR-017**: Your Space must not require apps to change their code, their requests or their sign-in
-  to open in a pane. [NEEDS DISCUSSION: what Your Space may change in an app's responses, such as
-  framing headers and cookie attributes; see Q6]
+  to open in a pane. The proxy may change only what every app needs the same way: it replaces an
+  app's framing headers so that only Your Space can frame it, and applies FR-014a. It doesn't change
+  an app's own cookies otherwise; an app that can't run in a pane opens in its own tab, and its
+  installation kit can say so.
 
 **Settings, outbound access and isolation (slices 5 to 7)**
 
@@ -558,6 +573,9 @@ request after agreement.
 10. **No moving workspaces**: Your Space provides backup and restore, easy to script, and doesn't
    move workspaces between installations itself; that's for the person or their agent. Recorded in
    the decision record's backup section; it changes journey 006, not this journey.
+11. **Your Space's local address becomes `space.localhost`**: journey 001 serves this machine's
+    setup at `localhost`. Slice 4 moves it to `space.localhost` (keeping `localhost` as a redirect),
+    so apps can be same-site subdomains, and makes Your Space's session cookie a `__Host-` cookie.
 
 ## Questions for Discussion
 
@@ -580,11 +598,19 @@ request after agreement.
    what happens for apps without a kit, is designed with the review screen in slice 3.
 4. **Q4, processor types (decided 2026-11-14)**: an app installs if its images run on the runtime's
    processor type; nothing more is required.
-5. **Q5, app origins per setup**: a subdomain per app (`sure.localhost`, `sure.example.com`) needs
-   wildcard DNS for your own domain; Tailscale and your own proxy may need a port per app instead.
-6. **Q6, panes and cookies**: Sure sends a header that forbids framing and uses cookies that browsers
-   block in a cross-site pane. What Your Space may change in an app's responses so it works in a
-   pane, and when it falls back to its own tab.
+5. **Q5, app addresses (decided 2026-11-14)**: every app is at `<app>.<Your Space's address>` in
+   every setup (FR-013): `space.localhost` with `sure.space.localhost` on this machine, a wildcard
+   DNS record on your own domain, Tailscale Services on Tailscale, a forwarded wildcard behind your
+   own proxy. Ports and paths share cookies between apps, as Umbrel, CasaOS, Runtipi and Home
+   Assistant's add-ons show; a host name per app is what Codespaces, Gitpod, Coder, OrbStack and
+   JupyterHub use. Still to check on a running version: Safari on macOS with `*.localhost`, and
+   whether Your Space can create Tailscale Services itself. See research R2.
+6. **Q6, panes and cookies (decided 2026-11-14)**: the proxy replaces framing headers so only Your
+   Space can frame an app, keeps Your Space's cookies away from apps and apps' cookies away from
+   Your Space and each other (FR-014, FR-014a, FR-017), and leaves apps' own cookies alone. Tested
+   with Sure in Chromium, Firefox and WebKit; rewriting apps' cookies to `SameSite=None;
+   Partitioned` was tested and rejected (it splits the pane's session from the app's own tab and
+   weakens the app's CSRF protection). See research R2.
 7. **Q7, outbound hosts**: how the owner learns which hosts an app needs (from the app's file or
    documentation, from blocked attempts shown in Your Space, or both).
 8. **Q8, test apps (decided 2026-11-12)**: `traefik/whoami` (MIT) as the small web app for fast
