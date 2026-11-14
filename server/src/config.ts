@@ -2,7 +2,7 @@
 //
 // The owner writes at most one line, and which key they write picks the setup (constitution
 // principle II; docs/install/README.md):
-//   nothing                        this machine only, http://localhost
+//   nothing                        this machine only, http://space.localhost
 //   YS_DOMAIN=space.example.com    your own domain, HTTPS from Let's Encrypt
 //   YS_PROXY_URL=https://...       behind your own proxy or Tailscale
 // YS_PORT moves the local port when 80 (or 8080 behind a proxy) is taken. Everything else is derived.
@@ -29,7 +29,14 @@ export class ConfigError extends Error {
   }
 }
 
-const OWNER_KEYS = ["YS_DOMAIN", "YS_PROXY_URL", "YS_PORT", "YS_VERSION"];
+const OWNER_KEYS = ["YS_DOMAIN", "YS_PROXY_URL", "YS_PORT", "YS_VERSION", "YS_ENGINE_SOCKET"];
+
+/**
+ * This machine's address. Apps are at <app>.space.localhost, a subdomain of it, so they are same-site
+ * with Your Space and each gets its own origin; every *.localhost name reaches this machine with no
+ * setup (RFC 6761). Plain `localhost` redirects here.
+ */
+export const LOCAL_HOST = "space.localhost";
 
 // Better Auth reads these by itself, and they would replace the secret Your Space gives it.
 const FOREIGN_SECRET_KEYS: Record<string, string> = {
@@ -194,7 +201,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadOp
 
   const port = present(env.YS_PORT) ? checkPort(env.YS_PORT, problems) : undefined;
   let mode: Mode = "local";
-  let publicUrl = port && port !== 80 ? `http://localhost:${port}` : "http://localhost";
+  let publicUrl = port && port !== 80 ? `http://${LOCAL_HOST}:${port}` : `http://${LOCAL_HOST}`;
 
   if (present(env.YS_DOMAIN) && present(env.YS_PROXY_URL)) {
     problems.push("Set either YS_DOMAIN (your own domain) or YS_PROXY_URL (your own proxy or Tailscale), not both.");

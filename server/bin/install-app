@@ -1,0 +1,3 @@
+#!/bin/sh
+# docker compose exec server install-app ...
+exec node "$(dirname "$(readlink -f "$0")")/../src/commands/install-app.ts" "$@"
