@@ -22,6 +22,8 @@ function composeCommand(): [string, string[]] {
       `${root}deploy/compose.yaml`,
       "-f",
       `${root}deploy/compose.build.yaml`,
+      "-f",
+      `${root}e2e/compose.e2e.yaml`,
     ],
   ];
 }

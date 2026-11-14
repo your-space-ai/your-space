@@ -1,0 +1,15 @@
+kit: 1
+source:
+  repo: ys-fixtures/whoami
+  path: compose.yaml
+name: whoami
+title: Who Am I
+interface:
+  service: web
+  port: 80
+generate:
+  API_TOKEN: { bytes: 24 }
+outbound:
+  - example.com
+limits:
+  web: { memory: 64M, cpus: 0.5 }

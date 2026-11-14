@@ -1,13 +1,17 @@
 # Behind your own proxy or Tailscale: YS_PROXY_URL=https://... in .env. The proxy provides HTTPS
 # and forwards to plain HTTP on 127.0.0.1:8080 (YS_PORT moves it), or, if the proxy runs in a
 # container, to http://your-space:8080 on the edge network below. Only port 8080 trusts the
-# visitor address a proxy reports.
+# visitor address a proxy reports. Apps are at <app>.<your proxy's name>, so the proxy forwards those
+# names too, for example a wildcard name.
 services:
   caddy:
     ports:
       - "127.0.0.1:${YS_PORT:-8080}:8080"
     environment:
       YS_SITE: http://:8080
+      # Every other name forwarded to port 8080 is an app's: <app>.<your proxy's name>.
+      YS_PROXY_URL: ${YS_PROXY_URL}
+      YS_ORIGIN: ${YS_PROXY_URL}
       YS_REDIRECT_URL: ${YS_PROXY_URL}
     networks:
       default: {}

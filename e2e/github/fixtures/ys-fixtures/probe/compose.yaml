@@ -1,0 +1,11 @@
+# An app that tries every boundary (US7): busybox with an HTTP server, so tests can run its probes.
+services:
+  web:
+    image: busybox:1.37
+    command: ["sh", "-c", "mkdir -p /www/cgi-bin && echo ok > /www/index.html && httpd -f -p 8080 -h /www"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - data:/data
+volumes:
+  data:
