@@ -52,6 +52,32 @@ record's accepted app direction, it says so in
 [Changes to Shared Direction](#changes-to-shared-direction), and the decision record changes in the
 first pull request.
 
+## Concepts and Adapters
+
+Your Space is built around concepts, not around one technology, so that a technology can be swapped
+by adding an adapter rather than changing Your Space ([Changes to Shared Direction](#changes-to-shared-direction), item 5).
+
+| Concept | What Your Space knows | First adapter | Later adapters |
+| --- | --- | --- | --- |
+| **App description** | An app's services, images, volumes, settings, start order, health checks and interface | Compose importer: reads an app's own Compose file | Other app formats, if a real need appears |
+| **Runtime** | Install, start, stop, report on, log and remove an app; apply its network, outbound and limit policies | Docker adapter | k3s or another orchestrator |
+| **Runtime connection** | The one runtime Your Space runs apps on | A Docker engine connection | A cluster connection |
+| **App endpoint** | How Your Space reaches an app's interface | A container on Your Space's own runtime | An app on another runtime; an app someone already runs, through a connector |
+| **Installation kit** | What makes a particular app fit Your Space without changing it | Kits in a separate repository | Community kits |
+
+Only an adapter knows its technology. Requirements in this spec are written in terms of the
+concepts; the [Docker adapter](#docker-adapter) section holds what is specific to Docker and
+Compose.
+
+**Installation kits.** Some apps need help to fit: which service is the interface, which values
+must be generated rather than taken from published defaults, which outbound hosts a feature needs.
+App authors can't be expected to add this, so Your Space's project maintains installation kits for
+the apps it supports, in a repository separate from Your Space (for example
+`your-space-ai/install-kits`). A kit refers to the app's own files by link and exact commit and
+lists the adjustments; it never copies the app's code or files, so the app's license is untouched.
+Your Space reads a kit as another input, and contains no app-specific logic. An app with no kit
+installs if its own files are enough.
+
 ## Slices and Their Dependencies
 
 Your Space needs these components. Each slice brings in only what it uses.
@@ -59,9 +85,9 @@ Your Space needs these components. Each slice brings in only what it uses.
 | | Component | What it does | Needs |
 | --- | --- | --- | --- |
 | A | App records | Each installed app's source link, commit, adapted Compose file, pinned images and state | |
-| B | Runtime manager | The only part of Your Space that holds the Docker engine connection: starts, stops, reports and removes one Compose project per app | A |
+| B | Runtime manager | The only part of Your Space that holds the runtime connection; drives the runtime adapter to start, stop, report on and remove apps | A |
 | C | Source fetch | Turns a GitHub link into one file at an exact commit | |
-| D | Compose adapter | Reads the file, checks it against the approved list, adapts what it safely can, refuses the rest with reasons | |
+| D | App description and kits | Imports the app's own file into an app description, applies its installation kit, checks it against Your Space's rules, refuses the rest with reasons | |
 | E | Image pinning | Resolves each image to an exact version available for both ARM and Intel/AMD | |
 | F | Settings and secrets | Values for the file's variables; generates secrets; keeps them out of logs and output | A |
 | G | Restart recovery | Brings apps back when Your Space starts, and corrects recorded state that no longer matches | A, B |
@@ -347,25 +373,26 @@ real apps. Journey 004 (members and their app roles) and 005 (agents) depend on 
 
 **Running apps (slices 1 and 2)**
 
-- **FR-001**: Only the runtime manager may hold the Docker engine connection. The web-facing server
-  must not hold it, and nothing reachable from an app or the network may reach the runtime manager.
-- **FR-001a**: Your Space runs apps through one Docker engine connection, in Docker's standard
-  forms (a local socket, `ssh://`, or `tcp://` with TLS). It is found without configuration and can
-  be overridden with one setting. Your Space's behavior must not depend on where the engine runs:
-  on the host, in a virtual machine Your Space provides, or elsewhere. Docker Desktop is not
-  required; any Docker-compatible engine of version 28 or newer works.
-- **FR-002**: Each installed app must run as its own Compose project, with its own network and named
-  volumes, so apps can't collide with each other or with Your Space.
+- **FR-001**: Only the runtime manager may hold the runtime connection. The web-facing server must
+  not hold it, and nothing reachable from an app or the network may reach the runtime manager.
+- **FR-001a**: Your Space runs apps through one runtime connection, found without configuration and
+  overridable with one setting. Your Space's behavior must not depend on where the runtime runs: on
+  the host, in a virtual machine Your Space provides, or elsewhere.
+- **FR-001b**: Everything specific to a runtime technology lives in its adapter. Your Space's core
+  works only with the concepts in [Concepts and Adapters](#concepts-and-adapters).
+- **FR-002**: Each installed app must be kept apart from other apps and from Your Space: its own
+  network, its own durable volumes, and names that can't collide.
+- **FR-002a**: App-specific adjustments come only from installation kits, kept outside Your Space.
+  Your Space contains no logic for a particular app.
 - **FR-003**: An install must record the source link, the exact commit it resolved to, the adapted
   Compose file, each image's exact version, and the actor who installed it.
-- **FR-004**: Every image must be pinned to an exact version. An image missing for the machine's
-  architecture must stop the install with a clear message. [NEEDS DISCUSSION: require both ARM and
-  Intel/AMD, or only this machine's; see Q4]
+- **FR-004**: Every image must be pinned to an exact version. An app installs if its images run on
+  the runtime's processor type (ARM or Intel/AMD); if not, the install stops with a clear message.
 - **FR-005**: Your Space must accept only Compose settings on an approved list. It may adapt a setting
   only by a documented rule, and must refuse the install with reasons for anything else.
-- **FR-006**: Secrets that the file sets in plain text must be replaced with generated values, and
-  generated values must never appear in output, logs or the review. [NEEDS DISCUSSION: how Your
-  Space recognizes a secret; see Q3]
+- **FR-006**: Published defaults for secrets are never used. An installation kit can say which
+  values Your Space generates; generated values never appear in output, logs or the review. How the
+  owner sees and sets these values is designed with the review screen in slice 3 (see Q3).
 - **FR-007**: Apps must come back when Your Space starts, and Your Space must not report a state that
   doesn't match what is running.
 - **FR-008**: Stopping Your Space on purpose stops the apps it manages, and starting it brings them
@@ -434,6 +461,26 @@ real apps. Journey 004 (members and their app roles) and 005 (agents) depend on 
 - **FR-028**: The installation guide documents installing, opening, settings, outbound access,
   removal, the trust warning, and what Your Space protects and doesn't.
 
+### Docker Adapter
+
+What is specific to the first runtime adapter. The research behind it is
+[research R1](research.md#r1-how-your-space-runs-app-containers).
+
+- **FR-D01**: The runtime connection is a Docker engine connection in Docker's standard forms: a
+  local socket, `ssh://`, or `tcp://` with TLS. Any Docker-compatible engine of version 28 or newer
+  works; Docker Desktop is not required.
+- **FR-D02**: Each app is one Compose project with its own network and named volumes, named so that
+  two apps with the same service names can't collide.
+- **FR-D03**: The adapter checks an app's fully resolved Compose file (after `include`, `extends`,
+  anchors and placeholders) against an allowlist of settings, never the raw file.
+- **FR-D04**: Rules that apply to every app: published host ports are replaced by Your Space's
+  routing, networks are assigned by the adapter, images are pinned by digest, services behind
+  profiles are left out, and host folders, devices, privileged mode, host namespaces and engine
+  access are refused.
+- **FR-D05**: Each app's network is internal, with no route to the host (Docker 28's isolated gateway
+  mode); outbound access goes only through an allowlisting proxy on the app's behalf.
+- **FR-D06**: Memory and CPU limits are applied to each service.
+
 ### Key Entities
 
 - **Installed app**: an app on this installation: its name, source link, commit, the adapted Compose
@@ -445,7 +492,10 @@ real apps. Journey 004 (members and their app roles) and 005 (agents) depend on 
 - **App origin**: the address an app's interface is served on.
 - **App endpoint**: how Your Space reaches an app's interface; in this journey, a container on its own
   engine.
-- **Engine connection**: the one Docker engine Your Space runs apps on.
+- **Runtime connection**: the one runtime Your Space runs apps on; for the Docker adapter, a Docker
+  engine.
+- **Installation kit**: the adjustments that make a particular app fit Your Space, kept outside Your
+  Space and referring to the app's own files.
 - **Outbound approval**: an internet host the owner allowed an app to reach.
 - **Retained data**: an app's named volumes kept after removal.
 
@@ -463,8 +513,7 @@ real apps. Journey 004 (members and their app roles) and 005 (agents) depend on 
 
 ## Assumptions
 
-- Your Space's own stack and its apps share one Docker engine in this journey, wherever that engine
-  runs. An engine on another machine, and apps that someone already runs elsewhere, are later work.
+- Your Space's own stack and its apps share one runtime in this journey, wherever it runs. An engine on another machine, and apps that someone already runs elsewhere, are later work.
 - The owner is the only person in this journey; members arrive in journey 004.
 - Only public GitHub repositories; private repositories and catalogs come later.
 - Apps run published images only; Your Space doesn't build images.
@@ -477,9 +526,16 @@ request after agreement.
 
 1. **Journeys are delivered in slices**: one specification for the journey, then one pull request
    per slice in a stack, each ending with something working end to end.
-2. **Apps install from their own Compose files**: Your Space adapts an upstream file to its rules,
-   instead of requiring a Your Space-specific deployment file. An `x-your-space` section stays
-   optional, for apps that want to declare more. [NEEDS DISCUSSION: see Q2]
+2. **Apps install from their own files, with optional installation kits**: Your Space reads an app's
+   own Compose file and applies rules that hold for every app, instead of requiring a Your
+   Space-specific deployment file with an `x-your-space` section. Help a particular app needs comes
+   from an installation kit that Your Space's project maintains in a separate repository; the kit
+   refers to the app's files without copying them.
+8. **Processor types**: an app installs if its images run on the machine's processor type,
+   superseding the requirement that app images exist for both ARM and Intel/AMD.
+9. **A shared vocabulary**: Your Space is the home, apps are its appliances and furniture, providers
+   such as LLM services are its utilities, and installation kits make an appliance fit. Recorded in
+   `docs/glossary.md` for future names.
 3. **The first app is Sure**, an existing open-source app, instead of a Tasks app written for Your
    Space.
 4. **No Docker Desktop dependency**: Your Space needs a Docker-compatible engine, not Docker Desktop.
@@ -513,13 +569,14 @@ request after agreement.
    Socket proxies, Docker-in-Docker, gVisor, Kata and Docker Desktop's Enhanced Container Isolation
    were considered; optional hardening for servers (Sysbox, rootless Docker) is later work. The
    research behind this goes in `research.md`.
-2. **Q2, the deployment file**: adapt upstream Compose files, with an optional `x-your-space`
-   section, or require a Your Space file next to them.
-3. **Q3, recognizing secrets**: upstream files don't mark secrets. Options: names that look like
-   secrets (`SECRET`, `PASSWORD`, `TOKEN`, `KEY`), an `x-your-space` list when present, and the owner
-   marking them in the review.
-4. **Q4, architectures**: require images for both ARM and Intel/AMD, as the decision record says, or
-   only for this machine, since apps run on this machine.
+2. **Q2, the app's files (decided 2026-11-14)**: Your Space reads the app's own Compose file and
+   applies rules that hold for every app. Help a particular app needs comes from an installation kit
+   in a separate repository, never from logic in Your Space or changes to the app's files.
+3. **Q3, secrets (rule decided 2026-11-14, experience open)**: published secret defaults are never
+   used, and a kit says which values to generate. What the owner sees and sets in the review, and
+   what happens for apps without a kit, is designed with the review screen in slice 3.
+4. **Q4, processor types (decided 2026-11-14)**: an app installs if its images run on the runtime's
+   processor type; nothing more is required.
 5. **Q5, app origins per setup**: a subdomain per app (`sure.localhost`, `sure.example.com`) needs
    wildcard DNS for your own domain; Tailscale and your own proxy may need a port per app instead.
 6. **Q6, panes and cookies**: Sure sends a header that forbids framing and uses cookies that browsers
