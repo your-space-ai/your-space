@@ -518,7 +518,7 @@ of requiring a Your Space-specific deployment file with an `x-your-space` sectio
 the 2026-10-31 decision to put app details in an `x-your-space` section and the bullets above that
 the developer supplies a separate deployment file. Help a particular app needs comes from an
 installation kit that Your Space's project maintains in a separate repository
-(`your-space-ai/install-kits`): which service is the interface, which values to generate rather than
+(`your-space-ai/your-space-app-kits`): which service is the interface, which values to generate rather than
 take from published defaults, values Your Space works out itself such as the app's own address,
 which outbound hosts it needs, its limits, and whether it can run in a pane. A kit refers to the
 app's files by link and exact commit and never copies them, so the app's license is untouched. Your

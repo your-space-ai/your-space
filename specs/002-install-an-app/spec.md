@@ -76,7 +76,7 @@ Compose.
 must be generated rather than taken from published defaults, which outbound hosts a feature needs.
 App authors can't be expected to add this, so Your Space's project maintains installation kits for
 the apps it supports, in a repository separate from Your Space (for example
-`your-space-ai/install-kits`). A kit refers to the app's own files by link and exact commit and
+`your-space-ai/your-space-app-kits`). A kit refers to the app's own files by link and exact commit and
 lists the adjustments; it never copies the app's code or files, so the app's license is untouched.
 A kit can set a setting to a value Your Space works out itself, such as the app's own address (Twenty
 needs it in `SERVER_URL`), so the owner isn't asked for it.
@@ -644,7 +644,9 @@ request after agreement.
    values to set from the app's own example settings. Without a kit, any setting whose name says it
    holds a secret and that has a published default gets a generated value. The review shows each
    setting; secrets show only as set or generated, never their values, and the owner can give a
-   value for any setting before installing.
+   value for any setting before installing. How to keep less experienced owners safe with apps that
+   have no kit (for example, clearer warnings, or installing only apps with kits by default) is
+   left for later.
 4. **Q4, processor types (decided 2026-11-14)**: an app installs if its images run on the runtime's
    processor type; nothing more is required.
 5. **Q5, app addresses (decided 2026-11-14)**: every app is at `<app>.<Your Space's address>` in

@@ -4,7 +4,7 @@ import { parse } from "yaml";
 import type { Kit } from "../db/schema.ts";
 import { fetchSource, githubEndpoints, SourceError, type GithubEndpoints } from "./github.ts";
 
-export const KITS_REPO = "your-space-ai/install-kits";
+export const KITS_REPO = "your-space-ai/your-space-app-kits";
 
 export function kitsRepo(env: NodeJS.ProcessEnv = process.env): string {
   return env.YS_E2E_KITS || KITS_REPO;

@@ -1,0 +1,23 @@
+# Twenty (https://github.com/twentyhq/twenty), a CRM, from its own packages/twenty-docker/docker-compose.yml.
+kit: 1
+source:
+  repo: twentyhq/twenty
+  path: packages/twenty-docker/docker-compose.yml
+name: twenty
+title: Twenty
+interface:
+  service: server
+  port: 3000
+generate:
+  APP_SECRET: {}
+  ENCRYPTION_KEY: {}
+  PG_DATABASE_PASSWORD: {}
+derive:
+  SERVER_URL: app_origin
+limits:
+  server: { memory: 2G, cpus: 2 }
+  worker: { memory: 1G }
+  db: { memory: 512M }
+  redis: { memory: 256M }
+set:
+  STORAGE_TYPE: local
