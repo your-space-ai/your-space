@@ -1,4 +1,20 @@
 <!--
+Sync Impact Report (2026-11-14): 1.3.0 -> 1.4.0 (minor: new principle)
+- Added: VIII. Build Around Concepts, Not Technologies. Your Space implements against concepts, such
+  as an engine connection, an app endpoint or a secret store, that different technologies sit behind
+  through adapters. Only an adapter knows its technology, and a plan names the concept and its first
+  adapter.
+- Rationale: running apps ties Your Space to a runtime for the first time, and other runtimes are
+  already in view (k3s, an engine on another machine, apps someone already runs). Written against
+  concepts, each is a new adapter rather than a change through Your Space.
+- Impact: journey 002's plan follows it: the server talks to the runtime in terms of apps, services,
+  endpoints and outbound hosts, and only the runtime manager, the Docker adapter, knows Docker.
+  The decision record gains a Concepts and Adapters section; later plans name concepts and adapters.
+- Clarified: II. Preserve User Control and Hosting Choice no longer requires every installed app to
+  use platform-provided identity. Your Space controls who reaches every app; apps that integrate use
+  its identity and permissions, and existing apps that don't keep their own accounts (journey 002,
+  integration levels).
+
 Sync Impact Report (2026-11-10): 1.2.0 -> 1.3.0 (minor: materially expanded section)
 - Expanded: Development Workflow now says code lands with its first use. In a stack of pull
   requests, each file, top-level function or component, script, and configuration entry arrives in
@@ -67,8 +83,9 @@ needs: anything reachable from the network is opened by an explicit choice.
 Your Space defines the authentication model and provides server-managed user accounts and
 sessions. Authentication must not require an external identity service.
 
-Installed apps use platform-provided identity and respect platform permissions while enforcing
-their own domain rules. Self-hosted and managed deployments expose compatible, versioned app
+Your Space controls who reaches every installed app. Apps that integrate with it use
+platform-provided identity and respect platform permissions while enforcing their own domain rules;
+apps that don't keep their own accounts. Self-hosted and managed deployments expose compatible, versioned app
 contracts.
 
 Hosting-specific dependencies must have explicit boundaries. Support for a deployment environment
@@ -145,6 +162,17 @@ integrations thin.
 Technical plans name the dependency or native feature each requirement relies on, and justify each
 new dependency and each piece of custom machinery.
 
+### VIII. Build Around Concepts, Not Technologies
+
+Your Space implements against concepts, such as an engine connection, an app endpoint, or a secret
+store, never against one specific tool. Different technologies sit behind a concept through
+adapters.
+
+Only an adapter knows its technology. The rest of Your Space works with the concept, so a
+technology can be swapped or added by writing an adapter rather than changing Your Space.
+
+Technical plans name the concept each technology serves and its first adapter.
+
 ## Data and Compatibility
 
 User data must survive supported restarts and upgrades. Changes affecting stored data or public
@@ -190,4 +218,4 @@ clarifications and other non-semantic changes.
 When a proposal conflicts with the constitution, resolve the conflict explicitly by revising the
 proposal or amending the relevant principle.
 
-**Version**: 1.3.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-11-10
+**Version**: 1.4.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-11-14
