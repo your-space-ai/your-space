@@ -355,6 +355,12 @@ export class AppsService {
       .where(eq(installJob.id, jobId));
   }
 
+  /** A job for a request, which answers with the job's ID and doesn't wait for it. */
+  private async queue(appId: string, kind: "apply" | "remove"): Promise<{ jobId: string }> {
+    const { jobId } = await this.startJob(appId, kind);
+    return { jobId };
+  }
+
   /** Starts a job that applies the app; one job per app at a time. */
   async startJob(appId: string, kind: "install" | "apply" | "remove"): Promise<{ jobId: string; done: Promise<void> }> {
     if (this.busy.has(appId)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
@@ -617,7 +623,7 @@ export class AppsService {
   async start(name: string): Promise<{ jobId: string }> {
     const row = await this.liveRow(name);
     await this.db.update(app).set({ desired: "running" }).where(eq(app.id, row.id));
-    return this.startJob(row.id, "apply");
+    return this.queue(row.id, "apply");
   }
 
   async updateSettings(name: string, values: Record<string, string | null>, actorId: string): Promise<{ jobId: string }> {
@@ -633,7 +639,7 @@ export class AppsService {
         .where(and(eq(appSetting.appId, row.id), eq(appSetting.name, key)));
     }
     await this.event("app.settings_changed", actorId, row.id);
-    return this.startJob(row.id, "apply");
+    return this.queue(row.id, "apply");
   }
 
   async updateLimits(name: string, limits: Record<string, { memory?: number; cpus?: number }>, actorId: string): Promise<{ jobId: string }> {
@@ -649,7 +655,7 @@ export class AppsService {
     }
     await this.db.update(app).set({ limits: next, updatedAt: new Date() }).where(eq(app.id, row.id));
     await this.event("app.limits_changed", actorId, row.id);
-    return this.startJob(row.id, "apply");
+    return this.queue(row.id, "apply");
   }
 
   async approve(name: string, host: string, actorId: string): Promise<{ jobId: string }> {
@@ -661,7 +667,7 @@ export class AppsService {
     await this.db.insert(appOutbound).values({ appId: row.id, host: clean, source: "owner", approvedBy: actorId }).onConflictDoNothing();
     await this.db.delete(appAccessRequest).where(and(eq(appAccessRequest.appId, row.id), eq(appAccessRequest.host, clean)));
     await this.event("app.outbound_approved", actorId, row.id);
-    return this.startJob(row.id, "apply");
+    return this.queue(row.id, "apply");
   }
 
   async approveRequest(name: string, requestId: string, actorId: string): Promise<{ jobId: string }> {
@@ -690,7 +696,7 @@ export class AppsService {
       .returning({ host: appOutbound.host });
     if (!removed[0]) throw new AppError(404, "not_found", "That host isn't approved for this app.");
     await this.event("app.outbound_removed", actorId, row.id);
-    return this.startJob(row.id, "apply");
+    return this.queue(row.id, "apply");
   }
 
   /** Removes the app's containers and networks; its data and settings stay as retained data (FR-023). */
@@ -698,7 +704,7 @@ export class AppsService {
     const row = await this.liveRow(name);
     await this.db.update(app).set({ desired: "removed" }).where(eq(app.id, row.id));
     await this.event("app.removed", actorId, row.id);
-    return this.startJob(row.id, "remove");
+    return this.queue(row.id, "remove");
   }
 
   async deleteData(name: string, confirm: string, actorId: string): Promise<void> {

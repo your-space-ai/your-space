@@ -82,7 +82,7 @@ test("reset-link sets a new password and signs out every device", async ({ brows
 
   // Without server access there is no way to get a link from the web.
   const request = await reuse.request.post("/api/auth/request-password-reset", {
-    headers: { origin: "http://localhost" },
+    headers: { origin: "http://space.localhost" },
     data: { email: `${USERNAME}@users.invalid` },
   });
   expect(request.status()).toBe(400);

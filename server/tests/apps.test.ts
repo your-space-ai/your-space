@@ -78,8 +78,9 @@ describe("links, kits and settings", () => {
     expect(withoutKit.find((s) => s.name === "GREETING")).toMatchObject({ secret: false, value: null, publishedDefault: "hello" });
     expect(withoutKit.find((s) => s.name === "OPENAI_ACCESS_TOKEN")).toMatchObject({ secret: true, generated: false, value: null });
 
-    const kit = parseKit(`kit: 1\nsource: { repo: a/b, path: c }\ngenerate: { APP_SECRET: { encoding: hex } }\nderive: { SERVER_URL: app_origin }`);
-    const withKit = buildSettings([{ name: "SERVER_URL", required: false, default: "http://localhost:3000" }], kit, address);
+    const kit = parseKit(`kit: 1\nsource: { repo: a/b, path: c }\ngenerate: { APP_SECRET: { encoding: hex } }\nderive: { SERVER_URL: app_origin }\nset: { STORAGE_TYPE: local }`);
+    const withKit = buildSettings([{ name: "SERVER_URL", required: false, default: "http://localhost:3000" }, { name: "STORAGE_TYPE", required: false, default: "" }], kit, address);
+    expect(withKit.find((s) => s.name === "STORAGE_TYPE")).toMatchObject({ value: "local", generated: false, secret: false });
     expect(withKit.find((s) => s.name === "SERVER_URL")).toMatchObject({ derived: true, value: "http://x.space.localhost" });
     expect(withKit.find((s) => s.name === "APP_SECRET")!.value).toMatch(/^[0-9a-f]{64}$/);
     // Kept values survive a reinstall, so a database keeps its password.

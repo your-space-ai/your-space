@@ -74,8 +74,39 @@ export function composeWithInput(args: string[], input: string, env: Record<stri
   });
 }
 
+/** Runs the Docker CLI on the test machine, for what a test checks from outside the stack. */
+export async function docker(args: string[], allowFailure = true): Promise<Result> {
+  try {
+    const { stdout, stderr } = await run("docker", args, { timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
+    return { code: 0, stdout, stderr };
+  } catch (error) {
+    const e = error as { code?: number | string; stdout?: string; stderr?: string };
+    if (!allowFailure) throw new Error(`docker ${args.join(" ")} failed: ${e.stderr}`);
+    return { code: typeof e.code === "number" ? e.code : 1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
+  }
+}
+
+/**
+ * Removes every app the test installation ran: their containers, volumes and networks are their
+ * own Compose projects, which `docker compose down -v` of Your Space leaves alone.
+ */
+export async function removeApps(): Promise<void> {
+  const label = "label=ai.your-space.installation=ys-e2e";
+  const ids = (kind: string[]) => docker([...kind, "--filter", label]).then((r) => r.stdout.split("\n").filter(Boolean));
+  const containers = await ids(["ps", "-aq"]);
+  if (containers.length) await docker(["rm", "-f", ...containers]);
+  const volumes = await ids(["volume", "ls", "-q"]);
+  if (volumes.length) await docker(["volume", "rm", "-f", ...volumes]);
+  const networks = await ids(["network", "ls", "-q"]);
+  for (const network of networks) {
+    await docker(["network", "disconnect", "-f", network, "ys-e2e-caddy-1"]);
+    await docker(["network", "rm", network]);
+  }
+}
+
 /** A fresh installation: removes the containers and volumes, then starts and waits for health. */
 export async function resetStack(env: Record<string, string> = {}): Promise<void> {
+  await removeApps();
   await compose(["down", "-v", "--remove-orphans"], { timeout: 120_000 });
   await compose(["up", "-d", "--wait"], { timeout: 240_000, env });
 }
@@ -94,7 +125,7 @@ export interface LinkOutput {
 }
 
 export async function serverCommand(
-  name: "create-owner" | "reset-link" | "show-secrets",
+  name: "create-owner" | "reset-link" | "show-secrets" | "install-app" | "list-apps",
   args: string[] = [],
 ): Promise<{ code: number; json: any; stdout: string; stderr: string }> {
   const result = await compose(["exec", "-T", "server", name, ...args, "--json"], { allowFailure: true });

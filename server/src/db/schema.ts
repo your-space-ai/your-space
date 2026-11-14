@@ -85,6 +85,8 @@ export interface Kit {
   pane?: boolean;
   generate?: Record<string, { bytes?: number; encoding?: "hex" | "base64url" }>;
   derive?: Record<string, "app_origin" | "app_host">;
+  /** Values the app's own example settings give, which its file leaves empty. The owner can change them. */
+  set?: Record<string, string>;
   secrets?: string[];
   outbound?: string[];
   /** Memory in bytes, parsed from the kit's 512M or 1G. */

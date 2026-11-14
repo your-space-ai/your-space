@@ -19,6 +19,8 @@ generate:                     # values Your Space generates; the published defau
   POSTGRES_PASSWORD: {}       # default: 32 bytes, base64url
 derive:                       # values Your Space works out
   APP_URL: app_origin         # the app's own address, e.g. http://sure.space.localhost
+set:                          # values from the app's own example settings; the owner can change them
+  STORAGE_TYPE: local
 secrets: [OPENAI_ACCESS_TOKEN]  # settings shown only as set or not set
 outbound:                     # starter hosts, approved when the install is confirmed
   - api.openai.com

@@ -64,6 +64,7 @@ export function buildSettings(variables: Variable[], kit: Kit | null, address: A
   const names = new Set(variables.map((v) => v.name));
   for (const name of Object.keys(kit?.generate ?? {})) names.add(name);
   for (const name of Object.keys(kit?.derive ?? {})) names.add(name);
+  for (const name of Object.keys(kit?.set ?? {})) names.add(name);
   const byName = new Map(variables.map((v) => [v.name, v]));
   const settings: Setting[] = [];
   for (const name of [...names].sort()) {
@@ -79,6 +80,8 @@ export function buildSettings(variables: Variable[], kit: Kit | null, address: A
     } else if (generate) {
       value = kept ?? generateValue(generate);
       generated = true;
+    } else if (kit?.set?.[name] !== undefined && (kept === undefined || kept === null)) {
+      value = kit.set[name]!;
     } else if (!kit && secret && variable.default) {
       value = kept ?? generateValue();
       generated = true;

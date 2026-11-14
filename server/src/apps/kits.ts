@@ -20,7 +20,7 @@ export class KitError extends Error {
 const NAME = /^[a-z][a-z0-9-]{0,29}$/;
 const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const HOST = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
-const TOP_KEYS = new Set(["kit", "source", "name", "title", "interface", "pane", "generate", "derive", "secrets", "outbound", "limits"]);
+const TOP_KEYS = new Set(["kit", "source", "name", "title", "interface", "pane", "generate", "derive", "set", "secrets", "outbound", "limits"]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -91,6 +91,15 @@ export function parseKit(text: string): Kit {
       if (!VARIABLE.test(name)) throw new KitError(`${name} isn't a setting name.`);
       if (value !== "app_origin" && value !== "app_host") throw new KitError(`derive.${name} must be app_origin or app_host.`);
       kit.derive[name] = value;
+    }
+  }
+  if (data.set !== undefined) {
+    if (!isObject(data.set)) throw new KitError("set must map setting names to values.");
+    kit.set = {};
+    for (const [name, value] of Object.entries(data.set)) {
+      if (!VARIABLE.test(name)) throw new KitError(`${name} isn't a setting name.`);
+      if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") throw new KitError(`set.${name} must be a value.`);
+      kit.set[name] = String(value);
     }
   }
   if (data.secrets !== undefined) {
