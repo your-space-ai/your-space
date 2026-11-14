@@ -144,3 +144,43 @@ when opened in its own tab.
   apps' attempts to set them.
 - **Not tested:** Safari on macOS (WebKit on Linux differs from Safari in its domain handling),
   Tailscale's own names, real certificates, and Firefox with `sure.localhost`.
+
+### Local setups, a second round (2026-11-14)
+
+| Setup | Chromium | Firefox | WebKit (Linux) |
+| --- | --- | --- | --- |
+| `localhost` framing `sure.localhost` | sign-in fails | sign-in fails | sign-in fails |
+| Same, with the proxy rewriting Sure's cookie to `SameSite=None; Secure; Partitioned` | signs up, but loses the session on reload and in its own tab | same as Chromium | sign-up fails |
+| `space.localtest.me` framing `sure.space.localtest.me` (a real ending, simulated with the hosts file) | works | not measured (the test hung) | works |
+
+- **Why `localhost` fails:** with the Public Suffix List's default rule, `localhost` is itself an
+  ending, so `sure.localhost` is its own site and bare `localhost` is another; the frame is a third
+  party. `space.localhost` and `sure.space.localhost` share the site `space.localhost` in Chromium
+  and Firefox (Chromium `net/base/registry_controlled_domains`). WebKit on Linux fails there because
+  libsoup can't find a base domain for `.localhost` and compares whole host names
+  (`libsoup/cookies/soup-cookie-jar.c`); Safari on macOS uses a different cookie stack and is
+  untested.
+- **Partitioned cookies are not the answer:** they keep a separate session for the pane and for the
+  app's own tab, need `Secure` (which libsoup refuses over plain HTTP), and `SameSite=None` gives up
+  the app's own CSRF protection.
+- **Public loopback names** (`localtest.me`, `lvh.me`, `nip.io`, `sslip.io`) aren't on the Public
+  Suffix List, so every app shares one site and can set cookies for the parent name; they also stop
+  resolving offline, and home routers' DNS-rebinding protection often blocks answers that point to
+  127.0.0.1 (DDEV documents this for `ddev.site`). Not a default.
+
+### What other products do
+
+| Product | Apps' addresses | Isolation between apps |
+| --- | --- | --- |
+| GitHub Codespaces, Gitpod | A host name per forwarded port (`NAME-PORT.app.github.dev`, `3000-…gitpod.io`) | Own origin per port |
+| Coder | Subdomain apps (`*.coder.example.com`); recommends turning off path-based apps, which share the dashboard's cookie | Strips Coder's own cookies before forwarding to an app (`coderd/workspaceapps`) |
+| OrbStack, Traefik's docs | `service.project.orb.local`, `whoami.docker.localhost` | Own host per container |
+| JupyterHub | Paths by default; its docs say subdomains are "the only way to reliably isolate user servers from each other" | `__Host-` cookies with subdomains |
+| Home Assistant ingress | Paths on one origin, in iframes | None: forwards all cookies; works only because add-ons are curated |
+| Umbrel, CasaOS, Runtipi | `host:port` per app | None: ports share one cookie jar |
+
+- The pattern that isolates apps is a host name per app. Ports and paths share cookies.
+- Defences that apply with subdomains in every setup: strip Your Space's cookies at the proxy before
+  forwarding to an app (as Coder does), make Your Space's session a `__Host-` cookie so apps can't
+  overwrite it, and drop any `Domain=` attribute from apps' `Set-Cookie` so an app can't set cookies
+  for Your Space or other apps.
