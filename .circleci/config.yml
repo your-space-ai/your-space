@@ -100,9 +100,10 @@ jobs:
       - run:
           name: Stack logs
           when: on_fail
-          command: >-
-            docker compose -p ys-e2e --env-file e2e/stack.env -f deploy/compose.yaml
-            -f deploy/compose.build.yaml -f e2e/compose.e2e.yaml logs --no-color
+          command: |
+            docker version --format 'Docker Engine {{.Server.Version}}'
+            docker compose -p ys-e2e --env-file e2e/stack.env -f deploy/compose.yaml \
+              -f deploy/compose.build.yaml -f e2e/compose.e2e.yaml logs --no-color
       - store_artifacts:
           path: e2e/playwright-report
       - store_artifacts:

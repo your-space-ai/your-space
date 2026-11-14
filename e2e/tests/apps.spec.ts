@@ -24,7 +24,8 @@ async function asOwner(page: Page): Promise<void> {
 async function waitForJob(page: Page): Promise<void> {
   const job = page.locator("section.job");
   await expect(job).toHaveAttribute("data-job-state", /succeeded|failed/, { timeout: 120_000 });
-  await expect(job).toHaveAttribute("data-job-state", "succeeded");
+  // On failure, the job's own steps and error say why.
+  expect(await job.getAttribute("data-job-state"), (await job.textContent()) ?? "").toBe("succeeded");
 }
 
 async function inspect(container: string, format: string): Promise<string> {
