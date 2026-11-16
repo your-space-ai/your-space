@@ -35,6 +35,11 @@ function AppTable({ list }: { list: AppList }) {
             <li key={app.name} data-app={app.name} data-app-state={app.state}>
               <div>
                 <strong>{app.title}</strong> <span className={`state state-${app.state}`}>{STATE_LABEL[app.state]}</span>
+                {app.pendingRequests > 0 ? (
+                  <span className="badge" title="Access requests waiting">
+                    {app.pendingRequests} access request{app.pendingRequests === 1 ? "" : "s"}
+                  </span>
+                ) : null}
                 {app.stateReason ? <div className="muted small">{app.stateReason}</div> : null}
               </div>
               <div className="actions">
@@ -287,6 +292,22 @@ function ReviewPanel(props: {
           ) : null}
         </>
       ) : null}
+
+      <h3>Internet access</h3>
+      {review.outbound.length > 0 ? (
+        <>
+          <p>Installing approves these hosts, which the app needs to work. It asks you before reaching any other.</p>
+          <ul aria-label="Starter hosts">
+            {review.outbound.map((h) => (
+              <li key={h}>
+                <code>{h}</code>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p>The app starts with no internet access. It asks you when it needs a host.</p>
+      )}
 
       <p className="notice warning" role="note">
         {review.warning}

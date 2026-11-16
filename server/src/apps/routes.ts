@@ -93,6 +93,37 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
 
   router.get("/apps/:name", owner(async (req, res) => void res.json(await apps.detail(name(req)))));
   router.post("/apps/:name/start", owner(async (req, res) => void res.status(202).json(await apps.start(name(req)))));
+  router.put(
+    "/apps/:name/settings",
+    owner(async (req, res, who) => {
+      const values = body(req).values as Record<string, string | null> | undefined;
+      if (!values || typeof values !== "object") throw new AppError(400, "values_required", "Send the settings to change.");
+      res.status(202).json(await apps.updateSettings(name(req), values, who.actorId));
+    }),
+  );
+  router.post(
+    "/apps/:name/outbound",
+    owner(async (req, res, who) => {
+      const host = body(req).host;
+      if (typeof host !== "string") throw new AppError(400, "host_required", "Send the host to approve.");
+      res.status(202).json(await apps.approve(name(req), host, who.actorId));
+    }),
+  );
+  router.delete(
+    "/apps/:name/outbound/:host",
+    owner(async (req, res, who) => void res.status(202).json(await apps.removeOutbound(name(req), String(req.params.host), who.actorId))),
+  );
+  router.post(
+    "/apps/:name/requests/:id/approve",
+    owner(async (req, res, who) => void res.status(202).json(await apps.approveRequest(name(req), String(req.params.id), who.actorId))),
+  );
+  router.post(
+    "/apps/:name/requests/:id/dismiss",
+    owner(async (req, res, who) => {
+      await apps.dismissRequest(name(req), String(req.params.id), who.actorId);
+      res.status(204).end();
+    }),
+  );
   router.get("/jobs/:id", owner(async (req, res) => void res.json(await apps.job(String(req.params.id)))));
   router.get("/engine", owner(async (_req, res) => void res.json(await apps.engine())));
 

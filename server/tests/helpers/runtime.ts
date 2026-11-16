@@ -6,6 +6,7 @@ export class FakeRuntime implements Runtime {
   calls: { method: string; spec?: AppSpec; project?: string }[] = [];
   /** Per project: the services the runtime reports. */
   running = new Map<string, ServiceState[]>();
+  denied = new Map<string, { host: string; attempts: number; lastSeen: string }[]>();
   variables: CheckAnswer["variables"] = [
     { name: "GREETING", required: false, default: "hello" },
     { name: "API_TOKEN", required: false, default: "published-default-token" },
@@ -28,6 +29,7 @@ export class FakeRuntime implements Runtime {
       refusals: [],
       images: [
         { ref: "traefik/whoami:latest", digest: "sha256:aaa", runsHere: true, platforms: ["linux/amd64"] },
+        { ref: "ubuntu/squid:latest", digest: "sha256:bbb", runsHere: true, platforms: ["linux/amd64"] },
       ],
     };
   }
@@ -37,7 +39,10 @@ export class FakeRuntime implements Runtime {
     onEvent({ step: "check" });
     if (this.failApply) throw new Error(this.failApply);
     onEvent({ step: "start" });
-    this.running.set(spec.project, [{ name: "web", role: "app", state: "running" }]);
+    this.running.set(spec.project, [
+      { name: "web", role: "app", state: "running" },
+      { name: "ys-egress", role: "egress", state: "running" },
+    ]);
     onEvent({ step: "started" });
   }
 
@@ -48,6 +53,10 @@ export class FakeRuntime implements Runtime {
 
   async stats(project: string) {
     return { services: (this.running.get(project) ?? []).map((s) => ({ name: s.name, memory: 10 * 1024 ** 2, memoryLimit: 64 * 1024 ** 2, cpuPercent: 1 })) };
+  }
+
+  async denials(project: string) {
+    return { hosts: this.denied.get(project) ?? [] };
   }
 }
 

@@ -178,7 +178,7 @@ describe("apps API", () => {
     expect(response.status).toBe(200);
     const text = await response.text();
     const review = JSON.parse(text);
-    expect(review).toMatchObject({ name: "whoami", title: "Who Am I", ok: true, origin: `http://whoami.${new URL(server.publicUrl).host}`, interface: { service: "web", port: 80 } });
+    expect(review).toMatchObject({ name: "whoami", title: "Who Am I", ok: true, origin: `http://whoami.${new URL(server.publicUrl).host}`, outbound: ["example.com"], interface: { service: "web", port: 80 } });
     expect(review.source).toMatchObject({ repo: "ys-fixtures/whoami", commit: COMMIT });
     expect(review.kit.source).toContain(`your-space-app-kits/blob/${COMMIT}/apps/ys-fixtures/whoami.yaml`);
     expect(review.settings.find((s: { name: string }) => s.name === "API_TOKEN")).toMatchObject({ secret: true, generated: true, set: true });
@@ -197,8 +197,8 @@ describe("apps API", () => {
     expect(job.state).toBe("succeeded");
 
     const applied = runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!;
-    expect(applied).toMatchObject({ project: "ys-whoami", interface: { service: "web", port: 80 }, limits: { web: { memory: 64 * 1024 ** 2, cpus: 0.5 } } });
-    expect(applied.pins).toEqual({ "traefik/whoami:latest": "sha256:aaa" });
+    expect(applied).toMatchObject({ project: "ys-whoami", egress: ["example.com"], interface: { service: "web", port: 80 }, limits: { web: { memory: 64 * 1024 ** 2, cpus: 0.5 } } });
+    expect(applied.pins).toEqual({ "traefik/whoami:latest": "sha256:aaa", "ubuntu/squid:latest": "sha256:bbb" });
     expect(applied.env.API_TOKEN).toMatch(/^[A-Za-z0-9_-]{32}$/);
     expect(applied.env.API_TOKEN).not.toBe("published-default-token");
 
@@ -213,17 +213,55 @@ describe("apps API", () => {
 
   it("lists the app and shows its details without secret values", async () => {
     const list = await (await api("/api/apps")).json() as any;
-    expect(list.apps).toEqual([expect.objectContaining({ name: "whoami", state: "running", hasInterface: true })]);
+    expect(list.apps).toEqual([expect.objectContaining({ name: "whoami", state: "running", hasInterface: true, pendingRequests: 0 })]);
     const text = await (await api("/api/apps/whoami")).text();
     const detail = JSON.parse(text);
-    expect(detail).toMatchObject({ name: "whoami", state: "running", source: { repo: "ys-fixtures/whoami", commit: COMMIT } });
+    const token = detail.settings.find((s: { name: string }) => s.name === "API_TOKEN");
+    expect(token).toMatchObject({ set: true, secret: true });
+    expect(token.value).toBeUndefined();
     expect(text).not.toContain(runtime.calls.find((c) => c.method === "apply")!.spec!.env.API_TOKEN!);
+    expect(detail.outbound).toEqual([expect.objectContaining({ host: "example.com", source: "kit" })]);
   });
 
   it("refuses to install an app twice", async () => {
     const response = await post("/api/apps/preview", { link: LINK });
     expect(response.status).toBe(409);
     expect((await response.json() as any).error).toBe("already_installed");
+  });
+
+  it("turns blocked hosts into access requests; approving opens one host, dismissing keeps it quiet", async () => {
+    runtime.denied.set("ys-whoami", [
+      { host: "api.openai.com", attempts: 3, lastSeen: new Date().toISOString() },
+      { host: "tracker.example", attempts: 1, lastSeen: new Date().toISOString() },
+      { host: "example.com", attempts: 1, lastSeen: new Date().toISOString() },
+    ]);
+    await server.apps!.reconcile();
+    let detail = await (await api("/api/apps/whoami")).json() as any;
+    expect(detail.requests.map((r: { host: string }) => r.host).sort()).toEqual(["api.openai.com", "tracker.example"]);
+    const openai = detail.requests.find((r: { host: string }) => r.host === "api.openai.com");
+    const tracker = detail.requests.find((r: { host: string }) => r.host === "tracker.example");
+    expect(openai.attempts).toBe(3);
+
+    expect((await post(`/api/apps/whoami/requests/${tracker.id}/dismiss`, {})).status).toBe(204);
+    const approved = await post(`/api/apps/whoami/requests/${openai.id}/approve`, {});
+    expect(approved.status).toBe(202);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.egress!.sort()).toEqual(["api.openai.com", "example.com"]);
+
+    await server.apps!.reconcile();
+    detail = await (await api("/api/apps/whoami")).json() as any;
+    expect(detail.requests).toEqual([expect.objectContaining({ host: "tracker.example", state: "dismissed" })]);
+    expect((await api("/api/apps")).ok).toBe(true);
+    const events = (await t.db.select().from(event)).map((e) => e.type);
+    expect(events).toEqual(expect.arrayContaining(["app.outbound_approved", "app.request_dismissed"]));
+  });
+
+  it("restarts the app with changed settings, and refuses derived or unknown ones", async () => {
+    const changed = await post("/api/apps/whoami/settings", { values: { GREETING: "hi there" } }, "PUT");
+    expect(changed.status).toBe(202);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.env.GREETING).toBe("hi there");
+    expect((await post("/api/apps/whoami/settings", { values: { NOPE: "x" } }, "PUT")).status).toBe(400);
   });
 
   it("starts apps that should run and don't, and ends interrupted jobs as failed", async () => {
@@ -252,12 +290,12 @@ describe("apps API", () => {
 
   it("shows the engine and each app's use", async () => {
     const engine = await (await api("/api/engine")).json() as any;
-    expect(engine).toMatchObject({ reachable: true, cpus: 4, apps: [expect.objectContaining({ name: "whoami", memory: 10 * 1024 ** 2 })] });
+    expect(engine).toMatchObject({ reachable: true, cpus: 4, apps: [expect.objectContaining({ name: "whoami", memory: 20 * 1024 ** 2 })] });
   });
 
   it("guesses the interface of an app without a kit, and generates its secret", async () => {
     const review = await (await post("/api/apps/preview", { link: "https://github.com/ys-fixtures/plain/blob/main/compose.yaml" })).json() as any;
-    expect(review).toMatchObject({ name: "plain", kit: null, interface: { service: "web", port: 80 } });
+    expect(review).toMatchObject({ name: "plain", kit: null, interface: { service: "web", port: 80 }, outbound: [] });
     expect(review.settings.find((s: { name: string }) => s.name === "API_TOKEN")).toMatchObject({ generated: true, secret: true });
   });
 

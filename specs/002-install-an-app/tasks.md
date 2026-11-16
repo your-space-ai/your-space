@@ -40,12 +40,12 @@ it merges.
 
 ## Slice 5: Settings
 
-- [ ] T023 Settings on the app's page; saving restarts the app
+- [x] T023 Settings on the app's page; saving restarts the app
 
 ## Slice 6: Outbound access
 
-- [ ] T024 Per-app egress proxy with health check and recreation on change
-- [ ] T025 Access requests from denials; approve, dismiss, remove
+- [x] T024 Per-app egress proxy with health check and recreation on change
+- [x] T025 Access requests from denials; approve, dismiss, remove
 
 ## Slice 7: Isolation, tested
 

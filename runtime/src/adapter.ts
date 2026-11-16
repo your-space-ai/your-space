@@ -1,6 +1,7 @@
 // The Docker adapter's rules (FR-D03, FR-D04): check an app's fully resolved Compose file, the JSON
 // from `docker compose config --format json`, and build the file Your Space runs. Pure functions, so
 // the rules are tested without Docker.
+import { createHash } from "node:crypto";
 
 export interface AppSpec {
   /** The Compose project, `ys-<app>`. */
@@ -14,6 +15,7 @@ export interface AppSpec {
   pins?: Record<string, string>;
   interface?: { service: string; port: number } | null;
   limits?: Record<string, { memory?: number; cpus?: number }>;
+  egress?: string[];
 }
 
 export interface Adaptation {
@@ -50,6 +52,12 @@ type Json = Record<string, unknown>;
 
 export const DEFAULT_MEMORY = 1024 * 1024 * 1024;
 export const DEFAULT_CPUS = 1;
+export const EGRESS_SERVICE = "ys-egress";
+export const EGRESS_PORT = 3128;
+export const EGRESS_IMAGE = "ubuntu/squid";
+const EGRESS_MEMORY = 64 * 1024 * 1024;
+const EGRESS_CPUS = 0.25;
+const EGRESS_FILES = 4096;
 
 /** Kept as the app wrote them. */
 const ALLOWED = new Set([
@@ -86,7 +94,7 @@ const REPLACED: Record<string, string> = {
   ports: "Published ports removed: Your Space routes to the app's interface itself.",
   networks: "Networks replaced by the app's own sealed network.",
   links: "Links removed: services reach each other by name on the app's network.",
-  dns: "Fixed DNS servers removed.",
+  dns: "Fixed DNS servers removed: the app's network resolves names through its outbound proxy.",
   dns_search: "DNS search domains removed.",
   dns_opt: "DNS options removed.",
   extra_hosts: "Extra host entries removed.",
@@ -275,6 +283,30 @@ function servicePorts(service: Json): number[] {
   return ports;
 }
 
+/** The Squid configuration for an app's egress proxy (FR-019). */
+export function egressConfig(hosts: string[]): string {
+  const lines = [
+    `http_port ${EGRESS_PORT}`,
+    "pid_filename none",
+    "pinger_enable off",
+    // Each refused host is written at once, so it becomes an access request without delay.
+    "buffered_logs off",
+    // Squid sizes its tables by the open-file limit; a machine's Docker can allow a million, which
+    // alone exceeds the proxy's memory limit.
+    `max_filedescriptors ${EGRESS_FILES}`,
+    "cache deny all",
+    "access_log stdio:/var/log/squid/access.log logformat=squid",
+    "cache_log stdio:/var/log/squid/cache.log",
+    "acl private dst 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 fc00::/7 fe80::/10 ::1",
+    "http_access deny private",
+  ];
+  if (hosts.length > 0) {
+    lines.push(`acl approved dstdomain ${hosts.join(" ")}`, "http_access allow approved");
+  }
+  lines.push("http_access deny all", "");
+  return lines.join("\n");
+}
+
 /** Checks the resolved file and, when nothing is refused, builds the file to run. */
 export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] = []): CheckResult {
   const refusals: Refusal[] = [];
@@ -288,6 +320,9 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
   }
   if (Object.keys(services).length === 0) {
     refusals.push({ service: "", setting: "services", reason: "The file defines no services that run by default." });
+  }
+  if (EGRESS_SERVICE in services) {
+    refusals.push({ service: EGRESS_SERVICE, setting: "services", reason: `The service name ${EGRESS_SERVICE} is reserved for Your Space.` });
   }
   checkTopLevel(resolved, refusals);
   for (const [name, service] of Object.entries(services)) {
@@ -310,6 +345,8 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
 
   if (refusals.length > 0) return { services: summaries, adaptations, refusals, adapted: null };
 
+  const proxy = `http://${EGRESS_SERVICE}:${EGRESS_PORT}`;
+  const noProxy = ["localhost", "127.0.0.1", ...Object.keys(services)].join(",");
   const labels = { "ai.your-space.installation": spec.installation, "ai.your-space.app": spec.app };
   const outServices: Json = {};
 
@@ -322,6 +359,11 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
       if (digest) out.image = pinnedImage(out.image, digest);
     }
     out.restart = service.restart && service.restart !== "no" ? service.restart : "unless-stopped";
+    const environment = isObject(service.environment) ? { ...service.environment } : {};
+    for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]) environment[key] = proxy;
+    environment.NO_PROXY = noProxy;
+    environment.no_proxy = noProxy;
+    out.environment = environment;
     out.labels = { ...(isObject(service.labels) ? service.labels : {}), ...labels };
     out.networks = {
       app: spec.interface?.service === name ? { aliases: [`${spec.project}-ui`] } : {},
@@ -331,8 +373,38 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
     out.cpus = limit.cpus ?? DEFAULT_CPUS;
     out.oom_score_adj = 500;
     out.security_opt = ["no-new-privileges:true"];
+    // Each service starts once the outbound proxy answers, so its first requests aren't lost.
+    out.depends_on = {
+      ...(isObject(service.depends_on) ? service.depends_on : {}),
+      [EGRESS_SERVICE]: { condition: "service_healthy", required: true },
+    };
     outServices[name] = out;
   }
+
+  const egressHosts = [...new Set((spec.egress ?? []).map((h) => h.toLowerCase()))].sort();
+  const egress = egressConfig(egressHosts);
+  outServices[EGRESS_SERVICE] = {
+    image: spec.pins?.[`${EGRESS_IMAGE}:latest`] ? pinnedImage(EGRESS_IMAGE, spec.pins[`${EGRESS_IMAGE}:latest`]!) : `${EGRESS_IMAGE}:latest`,
+    restart: "unless-stopped",
+    networks: { app: {}, egress: {} },
+    configs: [{ source: "egress", target: "/etc/squid/squid.conf" }],
+    ulimits: { nofile: { soft: EGRESS_FILES, hard: EGRESS_FILES } },
+    healthcheck: {
+      test: ["CMD", "bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${EGRESS_PORT}`],
+      interval: "10s",
+      timeout: "3s",
+      retries: 3,
+      start_period: "30s",
+      start_interval: "1s",
+    },
+    // Compose doesn't recreate a container when only its inline config changes; a label does.
+    labels: { ...labels, "ai.your-space.role": "egress", "ai.your-space.egress-config": createHash("sha256").update(egress).digest("hex").slice(0, 16) },
+    mem_limit: EGRESS_MEMORY,
+    cpus: EGRESS_CPUS,
+    oom_score_adj: 500,
+    security_opt: ["no-new-privileges:true"],
+  };
+  adaptations.push({ service: EGRESS_SERVICE, kind: "added", detail: "Added Your Space's outbound proxy, which lets the app reach only approved hosts." });
 
   const volumes = isObject(resolved.volumes) ? resolved.volumes : {};
   const outVolumes: Json = {};
@@ -348,8 +420,10 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
         driver_opts: { "com.docker.network.bridge.gateway_mode_ipv4": "isolated" },
         labels,
       },
+      egress: { driver: "bridge", labels },
     },
     volumes: outVolumes,
+    configs: { egress: { content: escapeDollars(egress) } },
   };
   return { services: summaries, adaptations, refusals, adapted };
 }

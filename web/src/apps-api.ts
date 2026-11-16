@@ -78,6 +78,7 @@ export interface AppSummary {
   origin: string;
   pane: boolean;
   hasInterface: boolean;
+  pendingRequests: number;
 }
 
 export interface AppList {
@@ -120,6 +121,7 @@ export interface Review {
   adaptations: Adaptation[];
   refusals: Refusal[];
   settings: PublicSetting[];
+  outbound: string[];
   interface: { service: string; port: number } | null;
   pane: boolean;
   warning: string;
@@ -151,6 +153,9 @@ export interface AppDetail {
   kitSource: string | null;
   images: Record<string, { digest: string }>;
   adaptations: Adaptation[];
+  settings: PublicSetting[];
+  outbound: { host: string; source: "kit" | "owner"; createdAt: string }[];
+  requests: { id: string; host: string; state: "pending" | "dismissed"; attempts: number; firstSeen: string; lastSeen: string }[];
   job: Job | null;
   installedAt: string;
 }

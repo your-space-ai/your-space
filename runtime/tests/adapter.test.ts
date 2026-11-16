@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { adapt, imageRef, pinnedImage, type AppSpec } from "../src/adapter.ts";
+import { adapt, egressConfig, imageRef, pinnedImage, type AppSpec } from "../src/adapter.ts";
+import { parseDenials } from "../src/apps.ts";
 
 // Sure's compose.example.yml at 70647cb, resolved by `docker compose -p ys-sure config --format json`.
 const sure = JSON.parse(readFileSync(new URL("./sure-resolved.json", import.meta.url), "utf8")) as Record<string, unknown>;
@@ -15,8 +16,10 @@ const spec: AppSpec = {
     "ghcr.io/we-promise/sure:stable": "sha256:aaa",
     "postgres:16": "sha256:bbb",
     "redis:latest": "sha256:ccc",
+    "ubuntu/squid:latest": "sha256:ddd",
   },
   interface: { service: "web", port: 3000 },
+  egress: ["API.openai.com"],
 };
 
 type Service = Record<string, unknown> & { environment: Record<string, string> };
@@ -35,6 +38,7 @@ describe("Sure's own file", () => {
     expect(details).toContain("web: changed");
     expect(details).toContain("backup: left_out");
     expect(details).toContain("backup-offsite: left_out");
+    expect(details).toContain("ys-egress: added");
     expect(result.adaptations.some((a) => a.service === "web" && /Published ports/.test(a.detail))).toBe(true);
     expect(result.adaptations.some((a) => a.service === "web" && /DNS/.test(a.detail))).toBe(true);
   });
@@ -50,6 +54,7 @@ describe("Sure's own file", () => {
     expect(services.web!.image).toBe("ghcr.io/we-promise/sure@sha256:aaa");
     expect(services.db!.image).toBe("postgres@sha256:bbb");
     expect(services.redis!.image).toBe("redis@sha256:ccc");
+    expect(services["ys-egress"]!.image).toBe("ubuntu/squid@sha256:ddd");
   });
 
   it("puts every service on the sealed app network, with the interface's alias", () => {
@@ -57,6 +62,12 @@ describe("Sure's own file", () => {
     expect(services.worker!.networks).toEqual({ app: {} });
     const networks = result.adapted!.networks as Record<string, Record<string, unknown>>;
     expect(networks.app).toMatchObject({ internal: true, driver_opts: { "com.docker.network.bridge.gateway_mode_ipv4": "isolated" } });
+    expect(services["ys-egress"]!.networks).toEqual({ app: {}, egress: {} });
+  });
+
+  it("sends outbound requests through the egress proxy, but not requests between its own services", () => {
+    expect(services.web!.environment.HTTPS_PROXY).toBe("http://ys-egress:3128");
+    expect(services.web!.environment.no_proxy).toBe("localhost,127.0.0.1,db,redis,web,worker");
   });
 
   it("escapes $ so Compose doesn't interpolate the resolved file again", () => {
@@ -73,9 +84,37 @@ describe("Sure's own file", () => {
     }
   });
 
+  it("starts each service once the outbound proxy answers, keeping the file's own order", () => {
+    expect(services.web!.depends_on).toMatchObject({
+      db: { condition: "service_healthy" },
+      redis: { condition: "service_healthy" },
+      "ys-egress": { condition: "service_healthy" },
+    });
+    expect(services.redis!.depends_on).toEqual({ "ys-egress": { condition: "service_healthy", required: true } });
+    expect(services["ys-egress"]!.depends_on).toBeUndefined();
+    expect(services["ys-egress"]!.healthcheck).toBeDefined();
+  });
+
   it("labels everything with the installation and the app", () => {
     expect((services.web!.labels as Record<string, string>)["ai.your-space.installation"]).toBe("your-space");
     expect((result.adapted!.volumes as Record<string, { labels: Record<string, string> }>)["postgres-data"]!.labels["ai.your-space.app"]).toBe("sure");
+  });
+
+  it("recreates the egress proxy when its approved hosts change", () => {
+    const label = (hosts: string[]) =>
+      ((adapt({ ...spec, egress: hosts }, sure).adapted!.services as Record<string, Service>)["ys-egress"]!.labels as Record<string, string>)["ai.your-space.egress-config"];
+    expect(label(["a.example"])).toBe(label(["a.example"]));
+    expect(label(["a.example"])).not.toBe(label(["a.example", "b.example"]));
+  });
+
+  it("caps the egress proxy's open files, whatever the machine's Docker allows", () => {
+    expect(services["ys-egress"]!.ulimits).toEqual({ nofile: { soft: 4096, hard: 4096 } });
+    expect((result.adapted!.configs as { egress: { content: string } }).egress.content).toContain("max_filedescriptors 4096");
+  });
+
+  it("gives the egress proxy only the approved hosts, in lower case", () => {
+    const content = (result.adapted!.configs as { egress: { content: string } }).egress.content;
+    expect(content).toContain("acl approved dstdomain api.openai.com");
   });
 });
 
@@ -116,6 +155,10 @@ describe("refusals", () => {
     expect(result.refusals).toEqual([]);
   });
 
+  it("reserves the egress proxy's name", () => {
+    expect(adapt(spec, { services: { "ys-egress": { image: "busybox" } } }).refusals.map((r) => r.setting)).toContain("services");
+  });
+
   it("refuses a kit whose interface service isn't in the file", () => {
     const result = adapt({ ...spec, interface: { service: "ui", port: 80 } }, { services: { app: { image: "busybox" } } });
     expect(result.refusals.map((r) => r.setting)).toContain("interface");
@@ -128,5 +171,28 @@ describe("images", () => {
     expect(imageRef("localhost:5000/app")).toBe("localhost:5000/app:latest");
     expect(imageRef("ghcr.io/a/b:1.2@sha256:x")).toBe("ghcr.io/a/b:1.2");
     expect(pinnedImage("ghcr.io/a/b:1.2", "sha256:x")).toBe("ghcr.io/a/b@sha256:x");
+  });
+});
+
+describe("egress", () => {
+  it("denies private addresses before anything is allowed, and everything else after", () => {
+    const content = egressConfig(["example.com"]);
+    expect(content.indexOf("http_access deny private")).toBeLessThan(content.indexOf("http_access allow approved"));
+    expect(content.trim().endsWith("http_access deny all")).toBe(true);
+    expect(egressConfig([])).not.toContain("allow");
+  });
+
+  it("reads denied hosts from Squid's log", () => {
+    const log = [
+      "1794681656.693      2 172.21.0.2 TCP_MISS/200 468 GET http://ok-web/ - HIER_DIRECT/172.20.0.2 text/plain",
+      "1794681656.695      0 172.21.0.2 TCP_DENIED/403 3375 GET http://no-web/ - HIER_NONE/- text/html",
+      "1794681657.000      0 172.21.0.2 TCP_DENIED/403 3375 CONNECT API.Example.com:443 - HIER_NONE/- text/html",
+      "1794681658.000      0 172.21.0.2 TCP_DENIED/403 3375 CONNECT api.example.com:443 - HIER_NONE/- text/html",
+      "1794681658.000      0 172.21.0.2 TCP_DENIED/403 3375 CONNECT 10.0.0.1:443 - HIER_NONE/- text/html",
+    ].join("\n");
+    expect(parseDenials(log)).toEqual([
+      { host: "no-web", attempts: 1, lastSeen: new Date(1794681656695).toISOString() },
+      { host: "api.example.com", attempts: 2, lastSeen: new Date(1794681658000).toISOString() },
+    ]);
   });
 });

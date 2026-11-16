@@ -32,6 +32,11 @@ async function inspect(container: string, format: string): Promise<string> {
   return (await docker(["inspect", container, "--format", format], false)).stdout.trim();
 }
 
+/** Runs a shell command inside an app's container. */
+async function inApp(container: string, script: string): Promise<string> {
+  return (await docker(["exec", container, "sh", "-c", script])).stdout.trim();
+}
+
 test("the owner installs an app from its link, after a review and a trust warning", async ({ page, browser }, testInfo) => {
   await resetStack();
   const owner = await createOwner();
@@ -48,6 +53,7 @@ test("the owner installs an app from its link, after a review and a trust warnin
   await expect(page.getByRole("heading", { name: "Review" })).toBeVisible();
   await expect(page.getByText("Published ports removed")).toBeVisible();
   await expect(page.getByText(/trusts it with everything/)).toBeVisible();
+  await expect(page.getByText("example.com")).toBeVisible();
   // The generated secret replaces the published default, and neither is shown (FR-006).
   await expect(page.locator("body")).not.toContainText("published-default-token");
   await evidence(page, testInfo, "002-us3-1-review");
@@ -102,6 +108,51 @@ test("the app opens in a pane on its own origin, only for the signed-in owner", 
   await expect(visitor).toHaveURL(/^http:\/\/space\.localhost(:\d+)?\/sign-in/);
   await expect(visitor.locator("body")).not.toContainText("Hostname");
   await stranger.close();
+});
+
+test("the owner changes a setting, and secrets show only as set", async ({ page }, testInfo) => {
+  await asOwner(page);
+  await page.goto("/apps/whoami");
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.locator("main")).not.toContainText("published-default-token");
+  await page.getByLabel("GREETING").fill("hi there");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await waitForJob(page);
+  await expect(page.getByLabel("GREETING")).toHaveValue("hi there");
+  const env = await inspect("ys-whoami-web-1", "{{json .Config.Env}}");
+  expect(env).toContain("GREETING=hi there");
+  await evidence(page, testInfo, "002-us5-settings");
+});
+
+test("blocked hosts become access requests the owner approves or dismisses", async ({ page }, testInfo) => {
+  const installed = await serverCommand("install-app", [PROBE]);
+  expect(installed.code, installed.stderr).toBe(0);
+  await asOwner(page);
+  // Two attempts the egress proxy refuses.
+  await inApp("ys-probe-web-1", "http_proxy=http://ys-egress:3128 wget -T5 -qO- http://approve-me.example/ ; http_proxy=http://ys-egress:3128 wget -T5 -qO- http://dismiss-me.example/ ; true");
+  await page.goto("/apps/probe");
+  const requests = page.locator("section", { has: page.getByRole("heading", { name: "Access requests" }) });
+  await expect(async () => {
+    await page.reload();
+    await expect(requests).toContainText("approve-me.example", { timeout: 2_000 });
+  }).toPass({ timeout: 60_000 });
+  await evidence(page, testInfo, "002-us6-1-requests");
+
+  await page.getByRole("button", { name: "Dismiss dismiss-me.example" }).click();
+  await page.getByRole("button", { name: "Approve approve-me.example" }).click();
+  await waitForJob(page);
+  await page.reload();
+  const outbound = page.locator("section", { has: page.getByRole("heading", { name: "Outbound access" }) });
+  await expect(outbound).toContainText("approve-me.example");
+  const config = await inApp("ys-probe-ys-egress-1", "cat /etc/squid/squid.conf");
+  expect(config).toContain("acl approved dstdomain approve-me.example");
+  expect(config).not.toContain("dismiss-me.example");
+
+  // A dismissed host stays dismissed when the app tries again.
+  await inApp("ys-probe-web-1", "http_proxy=http://ys-egress:3128 wget -T5 -qO- http://dismiss-me.example/ ; true");
+  await page.waitForTimeout(16_000);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Approve dismiss-me.example" })).toHaveCount(0);
 });
 
 test("the owner sees the engine and what each app uses", async ({ page }) => {

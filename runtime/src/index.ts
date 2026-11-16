@@ -7,6 +7,7 @@ import {
   apply,
   check,
   connectProxyToAll,
+  denials,
   INSTALLATION,
   isStopping,
   listApps,
@@ -91,6 +92,7 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const project = match[1]!;
     const action = match[2] ?? "";
     if (method === "GET" && action === "/stats") return send(res, 200, await stats(project));
+    if (method === "GET" && action === "/denials") return send(res, 200, await denials(project));
   }
   send(res, 404, { error: "not_found", message: "There is nothing at this address." });
 }
