@@ -2,15 +2,16 @@
 // GitHub. The runtime manager's own rules are tested in runtime/tests.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { operatorActorId } from "../src/actors.ts";
 import { fetchSource, parseLink, SourceError } from "../src/apps/github.ts";
 import { KitError, parseKit, parseMemory } from "../src/apps/kits.ts";
-import { AppsService, stateFromServices } from "../src/apps/service.ts";
+import { stateFromServices } from "../src/apps/service.ts";
 import { buildSettings, decrypt, encrypt, looksSecret } from "../src/apps/settings.ts";
 import { app, appSetting, event, installJob } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_SECRET } from "./helpers/env.ts";
+import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
 import { COMMIT, fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
+import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
 
 const WHOAMI = `services:
   web:
@@ -104,44 +105,67 @@ describe("app state", () => {
   });
 });
 
-describe("installing an app", () => {
+describe("apps API", () => {
   let t: TestDatabase;
+  let server: TestServer;
   let runtime: FakeRuntime;
-  let apps: AppsService;
-  let operator: string;
+  let cookie: string;
 
   beforeAll(async () => {
     t = await createTestDatabase();
     runtime = new FakeRuntime();
-    apps = new AppsService(t.db, runtime, {
-      publicUrl: "http://localhost:4100",
-      authSecret: TEST_SECRET,
-      github: { api: "https://api.github.test", raw: "https://raw.github.test" },
-      fetch: fakeGithub({
-        "ys-fixtures/whoami/compose.yaml": WHOAMI,
-        "your-space-ai/your-space-app-kits/apps/ys-fixtures/whoami.yaml": KIT,
-        "ys-fixtures/plain/compose.yaml": WHOAMI,
-      }),
+    server = await startServer(t.db, {
+      apps: {
+        runtime,
+        fetch: fakeGithub({
+          "ys-fixtures/whoami/compose.yaml": WHOAMI,
+          "your-space-ai/your-space-app-kits/apps/ys-fixtures/whoami.yaml": KIT,
+          "ys-fixtures/plain/compose.yaml": WHOAMI,
+        }),
+      },
     });
-    operator = await operatorActorId(t.db);
+    await createOwnerWithPassword(t.db, OWNER, server.publicUrl);
+    const signedIn = await server.request("/api/auth/sign-in/username", { method: "POST", body: JSON.stringify({ username: OWNER.username, password: OWNER.password }) });
+    cookie = cookieHeader(signedIn);
   });
   afterAll(async () => {
+    await server?.close();
     await t?.destroy();
   });
 
+  const api = (path: string, init: RequestInit = {}) => server.request(path, { ...init, headers: { cookie, ...(init.headers as object) } });
+  const post = (path: string, body: unknown, method = "POST") => api(path, { method, body: JSON.stringify(body) });
+
+  it("refuses everyone but the signed-in owner, and changes nothing", async () => {
+    for (const [method, path] of [["GET", "/api/apps"], ["POST", "/api/apps/preview"], ["POST", "/api/apps"], ["GET", "/api/engine"]]) {
+      const response = await server.request(path!, { method, body: method === "GET" ? undefined : "{}" });
+      expect(response.status, `${method} ${path}`).toBe(401);
+    }
+    expect(await t.db.select().from(app)).toEqual([]);
+  });
+
   it("reviews an app without showing generated secrets, then installs it", async () => {
-    const review = await apps.preview(LINK);
-    const text = JSON.stringify(review);
-    expect(review).toMatchObject({ name: "whoami", title: "Who Am I", ok: true, origin: "http://whoami.localhost:4100", interface: { service: "web", port: 80 } });
+    const response = await post("/api/apps/preview", { link: LINK });
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    const review = JSON.parse(text);
+    expect(review).toMatchObject({ name: "whoami", title: "Who Am I", ok: true, origin: `http://whoami.${new URL(server.publicUrl).host}`, interface: { service: "web", port: 80 } });
     expect(review.source).toMatchObject({ repo: "ys-fixtures/whoami", commit: COMMIT });
-    expect(review.kit!.source).toContain(`your-space-app-kits/blob/${COMMIT}/apps/ys-fixtures/whoami.yaml`);
-    expect(review.settings.find((s) => s.name === "API_TOKEN")).toMatchObject({ secret: true, generated: true, set: true });
+    expect(review.kit.source).toContain(`your-space-app-kits/blob/${COMMIT}/apps/ys-fixtures/whoami.yaml`);
+    expect(review.settings.find((s: { name: string }) => s.name === "API_TOKEN")).toMatchObject({ secret: true, generated: true, set: true });
     expect(text).not.toContain("published-default-token");
     expect(review.warning).toMatch(/trusts it/);
 
-    const { jobId, done } = await apps.install(review.previewId, {}, operator);
-    await done;
-    expect((await apps.job(jobId)).state).toBe("succeeded");
+    const installed = await post("/api/apps", { previewId: review.previewId });
+    expect(installed.status).toBe(202);
+    const { jobId } = await installed.json() as any;
+    let job;
+    for (let i = 0; i < 50; i++) {
+      job = await (await api(`/api/jobs/${jobId}`)).json() as any;
+      if (job.state !== "running") break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(job.state).toBe("succeeded");
 
     const applied = runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!;
     expect(applied).toMatchObject({ project: "ys-whoami", interface: { service: "web", port: 80 }, limits: { web: { memory: 64 * 1024 ** 2, cpus: 0.5 } } });
@@ -159,20 +183,24 @@ describe("installing an app", () => {
   });
 
   it("lists the app and shows its details without secret values", async () => {
-    expect((await apps.list()).apps).toEqual([expect.objectContaining({ name: "whoami", state: "running" })]);
-    const detail = await apps.detail("whoami");
+    const list = await (await api("/api/apps")).json() as any;
+    expect(list.apps).toEqual([expect.objectContaining({ name: "whoami", state: "running" })]);
+    const text = await (await api("/api/apps/whoami")).text();
+    const detail = JSON.parse(text);
     expect(detail).toMatchObject({ name: "whoami", state: "running", source: { repo: "ys-fixtures/whoami", commit: COMMIT } });
-    expect(JSON.stringify(detail)).not.toContain(runtime.calls.find((c) => c.method === "apply")!.spec!.env.API_TOKEN!);
+    expect(text).not.toContain(runtime.calls.find((c) => c.method === "apply")!.spec!.env.API_TOKEN!);
   });
 
   it("refuses to install an app twice", async () => {
-    await expect(apps.preview(LINK)).rejects.toMatchObject({ status: 409, code: "already_installed" });
+    const response = await post("/api/apps/preview", { link: LINK });
+    expect(response.status).toBe(409);
+    expect((await response.json() as any).error).toBe("already_installed");
   });
 
   it("starts apps that should run and don't, and ends interrupted jobs as failed", async () => {
     runtime.running.delete("ys-whoami");
     const before = runtime.calls.filter((c) => c.method === "apply").length;
-    await apps.reconcile();
+    await server.apps!.reconcile();
     await new Promise((r) => setTimeout(r, 100));
     expect(runtime.calls.filter((c) => c.method === "apply").length).toBe(before + 1);
 
@@ -180,22 +208,28 @@ describe("installing an app", () => {
     runtime.running.delete("ys-whoami");
     runtime.stopping = true;
     const during = runtime.calls.length;
-    await apps.reconcile();
+    await server.apps!.reconcile();
     expect(runtime.calls.length).toBe(during);
     runtime.stopping = false;
-    await apps.reconcile();
+    await server.apps!.reconcile();
     await new Promise((r) => setTimeout(r, 100));
 
     const [row] = await t.db.select().from(app).where(eq(app.name, "whoami"));
     await t.db.insert(installJob).values({ appId: row!.id, kind: "apply" });
-    await apps.recoverJobs();
+    await server.apps!.recoverJobs();
     const jobs = await t.db.select().from(installJob).where(eq(installJob.state, "running"));
     expect(jobs).toEqual([]);
   });
 
-  it("guesses the interface of an app without a kit, and generates its secret", async () => {
-    const review = await apps.preview("https://github.com/ys-fixtures/plain/blob/main/compose.yaml");
-    expect(review).toMatchObject({ name: "plain", kit: null, interface: { service: "web", port: 80 } });
-    expect(review.settings.find((s) => s.name === "API_TOKEN")).toMatchObject({ generated: true, secret: true });
+  it("shows the engine and each app's use", async () => {
+    const engine = await (await api("/api/engine")).json() as any;
+    expect(engine).toMatchObject({ reachable: true, cpus: 4, apps: [expect.objectContaining({ name: "whoami", memory: 10 * 1024 ** 2 })] });
   });
+
+  it("guesses the interface of an app without a kit, and generates its secret", async () => {
+    const review = await (await post("/api/apps/preview", { link: "https://github.com/ys-fixtures/plain/blob/main/compose.yaml" })).json() as any;
+    expect(review).toMatchObject({ name: "plain", kit: null, interface: { service: "web", port: 80 } });
+    expect(review.settings.find((s: { name: string }) => s.name === "API_TOKEN")).toMatchObject({ generated: true, secret: true });
+  });
+
 });

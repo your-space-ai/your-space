@@ -61,7 +61,7 @@ for (let attempt = 1; ; attempt++) {
 
 const auth = createAuth({ config, db });
 const apps = new AppsService(db, socketRuntime(), { publicUrl: config.publicUrl, authSecret: config.authSecret });
-const app = createApp({ auth, db });
+const app = createApp({ auth, db, apps: { service: apps } });
 
 // Apps that should run are started, and recorded states corrected, at start and then regularly
 // (FR-007, FR-008). Each pass waits for the one before.

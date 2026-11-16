@@ -2,7 +2,7 @@
 // settings; the runtime manager runs it. Secret values leave the server only in the app spec sent to
 // the runtime manager.
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { recordEvent } from "../actors.ts";
 import type { Db } from "../db/client.ts";
 import { app, appSetting, installJob, type AppState, type JobStep, type Kit } from "../db/schema.ts";
@@ -305,6 +305,12 @@ export class AppsService {
       .where(eq(installJob.id, jobId));
   }
 
+  /** A job for a request, which answers with the job's ID and doesn't wait for it. */
+  private async queue(appId: string, kind: "apply"): Promise<{ jobId: string }> {
+    const { jobId } = await this.startJob(appId, kind);
+    return { jobId };
+  }
+
   /** Starts a job that applies the app; one job per app at a time. */
   async startJob(appId: string, kind: "install" | "apply"): Promise<{ jobId: string; done: Promise<void> }> {
     if (this.busy.has(appId)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
@@ -439,12 +445,57 @@ export class AppsService {
 
   async detail(name: string) {
     const row = await this.rowByName(name);
+    const job = (await this.db.select().from(installJob).where(eq(installJob.appId, row.id)).orderBy(desc(installJob.createdAt)).limit(1))[0];
     return {
       name: row.name,
+      title: row.title,
       origin: this.address(row.name).origin,
       state: row.state,
       stateReason: row.stateReason,
+      desired: row.desired,
       source: { link: row.sourceUrl, repo: row.repo, path: row.path, ref: row.ref, commit: row.commit },
+      kitSource: row.kitSource,
+      images: row.images,
+      adaptations: row.adaptations,
+      job: job ? { id: job.id, kind: job.kind, state: job.state, steps: job.steps, error: job.error } : null,
+      installedAt: row.createdAt,
     };
+  }
+
+  async engine() {
+    const info = await this.runtime.engine().catch(() => ({ reachable: false, connection: "unknown" }) as Awaited<ReturnType<Runtime["engine"]>>);
+    const rows = await this.db.select().from(app).where(ne(app.state, "removed"));
+    const apps = await Promise.all(
+      rows.map(async (r) => {
+        try {
+          const stats = await this.runtime.stats(`ys-${r.name}`);
+          return {
+            name: r.name,
+            title: r.title,
+            memory: stats.services.reduce((n, s) => n + s.memory, 0),
+            cpuPercent: Math.round(stats.services.reduce((n, s) => n + s.cpuPercent, 0) * 10) / 10,
+          };
+        } catch {
+          return { name: r.name, title: r.title, memory: null, cpuPercent: null };
+        }
+      }),
+    );
+    return { ...info, apps };
+  }
+
+  // ----- Changing an app -----
+
+  private async liveRow(name: string): Promise<AppRow> {
+    const row = await this.rowByName(name);
+    if (row.state === "removed") throw new AppError(409, "removed", "The app has been removed. Install it again to use it.");
+    return row;
+  }
+
+  async start(name: string): Promise<{ jobId: string }> {
+    const row = await this.liveRow(name);
+    // Refused before anything is recorded, so a busy app's intent doesn't change.
+    if (this.busy.has(row.id)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
+    await this.db.update(app).set({ desired: "running" }).where(eq(app.id, row.id));
+    return this.queue(row.id, "apply");
   }
 }

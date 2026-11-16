@@ -45,6 +45,10 @@ export class FakeRuntime implements Runtime {
   async apps() {
     return [...this.running].map(([project, services]) => ({ project, app: project.slice(3), services }));
   }
+
+  async stats(project: string) {
+    return { services: (this.running.get(project) ?? []).map((s) => ({ name: s.name, memory: 10 * 1024 ** 2, memoryLimit: 64 * 1024 ** 2, cpuPercent: 1 })) };
+  }
 }
 
 export const COMMIT = "0123456789abcdef0123456789abcdef01234567";

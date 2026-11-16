@@ -202,6 +202,36 @@ export async function listApps(): Promise<{ project: string; app: string; servic
   return [...byProject.values()];
 }
 
+async function projectContainers(project: string) {
+  return listContainers([INSTALLATION_LABEL, `com.docker.compose.project=${project}`]);
+}
+
+interface Stats {
+  memory_stats: { usage?: number; limit?: number; stats?: { inactive_file?: number } };
+  cpu_stats: { cpu_usage: { total_usage: number }; system_cpu_usage?: number; online_cpus?: number };
+  precpu_stats: { cpu_usage: { total_usage: number }; system_cpu_usage?: number };
+}
+
+export async function stats(project: string) {
+  const containers = (await projectContainers(project)).filter((c) => c.State === "running");
+  const services = await Promise.all(
+    containers.map(async (c) => {
+      const s = await engineJson<Stats>("GET", `/containers/${c.Id}/stats?stream=false`);
+      const memory = (s.memory_stats.usage ?? 0) - (s.memory_stats.stats?.inactive_file ?? 0);
+      const cpuDelta = s.cpu_stats.cpu_usage.total_usage - s.precpu_stats.cpu_usage.total_usage;
+      const systemDelta = (s.cpu_stats.system_cpu_usage ?? 0) - (s.precpu_stats.system_cpu_usage ?? 0);
+      const cpuPercent = systemDelta > 0 ? (cpuDelta / systemDelta) * (s.cpu_stats.online_cpus ?? 1) * 100 : 0;
+      return {
+        name: c.Labels["com.docker.compose.service"] ?? c.Id,
+        memory,
+        memoryLimit: s.memory_stats.limit ?? 0,
+        cpuPercent: Math.round(cpuPercent * 10) / 10,
+      };
+    }),
+  );
+  return { services };
+}
+
 /** Stops every app this installation manages, and refuses to start any until restarted. */
 export async function stopAll(): Promise<string[]> {
   stopping = true;
