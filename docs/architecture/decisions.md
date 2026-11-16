@@ -413,14 +413,24 @@ Dependency selection must consider actual licenses, including bundled components
 ### Project License and Business Model
 
 - The business maintains the open-source core and offers a managed service for people who don't want to self-host.
-- Your Space itself (server, web client, CLI, and desktop app) is licensed under AGPL-3.0. Anyone may self-host and modify it; anyone who runs a modified version as a network service must publish their changes.
-- The SDKs are licensed under Apache-2.0, so apps can use any license. Apps are separate programs that integrate through APIs and are not covered by the core's license.
+- Your Space itself (server, web client, CLI, and desktop app) is licensed under AGPL-3.0 (`AGPL-3.0-only`). Anyone may self-host and modify it; anyone who runs a modified version as a network service must publish their changes.
+- The SDKs are licensed under MIT, so apps can use any license. Apps are separate programs that integrate through APIs and are not covered by the core's license. (Apache-2.0 superseded 2026-11-16; see below.)
+- SDK code never imports or copies code from the AGPL parts of the repository; SDKs reach Your Space only through its public APIs and contracts. Each SDK package states its own MIT license.
 - "Your Space" is protected as a trademark, so others cannot offer services under the name. A short trademark policy explains how forks may and may not use the name. getyourspace.ai is the project domain.
-- Outside contributions require a contributor license agreement that lets the project use contributions under other terms, so the managed service and future licensing stay possible.
+- Outside contributions are accepted under the Developer Certificate of Origin (DCO): contributors sign off each commit and keep their copyright, and the code they contribute is licensed under the license of the part it changes. (Contributor license agreement superseded 2026-11-16; see below.)
 - Code specific to the managed service, such as billing, provisioning, and multi-tenant operations, lives in a separate private repository and integrates with the core through its APIs.
 - The license, trademark, and contributor agreement are in place before publication, after review by a lawyer.
 
 **Decision update (2026-11-02):** AGPL-3.0 for Your Space and Apache-2.0 for the SDKs replace the earlier MIT preference. AGPL keeps the core open source while preventing closed hosted forks; the trademark and maintainership protect the managed offering. Source-available licenses such as FSL were considered and rejected because the business depends on an open-source core.
+
+**Decision update (2026-11-16):** The owner revisited the licensing and contributor terms before publication.
+
+- **SDKs: MIT, replacing Apache-2.0.** Apps that use an SDK can have any license, including GPLv2-only, which Apache-2.0 can't be combined with. Installing existing open-source apps is the first release's focus, so compatibility outweighs Apache-2.0's explicit patent grant; the project holds no patents.
+- **Contributions: DCO, replacing the contributor license agreement.** Revenue comes from the managed service, not from selling licenses, and self-hosters trust a project more when no single party can relicense it. The accepted consequence: once outside contributions land, the core can't be relicensed or offered under commercial terms, and the managed service must publish any changes it makes to the core. Keeping managed-service code in a separate private repository that integrates through the core's APIs, as decided above, keeps that workable.
+- **`AGPL-3.0-only`, not "or later".** The project decides on any future license version itself; under the DCO this can't easily be changed later.
+- **Copyright holder.** Code is published under the owner's name; the owner assigns it to the company when it is incorporated. Incorporation isn't required for publication.
+- **Trademark: open.** A 2026-11-16 screening found no live US registration for YOUR SPACE in software classes, but the name is descriptive and may be hard to register, and MYSPACE registrations exist in related classes. Whether and when to file, and the trademark policy for forks, are open.
+- **Lawyer review before publication remains as stated above** and now covers the DCO in place of a contributor agreement.
 
 ### Product Experience Principles
 
