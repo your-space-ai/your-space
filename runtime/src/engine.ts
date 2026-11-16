@@ -83,10 +83,18 @@ export function docker(args: string[], env: Record<string, string> = {}, cwd = "
   });
 }
 
-/** Removes secret values from text that may be shown, such as a Compose error. */
+/**
+ * Removes setting values from text that may be shown, such as a Compose error. Every value of three
+ * characters or more is hidden wherever it stands on its own, longest first. Shorter values, such as
+ * a "1", can't be told apart from the rest of a message, and a value inside a longer word is left.
+ */
 export function scrub(text: string, env: Record<string, string>): string {
+  const values = [...new Set(Object.values(env).filter((v) => v.length >= 3))].sort((a, b) => b.length - a.length);
   let out = text;
-  for (const value of Object.values(env)) if (value && value.length >= 6) out = out.replaceAll(value, "[hidden]");
+  for (const value of values) {
+    const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`(?<![A-Za-z0-9])${escaped}(?![A-Za-z0-9])`, "g"), "[hidden]");
+  }
   return out;
 }
 

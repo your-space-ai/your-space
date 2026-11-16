@@ -55,8 +55,6 @@ function failure(res: ServerResponse, error: unknown): void {
   send(res, 500, { error: "internal_error", message: "Something went wrong in the runtime manager." });
 }
 
-const PROJECT_PATH = /^\/apps\/(ys-[a-z][a-z0-9-]{0,29})(\/[a-z]+)?$/;
-
 async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? "/", "http://runtime");
   const { pathname } = url;
@@ -84,11 +82,6 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     return;
   }
 
-  const match = PROJECT_PATH.exec(pathname);
-  if (match) {
-    const project = match[1]!;
-    const action = match[2] ?? "";
-  }
   send(res, 404, { error: "not_found", message: "There is nothing at this address." });
 }
 
