@@ -11,6 +11,7 @@ import {
   INSTALLATION,
   isStopping,
   listApps,
+  logs,
   SpecError,
   stats,
   stopAll,
@@ -93,6 +94,10 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const action = match[2] ?? "";
     if (method === "GET" && action === "/stats") return send(res, 200, await stats(project));
     if (method === "GET" && action === "/denials") return send(res, 200, await denials(project));
+    if (method === "GET" && action === "/logs") {
+      const service = url.searchParams.get("service") ?? "";
+      return send(res, 200, { lines: await logs(project, service, Number(url.searchParams.get("tail") ?? 200)) });
+    }
   }
   send(res, 404, { error: "not_found", message: "There is nothing at this address." });
 }

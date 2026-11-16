@@ -51,6 +51,10 @@ export class FakeRuntime implements Runtime {
     return [...this.running].map(([project, services]) => ({ project, app: project.slice(3), services }));
   }
 
+  async logs(project: string, service: string) {
+    return [`${project} ${service} started`];
+  }
+
   async stats(project: string) {
     return { services: (this.running.get(project) ?? []).map((s) => ({ name: s.name, memory: 10 * 1024 ** 2, memoryLimit: 64 * 1024 ** 2, cpuPercent: 1 })) };
   }

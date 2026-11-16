@@ -140,6 +140,16 @@ export interface Job {
   error: string | null;
 }
 
+export interface ServiceState {
+  name: string;
+  role: "app" | "egress";
+  state: string;
+  health?: string;
+  exitCode?: number;
+  oomKilled?: boolean;
+  limit: { memory: number; cpus: number } | null;
+}
+
 export interface AppDetail {
   name: string;
   title: string;
@@ -153,6 +163,8 @@ export interface AppDetail {
   kitSource: string | null;
   images: Record<string, { digest: string }>;
   adaptations: Adaptation[];
+  services: ServiceState[];
+  limits: Record<string, { memory: number; cpus: number }>;
   settings: PublicSetting[];
   outbound: { host: string; source: "kit" | "owner"; createdAt: string }[];
   requests: { id: string; host: string; state: "pending" | "dismissed"; attempts: number; firstSeen: string; lastSeen: string }[];

@@ -92,6 +92,10 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
   );
 
   router.get("/apps/:name", owner(async (req, res) => void res.json(await apps.detail(name(req)))));
+  router.get(
+    "/apps/:name/logs",
+    owner(async (req, res) => void res.json({ lines: await apps.logs(name(req), String(req.query.service ?? "")) })),
+  );
   router.post("/apps/:name/start", owner(async (req, res) => void res.status(202).json(await apps.start(name(req)))));
   router.put(
     "/apps/:name/settings",
@@ -99,6 +103,14 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
       const values = body(req).values as Record<string, string | null> | undefined;
       if (!values || typeof values !== "object") throw new AppError(400, "values_required", "Send the settings to change.");
       res.status(202).json(await apps.updateSettings(name(req), values, who.actorId));
+    }),
+  );
+  router.put(
+    "/apps/:name/limits",
+    owner(async (req, res, who) => {
+      const limits = body(req).limits as Record<string, { memory?: number; cpus?: number }> | undefined;
+      if (!limits || typeof limits !== "object") throw new AppError(400, "limits_required", "Send the limits to change.");
+      res.status(202).json(await apps.updateLimits(name(req), limits, who.actorId));
     }),
   );
   router.post(

@@ -124,9 +124,35 @@ test("the owner changes a setting, and secrets show only as set", async ({ page 
   await evidence(page, testInfo, "002-us5-settings");
 });
 
-test("blocked hosts become access requests the owner approves or dismisses", async ({ page }, testInfo) => {
+test("an app can't reach Your Space, other apps, the host or the internet", async () => {
   const installed = await serverCommand("install-app", [PROBE]);
   expect(installed.code, installed.stderr).toBe(0);
+  // The network itself: -Y off bypasses the app's outbound proxy.
+  const blocked = await inApp(
+    "ys-probe-web-1",
+    `t(){ if timeout 4 "$@" >/dev/null 2>&1; then echo reached; else echo blocked; fi; }
+     t wget -Y off -qO- http://server:3000/api/health
+     t wget -Y off -qO- http://ys-e2e-server-1:3001/gate
+     t nc -z ys-e2e-postgres-1 5432
+     t wget -Y off -qO- http://ys-whoami-web-1/
+     t wget -Y off -qO- http://ys-whoami-ui/
+     t nc -z 172.17.0.1 2375
+     t nc -z 1.1.1.1 443
+     t test -S /var/run/docker.sock`,
+  );
+  expect(blocked.split("\n")).toEqual(Array(8).fill("blocked"));
+  // The outbound proxy refuses private addresses, so it is no way around the network either.
+  const viaProxy = await inApp(
+    "ys-probe-web-1",
+    `for u in http://ys-e2e-server-1:3000/api/health http://172.17.0.1:2375/ http://127.0.0.1:8080/; do
+       if timeout 6 wget -qO- "$u" >/dev/null 2>&1; then echo reached; else echo blocked; fi; done`,
+  );
+  expect(viaProxy.split("\n")).toEqual(Array(3).fill("blocked"));
+  // A sanity check that the probe itself works: its own service answers.
+  expect(await inApp("ys-probe-web-1", "wget -Y off -qO- http://web:8080/")).toBe("ok");
+});
+
+test("blocked hosts become access requests the owner approves or dismisses", async ({ page }, testInfo) => {
   await asOwner(page);
   // Two attempts the egress proxy refuses.
   await inApp("ys-probe-web-1", "http_proxy=http://ys-egress:3128 wget -T5 -qO- http://approve-me.example/ ; http_proxy=http://ys-egress:3128 wget -T5 -qO- http://dismiss-me.example/ ; true");
@@ -155,8 +181,19 @@ test("blocked hosts become access requests the owner approves or dismisses", asy
   await expect(page.getByRole("button", { name: "Approve dismiss-me.example" })).toHaveCount(0);
 });
 
-test("the owner sees the engine and what each app uses", async ({ page }) => {
+test("the owner sees each service, its logs and limits, and the engine", async ({ page }) => {
   await asOwner(page);
+  await page.goto("/apps/whoami");
+  await page.getByText("Advanced").click();
+  await page.getByRole("button", { name: "Show logs" }).click();
+  await expect(page.getByLabel("Logs")).not.toBeEmpty({ timeout: 15_000 });
+  await page.getByLabel("Memory limit for web in MiB").fill("96");
+  await page.getByRole("button", { name: "Save limits" }).click();
+  await waitForJob(page);
+  expect(await inspect("ys-whoami-web-1", "{{.HostConfig.Memory}}")).toBe(String(96 * 1024 * 1024));
+  // Apps go first when memory runs out (FR-D06).
+  expect(await inspect("ys-whoami-web-1", "{{.HostConfig.OomScoreAdj}}")).toBe("500");
+
   await page.goto("/engine");
   await expect(page.getByRole("heading", { name: "Engine" })).toBeVisible();
   await expect(page.locator("[data-field=reachable]")).toHaveText("Reachable");

@@ -264,6 +264,13 @@ describe("apps API", () => {
     expect((await post("/api/apps/whoami/settings", { values: { NOPE: "x" } }, "PUT")).status).toBe(400);
   });
 
+  it("changes limits within bounds", async () => {
+    expect((await post("/api/apps/whoami/limits", { limits: { web: { memory: 1024 } } }, "PUT")).status).toBe(400);
+    expect((await post("/api/apps/whoami/limits", { limits: { web: { memory: 128 * 1024 ** 2, cpus: 2 } } }, "PUT")).status).toBe(202);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.limits).toEqual({ web: { memory: 128 * 1024 ** 2, cpus: 2 } });
+  });
+
   it("starts apps that should run and don't, and ends interrupted jobs as failed", async () => {
     runtime.running.delete("ys-whoami");
     const before = runtime.calls.filter((c) => c.method === "apply").length;

@@ -49,12 +49,12 @@ it merges.
 
 ## Slice 7: Isolation, tested
 
-- [ ] T026 Isolation probes in the browser journey
+- [x] T026 Isolation probes in the browser journey
 
 ## Slice 8: Limits, status and logs
 
-- [ ] T027 Limits per service, kit overrides, owner changes; apps stopped first when memory runs out
-- [ ] T028 Service states and logs under Advanced
+- [x] T027 Limits per service, kit overrides, owner changes; apps stopped first when memory runs out
+- [x] T028 Service states and logs under Advanced
 
 ## Slice 9: Remove and delete data
 

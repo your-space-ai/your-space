@@ -58,6 +58,7 @@ export type EventType =
   | "recovery.password_reset"
   | "app.installed"
   | "app.settings_changed"
+  | "app.limits_changed"
   | "app.outbound_approved"
   | "app.outbound_removed"
   | "app.request_dismissed";
