@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-12
 
-**Status**: Draft for review, with the whole journey built on one branch. Every question is decided.
+**Status**: Draft for review. Every question is decided.
 Nothing in it is delivered yet.
 
 **Journey**: 002 "Install an app and use it", the second of eight journeys in the
@@ -42,8 +42,8 @@ data; Your Space runs it, protects the platform and other apps from it, and cont
 it. Deeper integration (sign-in through Your Space, verified identity and roles) comes later, in
 levels apps opt into, so that any app with a published image and a Compose file can be installed.
 
-The journey is built end to end on one branch first, so the whole design is proven working, and then
-split into a stack of pull requests, one per slice, that build up to it. Each slice ends with
+The journey is delivered as a stack of pull requests that build up to it, one per slice or pair
+of small slices. Each slice ends with
 something the owner can see working, tested end to end in the browser, and later slices build on it
 without reworking it. The [slice plan](#slices-and-their-dependencies) orders them by what each needs.
 
@@ -575,9 +575,8 @@ What is specific to the first runtime adapter. The research behind it is
 These change the decision record's accepted app direction, and are recorded there in the first pull
 request after agreement.
 
-1. **Journeys are delivered in slices**: one specification for the journey, built end to end on one
-   branch first, then split into one pull request per slice in a stack, each ending with something
-   working end to end.
+1. **Journeys are delivered in slices**: one specification for the journey, then a stack of pull
+   requests, one per slice or pair of small slices, each ending with something working end to end.
 2. **Apps install from their own files, with optional installation kits**: Your Space reads an app's
    own Compose file and applies rules that hold for every app, instead of requiring a Your
    Space-specific deployment file with an `x-your-space` section. Help a particular app needs comes

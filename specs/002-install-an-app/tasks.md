@@ -1,8 +1,8 @@
 # Tasks: Install an App and Use It
 
-Built end to end on one branch; the pull requests that split it follow the slices in the
-[spec](spec.md#slices-and-their-dependencies). Checked tasks are built and pass their tests on the
-branch; nothing is delivered until it merges.
+The pull requests follow the slices in the [spec](spec.md#slices-and-their-dependencies). A task is
+checked when a pull request in the stack builds it and passes its tests; nothing is delivered until
+it merges.
 
 ## Slice 1: Run an app from a link
 

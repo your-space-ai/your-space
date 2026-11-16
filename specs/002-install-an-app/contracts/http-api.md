@@ -18,7 +18,7 @@ Errors use journey 001's shape `{ "error": "<code>", "message": "…" }`.
 | `POST /api/apps/{name}/requests/{id}/dismiss` | | `204` |
 | `POST /api/apps/{name}/remove` | | `202 { jobId }`; data is kept |
 | `DELETE /api/apps/{name}/data` | `{ confirm: "<name>" }` | `204`; only for a removed app |
-| `GET /api/apps/{name}/open?return=/path` | | `302` to the app's handoff, or to sign-in |
+| `GET /api/apps/{name}/open?return=/path` | | `302` to the app's handoff, or to sign-in. `return` must start with a single `/`; anything else (a scheme, `//`, a backslash) becomes `/`. Sent with `Referrer-Policy: no-referrer` |
 | `GET /api/jobs/{id}` | | `{ id, state, steps, error }` |
 | `GET /api/engine` | | `{ reachable, version, arch, cpus, memory, connection, apps: [{ name, memory, cpuPercent }] }` |
 
@@ -27,7 +27,7 @@ Errors use journey 001's shape `{ "error": "<code>", "message": "…" }`.
 | Path | Answer |
 | --- | --- |
 | `GET /gate` (with `X-Forwarded-Host`, `X-Forwarded-Uri`) | `200` with `X-YS-Upstream: ys-<app>-ui:<port>` for a valid pass; otherwise `302` to `/api/apps/<app>/open` on Your Space's origin |
-| `GET /handoff?code=&return=` | Sets the pass cookie on the app's host and redirects to `return` |
+| `GET /handoff?code=&return=` | Sets the pass cookie on the app's host and redirects to `return`, under the same rule as `/open`, with `Referrer-Policy: no-referrer`. The code works once, for 60 seconds, and isn't logged |
 | `GET /tls-ask?domain=` | `200` for an installed app's name or Your Space's own, else `404` |
 
 ## Commands

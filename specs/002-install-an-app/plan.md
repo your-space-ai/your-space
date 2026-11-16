@@ -1,6 +1,6 @@
 # Implementation Plan: Install an App and Use It
 
-**Branch**: `claude/002-spec` | **Spec**: [spec.md](spec.md) | **Research**: [research.md](research.md)
+**Spec**: [spec.md](spec.md) | **Research**: [research.md](research.md)
 
 ## Summary
 
@@ -12,8 +12,7 @@ lets a request through only with a short-lived pass that Your Space issues to it
 Each app reaches the internet only through its own allowlisting egress proxy, and blocked hosts become
 access requests.
 
-The journey is built end to end in one branch first and split into reviewable pull requests
-afterwards, following the slice order in the spec.
+The journey is delivered in the slice order the spec sets.
 
 ## Technical Context
 
@@ -35,7 +34,7 @@ afterwards, following the slice order in the spec.
 | V. Protect private data | Settings are encrypted at rest; secret values never leave the server except to the runtime manager over a local socket, and never appear in logs, output or reviews. |
 | VI. Proportionate discipline | Isolation, gate and cookie rules have their own tests; the review, pass and egress designs are written down here and in research. |
 | VII. Reuse before building | Docker Compose resolves and runs app files; Caddy routes, gates (`forward_auth`) and rewrites headers; Squid enforces outbound allowlists. Custom code is the policy around them. One new npm dependency (`yaml`). |
-| Proposed 1.4.0: concepts, not technologies | The server talks to a runtime API in terms of apps, services, endpoints and egress hosts; only the runtime manager knows Docker. |
+| VIII. Concepts, not technologies | The server talks to a runtime API in terms of apps, services, endpoints and egress hosts; only the runtime manager knows Docker. |
 
 ## Architecture
 
@@ -143,6 +142,11 @@ corrected.
    Space's origin in the app's CSP (adding one if the app sends none).
 
 Someone not signed in is sent to Your Space's sign-in at step 2.
+
+**Where the owner returns.** `return` is only ever a path on the app's own origin: it must start
+with a single `/`, and anything else (a scheme, `//`, or a backslash) becomes `/`. The open and
+handoff redirects carry `Referrer-Policy: no-referrer`, so the one-time code in their address
+isn't sent on as a referrer, and Caddy keeps no access log.
 
 **When a browser blocks the pane's cookies.** WebKit on the plain-HTTP local setup treats each
 `*.localhost` name as its own site and drops the pass, so steps 1 to 3 repeat. Step 2 counts the

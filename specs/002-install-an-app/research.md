@@ -194,7 +194,7 @@ when opened in its own tab.
 
 ## R3. What Building the Journey Showed
 
-Checked on 2026-11-14 while building the whole journey on one branch, on Docker Engine 29.9.2 with
+Checked on 2026-11-14 while building the journey, on Docker Engine 29.9.2 with
 the Compose plugin v5.7.1 from the `docker:29-cli` image, in a Linux container with no internet
 access for app containers.
 
