@@ -85,9 +85,23 @@ recovering a lost owner password can't need the password. It never calls Your Sp
 works through the engine and the server's own commands. The desktop app uses these commands only to
 run a space on the same computer; connected to a server, it is purely a client.
 
+Managing a space on another machine from the desktop app is possible later, but not planned.
+
 Agents and scripts can't click through the client, so the CLI gives them a way in, with a credential
-a person issued and can revoke in the client. Journey 005 specifies it; this journey adds nothing
-for it.
+a person issued and can revoke in the client. Several agents, and the owner, may use one CLI on one
+machine, so identity never comes from the CLI itself:
+
+- **Each agent has its own credential**, given to the CLI on every run (for example in an
+  environment variable). The server checks it and credits every action to that agent.
+- **The CLI stores no credential and keeps no signed-in state**, so there is nothing one agent can
+  pick up from another or from the owner.
+- **The owner's identity is never available through the CLI.** People sign in only in the client,
+  and agent commands never fall back to anything but the credential they were given.
+- **Access to the engine on the server's machine is full control**, whoever has it, which is why
+  running the installation needs no sign-in. Agents shouldn't run with that access; the guide says
+  so, since the CLI can't enforce it.
+
+Journey 005 specifies agent commands within these rules; this journey adds nothing for them.
 
 ## Concepts and Adapters
 
