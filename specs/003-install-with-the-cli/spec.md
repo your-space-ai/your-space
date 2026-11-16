@@ -66,6 +66,29 @@ Where this spec changes shared direction, it says so in
 [Changes to Shared Direction](#changes-to-shared-direction), and the decision record changes in the
 first pull request.
 
+## Client and CLI
+
+People use Your Space through the client: the web client now, and the desktop app in journey 008.
+They sign in there and nowhere else, and everything a person does, from installing apps to managing
+agents and changing settings, is done there. The CLI has no sign-in command and offers nothing a
+person should do in the client.
+
+The CLI covers only what the client can't:
+
+| Use | Who | Where it runs | Its authority | Journey |
+| --- | --- | --- | --- | --- |
+| **Running the installation**: `init`, `start`, `stop`, `status`, `logs`, `configure`, `owner`, `secrets` | The person who runs the machine, or the desktop app in local mode | On the machine that runs Your Space, in the installation's folder | Access to that machine, as with the server's `reset-link` | 003 |
+| **Agents and scripts using the API**: agent commands, and backups if journey 006 chooses this way | An agent, or a person's script | Anywhere | A credential a person issued for it in the client, given to the CLI (for example in an environment variable) | 005, 006 |
+
+Running the installation needs no client: before Your Space runs there is nothing to sign in to, and
+recovering a lost owner password can't need the password. It never calls Your Space's HTTP API; it
+works through the engine and the server's own commands. The desktop app uses these commands only to
+run a space on the same computer; connected to a server, it is purely a client.
+
+Agents and scripts can't click through the client, so the CLI gives them a way in, with a credential
+a person issued and can revoke in the client. Journey 005 specifies it; this journey adds nothing
+for it.
+
 ## Concepts and Adapters
 
 | Concept | What the CLI knows | First adapter | Later adapters |
@@ -73,7 +96,7 @@ first pull request.
 | **Installation** | A folder's version and setup, and how to start, stop, report on and log it | A folder with the release files and `.env`, run with Docker Compose | Your Space's own virtual machine (journey 008) |
 | **Engine connection** | Which engine the installation runs on, whether it is reachable, its version and processor type | The engine Docker's own client uses (its current context or `DOCKER_HOST`) | Your Space's own virtual machine |
 | **Setup** | How the space is reached: this machine, your own domain, or your own proxy or tunnel | The `.env` lines from journey 001 (`YS_DOMAIN`, `YS_PROXY_URL`, `YS_PORT`) | |
-| **Server commands** | Owner creation, recovery links, secrets, app listing, with their exit statuses and JSON output | `docker compose exec server <command> --json` | The server's API, once the CLI can sign in remotely (journey 006) |
+| **Server commands** | Owner creation, recovery links, secrets, app listing, with their exit statuses and JSON output | `docker compose exec server <command> --json` | |
 
 Only an adapter knows its technology. The CLI's commands, questions and output are written in terms
 of the concepts, so a person sees "Your Space is running" and "the engine isn't reachable", not
@@ -390,8 +413,8 @@ option that is still complete.
   Desktop, Colima or OrbStack on macOS until Your Space provides its own.
 - Servers run Linux; macOS is supported for this machine and for a server, as in journey 001, and
   checked on a real Mac in the macOS and Windows pass.
-- The CLI runs on the machine Your Space runs on. Managing a remote installation from another
-  machine needs remote sign-in for the CLI, which journey 006 specifies with backup.
+- The CLI runs the installation on the machine Your Space runs on; see
+  [Client and CLI](#client-and-cli).
 
 ## Changes to Shared Direction
 
@@ -415,8 +438,11 @@ option that is still complete.
    later on Windows, is gathered into one verification pass in the release gate, so it isn't
    repeated after every journey. Journey 001's macOS checks (T055) and journey 002's Safari check
    (T022) join it.
-7. **Remote management waits for journey 006.** The CLI manages installations on its own machine;
-   the decision record's remote CLI authentication stays with backup and restore.
+7. **People sign in only through the client.** The CLI runs the installation with the authority of
+   access to its machine, and agents and scripts use the API through the CLI with a credential a
+   person issued in the client ([Client and CLI](#client-and-cli)). The CLI has no sign-in command.
+   This replaces the decision record's open "remote CLI authentication" for backup and restore:
+   journey 006 chooses between the client and an issued credential.
 
 ## Decisions and Open Questions
 
