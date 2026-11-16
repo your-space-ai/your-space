@@ -165,7 +165,13 @@ test("blocked hosts become access requests the owner approves or dismisses", asy
   await evidence(page, testInfo, "002-us6-1-requests");
 
   await page.getByRole("button", { name: "Dismiss dismiss-me.example" }).click();
-  await page.getByRole("button", { name: "Approve approve-me.example" }).click();
+  // The list refreshes after a dismissal; approve once it has.
+  await expect(page.getByRole("button", { name: "Dismiss dismiss-me.example" })).toHaveCount(0);
+  const [approval] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes("/requests/") && r.url().endsWith("/approve")),
+    page.getByRole("button", { name: "Approve approve-me.example" }).click(),
+  ]);
+  expect(approval.status(), await approval.text()).toBe(202);
   await waitForJob(page);
   await page.reload();
   const outbound = page.locator("section", { has: page.getByRole("heading", { name: "Outbound access" }) });
