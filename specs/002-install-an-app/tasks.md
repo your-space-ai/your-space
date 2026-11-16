@@ -25,10 +25,10 @@ it merges.
 
 ## Slice 3: Apps in Your Space
 
-- [ ] T014 Owner-only apps API (`server/src/apps/routes.ts`)
-- [ ] T015 Install jobs with progress
+- [x] T014 Owner-only apps API (`server/src/apps/routes.ts`)
+- [x] T015 Install jobs with progress
 - [ ] T016 Apps page: list, review with trust warning, install progress, kept data (`web/src/pages/Apps.tsx`)
-- [ ] T017 Engine page (`web/src/pages/Engine.tsx`)
+- [x] T017 Engine page (`web/src/pages/Engine.tsx`)
 
 ## Slice 4: Open an app
 

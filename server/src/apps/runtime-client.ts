@@ -67,6 +67,7 @@ export interface Runtime {
   check(spec: AppSpec): Promise<CheckAnswer>;
   apply(spec: AppSpec, onEvent: (event: ApplyEvent) => void): Promise<void>;
   apps(): Promise<{ project: string; app: string; services: ServiceState[] }[]>;
+  stats(project: string): Promise<{ services: { name: string; memory: number; memoryLimit: number; cpuPercent: number }[] }>;
 }
 
 function call(method: string, path: string, body?: unknown, onLine?: (line: string) => void, socketPath = RUNTIME_SOCKET): Promise<{ status: number; text: string }> {
@@ -142,5 +143,6 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
       if (!done) throw new RuntimeError("The runtime manager stopped before the app started.", 502, "apply_interrupted");
     },
     apps: () => json("GET", "/apps", undefined, socketPath),
+    stats: (project) => json("GET", `${p(project)}/stats`, undefined, socketPath),
   };
 }

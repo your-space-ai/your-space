@@ -53,9 +53,11 @@ test("a fresh install offers no way to create an account, and create-owner makes
   await expect(page.locator('[data-field="username"]')).toHaveText("sam");
   // The account's reserved address isn't the owner's, so no email is shown.
   await expect(page.locator('[data-field="email"]')).toHaveCount(0);
-  await expect(page.getByRole("button")).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
-  await expect(page.locator("a, input, select, textarea")).toHaveCount(0);
+  // The home page itself offers only signing out; the navigation around it is Your Space's (journey 002).
+  const home = page.getByRole("main");
+  await expect(home.getByRole("button")).toHaveCount(1);
+  await expect(home.getByRole("button", { name: "Sign out" })).toBeVisible();
+  await expect(home.locator("a, input, select, textarea")).toHaveCount(0);
   await evidence(page, testInfo, "us1-3-home");
 
   // The same link does not work twice. The token is checked when the form is sent, since it never

@@ -370,9 +370,19 @@ For devices on your own network, use [Tailscale](#use-tailscale): it needs no do
 
 ## Apps
 
-**Install.** From the server, `docker compose exec server install-app <link>` installs an app from
-the GitHub link to its Compose file, for example
-`https://github.com/we-promise/sure/blob/main/compose.example.yml`.
+Your Space runs existing open-source apps from their own Compose files, on the same Docker engine.
+
+**Install.** In Apps, paste the GitHub link to the app's Compose file, for example
+`https://github.com/we-promise/sure/blob/main/compose.example.yml`, and choose Review. The review
+shows the exact commit and image versions that will run, what Your Space changes or leaves out of
+the file, and the settings it reads. Secrets the file gives a
+published default for get generated values instead, and they are never shown. Install runs in the
+background; you can leave the page. From the server, `docker compose exec server install-app <link>`
+does the same.
+
+Installing an app trusts it with everything you put into it. Your Space keeps it away from your
+other apps, Your Space's own data and this machine, and controls who can reach it, but it can't see
+or check what the app does with your data.
 
 **Stop Your Space and its apps.** `docker compose restart` and updates leave apps running. To stop
 everything:
