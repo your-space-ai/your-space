@@ -101,7 +101,10 @@ machine, so identity never comes from the CLI itself:
   running the installation needs no sign-in. Agents shouldn't run with that access; the guide says
   so, since the CLI can't enforce it.
 
-Journey 005 specifies agent commands within these rules; this journey adds nothing for them.
+Journey 005 specifies agent commands within these rules, and this journey adds nothing for them.
+How a credential reaches an agent is left to 005 on purpose: an environment variable is only an
+example, and 005 must choose machinery that someone who isn't technical can set up and manage from
+the client, without handling tokens themselves.
 
 ## Concepts and Adapters
 
