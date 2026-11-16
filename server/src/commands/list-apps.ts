@@ -14,13 +14,13 @@ async function main(argv: string[]): Promise<number> {
   const { config, database } = opened;
   const apps = new AppsService(database.db, socketRuntime(), { publicUrl: config.publicUrl, authSecret: config.authSecret });
   try {
-    const { apps: list } = await apps.list();
+    const { apps: list, retained } = await apps.list();
     const details = await Promise.all(list.map((a) => apps.detail(a.name)));
     const rows = details.map((d) => ({ name: d.name, state: d.state, reason: d.stateReason, repo: d.source.repo, path: d.source.path, commit: d.source.commit, origin: d.origin }));
-    out.success(
-      { ok: true, apps: rows },
-      rows.length ? rows.map((r) => `${r.name}  ${r.state}${r.reason ? ` (${r.reason})` : ""}  ${r.repo}/${r.path}@${r.commit.slice(0, 12)}  ${r.origin}`) : ["No app is installed."],
-    );
+    out.success({ ok: true, apps: rows, retained }, [
+      ...(rows.length ? rows.map((r) => `${r.name}  ${r.state}${r.reason ? ` (${r.reason})` : ""}  ${r.repo}/${r.path}@${r.commit.slice(0, 12)}  ${r.origin}`) : ["No app is installed."]),
+      ...retained.map((r) => `${r.name}  removed, data kept`),
+    ]);
     return EXIT.ok;
   } catch (error) {
     log("error", "list_apps.failed", errorFields(error));

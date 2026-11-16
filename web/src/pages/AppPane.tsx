@@ -1,11 +1,13 @@
-// An app in a pane (journey 002, US4, FR-016): the app on its own origin inside Your Space's layout.
-// An app that can't run in a pane opens in its own tab, behind the same access check.
+// An app in a pane (journey 002, US4, US10, FR-016): the app on its own origin inside Your Space's
+// layout, or two apps side by side on a wide screen. An app that can't run in a pane opens in its
+// own tab, behind the same access check.
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { appsQuery, errorMessage, STATE_LABEL, type AppSummary } from "../apps-api.ts";
 
-export function AppPane({ name }: { name: string }) {
+export function AppPane({ name, beside }: { name: string; beside?: string }) {
   const apps = useQuery(appsQuery);
+  const navigate = useNavigate();
   if (apps.isError) {
     return (
       <main className="page">
@@ -32,15 +34,38 @@ export function AppPane({ name }: { name: string }) {
       </main>
     );
   }
+  const second = beside && beside !== name ? openable.find((a) => a.name === beside) : undefined;
+  const others = openable.filter((a) => a.name !== name);
 
   return (
-    <main className="panes" data-state="app-pane">
+    <main className={second ? "panes two" : "panes"} data-state="app-pane">
       <Pane app={first} />
+      {second ? <Pane app={second} onClose={() => void navigate({ to: "/open/$name", params: { name }, search: {} })} /> : null}
+      {!second && others.length > 0 ? (
+        <div className="beside">
+          <label>
+            Open beside it
+            <select
+              value=""
+              onChange={(e) => {
+                if (e.target.value) void navigate({ to: "/open/$name", params: { name }, search: { with: e.target.value } });
+              }}
+            >
+              <option value="">Choose an app…</option>
+              {others.map((a) => (
+                <option key={a.name} value={a.name}>
+                  {a.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
     </main>
   );
 }
 
-function Pane({ app }: { app: AppSummary }) {
+function Pane({ app, onClose }: { app: AppSummary; onClose?: () => void }) {
   return (
     <section className="pane" aria-label={app.title} data-pane={app.name}>
       <header className="pane-bar">
@@ -53,6 +78,11 @@ function Pane({ app }: { app: AppSummary }) {
         <a href={app.origin} target="_blank" rel="noopener">
           Open in its own tab
         </a>
+        {onClose ? (
+          <button type="button" className="secondary" onClick={onClose} aria-label={`Close ${app.title}`}>
+            Close
+          </button>
+        ) : null}
       </header>
       {app.pane ? (
         <iframe data-testid="app-pane" title={app.title} src={`${app.origin}/`} />

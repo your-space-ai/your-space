@@ -1,4 +1,4 @@
-// Installing and managing apps (components A, F, G, H, N, O). The server keeps each app's record,
+// Installing and managing apps (components A, F, G, H, N, O, P). The server keeps each app's record,
 // settings and approvals; the runtime manager runs it. Secret values leave the server only in the
 // app spec sent to the runtime manager.
 import { randomUUID } from "node:crypto";
@@ -66,6 +66,7 @@ interface Preview {
   limits: Record<string, { memory: number; cpus: number }>;
   interface: { service: string; port: number } | null;
   pane: boolean;
+  retained: boolean;
 }
 
 export type AppRow = typeof app.$inferSelect;
@@ -161,13 +162,19 @@ export class AppsService {
     const name = kit?.name ?? slug(source.repo.split("/")[1]!);
     if (RESERVED_NAMES.has(name)) throw new AppError(400, "name_reserved", `The name ${name} is reserved by Your Space.`);
     const existing = (await this.db.select().from(app).where(eq(app.name, name)))[0];
-    if (existing) throw new AppError(409, "already_installed", `An app called ${name} is already installed.`);
+    if (existing && existing.state !== "removed") {
+      throw new AppError(409, "already_installed", `An app called ${name} is already installed. Remove it first to install it again.`);
+    }
+    if (existing && existing.repo.toLowerCase() !== source.repo.toLowerCase()) {
+      throw new AppError(409, "name_taken", `Data kept from another app called ${name} uses this name. Delete that data first.`);
+    }
+    const previous = existing ? await this.storedValues(existing.id) : new Map<string, string | null>();
     const address = this.address(name);
 
     // A first check reads the settings the file uses; the second resolves the file with them.
     const spec: AppSpec = { project: `ys-${name}`, app: name, compose: source.text, env: {}, interface: kit?.interface ?? null };
     const first = await this.check(spec);
-    const settings = buildSettings(first.variables, kit, address);
+    const settings = buildSettings(first.variables, kit, address, previous);
     const check = await this.check({ ...spec, env: this.envOf(settings) });
 
     const limits: Record<string, { memory: number; cpus: number }> = {};
@@ -189,6 +196,7 @@ export class AppsService {
       limits,
       interface: kit?.interface ?? this.guessInterface(check),
       pane: kit?.pane ?? true,
+      retained: Boolean(existing),
     };
     this.previews.set(preview.id, preview);
     return this.reviewOf(preview);
@@ -227,16 +235,20 @@ export class AppsService {
       outbound: p.outbound,
       interface: p.interface,
       pane: p.pane,
+      retained: p.retained,
       warning:
         "Installing an app trusts it with everything you put into it. Your Space keeps it away from your other apps, Your Space's own data and this machine, and lets it reach only the internet hosts you approve.",
     };
   }
 
-  async install(previewId: string, values: Record<string, string>, actorId: string): Promise<{ name: string; jobId: string; done: Promise<void> }> {
+  async install(previewId: string, values: Record<string, string>, reuseData: boolean, actorId: string): Promise<{ name: string; jobId: string; done: Promise<void> }> {
     const p = this.previews.get(previewId);
     if (!p || p.expiresAt < Date.now()) throw new AppError(404, "preview_expired", "This review has expired. Paste the link again.");
     const review = this.reviewOf(p);
     if (!review.ok) throw new AppError(400, "refused", "Your Space can't run this app as it is.", review.refusals);
+    if (p.retained && !reuseData) {
+      throw new AppError(409, "retained_data", `Data kept from ${p.name} exists. Reuse it, or delete it first.`);
+    }
     const settings = p.settings.map((s) => ({ ...s }));
     for (const [name, value] of Object.entries(values ?? {})) {
       const setting = settings.find((s) => s.name === name);
@@ -272,13 +284,22 @@ export class AppsService {
         updatedAt: new Date(),
         removedAt: null,
       };
-      const inserted = await tx
-        .insert(app)
-        .values({ name: p.name, ...values })
-        .onConflictDoNothing()
-        .returning({ id: app.id });
-      if (!inserted[0]) throw new AppError(409, "already_installed", `An app called ${p.name} is already installed.`);
-      const id = inserted[0].id;
+      let id: string;
+      if (p.retained) {
+        const updated = await tx.update(app).set(values).where(and(eq(app.name, p.name), eq(app.state, "removed"))).returning({ id: app.id });
+        if (!updated[0]) throw new AppError(409, "conflict", "The app changed while you were reviewing it. Paste the link again.");
+        id = updated[0].id;
+        await tx.delete(appSetting).where(eq(appSetting.appId, id));
+        await tx.delete(appOutbound).where(eq(appOutbound.appId, id));
+      } else {
+        const inserted = await tx
+          .insert(app)
+          .values({ name: p.name, ...values })
+          .onConflictDoNothing()
+          .returning({ id: app.id });
+        if (!inserted[0]) throw new AppError(409, "already_installed", `An app called ${p.name} is already installed.`);
+        id = inserted[0].id;
+      }
       if (settings.length) {
         await tx.insert(appSetting).values(
           settings.map((s) => ({
@@ -338,13 +359,13 @@ export class AppsService {
   }
 
   /** A job for a request, which answers with the job's ID and doesn't wait for it. */
-  private async queue(appId: string, kind: "apply"): Promise<{ jobId: string }> {
+  private async queue(appId: string, kind: "apply" | "remove"): Promise<{ jobId: string }> {
     const { jobId } = await this.startJob(appId, kind);
     return { jobId };
   }
 
   /** Starts a job that applies the app; one job per app at a time. */
-  async startJob(appId: string, kind: "install" | "apply"): Promise<{ jobId: string; done: Promise<void> }> {
+  async startJob(appId: string, kind: "install" | "apply" | "remove"): Promise<{ jobId: string; done: Promise<void> }> {
     if (this.busy.has(appId)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
     this.busy.add(appId);
     const inserted = await this.db.insert(installJob).values({ appId, kind }).returning({ id: installJob.id });
@@ -355,31 +376,37 @@ export class AppsService {
     return { jobId, done };
   }
 
-  private async runJob(jobId: string, appId: string, kind: "install" | "apply"): Promise<void> {
+  private async runJob(jobId: string, appId: string, kind: "install" | "apply" | "remove"): Promise<void> {
     try {
       const row = (await this.db.select().from(app).where(eq(app.id, appId)))[0];
       if (!row) throw new AppError(404, "not_found", "The app is gone.");
-      await this.db.update(app).set({ state: kind === "install" ? "installing" : "starting", stateReason: null, updatedAt: new Date() }).where(eq(app.id, appId));
-      const spec = await this.specFor(row);
-      let lastImage = "";
-      let lastPercent = -1;
-      const pending: Promise<void>[] = [];
-      await this.runtime.apply(spec, (event) => {
-        if (event.step === "check") pending.push(this.step(jobId, "Checking the app's file against Your Space's rules."));
-        if (event.step === "pull" && event.image) {
-          const percent = Math.floor((event.progress ?? 0) * 10) * 10;
-          if (event.image !== lastImage || percent !== lastPercent) {
-            lastImage = event.image;
-            lastPercent = percent;
-            pending.push(this.step(jobId, `Downloading ${event.image.split("@")[0]}: ${percent}%`));
+      if (kind === "remove") {
+        await this.step(jobId, "Stopping and removing the app's containers. Its data is kept.");
+        await this.runtime.down(`ys-${row.name}`);
+        await this.db.update(app).set({ state: "removed", desired: "removed", stateReason: null, removedAt: new Date(), updatedAt: new Date() }).where(eq(app.id, appId));
+      } else {
+        await this.db.update(app).set({ state: kind === "install" ? "installing" : "starting", stateReason: null, updatedAt: new Date() }).where(eq(app.id, appId));
+        const spec = await this.specFor(row);
+        let lastImage = "";
+        let lastPercent = -1;
+        const pending: Promise<void>[] = [];
+        await this.runtime.apply(spec, (event) => {
+          if (event.step === "check") pending.push(this.step(jobId, "Checking the app's file against Your Space's rules."));
+          if (event.step === "pull" && event.image) {
+            const percent = Math.floor((event.progress ?? 0) * 10) * 10;
+            if (event.image !== lastImage || percent !== lastPercent) {
+              lastImage = event.image;
+              lastPercent = percent;
+              pending.push(this.step(jobId, `Downloading ${event.image.split("@")[0]}: ${percent}%`));
+            }
           }
-        }
-        if (event.step === "start") pending.push(this.step(jobId, "Starting the app's services."));
-        if (event.step === "started") pending.push(this.step(jobId, "Started."));
-      });
-      await Promise.all(pending);
-      await this.db.update(app).set({ state: "starting", updatedAt: new Date() }).where(eq(app.id, appId));
-      await this.refreshState(row.name);
+          if (event.step === "start") pending.push(this.step(jobId, "Starting the app's services."));
+          if (event.step === "started") pending.push(this.step(jobId, "Started."));
+        });
+        await Promise.all(pending);
+        await this.db.update(app).set({ state: "starting", updatedAt: new Date() }).where(eq(app.id, appId));
+        await this.refreshState(row.name);
+      }
       await this.db.update(installJob).set({ state: "succeeded", finishedAt: new Date() }).where(eq(installJob.id, jobId));
     } catch (error) {
       const message = error instanceof AppError || error instanceof RuntimeError ? error.message : "Something went wrong on the server.";
@@ -387,6 +414,7 @@ export class AppsService {
       await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));
       // Refused because Your Space is stopping: the app starts again with Your Space.
       const stopping = error instanceof RuntimeError && error.status === 409;
+      // A failed removal shows as failed too, so the owner sees why and can remove it again.
       await this.db
         .update(app)
         .set(stopping ? { state: "stopped", stateReason: message, updatedAt: new Date() } : { state: "failed", stateReason: message, updatedAt: new Date() })
@@ -515,6 +543,7 @@ export class AppsService {
           hasInterface: Boolean(r.interface),
           pendingRequests: counts.get(r.id) ?? 0,
         })),
+      retained: rows.filter((r) => r.state === "removed").map((r) => ({ name: r.name, title: r.title, repo: r.repo, removedAt: r.removedAt })),
     };
   }
 
@@ -560,6 +589,7 @@ export class AppsService {
       requests: requests.map((r) => ({ id: r.id, host: r.host, state: r.state, attempts: r.attempts, firstSeen: r.firstSeen, lastSeen: r.lastSeen })),
       job: job ? { id: job.id, kind: job.kind, state: job.state, steps: job.steps, error: job.error } : null,
       installedAt: row.createdAt,
+      removedAt: row.removedAt,
     };
   }
 
@@ -697,6 +727,28 @@ export class AppsService {
     if (!removed[0]) throw new AppError(404, "not_found", "That host isn't approved for this app.");
     await this.event("app.outbound_removed", actorId, row.id);
     return this.queue(row.id, "apply");
+  }
+
+  /** Removes the app's containers and networks; its data and settings stay as retained data (FR-023). */
+  async remove(name: string, actorId: string): Promise<{ jobId: string }> {
+    const row = await this.liveRow(name);
+    await this.db.update(app).set({ desired: "removed" }).where(eq(app.id, row.id));
+    await this.event("app.removed", actorId, row.id);
+    return this.queue(row.id, "remove");
+  }
+
+  async deleteData(name: string, confirm: string, actorId: string): Promise<void> {
+    const row = await this.rowByName(name);
+    if (row.state !== "removed") throw new AppError(409, "not_removed", "Remove the app before deleting its data.");
+    if (confirm !== name) throw new AppError(400, "confirm", `Type ${name} to confirm.`);
+    try {
+      await this.runtime.deleteVolumes(`ys-${name}`);
+    } catch (error) {
+      if (error instanceof RuntimeError) throw new AppError(503, error.code, error.message);
+      throw error;
+    }
+    await this.event("app.data_deleted", actorId, row.id);
+    await this.db.delete(app).where(eq(app.id, row.id));
   }
 
   async isInstalled(name: string): Promise<boolean> {

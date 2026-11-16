@@ -67,6 +67,8 @@ export interface Runtime {
   engine(): Promise<EngineInfo>;
   check(spec: AppSpec): Promise<CheckAnswer>;
   apply(spec: AppSpec, onEvent: (event: ApplyEvent) => void): Promise<void>;
+  down(project: string): Promise<void>;
+  deleteVolumes(project: string): Promise<void>;
   apps(): Promise<{ project: string; app: string; services: ServiceState[] }[]>;
   logs(project: string, service: string, tail?: number): Promise<string[]>;
   stats(project: string): Promise<{ services: { name: string; memory: number; memoryLimit: number; cpuPercent: number }[] }>;
@@ -145,6 +147,8 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
       if (failure) throw new RuntimeError(failure, 502, "apply_failed");
       if (!done) throw new RuntimeError("The runtime manager stopped before the app started.", 502, "apply_interrupted");
     },
+    down: async (project) => void (await json("POST", `${p(project)}/down`, undefined, socketPath)),
+    deleteVolumes: async (project) => void (await json("DELETE", `${p(project)}/volumes`, undefined, socketPath)),
     apps: () => json("GET", "/apps", undefined, socketPath),
     logs: async (project, service, tail = 200) =>
       (await json<{ lines: string[] }>("GET", `${p(project)}/logs?service=${encodeURIComponent(service)}&tail=${tail}`, undefined, socketPath)).lines,

@@ -97,9 +97,12 @@ const appDetailRoute = createRoute({
 const openRoute = createRoute({
   getParentRoute: () => signedInRoute,
   path: "/open/$name",
+  validateSearch: (search: Record<string, unknown>): { with?: string } =>
+    typeof search.with === "string" && /^[a-z][a-z0-9-]{0,29}$/.test(search.with) ? { with: search.with } : {},
   component: function OpenPage() {
     const { name } = openRoute.useParams();
-    return <AppPane name={name} />;
+    const search = openRoute.useSearch();
+    return <AppPane name={name} beside={search.with} />;
   },
 });
 

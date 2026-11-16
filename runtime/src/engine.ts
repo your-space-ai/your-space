@@ -236,3 +236,7 @@ export async function connectNetwork(network: string, container: string): Promis
     throw new EngineError(`Connecting to the app's network failed: ${answer.body.trim()}`);
   }
 }
+
+export async function disconnectNetwork(network: string, container: string): Promise<void> {
+  await engine("POST", `/networks/${encodeURIComponent(network)}/disconnect`, { Container: container, Force: true });
+}

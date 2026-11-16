@@ -1,4 +1,4 @@
-// install-app <github-link> [--kit <link>] [--json] (FR-009, contracts/http-api.md).
+// install-app <github-link> [--kit <link>] [--reuse-data] [--json] (FR-009, contracts/http-api.md).
 // Reviews the app, installs it as the operator, and waits until it runs or the install fails.
 import { parseArgs } from "node:util";
 import { operatorActorId } from "../actors.ts";
@@ -7,16 +7,17 @@ import { socketRuntime } from "../apps/runtime-client.ts";
 import { AppError, AppsService } from "../apps/service.ts";
 import { EXIT, openForCommand, output } from "./output.ts";
 
-const USAGE = "Usage: install-app <github-link-to-compose-file> [--kit <link>] [--json]";
+const USAGE = "Usage: install-app <github-link-to-compose-file> [--kit <link>] [--reuse-data] [--json]";
 
 async function main(argv: string[]): Promise<number> {
-  let values: { kit?: string; json?: boolean; help?: boolean };
+  let values: { kit?: string; json?: boolean; help?: boolean; "reuse-data"?: boolean };
   let positionals: string[];
   try {
     ({ values, positionals } = parseArgs({
       args: argv,
       options: {
         kit: { type: "string" },
+        "reuse-data": { type: "boolean", default: false },
         json: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
@@ -59,7 +60,7 @@ async function main(argv: string[]): Promise<number> {
       );
     }
     const actorId = await operatorActorId(database.db);
-    const { name, jobId, done } = await apps.install(review.previewId, {}, actorId);
+    const { name, jobId, done } = await apps.install(review.previewId, {}, values["reuse-data"] === true, actorId);
     await done;
     const job = await apps.job(jobId);
     const detail = await apps.detail(name);

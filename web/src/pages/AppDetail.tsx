@@ -1,7 +1,7 @@
-// One app's details (journey 002, US5, US6, US8): its state, settings, internet access, and
-// advanced controls (services, limits, logs).
+// One app's details (journey 002, US5, US6, US8, US9): its state, settings, internet access,
+// advanced controls (services, limits, logs), and removal.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { api, appQuery, errorMessage, STATE_LABEL, type AppDetail as Detail } from "../apps-api.ts";
 import { JobProgress } from "../components/JobProgress.tsx";
@@ -30,6 +30,7 @@ export function AppDetail({ name }: { name: string }) {
     );
   }
   const d = app.data;
+  const removed = d.state === "removed";
   const started = (title: string) => (result: { jobId: string }) => setJob({ id: result.jobId, title });
 
   return (
@@ -40,9 +41,19 @@ export function AppDetail({ name }: { name: string }) {
       <h1>{d.title}</h1>
       <Status detail={d} onStarted={started(`Starting ${d.title}`)} />
       {job ? <JobProgress key={job.id} jobId={job.id} title={job.title} /> : null}
-      <Settings detail={d} onStarted={started("Applying settings")} />
-      <Outbound detail={d} onStarted={started("Updating internet access")} />
-      <Advanced detail={d} onStarted={started("Applying limits")} />
+      {removed ? (
+        <section className="card">
+          <p>This app was removed. Its data is kept until you delete it.</p>
+          <DeleteData name={d.name} />
+        </section>
+      ) : (
+        <>
+          <Settings detail={d} onStarted={started("Applying settings")} />
+          <Outbound detail={d} onStarted={started("Updating internet access")} />
+          <Advanced detail={d} onStarted={started("Applying limits")} />
+          <Remove detail={d} onStarted={started(`Removing ${d.title}`)} />
+        </>
+      )}
     </main>
   );
 }
@@ -446,5 +457,102 @@ function Advanced({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { j
         </p>
       </details>
     </section>
+  );
+}
+
+function Remove({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { jobId: string }) => void }) {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const remove = useMutation({
+    mutationFn: () => api<{ jobId: string }>("POST", `/api/apps/${d.name}/remove`),
+    onSuccess: (r) => {
+      setConfirming(false);
+      onStarted(r);
+      void queryClient.invalidateQueries({ queryKey: ["apps"] });
+    },
+  });
+  return (
+    <section className="card" aria-labelledby="remove-heading">
+      <h2 id="remove-heading">Remove</h2>
+      {confirming ? (
+        <div role="alertdialog" aria-labelledby="remove-confirm" className="confirm">
+          <p id="remove-confirm">
+            Remove {d.title}? Its containers stop and are removed. Its data is kept, so you can install it again with its data, or
+            delete the data later.
+          </p>
+          <div className="actions">
+            <button type="button" className="danger" onClick={() => remove.mutate()} disabled={remove.isPending}>
+              Remove app
+            </button>
+            <button type="button" className="secondary" onClick={() => setConfirming(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="secondary danger-outline" onClick={() => setConfirming(true)}>
+          Remove app
+        </button>
+      )}
+      {remove.isError ? (
+        <p className="notice error" role="alert">
+          {errorMessage(remove.error)}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/** Deleting a removed app's kept data, after typing its name (US9 scenario 3). */
+export function DeleteData({ name }: { name: string }) {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const del = useMutation({
+    mutationFn: () => api<void>("DELETE", `/api/apps/${name}/data`, { confirm: typed }),
+    onSuccess: async () => {
+      setOpen(false);
+      setTyped("");
+      await queryClient.invalidateQueries({ queryKey: ["apps"] });
+      await navigate({ to: "/apps" });
+    },
+  });
+  if (!open) {
+    return (
+      <button type="button" className="secondary danger-outline" onClick={() => setOpen(true)} aria-label={`Delete data of ${name}`}>
+        Delete data
+      </button>
+    );
+  }
+  return (
+    <form
+      className="confirm"
+      role="alertdialog"
+      aria-label={`Delete the data of ${name}`}
+      onSubmit={(e) => {
+        e.preventDefault();
+        del.mutate();
+      }}
+    >
+      <p>This deletes everything {name} stored. This can't be undone.</p>
+      <label>
+        {`Type ${name} to confirm`}
+        <input type="text" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
+      </label>
+      {del.isError ? (
+        <p className="notice error" role="alert">
+          {errorMessage(del.error)}
+        </p>
+      ) : null}
+      <div className="actions">
+        <button type="submit" className="danger" disabled={typed !== name || del.isPending}>
+          Delete data
+        </button>
+        <button type="button" className="secondary" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }

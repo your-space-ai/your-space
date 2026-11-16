@@ -7,7 +7,9 @@ import {
   apply,
   check,
   connectProxyToAll,
+  deleteVolumes,
   denials,
+  down,
   INSTALLATION,
   isStopping,
   listApps,
@@ -92,6 +94,8 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (match) {
     const project = match[1]!;
     const action = match[2] ?? "";
+    if (method === "POST" && action === "/down") return (await down(project), send(res, 200, { ok: true }));
+    if (method === "DELETE" && action === "/volumes") return (await deleteVolumes(project), send(res, 200, { ok: true }));
     if (method === "GET" && action === "/stats") return send(res, 200, await stats(project));
     if (method === "GET" && action === "/denials") return send(res, 200, await denials(project));
     if (method === "GET" && action === "/logs") {

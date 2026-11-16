@@ -1,7 +1,7 @@
 # The services every setup shares. compose.yaml adds the file from modes/ that publishes ports.
 # All durable state is in the named volumes below (FR-023), and each installed app keeps its data in
 # its own named volumes. `docker compose down -v` deletes Your Space's volumes, and the workspace
-# with them; apps' volumes stay.
+# with them; apps' volumes stay until their data is deleted in Your Space.
 #
 # To stop Your Space and its apps:  docker compose exec runtime stop-apps && docker compose stop
 # A restart or update of Your Space leaves its apps running (journey 002, FR-008).

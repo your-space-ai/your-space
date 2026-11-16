@@ -27,7 +27,7 @@ it merges.
 
 - [x] T014 Owner-only apps API (`server/src/apps/routes.ts`)
 - [x] T015 Install jobs with progress
-- [ ] T016 Apps page: list, review with trust warning, install progress, kept data (`web/src/pages/Apps.tsx`)
+- [x] T016 Apps page: list, review with trust warning, install progress, kept data (`web/src/pages/Apps.tsx`)
 - [x] T017 Engine page (`web/src/pages/Engine.tsx`)
 
 ## Slice 4: Open an app
@@ -58,16 +58,16 @@ it merges.
 
 ## Slice 9: Remove and delete data
 
-- [ ] T029 Remove keeps data and settings; reinstall offers reuse; delete data confirmed
+- [x] T029 Remove keeps data and settings; reinstall offers reuse; delete data confirmed
 
 ## Slice 10: A second app, side by side
 
-- [ ] T030 Twenty installed beside Sure (research R3)
-- [ ] T031 Two panes on large screens; one on a phone with the menu
+- [x] T030 Twenty installed beside Sure (research R3)
+- [x] T031 Two panes on large screens; one on a phone with the menu
 
 ## Across slices
 
-- [ ] T032 Install guide: apps, addresses, stop command, engine socket (`docs/install/README.md`)
+- [x] T032 Install guide: apps, addresses, stop command, engine socket (`docs/install/README.md`)
 - [x] T033 Decision record, roadmap, spec map, architecture overview and constitution 1.4.0
 - [ ] T034 Fetch a real file from GitHub from the server container (this environment's containers have no internet)
 - [ ] T035 Tailscale Services for apps

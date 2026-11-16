@@ -77,7 +77,7 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
   router.post(
     "/apps",
     owner(async (req, res, who) => {
-      const { previewId, settings } = body(req);
+      const { previewId, settings, reuseData } = body(req);
       if (typeof previewId !== "string") throw new AppError(400, "preview_required", "Review the app before installing it.");
       if (settings !== undefined && (typeof settings !== "object" || settings === null || Array.isArray(settings))) {
         throw new AppError(400, "invalid_setting", "Settings must be names with text values.");
@@ -86,7 +86,7 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
       for (const [key, value] of Object.entries(values)) {
         if (typeof value !== "string") throw new AppError(400, "invalid_setting", `${key} must be text.`);
       }
-      const { name, jobId } = await apps.install(previewId, values as Record<string, string>, who.actorId);
+      const { name, jobId } = await apps.install(previewId, values as Record<string, string>, reuseData === true, who.actorId);
       res.status(202).json({ name, jobId });
     }),
   );
@@ -133,6 +133,14 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
     "/apps/:name/requests/:id/dismiss",
     owner(async (req, res, who) => {
       await apps.dismissRequest(name(req), String(req.params.id), who.actorId);
+      res.status(204).end();
+    }),
+  );
+  router.post("/apps/:name/remove", owner(async (req, res, who) => void res.status(202).json(await apps.remove(name(req), who.actorId))));
+  router.delete(
+    "/apps/:name/data",
+    owner(async (req, res, who) => {
+      await apps.deleteData(name(req), String(body(req).confirm ?? ""), who.actorId);
       res.status(204).end();
     }),
   );
