@@ -60,7 +60,7 @@ export interface AppAddress {
  * default is never used for a secret: the kit says which values to generate, and without a kit any
  * setting that looks secret and has a published default gets a generated value (spec Q3).
  */
-export function buildSettings(variables: Variable[], kit: Kit | null, address: AppAddress): Setting[] {
+export function buildSettings(variables: Variable[], kit: Kit | null, address: AppAddress, previous: Map<string, string | null> = new Map()): Setting[] {
   const names = new Set(variables.map((v) => v.name));
   for (const name of Object.keys(kit?.generate ?? {})) names.add(name);
   for (const name of Object.keys(kit?.derive ?? {})) names.add(name);
@@ -72,17 +72,18 @@ export function buildSettings(variables: Variable[], kit: Kit | null, address: A
     const derive = kit?.derive?.[name];
     const generate = kit?.generate?.[name];
     const secret = Boolean(generate) || Boolean(kit?.secrets?.includes(name)) || looksSecret(name);
-    let value: string | null = null;
+    const kept = previous.get(name);
+    let value: string | null = kept ?? null;
     let generated = false;
     if (derive) {
       value = derive === "app_origin" ? address.origin : address.host;
     } else if (generate) {
-      value = generateValue(generate);
+      value = kept ?? generateValue(generate);
       generated = true;
-    } else if (kit?.set?.[name] !== undefined) {
+    } else if (kit?.set?.[name] !== undefined && (kept === undefined || kept === null)) {
       value = kit.set[name]!;
     } else if (!kit && secret && variable.default) {
-      value = generateValue();
+      value = kept ?? generateValue();
       generated = true;
     }
     settings.push({

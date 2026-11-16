@@ -47,6 +47,15 @@ export class FakeRuntime implements Runtime {
   }
 
 
+  async down(project: string) {
+    this.calls.push({ method: "down", project });
+    this.running.delete(project);
+  }
+
+  async deleteVolumes(project: string) {
+    this.calls.push({ method: "deleteVolumes", project });
+  }
+
   async apps() {
     return [...this.running].map(([project, services]) => ({ project, app: project.slice(3), services }));
   }

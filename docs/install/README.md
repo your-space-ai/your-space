@@ -393,8 +393,8 @@ other apps, Your Space's own data and this machine, and controls who can reach i
 or check what the app does with your data.
 
 **Open.** Each app is at `<app>.<Your Space's address>`, such as `http://sure.space.localhost`, and
-only you, signed in to Your Space, can reach it. Apps open in a pane beside Your Space's navigation.
-An app keeps its own accounts: you sign up in the app
+only you, signed in to Your Space, can reach it. Apps open in a pane beside Your Space's navigation;
+on a large screen, two apps open side by side. An app keeps its own accounts: you sign up in the app
 the first time. On this machine, Safari doesn't keep apps' cookies inside Your Space, so apps open in
 their own tab there; over HTTPS they open in a pane in every browser.
 
@@ -408,6 +408,9 @@ Your Space shows an access request on the app's page: approve it, or dismiss it 
 **Limits and logs.** Under Advanced, each service shows its state, its recent logs, and its memory
 and CPU limits. An app that runs out of memory is stopped before Your Space itself. The Engine page
 shows the engine Your Space uses and what each app uses.
+
+**Remove.** Removing an app stops and deletes its containers and keeps its data. Installing it
+again offers to reuse the data. Deleting kept data is a separate step, and can't be undone.
 
 **Stop Your Space and its apps.** `docker compose restart` and updates leave apps running. To stop
 everything:

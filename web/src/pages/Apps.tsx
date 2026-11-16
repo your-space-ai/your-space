@@ -1,10 +1,11 @@
-// Apps (journey 002, US3, FR-011): the installed apps, and installing an app from a link after
-// reviewing what will run.
+// Apps (journey 002, US3, US9, FR-011): the installed apps, data kept from removed ones, and
+// installing an app from a link after reviewing what will run.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { api, appsQuery, errorMessage, shortDigest, STATE_LABEL, type AppList, type Review } from "../apps-api.ts";
 import { JobProgress } from "../components/JobProgress.tsx";
+import { DeleteData } from "./AppDetail.tsx";
 
 export function Apps() {
   const apps = useQuery(appsQuery);
@@ -56,6 +57,22 @@ function AppTable({ list }: { list: AppList }) {
           ))}
         </ul>
       )}
+      {list.retained.length > 0 ? (
+        <section aria-labelledby="retained-heading">
+          <h2 id="retained-heading">Kept data</h2>
+          <p className="muted">These apps were removed. Their data is kept until you delete it, and installing the same app again can reuse it.</p>
+          <ul className="app-list" aria-label="Kept data">
+            {list.retained.map((app) => (
+              <li key={app.name} data-retained={app.name}>
+                <div>
+                  <strong>{app.title}</strong> <span className="muted small">from {app.repo}</span>
+                </div>
+                <DeleteData name={app.name} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
 }
@@ -66,6 +83,7 @@ function Install() {
   const [kit, setKit] = useState("");
   const [review, setReview] = useState<Review | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [reuse, setReuse] = useState(true);
   const [installing, setInstalling] = useState<{ name: string; title: string; jobId: string } | null>(null);
   const [finished, setFinished] = useState<boolean | null>(null);
 
@@ -74,6 +92,7 @@ function Install() {
     onSuccess: (data) => {
       setReview(data);
       setValues({});
+      setReuse(true);
     },
   });
 
@@ -82,6 +101,7 @@ function Install() {
       api<{ name: string; jobId: string }>("POST", "/api/apps", {
         previewId: r.previewId,
         settings: Object.fromEntries(Object.entries(values).filter(([, v]) => v !== "")),
+        reuseData: r.retained ? reuse : false,
       }),
     onSuccess: (data, r) => {
       setInstalling({ name: data.name, title: r.title, jobId: data.jobId });
@@ -133,6 +153,8 @@ function Install() {
           review={review}
           values={values}
           setValue={(name, value) => setValues((v) => ({ ...v, [name]: value }))}
+          reuse={reuse}
+          setReuse={setReuse}
           onInstall={() => install.mutate(review)}
           onCancel={() => setReview(null)}
           installing={install.isPending}
@@ -167,6 +189,8 @@ function ReviewPanel(props: {
   review: Review;
   values: Record<string, string>;
   setValue: (name: string, value: string) => void;
+  reuse: boolean;
+  setReuse: (value: boolean) => void;
   onInstall: () => void;
   onCancel: () => void;
   installing: boolean;
@@ -309,6 +333,14 @@ function ReviewPanel(props: {
         <p>The app starts with no internet access. It asks you when it needs a host.</p>
       )}
 
+      {review.retained ? (
+        <label className="checkbox">
+          <input type="checkbox" checked={props.reuse} onChange={(e) => props.setReuse(e.target.checked)} />
+          Reuse kept data
+          <small>Data kept from when {review.title} was removed. Without it, delete the kept data first.</small>
+        </label>
+      ) : null}
+
       <p className="notice warning" role="note">
         {review.warning}
       </p>
@@ -318,7 +350,7 @@ function ReviewPanel(props: {
         </p>
       ) : null}
       <div className="actions">
-        <button type="button" onClick={props.onInstall} disabled={!review.ok || props.installing || missing.length > 0}>
+        <button type="button" onClick={props.onInstall} disabled={!review.ok || props.installing || missing.length > 0 || (review.retained && !props.reuse)}>
           {props.installing ? "Installing…" : "Install"}
         </button>
         <button type="button" className="secondary" onClick={props.onCancel}>

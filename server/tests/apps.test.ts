@@ -8,7 +8,7 @@ import { KitError, parseKit, parseMemory } from "../src/apps/kits.ts";
 import { appNameFromHost, stateFromServices } from "../src/apps/service.ts";
 import { buildSettings, decrypt, encrypt, looksSecret } from "../src/apps/settings.ts";
 import { session } from "../src/db/auth-schema.ts";
-import { app, appSetting, event, installJob } from "../src/db/schema.ts";
+import { app, appAccessRequest, appSetting, event, installJob } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_SECRET } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
@@ -83,6 +83,8 @@ describe("links, kits and settings", () => {
     expect(withKit.find((s) => s.name === "STORAGE_TYPE")).toMatchObject({ value: "local", generated: false, secret: false });
     expect(withKit.find((s) => s.name === "SERVER_URL")).toMatchObject({ derived: true, value: "http://x.space.localhost" });
     expect(withKit.find((s) => s.name === "APP_SECRET")!.value).toMatch(/^[0-9a-f]{64}$/);
+    // Kept values survive a reinstall, so a database keeps its password.
+    expect(buildSettings(variables, null, address, new Map([["POSTGRES_PASSWORD", "kept"]])).find((s) => s.name === "POSTGRES_PASSWORD")!.value).toBe("kept");
     expect(looksSecret("SECRET_KEY_BASE") && looksSecret("ENCRYPTION_KEY") && !looksSecret("DB_PORT") && !looksSecret("KEYBOARD")).toBe(true);
   });
 
@@ -175,8 +177,21 @@ describe("apps API", () => {
     throw new Error("A job didn't finish.");
   }
 
+  async function install(link = LINK): Promise<{ name: string; jobId: string }> {
+    const review = await (await post("/api/apps/preview", { link })).json() as any;
+    const installed = await post("/api/apps", { previewId: review.previewId });
+    expect(installed.status).toBe(202);
+    const body = await installed.json() as any;
+    for (let i = 0; i < 50; i++) {
+      const job = await (await api(`/api/jobs/${body.jobId}`)).json() as any;
+      if (job.state !== "running") break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    return body;
+  }
+
   it("refuses everyone but the signed-in owner, and changes nothing", async () => {
-    for (const [method, path] of [["GET", "/api/apps"], ["POST", "/api/apps/preview"], ["POST", "/api/apps"], ["GET", "/api/engine"]]) {
+    for (const [method, path] of [["GET", "/api/apps"], ["POST", "/api/apps/preview"], ["POST", "/api/apps"], ["GET", "/api/engine"], ["DELETE", "/api/apps/x/data"]]) {
       const response = await server.request(path!, { method, body: method === "GET" ? undefined : "{}" });
       expect(response.status, `${method} ${path}`).toBe(401);
     }
@@ -310,6 +325,35 @@ describe("apps API", () => {
     expect(engine).toMatchObject({ reachable: true, cpus: 4, apps: [expect.objectContaining({ name: "whoami", memory: 20 * 1024 ** 2 })] });
   });
 
+  it("removes an app but keeps its data, offers to reuse it, and deletes it only when confirmed", async () => {
+    expect((await post("/api/apps/whoami/remove", {})).status).toBe(202);
+    await settled();
+    expect(runtime.calls.at(-1)).toEqual({ method: "down", project: "ys-whoami" });
+    let list = await (await api("/api/apps")).json() as any;
+    expect(list.apps).toEqual([]);
+    expect(list.retained).toEqual([expect.objectContaining({ name: "whoami" })]);
+    const [kept] = await t.db.select().from(appSetting).where(eq(appSetting.name, "API_TOKEN"));
+    expect(kept!.value).not.toBeNull();
+
+    const review = await (await post("/api/apps/preview", { link: LINK })).json() as any;
+    expect(review.retained).toBe(true);
+    expect((await post("/api/apps", { previewId: review.previewId })).status).toBe(409);
+    const reused = await post("/api/apps", { previewId: review.previewId, reuseData: true });
+    expect(reused.status).toBe(202);
+    await settled();
+    const token = runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.env.API_TOKEN;
+    expect(token).toBe(decrypt(TEST_SECRET, kept!.value!));
+
+    await post("/api/apps/whoami/remove", {});
+    await settled();
+    expect((await api("/api/apps/whoami/data", { method: "DELETE", body: JSON.stringify({ confirm: "nope" }) })).status).toBe(400);
+    expect((await api("/api/apps/whoami/data", { method: "DELETE", body: JSON.stringify({ confirm: "whoami" }) })).status).toBe(204);
+    expect(runtime.calls.at(-1)).toEqual({ method: "deleteVolumes", project: "ys-whoami" });
+    list = await (await api("/api/apps")).json() as any;
+    expect(list.retained).toEqual([]);
+    expect(await t.db.select().from(appAccessRequest)).toEqual([]);
+  });
+
   it("guesses the interface of an app without a kit, and generates its secret", async () => {
     const review = await (await post("/api/apps/preview", { link: "https://github.com/ys-fixtures/plain/blob/main/compose.yaml" })).json() as any;
     expect(review).toMatchObject({ name: "plain", kit: null, interface: { service: "web", port: 80 }, outbound: [] });
@@ -320,6 +364,7 @@ describe("apps API", () => {
     let gateUrl: string;
     let close: () => void;
     beforeAll(async () => {
+      await install();
       const gate = createGate({ db: t.db, publicUrl: server.publicUrl, authSecret: TEST_SECRET, handoffs: server.handoffs! });
       await new Promise<void>((resolve) => {
         const listener = gate.listen(0, "127.0.0.1", () => {

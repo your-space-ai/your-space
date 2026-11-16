@@ -206,6 +206,23 @@ test("the owner sees each service, its logs and limits, and the engine", async (
   await expect(page.locator('tr[data-app="whoami"]')).toBeVisible();
 });
 
+test("two apps side by side on a large screen, one at a time on a phone", async ({ page }) => {
+  await asOwner(page);
+  await page.goto("/open/whoami?with=probe");
+  await expect(page.locator('[data-testid="app-pane"]')).toHaveCount(2);
+  const [first, second] = await Promise.all([page.locator('[data-testid="app-pane"]').nth(0).boundingBox(), page.locator('[data-testid="app-pane"]').nth(1).boundingBox()]);
+  expect(second!.x).toBeGreaterThan(first!.x + first!.width - 1);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/open/whoami");
+  const pane = page.locator('[data-testid="app-pane"]');
+  await expect(pane).toHaveCount(1);
+  expect((await pane.boundingBox())!.width).toBeGreaterThan(370);
+  await page.getByRole("button", { name: "Menu" }).click();
+  await page.getByRole("link", { name: "probe" }).click();
+  await expect(page).toHaveURL(/\/open\/probe$/);
+});
+
 test("restarting Your Space leaves apps running; stopping it stops them, and starting brings them back", async ({ page }) => {
   const started = await inspect("ys-whoami-web-1", "{{.State.StartedAt}}");
   await compose(["restart", "server", "runtime", "caddy"], { timeout: 120_000 });
@@ -223,4 +240,38 @@ test("restarting Your Space leaves apps running; stopping it stops them, and sta
   await expect(async () => {
     expect(await inspect("ys-whoami-web-1", "{{.State.Running}}")).toBe("true");
   }).toPass({ timeout: 60_000 });
+});
+
+test("removing an app keeps its data, which a reinstall reuses or the owner deletes", async ({ page }, testInfo) => {
+  await asOwner(page);
+  await inApp("ys-probe-web-1", "echo kept > /data/note");
+  await page.goto("/apps/probe");
+  await page.getByRole("button", { name: "Remove app", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remove app", exact: true }).click();
+  await waitForJob(page);
+  await page.goto("/apps");
+  await expect(page.getByRole("heading", { name: "Kept data" })).toBeVisible();
+  expect((await docker(["ps", "-aq", "--filter", "name=ys-probe-"])).stdout.trim()).toBe("");
+  expect((await docker(["volume", "ls", "-q", "--filter", "name=ys-probe_data"])).stdout.trim()).toBe("ys-probe_data");
+  await evidence(page, testInfo, "002-us9-1-kept");
+
+  await page.getByLabel(LINK_LABEL).fill(PROBE);
+  await page.getByRole("button", { name: "Review" }).click();
+  await page.getByLabel("Reuse kept data").check();
+  await page.getByRole("button", { name: "Install" }).click();
+  await waitForJob(page);
+  expect(await inApp("ys-probe-web-1", "cat /data/note")).toBe("kept");
+
+  await page.goto("/apps/probe");
+  await page.getByRole("button", { name: "Remove app", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remove app", exact: true }).click();
+  await waitForJob(page);
+  await page.goto("/apps");
+  await page.getByRole("button", { name: "Delete data of probe" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("This can't be undone");
+  await dialog.getByLabel("Type probe to confirm").fill("probe");
+  await dialog.getByRole("button", { name: "Delete data" }).click();
+  await expect(page.getByRole("heading", { name: "Kept data" })).toHaveCount(0);
+  expect((await docker(["volume", "ls", "-q", "--filter", "name=ys-probe_data"])).stdout.trim()).toBe("");
 });

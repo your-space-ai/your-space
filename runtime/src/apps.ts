@@ -1,10 +1,11 @@
-// What the runtime manager does with apps: check, apply, stop, and report.
+// What the runtime manager does with apps: check, apply, stop, remove, and report.
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { adapt, EGRESS_IMAGE, imageRef, type AppSpec, type CheckResult } from "./adapter.ts";
 import {
   connectNetwork,
+  disconnectNetwork,
   docker,
   engine,
   engineInfo,
@@ -178,6 +179,33 @@ async function connectProxy(project: string): Promise<void> {
 export async function stop(project: string): Promise<void> {
   const result = await docker(["compose", "-p", project, "stop"]);
   if (result.code !== 0) throw new EngineError(`Stopping the app failed: ${result.stderr.trim().slice(0, 400)}`);
+}
+
+export async function down(project: string): Promise<void> {
+  const caddy = await installationContainer("caddy");
+  if (caddy) await disconnectNetwork(`${project}_app`, caddy);
+  const result = await docker(["compose", "-p", project, "down", "--remove-orphans"]);
+  if (result.code !== 0) throw new EngineError(`Removing the app failed: ${result.stderr.trim().slice(0, 400)}`);
+}
+
+interface VolumeList {
+  Volumes: { Name: string; Labels: Record<string, string> | null }[] | null;
+}
+
+async function appVolumes(project: string): Promise<string[]> {
+  const filters = encodeURIComponent(JSON.stringify({ label: [INSTALLATION_LABEL, `com.docker.compose.project=${project}`] }));
+  const list = await engineJson<VolumeList>("GET", `/volumes?filters=${filters}`);
+  return (list.Volumes ?? []).map((v) => v.Name);
+}
+
+
+export async function deleteVolumes(project: string): Promise<void> {
+  const running = await listContainers([INSTALLATION_LABEL, `com.docker.compose.project=${project}`]);
+  if (running.length > 0) throw new EngineError("The app still has containers; remove it first.", 409);
+  for (const name of await appVolumes(project)) {
+    const answer = await engine("DELETE", `/volumes/${encodeURIComponent(name)}`);
+    if (answer.status >= 400 && answer.status !== 404) throw new EngineError(`Deleting ${name} failed: ${answer.body.trim()}`);
+  }
 }
 
 export interface ServiceState {

@@ -159,6 +159,10 @@ dd {
   height: 100vh;
 }
 
+.topbar {
+  display: none;
+}
+
 .brand {
   font-weight: 700;
 }
@@ -296,10 +300,25 @@ summary {
   align-items: center;
 }
 
-.button.secondary-link {
+.button.secondary-link,
+button.danger-outline {
   background: transparent;
   color: var(--accent);
   border: 1px solid var(--border);
+}
+
+button.danger-outline {
+  color: var(--danger);
+}
+
+button.danger {
+  background: var(--danger);
+}
+
+.confirm {
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
 }
 
 .warning {
@@ -331,6 +350,18 @@ select {
   border-radius: 6px;
   background: var(--bg);
   color: var(--fg);
+}
+
+label.checkbox {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+label.checkbox small {
+  flex-basis: 100%;
 }
 
 form.inline {
@@ -370,12 +401,17 @@ form.inline {
   color: var(--muted);
 }
 
-/* Panes: the app fills the content area. */
+/* Panes: the app fills the content area; two side by side on a wide screen. */
 .panes {
   display: grid;
   grid-template-columns: 1fr;
   grid-template-rows: 1fr auto;
   height: 100vh;
+}
+
+.panes.two {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
 }
 
 .pane {
@@ -396,6 +432,10 @@ form.inline {
   font-size: 0.9em;
 }
 
+.pane-bar button {
+  padding: 0.15rem 0.6rem;
+}
+
 .spacer {
   flex: 1;
 }
@@ -405,4 +445,79 @@ form.inline {
   height: 100%;
   border: 0;
   background: #fff;
+}
+
+.beside {
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.beside label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+@media (max-width: 1099px) {
+  /* One app at a time below a wide screen. */
+  .panes.two {
+    grid-template-columns: 1fr;
+  }
+
+  .panes.two .pane + .pane {
+    display: none;
+  }
+}
+
+@media (max-width: 719px) {
+  .shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .menu-button {
+    padding: 0.3rem 0.75rem;
+  }
+
+  .nav {
+    display: none;
+    position: fixed;
+    top: 3rem;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    max-height: calc(100vh - 3rem);
+  }
+
+  .nav.open {
+    display: block;
+  }
+
+  .nav > .brand {
+    display: none;
+  }
+
+  .panes {
+    height: calc(100vh - 3rem);
+  }
+
+  .beside {
+    display: none;
+  }
+
+  .page {
+    padding: 1rem;
+  }
 }

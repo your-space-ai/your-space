@@ -61,7 +61,9 @@ export type EventType =
   | "app.limits_changed"
   | "app.outbound_approved"
   | "app.outbound_removed"
-  | "app.request_dismissed";
+  | "app.request_dismissed"
+  | "app.removed"
+  | "app.data_deleted";
 
 // Apps (journey 002, data-model.md).
 
@@ -190,7 +192,7 @@ export const installJob = pgTable("install_job", {
   appId: uuid("app_id")
     .notNull()
     .references(() => app.id, { onDelete: "cascade" }),
-  kind: text("kind", { enum: ["install", "apply"] }).notNull(),
+  kind: text("kind", { enum: ["install", "apply", "remove"] }).notNull(),
   state: text("state", { enum: ["running", "succeeded", "failed"] }).notNull().default("running"),
   steps: jsonb("steps").$type<JobStep[]>().notNull().default([]),
   error: text("error"),

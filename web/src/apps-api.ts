@@ -81,8 +81,16 @@ export interface AppSummary {
   pendingRequests: number;
 }
 
+export interface RetainedApp {
+  name: string;
+  title: string;
+  repo: string;
+  removedAt: string | null;
+}
+
 export interface AppList {
   apps: AppSummary[];
+  retained: RetainedApp[];
 }
 
 export interface Adaptation {
@@ -124,6 +132,7 @@ export interface Review {
   outbound: string[];
   interface: { service: string; port: number } | null;
   pane: boolean;
+  retained: boolean;
   warning: string;
 }
 
@@ -134,7 +143,7 @@ export interface JobStep {
 
 export interface Job {
   id: string;
-  kind: "install" | "apply";
+  kind: "install" | "apply" | "remove";
   state: "running" | "succeeded" | "failed";
   steps: JobStep[];
   error: string | null;
@@ -170,6 +179,7 @@ export interface AppDetail {
   requests: { id: string; host: string; state: "pending" | "dismissed"; attempts: number; firstSeen: string; lastSeen: string }[];
   job: Job | null;
   installedAt: string;
+  removedAt: string | null;
 }
 
 export interface EngineReport {
