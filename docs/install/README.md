@@ -66,17 +66,17 @@ this folder.
 ## 2. Configure
 
 **For this machine, there's nothing to configure.** With nothing in `.env`, Your Space answers only
-on this machine, at `http://localhost`, and generates its own secrets (see [Secrets](#secrets)). To
+on this machine, at `http://space.localhost`, and generates its own secrets (see [Secrets](#secrets)). To
 use it from other devices, add one line:
 
 | You want | Add to `.env` | What happens |
 | --- | --- | --- |
-| Use it on this machine only (the default) | nothing | Plain HTTP at `http://localhost`, reachable only from this machine |
+| Use it on this machine only (the default) | nothing | Plain HTTP at `http://space.localhost`, reachable only from this machine |
 | Use your own domain | `YS_DOMAIN=space.example.com` | Ports 80 and 443 open to the network. Caddy gets and renews a Let's Encrypt certificate and redirects HTTP to HTTPS. See [Use Your Own Domain](#use-your-own-domain) |
 | Use your own proxy or Tailscale | `YS_PROXY_URL=https://<the proxy's address>` | Caddy serves plain HTTP on `127.0.0.1:8080` only; your proxy or Tailscale handles HTTPS. See [Use Your Own Reverse Proxy](#use-your-own-reverse-proxy) or [Use Tailscale](#use-tailscale) |
 
 If another program already uses port 80 on this machine (or 8080 with `YS_PROXY_URL`), also add
-`YS_PORT=8081`, or any free port. Your Space then answers at `http://localhost:8081`. `YS_PORT`
+`YS_PORT=8081`, or any free port. Your Space then answers at `http://space.localhost:8081`. `YS_PORT`
 doesn't apply to your own domain, which needs ports 80 and 443.
 
 Which line you write decides which ports open: only `YS_DOMAIN` opens any to the network. The
@@ -130,7 +130,7 @@ all three services running, with `server` and `postgres` marked `healthy`. If th
 | The same, for port 443 with your own domain | Another program uses the port, such as another web server. Stop it, or put Your Space behind it as [your own proxy](#use-your-own-reverse-proxy) |
 | `server` is `unhealthy` after it was running | Run `docker compose logs server postgres` and see [When the Database Is Down](#when-the-database-is-down) |
 
-Open your address (for example `http://localhost`). It says Your Space has no owner yet and shows
+Open your address (for example `http://space.localhost`). It says Your Space has no owner yet and shows
 the command to create one. There is no sign-up form: nobody can make an account from the web.
 
 ## 4. Create the Owner
@@ -144,7 +144,7 @@ It prints a link:
 ```text
 Owner created: Your Name (username you)
 Set your password here (expires 2026-11-04T02:45:00Z, works once):
-http://localhost/reset-password#token=...
+http://space.localhost/reset-password#token=...
 If it expires, run: docker compose exec server reset-link
 ```
 
@@ -212,7 +212,7 @@ are kept in the `ys-caddy-data` volume, so restarts don't request new ones.
 
 ## Use Your Space From Other Devices
 
-By default Your Space answers only on this machine, at `http://localhost`. To use it from a phone or
+By default Your Space answers only on this machine, at `http://space.localhost`. To use it from a phone or
 another computer, give it an HTTPS address in one of three ways:
 
 | Way | You need | Who can reach it |
@@ -240,7 +240,9 @@ is nothing to set up again.
    YS_DOMAIN=space.example.com
    ```
 
-4. Run `docker compose up -d`.
+4. For apps, point a wildcard record (`*.space.example.com`) at the same server too. Each app is
+   at `<app>.space.example.com`, and Caddy gets its certificate when it is first opened.
+5. Run `docker compose up -d`.
 
 Caddy gets a certificate, renews it automatically, and redirects `http://space.example.com` to
 HTTPS. If the address doesn't load, see [Certificates](#certificates). The server refuses names
@@ -290,7 +292,11 @@ for other services.
    - **pass the original `Host` header.** Your Space answers only to the address in `YS_PROXY_URL`.
      Requests that arrive under another name get status 421 and a message that says to fix this;
    - **set `X-Forwarded-For` to the visitor's address,** replacing any value the visitor sent. The
-     sign-in limit counts attempts per address.
+     sign-in limit counts attempts per address;
+   - **forward apps' names too.** Each app is at `<app>.<your proxy's name>`, such as
+     `sure.space.example.com`, so give the proxy a wildcard name (`*.space.example.com`) with its
+     certificate and forward it to the same place. Every name other than Your Space's own goes to
+     an app.
 
    Caddy and Traefik do both by default. In nginx, add:
 
@@ -334,7 +340,8 @@ reach. You need no domain and no ports open to the internet.
 4. Run `docker compose up -d`.
 
 Tailscale passes the original `Host` header and the visitor's tailnet address, so nothing else needs
-setting up.
+setting up. Apps need their own names on Tailscale (`<app>.<your tailnet name>` isn't one); setting
+up a Tailscale Service for each app is not covered yet.
 
 ### Plain HTTP on Your Network Is Not Supported
 
@@ -370,7 +377,8 @@ For devices on your own network, use [Tailscale](#use-tailscale): it needs no do
 
 ## Apps
 
-Your Space runs existing open-source apps from their own Compose files, on the same Docker engine.
+Your Space runs existing open-source apps from their own Compose files, on the same Docker engine,
+and opens them inside Your Space.
 
 **Install.** In Apps, paste the GitHub link to the app's Compose file, for example
 `https://github.com/we-promise/sure/blob/main/compose.example.yml`, and choose Review. The review
@@ -383,6 +391,12 @@ does the same.
 Installing an app trusts it with everything you put into it. Your Space keeps it away from your
 other apps, Your Space's own data and this machine, and controls who can reach it, but it can't see
 or check what the app does with your data.
+
+**Open.** Each app is at `<app>.<Your Space's address>`, such as `http://sure.space.localhost`, and
+only you, signed in to Your Space, can reach it. Apps open in a pane beside Your Space's navigation.
+An app keeps its own accounts: you sign up in the app
+the first time. On this machine, Safari doesn't keep apps' cookies inside Your Space, so apps open in
+their own tab there; over HTTPS they open in a pane in every browser.
 
 **Stop Your Space and its apps.** `docker compose restart` and updates leave apps running. To stop
 everything:
@@ -563,7 +577,7 @@ It prints a link:
 
 ```text
 Password reset link for you@example.com (expires 2026-11-04T01:45:00Z, works once):
-http://localhost/reset-password#token=...
+http://space.localhost/reset-password#token=...
 Using it signs out every existing session.
 ```
 
@@ -588,7 +602,7 @@ docker compose exec -T server reset-link --json
 ```
 
 ```json
-{"ok":true,"username":"you","url":"http://localhost/reset-password#token=...","token":"...","expiresAt":"2026-11-04T01:45:00Z"}
+{"ok":true,"username":"you","url":"http://space.localhost/reset-password#token=...","token":"...","expiresAt":"2026-11-04T01:45:00Z"}
 ```
 
 | Exit status | Meaning |

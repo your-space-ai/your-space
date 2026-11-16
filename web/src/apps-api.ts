@@ -76,6 +76,8 @@ export interface AppSummary {
   state: AppState;
   stateReason: string | null;
   origin: string;
+  pane: boolean;
+  hasInterface: boolean;
 }
 
 export interface AppList {
@@ -143,6 +145,8 @@ export interface AppDetail {
   state: AppState;
   stateReason: string | null;
   desired: "running" | "stopped" | "removed";
+  pane: boolean;
+  interface: { service: string; port: number } | null;
   source: { link: string; repo: string; path: string; ref: string; commit: string };
   kitSource: string | null;
   images: Record<string, { digest: string }>;

@@ -38,6 +38,11 @@ function AppTable({ list }: { list: AppList }) {
                 {app.stateReason ? <div className="muted small">{app.stateReason}</div> : null}
               </div>
               <div className="actions">
+                {app.hasInterface ? (
+                  <Link className="button" to="/open/$name" params={{ name: app.name }} search={{}} aria-label={`Open ${app.title}`}>
+                    Open
+                  </Link>
+                ) : null}
                 <Link className="button secondary-link" to="/apps/$name" params={{ name: app.name }} aria-label={`Details of ${app.title}`}>
                   Details
                 </Link>
@@ -57,6 +62,7 @@ function Install() {
   const [review, setReview] = useState<Review | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [installing, setInstalling] = useState<{ name: string; title: string; jobId: string } | null>(null);
+  const [finished, setFinished] = useState<boolean | null>(null);
 
   const preview = useMutation({
     mutationFn: () => api<Review>("POST", "/api/apps/preview", { link, ...(kit.trim() ? { kit } : {}) }),
@@ -74,6 +80,7 @@ function Install() {
       }),
     onSuccess: (data, r) => {
       setInstalling({ name: data.name, title: r.title, jobId: data.jobId });
+      setFinished(null);
       setReview(null);
       setLink("");
       setKit("");
@@ -127,7 +134,18 @@ function Install() {
           error={install.isError ? errorMessage(install.error) : null}
         />
       ) : null}
-      {installing ? <JobProgress jobId={installing.jobId} title={`Installing ${installing.title}`} /> : null}
+      {installing ? (
+        <>
+          <JobProgress jobId={installing.jobId} title={`Installing ${installing.title}`} onDone={setFinished} />
+          {finished ? (
+            <p>
+              <Link className="button" to="/open/$name" params={{ name: installing.name }} search={{}}>
+                Open {installing.title}
+              </Link>
+            </p>
+          ) : null}
+        </>
+      ) : null}
     </section>
   );
 }

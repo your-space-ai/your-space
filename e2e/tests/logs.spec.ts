@@ -35,7 +35,7 @@ test("logs contain no credentials after the whole journey", async ({ page, conte
   await expect(page).toHaveURL(/\/sign-in/);
 
   // Refused requests: sign-up, an emailed reset link, a bad token.
-  const origin = { origin: "http://localhost" };
+  const origin = { origin: "http://space.localhost" };
   await page.request.post("/api/auth/sign-up/email", { headers: origin, data: { email: "x@example.com", name: "X", password: WRONG_PASSWORD } });
   await page.request.post("/api/auth/request-password-reset", { headers: origin, data: { email: `${USERNAME}@users.invalid` } });
   await page.request.post("/api/auth/reset-password", { headers: origin, data: { token: "not-a-real-token", newPassword: WRONG_PASSWORD } });

@@ -1,6 +1,6 @@
 // Routes (T032, T038): /sign-in, / (home), and /reset-password. "No owner yet" and failures are
 // states of the root route, not routes of their own (research R12). Journey 002 adds the signed-in
-// layout around home, /apps, /apps/$name and /engine.
+// layout around home, /apps, /apps/$name, /open/$name (an app's pane) and /engine.
 import type { QueryClient } from "@tanstack/react-query";
 import {
   createRootRouteWithContext,
@@ -16,6 +16,7 @@ import { useState } from "react";
 import { ErrorState } from "./components/ErrorState.tsx";
 import { Layout } from "./components/Layout.tsx";
 import { AppDetail } from "./pages/AppDetail.tsx";
+import { AppPane } from "./pages/AppPane.tsx";
 import { Apps } from "./pages/Apps.tsx";
 import { Engine } from "./pages/Engine.tsx";
 import { failureKind } from "./errors.ts";
@@ -93,6 +94,15 @@ const appDetailRoute = createRoute({
   },
 });
 
+const openRoute = createRoute({
+  getParentRoute: () => signedInRoute,
+  path: "/open/$name",
+  component: function OpenPage() {
+    const { name } = openRoute.useParams();
+    return <AppPane name={name} />;
+  },
+});
+
 const engineRoute = createRoute({
   getParentRoute: () => signedInRoute,
   path: "/engine",
@@ -121,7 +131,7 @@ const resetPasswordRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  signedInRoute.addChildren([homeRoute, appsRoute, appDetailRoute, engineRoute]),
+  signedInRoute.addChildren([homeRoute, appsRoute, appDetailRoute, openRoute, engineRoute]),
   signInRoute,
   resetPasswordRoute,
 ]);

@@ -1,9 +1,14 @@
 # This machine only: nothing in .env. Plain HTTP on the loopback address, which no other device
-# can reach (FR-015). YS_PORT moves it when another program already has port 80.
+# can reach (FR-015). YS_PORT moves it when another program already has port 80. Your Space is at
+# http://space.localhost and each app at http://<app>.space.localhost: every *.localhost name
+# reaches this machine with no setup (RFC 6761), and http://localhost redirects to Your Space.
 services:
   caddy:
     ports:
       - "127.0.0.1:${YS_PORT:-80}:80"
     environment:
-      YS_SITE: http://localhost
-      YS_REDIRECT_URL: http://localhost:${YS_PORT:-80}
+      YS_SITE: http://space.localhost
+      YS_APPS_SITE: http://*.space.localhost
+      YS_ORIGIN: "http://space.localhost:*"
+      YS_REDIRECT_SITES: http://localhost, http://127.0.0.1
+      YS_REDIRECT_URL: http://space.localhost:${YS_PORT:-80}

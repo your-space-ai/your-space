@@ -6,6 +6,7 @@ import { dirname } from "node:path";
 import {
   apply,
   check,
+  connectProxyToAll,
   INSTALLATION,
   isStopping,
   listApps,
@@ -113,7 +114,13 @@ server.listen(SOCKET, () => {
   log("info", "runtime.listening", { installation: INSTALLATION });
 });
 
+// Keeps the proxy on every app's network; a failure here only delays a reconnection.
+const timer = setInterval(() => {
+  connectProxyToAll().catch((error) => log("warn", "runtime.connect_failed", { errorName: (error as Error)?.name }));
+}, 10_000);
+
 function shutdown(): void {
+  clearInterval(timer);
   // Apps keep running: a restart or update of Your Space doesn't stop them (FR-008).
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5_000).unref();

@@ -84,6 +84,11 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
         ) : null}
       </dl>
       <div className="actions">
+        {d.interface && d.state !== "removed" ? (
+          <Link className="button" to="/open/$name" params={{ name: d.name }} search={{}}>
+            Open
+          </Link>
+        ) : null}
         {d.state === "failed" || d.state === "stopped" ? (
           <button type="button" onClick={() => start.mutate()} disabled={start.isPending}>
             Start

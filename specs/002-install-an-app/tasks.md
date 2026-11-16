@@ -32,10 +32,10 @@ it merges.
 
 ## Slice 4: Open an app
 
-- [ ] T018 `space.localhost` as the local address; `localhost` redirects
-- [ ] T019 Caddy app sites, gate, handoff and pass; cookie and framing rules (`deploy/Caddyfile`, `server/src/apps/gate.ts`)
-- [ ] T020 Session cookies: `__Host-` over HTTPS, host-only on local HTTP
-- [ ] T021 Pane view and own-tab fallback when a browser blocks the pane's cookies
+- [x] T018 `space.localhost` as the local address; `localhost` redirects
+- [x] T019 Caddy app sites, gate, handoff and pass; cookie and framing rules (`deploy/Caddyfile`, `server/src/apps/gate.ts`)
+- [x] T020 Session cookies: `__Host-` over HTTPS, host-only on local HTTP
+- [x] T021 Pane view and own-tab fallback when a browser blocks the pane's cookies
 - [ ] T022 Check Safari on macOS with `*.localhost`
 
 ## Slice 5: Settings

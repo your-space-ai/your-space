@@ -148,6 +148,12 @@ function buildAuth(deps: AuthDeps, onLink?: OnLink) {
     },
     advanced: {
       database: { generateId: "uuid" },
+      // Apps run on subdomains of Your Space's host. Over HTTPS its cookies are `__Host-` cookies,
+      // which no app can set or overwrite; on plain HTTP they are host-only without the prefix,
+      // which WebKit refuses there (plan: the access gate).
+      ...(config.publicUrl.startsWith("https://")
+        ? { useSecureCookies: false, cookiePrefix: "__Host-ys", defaultCookieAttributes: { secure: true } }
+        : { useSecureCookies: false, cookiePrefix: "ys" }),
     },
     telemetry: { enabled: false },
     disabledPaths: [...DISABLED_SIGN_IN_PATHS, ...DISABLED_ORGANIZATION_PATHS],

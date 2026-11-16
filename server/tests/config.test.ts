@@ -30,21 +30,34 @@ function only(env: Record<string, string | undefined>): string {
   return found[0]!;
 }
 
+describe("loadConfig: YS_PROXY_URL's form", () => {
+  it.each(["https://Space.example.com", "https://space.example.com/", "https://space.example.com:443"])(
+    "refuses %s, which Caddy couldn't match against requests",
+    (value) => {
+      expect(() => loadConfig({ ...SECRETS, YS_PROXY_URL: value })).toThrow(/must be written exactly as https:\/\/space\.example\.com/);
+    },
+  );
+
+  it("accepts the origin as written, including another port", () => {
+    expect(loadConfig({ ...SECRETS, YS_PROXY_URL: "https://space.example.com:8443" }).publicUrl).toBe("https://space.example.com:8443");
+  });
+});
+
 describe("loadConfig: which setup", () => {
-  it("with nothing set, serves this machine at http://localhost", () => {
-    expect(loadConfig(SECRETS)).toMatchObject({ mode: "local", publicUrl: "http://localhost" });
+  it("with nothing set, serves this machine at http://space.localhost", () => {
+    expect(loadConfig(SECRETS)).toMatchObject({ mode: "local", publicUrl: "http://space.localhost" });
   });
 
   it("treats an empty line the same as no line", () => {
     expect(loadConfig({ ...SECRETS, YS_DOMAIN: "", YS_PROXY_URL: " ", YS_PORT: "" })).toMatchObject({
       mode: "local",
-      publicUrl: "http://localhost",
+      publicUrl: "http://space.localhost",
     });
   });
 
   it.each([
-    ["8081", "http://localhost:8081"],
-    ["80", "http://localhost"],
+    ["8081", "http://space.localhost:8081"],
+    ["80", "http://space.localhost"],
   ])("with YS_PORT=%s, serves this machine at %s", (port, url) => {
     expect(loadConfig({ ...SECRETS, YS_PORT: port })).toMatchObject({ mode: "local", publicUrl: url });
   });
@@ -60,10 +73,7 @@ describe("loadConfig: which setup", () => {
 
   it.each([
     ["https://myserver.tail1234.ts.net", "https://myserver.tail1234.ts.net"],
-    ["https://space.example.com/", "https://space.example.com"],
     ["https://space.example.com:8443", "https://space.example.com:8443"],
-    ["https://space.example.com:443", "https://space.example.com"],
-    ["https://Space.Example.com", "https://space.example.com"],
   ])("with YS_PROXY_URL=%s, serves %s", (proxyUrl, url) => {
     expect(loadConfig({ ...SECRETS, YS_PROXY_URL: proxyUrl })).toMatchObject({ mode: "proxy", publicUrl: url });
   });

@@ -323,7 +323,9 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
     }
     out.restart = service.restart && service.restart !== "no" ? service.restart : "unless-stopped";
     out.labels = { ...(isObject(service.labels) ? service.labels : {}), ...labels };
-    out.networks = { app: {} };
+    out.networks = {
+      app: spec.interface?.service === name ? { aliases: [`${spec.project}-ui`] } : {},
+    };
     const limit = spec.limits?.[name] ?? {};
     out.mem_limit = limit.memory ?? DEFAULT_MEMORY;
     out.cpus = limit.cpus ?? DEFAULT_CPUS;

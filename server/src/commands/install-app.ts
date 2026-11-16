@@ -69,7 +69,7 @@ async function main(argv: string[]): Promise<number> {
     }
     out.success(
       { ok: true, name, state: detail.state, origin: detail.origin, commit: review.source.commit },
-      [`Installed ${review.title} (${detail.state}).`],
+      [`Installed ${review.title} (${detail.state}). Open it from Your Space, or at ${detail.origin}`],
     );
     return EXIT.ok;
   } catch (error) {

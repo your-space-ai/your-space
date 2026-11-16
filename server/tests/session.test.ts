@@ -10,7 +10,7 @@ import { account, session, user } from "../src/db/auth-schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_SECRET } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
-import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
+import { cookieHeader, send, startServer, type TestServer } from "./helpers/server.ts";
 import { counts, snapshot } from "./helpers/state.ts";
 
 let t: TestDatabase;
@@ -60,7 +60,7 @@ function setCookies(response: Response) {
 
 /** The session cookie from a response's Set-Cookie headers. */
 const sessionCookie = (response: Response) =>
-  setCookies(response).find((c) => c.name.endsWith("better-auth.session_token"));
+  setCookies(response).find((c) => c.name.endsWith("ys.session_token"));
 
 /** The names of cookies that set a Domain attribute, which would make them reach subdomains. */
 const cookiesWithDomain = (response: Response) =>
@@ -195,13 +195,15 @@ describe("sessions", () => {
 });
 
 describe("session cookie", () => {
-  it("is __Secure-, Secure, HttpOnly, and host-only with an https public address", async () => {
+  // Apps run on subdomains of Your Space's host, so over HTTPS no app can set or replace it.
+  it("is a __Host- cookie (Secure, HttpOnly, host-only, Path=/) with an https public address", async () => {
     const https = await startServer(t.db, { publicUrl: "https://space.example.test" });
     try {
       const response = await signIn(https);
       expect(response.status).toBe(200);
       const cookie = sessionCookie(response)!;
-      expect(cookie.name).toBe("__Secure-better-auth.session_token");
+      expect(cookie.name).toBe("__Host-ys.session_token");
+      expect(cookie.attributes.get("path")).toBe("/");
       expect(cookie.attributes.has("secure")).toBe(true);
       expect(cookie.attributes.has("httponly")).toBe(true);
       expect(cookie.attributes.has("domain")).toBe(false);
@@ -241,7 +243,7 @@ describe("sign-in limit in production", () => {
   beforeAll(async () => {
     const port = await freePort();
     base = `http://localhost:${port}`;
-    publicUrl = `http://localhost:${port}`;
+    publicUrl = `http://space.localhost:${port}`;
     const script = fileURLToPath(new URL("../src/index.ts", import.meta.url));
     child = spawn(process.execPath, [script], {
       env: {
@@ -279,11 +281,12 @@ describe("sign-in limit in production", () => {
 
   // Caddy sends the client address as a single X-Forwarded-For value.
   const attempt = (password: string, ip = "203.0.113.7") =>
-    fetch(`${base}/api/auth/sign-in/username`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: publicUrl, "x-forwarded-for": ip },
-      body: JSON.stringify({ username: OWNER.username, password }),
-    });
+    send(
+      `${base}/api/auth/sign-in/username`,
+      "POST",
+      new Headers({ "content-type": "application/json", origin: publicUrl, host: new URL(publicUrl).host, "x-forwarded-for": ip }),
+      JSON.stringify({ username: OWNER.username, password }),
+    );
 
   it("refuses the 4th sign-in from one address within 10 seconds with 429, even with the right password, and changes nothing", async () => {
     const before = await counts(t.db);

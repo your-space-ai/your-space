@@ -1,8 +1,13 @@
-# Your Space's Caddy configuration (research R9). The mode file Compose picks (deploy/modes/) sets:
-#   YS_SITE          http://localhost        plain HTTP for this machine only (the default)
-#                    https://<YS_DOMAIN>     automatic HTTPS from Let's Encrypt; HTTP redirects to it
-#                    http://:8080            plain HTTP behind your own proxy or `tailscale serve`
-#   YS_REDIRECT_URL  where http://127.0.0.1 sends people: sign-in works at one address only
+# Your Space's Caddy configuration (research R9; journey 002's plan, "The access gate"). The mode file
+# Compose picks (deploy/modes/) sets:
+#   YS_SITE           Your Space's own site: http://space.localhost, https://<YS_DOMAIN>, or http://:8080
+#   YS_APPS_SITE      the apps' site: http://*.space.localhost or https://*.<YS_DOMAIN>
+#   YS_APPS_TLS       on_demand for your own domain, so each installed app gets its own certificate
+#   YS_ORIGIN         Your Space's origin, the only page allowed to frame an app
+#   YS_REDIRECT_SITES addresses that redirect to Your Space, such as http://localhost
+#   YS_REDIRECT_URL   where they redirect: sign-in works at one address only
+# Behind your own proxy, YS_PROXY_URL names Your Space's address; every other name on port 8080 is an
+# app's.
 {
 	servers :8080 {
 		# Only port 8080, where your own proxy forwards, accepts the visitor address a proxy reports.
@@ -12,6 +17,11 @@
 		# address in front of their own (docs/install/README.md).
 		trusted_proxies static private_ranges
 		trusted_proxies_strict
+	}
+	# On your own domain, a certificate is requested only for names the server says are Your
+	# Space's or an installed app's.
+	on_demand_tls {
+		ask http://server:3001/tls-ask
 	}
 }
 
@@ -39,10 +49,60 @@
 	# There is no `log` directive, so the access log stays off and request URLs are not recorded.
 }
 
-{$YS_SITE:http://localhost} {
-	import app
+# An app's address. The gate lets a request through only with the owner's pass and names where the
+# app's interface is; the app never sees Your Space's cookies or the pass, its cookies stay on its
+# own host, and only Your Space can frame it (FR-014, FR-014a, FR-017).
+(apps) {
+	# Only the gate names the upstream.
+	request_header -X-YS-Upstream
+
+	handle /__ys/handoff {
+		rewrite * /handoff?{query}
+		reverse_proxy server:3001
+	}
+
+	handle {
+		forward_auth server:3001 {
+			uri /gate
+			copy_headers X-YS-Upstream
+		}
+		reverse_proxy {http.request.header.X-YS-Upstream} {
+			header_up -X-YS-Upstream
+			header_up Cookie "^(__Host-)?ys-pass=[^;]*;?\s*" ""
+			header_up Cookie ";\s*(__Host-)?ys-pass=[^;]*" ""
+			header_down -X-Frame-Options
+			header_down Content-Security-Policy "frame-ancestors[^;]*" "frame-ancestors {$YS_ORIGIN}"
+			header_down +Content-Security-Policy "frame-ancestors {$YS_ORIGIN}"
+			header_down Set-Cookie "(?i);\s*domain=[^;]*" ""
+		}
+	}
 }
 
-http://127.0.0.1 {
-	redir {$YS_REDIRECT_URL:http://localhost}{uri}
+(apps_tls_none) {
+}
+
+(apps_tls_on_demand) {
+	tls {
+		on_demand
+	}
+}
+
+{$YS_SITE:http://space.localhost} {
+	# Behind your own proxy, every name other than Your Space's own is an app's.
+	@app_host expression `"{$YS_PROXY_URL}" != "" && "{$YS_PROXY_URL}" != "https://" + {http.request.hostport}`
+	handle @app_host {
+		import apps
+	}
+	handle {
+		import app
+	}
+}
+
+{$YS_APPS_SITE:http://*.space.localhost} {
+	import apps_tls_{$YS_APPS_TLS:none}
+	import apps
+}
+
+{$YS_REDIRECT_SITES:http://127.0.0.1} {
+	redir {$YS_REDIRECT_URL:http://space.localhost}{uri}
 }

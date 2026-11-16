@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runCommand, type CommandResult } from "./helpers/commands.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
+import { send } from "./helpers/server.ts";
 import { TEST_SECRET } from "./helpers/env.ts";
 import { OWNER } from "./helpers/owner.ts";
 
@@ -80,7 +81,7 @@ beforeAll(async () => {
 
   const port = await freePort();
   baseUrl = `http://localhost:${port}`;
-  publicUrl = `http://localhost:${port}`;
+  publicUrl = `http://space.localhost:${port}`;
   child = spawn(process.execPath, [SERVER], {
     env: {
       PATH: process.env.PATH ?? "",
@@ -127,16 +128,11 @@ async function call(
   path: string,
   options: { method?: string; body?: unknown; raw?: string; cookie?: string; ip?: string } = {},
 ): Promise<Reply> {
-  const headers = new Headers({ origin: publicUrl, "x-forwarded-for": options.ip ?? IP.other });
+  const headers = new Headers({ origin: publicUrl, host: new URL(publicUrl).host, "x-forwarded-for": options.ip ?? IP.other });
   const body = options.raw ?? (options.body === undefined ? undefined : JSON.stringify(options.body));
   if (body !== undefined) headers.set("content-type", "application/json");
   if (options.cookie) headers.set("cookie", options.cookie);
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: options.method ?? (body === undefined ? "GET" : "POST"),
-    headers,
-    body,
-    redirect: "manual",
-  });
+  const response = await send(`${baseUrl}${path}`, options.method ?? (body === undefined ? "GET" : "POST"), headers, body);
   const text = await response.text();
   const n = ++responses;
   if (response.status >= 400) publicErrors.push(`${response.status} ${path}: ${text}`);
