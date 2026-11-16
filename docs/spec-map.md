@@ -1,6 +1,6 @@
 # Spec Map
 
-**Last updated**: 2026-11-08
+**Last updated**: 2026-11-14
 
 The pre-public [roadmap](roadmap.md) is delivered through eight specifications. Each one follows a
 person through one complete journey, from where they start to a result they can see, and covers
@@ -14,10 +14,10 @@ Why: [journey-based specifications](architecture/decisions.md#journey-based-spec
 | Spec | Journey | Done when |
 | --- | --- | --- |
 | 001 | **Set up my space** | The operator installs Your Space, creates the owner, signs in, and can recover the owner account. |
-| 002 | **Install an app and use it** | The owner installs the Tasks app from its URL and uses it inside Your Space. |
+| 002 | **Install an app and use it** | The owner installs Sure from the link to its own Compose file and uses it in a pane inside Your Space, with Twenty beside it. |
 | 003 | **Install and run with the CLI** | One guided install on a server or laptop gives a working HTTPS space. |
 | 004 | **Invite my team** | A member joins by invitation, gets app roles, and can recover their password. The owner can remove them. |
-| 005 | **Let my agent work for me** | An agent uses Tasks through the CLI with some of its person's roles. The owner sees what it did and can revoke it. |
+| 005 | **Let my agent work for me** | An agent uses an app through the CLI with some of its person's roles. The owner sees what it did and can revoke it. |
 | 006 | **Keep my space safe over time** | The owner updates, backs up, restores, moves, and uninstalls without losing data. |
 | 007 | **Build my own app** | A developer builds and installs a second app without changing Your Space. |
 | 008 | **Use Your Space as an app on my computer** | The desktop app connects to a server or runs a space locally. |
@@ -29,8 +29,8 @@ Why: [journey-based specifications](architecture/decisions.md#journey-based-spec
                                                                                           └─► 008 Desktop
 ```
 
-- **002 before 003:** 002 decides each app's origin (a subdomain by default, a port as the
-  fallback), which sets the domains and certificates the CLI configures on the proxy from 001.
+- **002 before 003:** 002 puts every app at `<app>.<Your Space's address>`, which sets the wildcard
+  DNS, certificates and Tailscale Services the CLI configures on the proxy from 001.
 - **006 after 004 and 005:** backup and restore must cover members, agents, and app data.
 - **008 last:** the desktop app wraps the CLI's finished commands without changing them.
 - **007 and 008** can run in parallel.
@@ -48,46 +48,56 @@ Roadmap layers: [1 Install and operate](roadmap.md#1-install-and-operate) ·
 - Owner setup and sessions: owner command with a set-password link, sign-in, host-only session cookie, recovery.
 - The web client.
 
-**002 Install an app and use it**
-- App UI and sign-in: each app on its own origin, opened in panes inside Your Space (iframes on the
-  web, several side by side on larger screens), verified identity for apps.
-- Installing from a URL: deployment file, exact images, approved Compose settings, `x-your-space`,
-  settings and secrets, trust warning.
-- Running apps: containers, database, storage, isolation, outbound access approval, limits, status
-  and logs, removal and retained data.
-- The first app contract, including app roles, the TypeScript SDK, and the Tasks app.
+**002 Install an app and use it** ([spec](../specs/002-install-an-app/spec.md))
+- Installing from a GitHub link to the app's own Compose file, with installation kits from a
+  separate repository: exact commit, images pinned by digest, an allowlist of Compose settings,
+  generated settings and secrets, the trust warning, and images for the engine's processor type.
+- Running apps: a runtime manager that alone holds the engine connection, a Compose project per app
+  with its database and named volumes, a sealed network, outbound access through starter hosts and
+  access requests, limits, status and logs, removal with retained data, and the Engine page.
+- Opening apps: each app at `<app>.<Your Space's address>` (`space.localhost` on this machine)
+  behind an access gate, in panes inside Your Space (iframes on the web, several side by side on
+  larger screens) or in its own tab. Apps keep their own sign-in (level 0).
+- Sure as the first app and Twenty as the second. App roles, verified identity for apps and the
+  TypeScript SDK moved to 004, 005 and 007 on 2026-11-14.
 
 **003 Install and run with the CLI**
 - Guided install for servers and local machines on macOS and Linux, and Windows (L).
 - Commands: install, start, stop, status, logs, owner recovery.
-- Asking for the domain during install, so HTTPS is set up for you.
+- Asking for the domain during install, so HTTPS is set up for you, including app addresses.
 - The manual Compose guide, kept as an advanced option (L).
 
 **004 Invite my team**
 - Invitation links, signup, recovery codes, and temporary passwords from the owner.
 - The owner assigns app roles; a person can hold several.
+- Deeper app integration left out of 002, placed with 004, 005 and 007 and settled there: level 1,
+  Your Space as an OpenID Connect provider, matters most once there are members.
 - Removing a member, and keeping former members traceable.
 
 **005 Let my agent work for me**
 - Agent identities and credentials: create, view, revoke, rotate.
 - Delegating an exact subset of your roles; removal reaches live sessions.
 - Your Space as the gateway, and agent commands in the CLI.
+- Level 2 integration for agents: verified identity and app roles in apps through an SDK, and the
+  same backend checks for UI and programmatic access.
 - The activity log, which the owner can review.
 
 **006 Keep my space safe over time**
 - Updating Your Space and apps, with automatic rollback when an update fails.
-- Backup, restore, and moving a workspace (for example, local to a server).
+- Backup and restore, easy for people and their agents to script; moving a workspace to another
+  installation is a backup and restore they do themselves.
 - Uninstall, which keeps data unless the owner confirms deletion.
 
 **007 Build my own app**
-- Versioned, documented public contracts that work for managed and external apps.
-- The Python SDK, verified with a second working app.
-- Adding an external app hosted elsewhere.
+- Versioned, documented public contracts that work for managed and external apps (level 2).
+- The TypeScript and Python SDKs, each verified with a working app.
+- Adding an app someone already runs elsewhere, through a connector.
 
 **008 Use Your Space as an app on my computer**
 - Desktop app on macOS, Linux, and Windows (L), signed and self-updating; the intended primary client.
 - Installed apps in native views instead of iframes.
-- Local mode: detect Docker, set up through the CLI, start with the app, update, back up, uninstall.
+- Local mode: provide the engine (Your Space's own VM by default; 003 or 008 settles how), set up
+  through the CLI, start with the app, update, back up, uninstall.
 - A clear message when app, CLI, and server versions don't match; the installable PWA (L).
 
 ## Rules Every Spec Follows
@@ -97,7 +107,10 @@ These apply from the first spec, so later specs don't have to retrofit them:
 - **Simple by default.** Show people only what they need; advanced controls stay out of the way.
 - **No telemetry.** The only automatic outbound requests are GitHub update checks and the built-in
   proxy's certificate requests for an owner-configured domain.
-- **ARM and Intel.** Every image ships for both.
+- **ARM and Intel.** Your Space's own images ship for both. Apps need only images for the engine's
+  processor type.
+- **Concepts, not technologies.** Build against concepts, such as an engine connection or an app
+  endpoint, with each technology behind an adapter (constitution principle VIII).
 - **Known storage.** All durable state lives in the database or named volumes, so backup has one
   clear thing to capture.
 - **The actual actor.** Records credit the real actor, human or agent, from the first database schema.
