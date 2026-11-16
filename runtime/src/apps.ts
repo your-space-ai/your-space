@@ -219,6 +219,13 @@ async function projectContainers(project: string) {
   return listContainers([INSTALLATION_LABEL, `com.docker.compose.project=${project}`]);
 }
 
+export async function logs(project: string, service: string, tail: number): Promise<string[]> {
+  const container = (await projectContainers(project)).find((c) => c.Labels["com.docker.compose.service"] === service);
+  if (!container) throw new EngineError("No such service.", 404);
+  const result = await docker(["logs", "--tail", String(Math.min(Math.max(tail, 1), 1000)), "--timestamps", container.Id]);
+  return `${result.stdout}${result.stderr}`.split("\n").filter((l) => l.length > 0).sort();
+}
+
 interface Stats {
   memory_stats: { usage?: number; limit?: number; stats?: { inactive_file?: number } };
   cpu_stats: { cpu_usage: { total_usage: number }; system_cpu_usage?: number; online_cpus?: number };

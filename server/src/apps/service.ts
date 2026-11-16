@@ -1,4 +1,4 @@
-// Installing and managing apps (components A, F, G, H, N). The server keeps each app's record,
+// Installing and managing apps (components A, F, G, H, N, O). The server keeps each app's record,
 // settings and approvals; the runtime manager runs it. Secret values leave the server only in the
 // app spec sent to the runtime manager.
 import { randomUUID } from "node:crypto";
@@ -524,6 +524,12 @@ export class AppsService {
     const outbound = await this.db.select().from(appOutbound).where(eq(appOutbound.appId, row.id)).orderBy(appOutbound.host);
     const requests = await this.db.select().from(appAccessRequest).where(eq(appAccessRequest.appId, row.id)).orderBy(desc(appAccessRequest.lastSeen));
     const job = (await this.db.select().from(installJob).where(eq(installJob.appId, row.id)).orderBy(desc(installJob.createdAt)).limit(1))[0];
+    let services: ServiceState[] = [];
+    try {
+      services = (await this.runtime.apps()).find((a) => a.app === name)?.services ?? [];
+    } catch {
+      // The runtime manager is down; the record still shows.
+    }
     return {
       name: row.name,
       title: row.title,
@@ -537,6 +543,8 @@ export class AppsService {
       kitSource: row.kitSource,
       images: row.images,
       adaptations: row.adaptations,
+      services: services.map((s) => ({ ...s, limit: row.limits[s.name] ?? null })),
+      limits: row.limits,
       settings: settings.map((s) =>
         publicSetting({
           name: s.name,
@@ -553,6 +561,17 @@ export class AppsService {
       job: job ? { id: job.id, kind: job.kind, state: job.state, steps: job.steps, error: job.error } : null,
       installedAt: row.createdAt,
     };
+  }
+
+  async logs(name: string, service: string): Promise<string[]> {
+    const row = await this.rowByName(name);
+    if (!Object.hasOwn(row.limits, service) && service !== "ys-egress") throw new AppError(404, "not_found", "There is no such service.");
+    try {
+      return await this.runtime.logs(`ys-${name}`, service, 300);
+    } catch (error) {
+      if (error instanceof RuntimeError) throw new AppError(error.status === 404 ? 404 : 503, error.code, error.status === 404 ? "That service isn't running." : error.message);
+      throw error;
+    }
   }
 
   async engine() {
@@ -619,6 +638,23 @@ export class AppsService {
       }
     });
     await this.event("app.settings_changed", actorId, row.id);
+    return this.queue(row.id, "apply");
+  }
+
+  async updateLimits(name: string, limits: Record<string, { memory?: number; cpus?: number }>, actorId: string): Promise<{ jobId: string }> {
+    const row = await this.liveRow(name);
+    const next = { ...row.limits };
+    for (const [service, limit] of Object.entries(limits ?? {})) {
+      if (!Object.hasOwn(next, service)) throw new AppError(400, "unknown_service", `${service} isn't a service of this app.`);
+      if (typeof limit !== "object" || limit === null) throw new AppError(400, "bad_limit", `Send ${service}'s memory and CPUs.`);
+      const memory = limit.memory ?? next[service].memory;
+      const cpus = limit.cpus ?? next[service].cpus;
+      if (!Number.isInteger(memory) || memory < 32 * 1024 * 1024) throw new AppError(400, "bad_limit", "Memory must be at least 32 MiB.");
+      if (typeof cpus !== "number" || cpus < 0.1 || cpus > 64) throw new AppError(400, "bad_limit", "CPUs must be between 0.1 and 64.");
+      next[service] = { memory, cpus };
+    }
+    await this.db.update(app).set({ limits: next, updatedAt: new Date() }).where(eq(app.id, row.id));
+    await this.event("app.limits_changed", actorId, row.id);
     return this.queue(row.id, "apply");
   }
 

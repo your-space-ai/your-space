@@ -405,6 +405,10 @@ keeps its data. Replacing a generated secret, such as a database password, can b
 it needs to work, which the review shows. When the app tries another host, the attempt fails and
 Your Space shows an access request on the app's page: approve it, or dismiss it to stop being asked.
 
+**Limits and logs.** Under Advanced, each service shows its state, its recent logs, and its memory
+and CPU limits. An app that runs out of memory is stopped before Your Space itself. The Engine page
+shows the engine Your Space uses and what each app uses.
+
 **Stop Your Space and its apps.** `docker compose restart` and updates leave apps running. To stop
 everything:
 

@@ -320,6 +320,19 @@ td {
   vertical-align: top;
 }
 
+td input {
+  width: 7rem;
+}
+
+select {
+  font: inherit;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
 form.inline {
   display: flex;
   flex-wrap: wrap;
@@ -342,6 +355,12 @@ form.inline {
 .steps {
   margin: 0 0 0.5rem;
   padding-left: 1.25rem;
+}
+
+.logs {
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre;
 }
 
 .kind {

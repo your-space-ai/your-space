@@ -165,6 +165,16 @@ describe("apps API", () => {
   const api = (path: string, init: RequestInit = {}) => server.request(path, { ...init, headers: { cookie, ...(init.headers as object) } });
   const post = (path: string, body: unknown, method = "POST") => api(path, { method, body: JSON.stringify(body) });
 
+  /** Waits until no install job is running, however slow the machine: jobs run in the background. */
+  async function settled(): Promise<void> {
+    for (let i = 0; i < 500; i++) {
+      const running = await t.db.select({ id: installJob.id }).from(installJob).where(eq(installJob.state, "running"));
+      if (running.length === 0) return;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    throw new Error("A job didn't finish.");
+  }
+
   it("refuses everyone but the signed-in owner, and changes nothing", async () => {
     for (const [method, path] of [["GET", "/api/apps"], ["POST", "/api/apps/preview"], ["POST", "/api/apps"], ["GET", "/api/engine"]]) {
       const response = await server.request(path!, { method, body: method === "GET" ? undefined : "{}" });
@@ -245,7 +255,7 @@ describe("apps API", () => {
     expect((await post(`/api/apps/whoami/requests/${tracker.id}/dismiss`, {})).status).toBe(204);
     const approved = await post(`/api/apps/whoami/requests/${openai.id}/approve`, {});
     expect(approved.status).toBe(202);
-    await new Promise((r) => setTimeout(r, 100));
+    await settled();
     expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.egress!.sort()).toEqual(["api.openai.com", "example.com"]);
 
     await server.apps!.reconcile();
@@ -259,16 +269,23 @@ describe("apps API", () => {
   it("restarts the app with changed settings, and refuses derived or unknown ones", async () => {
     const changed = await post("/api/apps/whoami/settings", { values: { GREETING: "hi there" } }, "PUT");
     expect(changed.status).toBe(202);
-    await new Promise((r) => setTimeout(r, 100));
+    await settled();
     expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.env.GREETING).toBe("hi there");
     expect((await post("/api/apps/whoami/settings", { values: { NOPE: "x" } }, "PUT")).status).toBe(400);
+  });
+
+  it("changes limits within bounds", async () => {
+    expect((await post("/api/apps/whoami/limits", { limits: { web: { memory: 1024 } } }, "PUT")).status).toBe(400);
+    expect((await post("/api/apps/whoami/limits", { limits: { web: { memory: 128 * 1024 ** 2, cpus: 2 } } }, "PUT")).status).toBe(202);
+    await settled();
+    expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.limits).toEqual({ web: { memory: 128 * 1024 ** 2, cpus: 2 } });
   });
 
   it("starts apps that should run and don't, and ends interrupted jobs as failed", async () => {
     runtime.running.delete("ys-whoami");
     const before = runtime.calls.filter((c) => c.method === "apply").length;
     await server.apps!.reconcile();
-    await new Promise((r) => setTimeout(r, 100));
+    await settled();
     expect(runtime.calls.filter((c) => c.method === "apply").length).toBe(before + 1);
 
     // While Your Space is being stopped, stopped apps are left stopped.
@@ -279,7 +296,7 @@ describe("apps API", () => {
     expect(runtime.calls.length).toBe(during);
     runtime.stopping = false;
     await server.apps!.reconcile();
-    await new Promise((r) => setTimeout(r, 100));
+    await settled();
 
     const [row] = await t.db.select().from(app).where(eq(app.name, "whoami"));
     await t.db.insert(installJob).values({ appId: row!.id, kind: "apply" });
