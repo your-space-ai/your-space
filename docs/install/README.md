@@ -383,7 +383,7 @@ and opens them inside Your Space.
 **Install.** In Apps, paste the GitHub link to the app's Compose file, for example
 `https://github.com/we-promise/sure/blob/main/compose.example.yml`, and choose Review. The review
 shows the exact commit and image versions that will run, what Your Space changes or leaves out of
-the file, and the settings it reads. Secrets the file gives a
+the file, the settings it reads, and the internet hosts it may reach. Secrets the file gives a
 published default for get generated values instead, and they are never shown. Install runs in the
 background; you can leave the page. From the server, `docker compose exec server install-app <link>`
 does the same.
@@ -397,6 +397,13 @@ only you, signed in to Your Space, can reach it. Apps open in a pane beside Your
 An app keeps its own accounts: you sign up in the app
 the first time. On this machine, Safari doesn't keep apps' cookies inside Your Space, so apps open in
 their own tab there; over HTTPS they open in a pane in every browser.
+
+**Settings.** An app's page shows its settings. Saving restarts the app with the new values and
+keeps its data. Replacing a generated secret, such as a database password, can break the app.
+
+**Internet access.** An app reaches only the hosts you approve. Its installation kit can name a few
+it needs to work, which the review shows. When the app tries another host, the attempt fails and
+Your Space shows an access request on the app's page: approve it, or dismiss it to stop being asked.
 
 **Stop Your Space and its apps.** `docker compose restart` and updates leave apps running. To stop
 everything:

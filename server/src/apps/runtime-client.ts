@@ -22,6 +22,7 @@ export interface AppSpec {
   pins?: Record<string, string>;
   interface?: { service: string; port: number } | null;
   limits?: Record<string, { memory?: number; cpus?: number }>;
+  egress?: string[];
 }
 
 export interface CheckAnswer {
@@ -68,6 +69,7 @@ export interface Runtime {
   apply(spec: AppSpec, onEvent: (event: ApplyEvent) => void): Promise<void>;
   apps(): Promise<{ project: string; app: string; services: ServiceState[] }[]>;
   stats(project: string): Promise<{ services: { name: string; memory: number; memoryLimit: number; cpuPercent: number }[] }>;
+  denials(project: string): Promise<{ hosts: { host: string; attempts: number; lastSeen: string }[] }>;
 }
 
 function call(method: string, path: string, body?: unknown, onLine?: (line: string) => void, socketPath = RUNTIME_SOCKET): Promise<{ status: number; text: string }> {
@@ -144,5 +146,6 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
     },
     apps: () => json("GET", "/apps", undefined, socketPath),
     stats: (project) => json("GET", `${p(project)}/stats`, undefined, socketPath),
+    denials: (project) => json("GET", `${p(project)}/denials`, undefined, socketPath),
   };
 }

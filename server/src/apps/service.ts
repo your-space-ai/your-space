@@ -1,11 +1,21 @@
-// Installing and managing apps (components A, F, G, H). The server keeps each app's record and
-// settings; the runtime manager runs it. Secret values leave the server only in the app spec sent to
-// the runtime manager.
+// Installing and managing apps (components A, F, G, H, N). The server keeps each app's record,
+// settings and approvals; the runtime manager runs it. Secret values leave the server only in the
+// app spec sent to the runtime manager.
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { recordEvent } from "../actors.ts";
 import type { Db } from "../db/client.ts";
-import { app, appSetting, installJob, type AppState, type JobStep, type Kit } from "../db/schema.ts";
+import {
+  app,
+  appAccessRequest,
+  appOutbound,
+  appSetting,
+  installJob,
+  type AppState,
+  type EventType,
+  type JobStep,
+  type Kit,
+} from "../db/schema.ts";
 import { errorFields, log } from "../log.ts";
 import { fetchSource, githubEndpoints, SourceError, type GithubEndpoints, type SourceFile } from "./github.ts";
 import { findKit, KitError } from "./kits.ts";
@@ -15,6 +25,10 @@ import { buildSettings, decrypt, encrypt, publicSetting, type Setting } from "./
 export const DEFAULT_MEMORY = 1024 * 1024 * 1024;
 export const DEFAULT_CPUS = 1;
 const PREVIEW_LIFETIME_MS = 30 * 60_000;
+/** A host name an app may be allowed to reach; the kit parser and approvals use the same rule. */
+const HOST = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
+/** Waiting access requests kept per app, so an app can't flood the owner's list. */
+const MAX_PENDING_REQUESTS = 50;
 const RESERVED_NAMES = new Set(["www", "api", "app", "apps", "space", "admin", "static", "assets", "mail"]);
 
 export class AppError extends Error {
@@ -48,6 +62,7 @@ interface Preview {
   title: string;
   check: CheckAnswer;
   settings: Setting[];
+  outbound: string[];
   limits: Record<string, { memory: number; cpus: number }>;
   interface: { service: string; port: number } | null;
   pane: boolean;
@@ -170,6 +185,7 @@ export class AppsService {
       title: kit?.title ?? source.repo.split("/")[1]!,
       check,
       settings,
+      outbound: kit?.outbound ?? [],
       limits,
       interface: kit?.interface ?? this.guessInterface(check),
       pane: kit?.pane ?? true,
@@ -208,6 +224,7 @@ export class AppsService {
       adaptations: p.check.adaptations,
       refusals: p.check.refusals,
       settings: p.settings.map(publicSetting),
+      outbound: p.outbound,
       interface: p.interface,
       pane: p.pane,
       warning:
@@ -274,6 +291,9 @@ export class AppsService {
           })),
         );
       }
+      if (p.outbound.length) {
+        await tx.insert(appOutbound).values(p.outbound.map((host) => ({ appId: id, host, source: "kit" as const, approvedBy: actorId })));
+      }
       await recordEvent(tx, "app.installed", actorId, null, id);
       return id;
     });
@@ -295,6 +315,7 @@ export class AppsService {
 
   async specFor(row: AppRow): Promise<AppSpec> {
     const values = await this.storedValues(row.id);
+    const outbound = await this.db.select({ host: appOutbound.host }).from(appOutbound).where(eq(appOutbound.appId, row.id));
     const pins = Object.fromEntries(Object.entries(row.images).map(([ref, { digest }]) => [ref, digest]));
     return {
       project: `ys-${row.name}`,
@@ -304,6 +325,7 @@ export class AppsService {
       pins,
       interface: row.interface,
       limits: row.limits,
+      egress: outbound.map((o) => o.host),
     };
   }
 
@@ -401,7 +423,7 @@ export class AppsService {
     await this.db.update(app).set({ state, stateReason: reason, updatedAt: new Date() }).where(and(eq(app.name, name), ne(app.state, "removed")));
   }
 
-  /** Starts apps that should run and don't, and records each app's state. */
+  /** Starts apps that should run and don't, records each app's state, and collects access requests. */
   async reconcile(): Promise<void> {
     let reports;
     try {
@@ -427,6 +449,40 @@ export class AppsService {
       if (state !== row.state || reason !== row.stateReason) {
         await this.db.update(app).set({ state, stateReason: reason, updatedAt: new Date() }).where(eq(app.id, row.id));
       }
+      if (running) await this.collectDenials(row.id, row.name);
+    }
+  }
+
+  private async collectDenials(appId: string, name: string): Promise<void> {
+    let denied;
+    try {
+      denied = await this.runtime.denials(`ys-${name}`);
+    } catch {
+      return;
+    }
+    if (!denied.hosts.length) return;
+    const approved = new Set((await this.db.select({ host: appOutbound.host }).from(appOutbound).where(eq(appOutbound.appId, appId))).map((o) => o.host));
+    const known = new Set((await this.db.select({ host: appAccessRequest.host }).from(appAccessRequest).where(eq(appAccessRequest.appId, appId))).map((r) => r.host));
+    const pending = (await this.db.select({ id: appAccessRequest.id }).from(appAccessRequest).where(and(eq(appAccessRequest.appId, appId), eq(appAccessRequest.state, "pending")))).length;
+    let room = MAX_PENDING_REQUESTS - pending;
+    for (const { host, attempts, lastSeen } of denied.hosts) {
+      // The app chose these names, so only real host names become requests, and only so many.
+      if (approved.has(host) || !HOST.test(host)) continue;
+      if (!known.has(host)) {
+        if (room <= 0) continue;
+        room -= 1;
+      }
+      // The proxy's log counts every attempt it still holds; the request keeps the highest count seen.
+      await this.db
+        .insert(appAccessRequest)
+        .values({ appId, host, attempts, lastSeen: new Date(lastSeen) })
+        .onConflictDoUpdate({
+          target: [appAccessRequest.appId, appAccessRequest.host],
+          set: {
+            attempts: sql`greatest(${appAccessRequest.attempts}, excluded.attempts)`,
+            lastSeen: sql`greatest(${appAccessRequest.lastSeen}, excluded.last_seen)`,
+          },
+        });
     }
   }
 
@@ -440,6 +496,12 @@ export class AppsService {
 
   async list() {
     const rows = await this.db.select().from(app).orderBy(app.createdAt);
+    const pending = await this.db
+      .select({ appId: appAccessRequest.appId, n: sql<number>`count(*)::int` })
+      .from(appAccessRequest)
+      .where(eq(appAccessRequest.state, "pending"))
+      .groupBy(appAccessRequest.appId);
+    const counts = new Map(pending.map((p) => [p.appId, p.n]));
     return {
       apps: rows
         .filter((r) => r.state !== "removed")
@@ -451,12 +513,16 @@ export class AppsService {
           origin: this.address(r.name).origin,
           pane: r.pane,
           hasInterface: Boolean(r.interface),
+          pendingRequests: counts.get(r.id) ?? 0,
         })),
     };
   }
 
   async detail(name: string) {
     const row = await this.rowByName(name);
+    const settings = await this.db.select().from(appSetting).where(eq(appSetting.appId, row.id)).orderBy(appSetting.name);
+    const outbound = await this.db.select().from(appOutbound).where(eq(appOutbound.appId, row.id)).orderBy(appOutbound.host);
+    const requests = await this.db.select().from(appAccessRequest).where(eq(appAccessRequest.appId, row.id)).orderBy(desc(appAccessRequest.lastSeen));
     const job = (await this.db.select().from(installJob).where(eq(installJob.appId, row.id)).orderBy(desc(installJob.createdAt)).limit(1))[0];
     return {
       name: row.name,
@@ -471,6 +537,19 @@ export class AppsService {
       kitSource: row.kitSource,
       images: row.images,
       adaptations: row.adaptations,
+      settings: settings.map((s) =>
+        publicSetting({
+          name: s.name,
+          secret: s.secret,
+          generated: s.generated,
+          required: false,
+          publishedDefault: s.publishedDefault,
+          value: s.value === null ? null : s.secret ? "set" : decrypt(this.config.authSecret, s.value),
+          derived: Boolean(row.kit?.derive?.[s.name]),
+        }),
+      ),
+      outbound: outbound.map((o) => ({ host: o.host, source: o.source, createdAt: o.createdAt })),
+      requests: requests.map((r) => ({ id: r.id, host: r.host, state: r.state, attempts: r.attempts, firstSeen: r.firstSeen, lastSeen: r.lastSeen })),
       job: job ? { id: job.id, kind: job.kind, state: job.state, steps: job.steps, error: job.error } : null,
       installedAt: row.createdAt,
     };
@@ -499,6 +578,10 @@ export class AppsService {
 
   // ----- Changing an app -----
 
+  private async event(type: EventType, actorId: string, appId: string): Promise<void> {
+    await recordEvent(this.db, type, actorId, null, appId);
+  }
+
   private async liveRow(name: string): Promise<AppRow> {
     const row = await this.rowByName(name);
     if (row.state === "removed") throw new AppError(409, "removed", "The app has been removed. Install it again to use it.");
@@ -510,6 +593,73 @@ export class AppsService {
     // Refused before anything is recorded, so a busy app's intent doesn't change.
     if (this.busy.has(row.id)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
     await this.db.update(app).set({ desired: "running" }).where(eq(app.id, row.id));
+    return this.queue(row.id, "apply");
+  }
+
+  async updateSettings(name: string, values: Record<string, string | null>, actorId: string): Promise<{ jobId: string }> {
+    const row = await this.liveRow(name);
+    const current = await this.db.select().from(appSetting).where(eq(appSetting.appId, row.id));
+    const changes = Object.entries(values ?? {});
+    // Every value is checked before any is written, and they are written together.
+    for (const [key, value] of changes) {
+      const setting = current.find((s) => s.name === key);
+      if (!setting || row.kit?.derive?.[key]) throw new AppError(400, "unknown_setting", `${key} isn't a setting you can change.`);
+      if (value !== null && typeof value !== "string") throw new AppError(400, "invalid_setting", `${key} must be text.`);
+      // A blank secret would let the app fall back to its published default (FR-006).
+      if (setting.secret && (value === null || value === "")) {
+        throw new AppError(400, "secret_required", `${key} is a secret. Replace it with a new value instead of clearing it.`);
+      }
+    }
+    await this.db.transaction(async (tx) => {
+      for (const [key, value] of changes) {
+        await tx
+          .update(appSetting)
+          .set({ value: value === null || value === "" ? null : encrypt(this.config.authSecret, value), generated: false })
+          .where(and(eq(appSetting.appId, row.id), eq(appSetting.name, key)));
+      }
+    });
+    await this.event("app.settings_changed", actorId, row.id);
+    return this.queue(row.id, "apply");
+  }
+
+  async approve(name: string, host: string, actorId: string): Promise<{ jobId: string }> {
+    const row = await this.liveRow(name);
+    const clean = host.trim().toLowerCase();
+    if (!HOST.test(clean)) {
+      throw new AppError(400, "bad_host", "That isn't a host name, like api.example.com.");
+    }
+    await this.db.insert(appOutbound).values({ appId: row.id, host: clean, source: "owner", approvedBy: actorId }).onConflictDoNothing();
+    await this.db.delete(appAccessRequest).where(and(eq(appAccessRequest.appId, row.id), eq(appAccessRequest.host, clean)));
+    await this.event("app.outbound_approved", actorId, row.id);
+    return this.queue(row.id, "apply");
+  }
+
+  async approveRequest(name: string, requestId: string, actorId: string): Promise<{ jobId: string }> {
+    const row = await this.liveRow(name);
+    const request = (await this.db.select().from(appAccessRequest).where(and(eq(appAccessRequest.id, requestId), eq(appAccessRequest.appId, row.id))))[0];
+    if (!request) throw new AppError(404, "not_found", "There is no such access request.");
+    return this.approve(name, request.host, actorId);
+  }
+
+  async dismissRequest(name: string, requestId: string, actorId: string): Promise<void> {
+    const row = await this.liveRow(name);
+    const updated = await this.db
+      .update(appAccessRequest)
+      .set({ state: "dismissed" })
+      .where(and(eq(appAccessRequest.id, requestId), eq(appAccessRequest.appId, row.id)))
+      .returning({ id: appAccessRequest.id });
+    if (!updated[0]) throw new AppError(404, "not_found", "There is no such access request.");
+    await this.event("app.request_dismissed", actorId, row.id);
+  }
+
+  async removeOutbound(name: string, host: string, actorId: string): Promise<{ jobId: string }> {
+    const row = await this.liveRow(name);
+    const removed = await this.db
+      .delete(appOutbound)
+      .where(and(eq(appOutbound.appId, row.id), eq(appOutbound.host, host.toLowerCase())))
+      .returning({ host: appOutbound.host });
+    if (!removed[0]) throw new AppError(404, "not_found", "That host isn't approved for this app.");
+    await this.event("app.outbound_removed", actorId, row.id);
     return this.queue(row.id, "apply");
   }
 

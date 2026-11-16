@@ -1,6 +1,6 @@
 // Your Space's own tables (T011, data-model.md): whether the owner exists, actors, and events.
 import { sql } from "drizzle-orm";
-import { boolean, check, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organization, user } from "./auth-schema.ts";
 
 /** Exactly one row, created by the first migration. Owner existence is read from it, never inferred. */
@@ -56,7 +56,11 @@ export type EventType =
   | "owner.created"
   | "recovery.link_issued"
   | "recovery.password_reset"
-  | "app.installed";
+  | "app.installed"
+  | "app.settings_changed"
+  | "app.outbound_approved"
+  | "app.outbound_removed"
+  | "app.request_dismissed";
 
 // Apps (journey 002, data-model.md).
 
@@ -141,6 +145,38 @@ export const appSetting = pgTable(
     publishedDefault: text("published_default"),
   },
   (t) => [primaryKey({ columns: [t.appId, t.name] })],
+);
+
+export const appOutbound = pgTable(
+  "app_outbound",
+  {
+    appId: uuid("app_id")
+      .notNull()
+      .references(() => app.id, { onDelete: "cascade" }),
+    host: text("host").notNull(),
+    source: text("source", { enum: ["kit", "owner"] }).notNull(),
+    approvedBy: uuid("approved_by")
+      .notNull()
+      .references(() => actor.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.appId, t.host] })],
+);
+
+export const appAccessRequest = pgTable(
+  "app_access_request",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    appId: uuid("app_id")
+      .notNull()
+      .references(() => app.id, { onDelete: "cascade" }),
+    host: text("host").notNull(),
+    state: text("state", { enum: ["pending", "dismissed"] }).notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    firstSeen: timestamp("first_seen", { withTimezone: true }).notNull().defaultNow(),
+    lastSeen: timestamp("last_seen", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("app_access_request_app_host").on(t.appId, t.host)],
 );
 
 export interface JobStep {

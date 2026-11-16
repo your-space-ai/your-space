@@ -30,6 +30,7 @@ export function Layout() {
               <li key={app.name}>
                 <Link to="/open/$name" params={{ name: app.name }} search={{}}>
                   {app.title}
+                  {app.pendingRequests > 0 ? <span className="badge" title="Access requests waiting">{app.pendingRequests}</span> : null}
                 </Link>
               </li>
             ))}

@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { adapt, imageRef, type AppSpec, type CheckResult } from "./adapter.ts";
+import { adapt, EGRESS_IMAGE, imageRef, type AppSpec, type CheckResult } from "./adapter.ts";
 import {
   connectNetwork,
   docker,
@@ -101,6 +101,7 @@ async function checkWithImages(spec: AppSpec): Promise<{ answer: CheckAnswer; ad
   const info = await engineInfo();
   if (!info.reachable) throw new EngineError("The engine can't be reached.", 503);
   const refs = [...new Set(Object.values((resolved.services as Record<string, { image?: string }>) ?? {}).map((s) => s.image).filter((i): i is string => !!i).map(imageRef))];
+  refs.push(`${EGRESS_IMAGE}:latest`);
   const pins: Record<string, string> = { ...(spec.pins ?? {}) };
   const images = await Promise.all(
     refs.map(async (ref) => {
@@ -244,6 +245,40 @@ export async function stats(project: string) {
   return { services };
 }
 
+/** Hosts the app's egress proxy refused, from its access log. */
+export async function denials(project: string) {
+  const egress = (await projectContainers(project)).find((c) => c.Labels["ai.your-space.role"] === "egress" && c.State === "running");
+  if (!egress) return { hosts: [] };
+  const result = await docker(["exec", egress.Id, "tail", "-n", "5000", "/var/log/squid/access.log"]);
+  return { hosts: parseDenials(result.stdout) };
+}
+
+export function parseDenials(log: string): { host: string; attempts: number; lastSeen: string }[] {
+  const hosts = new Map<string, { host: string; attempts: number; lastSeen: number }>();
+  for (const line of log.split("\n")) {
+    const fields = line.trim().split(/\s+/);
+    if (fields.length < 7 || !fields[3]?.startsWith("TCP_DENIED")) continue;
+    const time = Number(fields[0]) * 1000;
+    const target = fields[6]!;
+    let host: string;
+    if (fields[5] === "CONNECT") host = target.replace(/:\d+$/, "");
+    else {
+      try {
+        host = new URL(target).hostname;
+      } catch {
+        continue;
+      }
+    }
+    host = host.toLowerCase();
+    if (!host || /^[\d.:[\]]+$/.test(host)) continue;
+    const entry = hosts.get(host) ?? { host, attempts: 0, lastSeen: 0 };
+    entry.attempts += 1;
+    entry.lastSeen = Math.max(entry.lastSeen, time);
+    hosts.set(host, entry);
+  }
+  return [...hosts.values()].map((h) => ({ host: h.host, attempts: h.attempts, lastSeen: new Date(h.lastSeen).toISOString() }));
+}
+
 /** Stops every app this installation manages, and refuses to start any until restarted. */
 export async function stopAll(): Promise<string[]> {
   stopping = true;
@@ -264,3 +299,4 @@ export async function connectProxyToAll(): Promise<void> {
     if (network.Name.endsWith("_app") && !joined.has(network.Name)) await connectNetwork(network.Name, caddy);
   }
 }
+
