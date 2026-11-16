@@ -1,4 +1,4 @@
-# For development, CI, and the browser tests: build both images from this repository instead of
+# For development, CI, and the browser tests: build the images from this repository instead of
 # pulling the published ones.
 #   docker compose -f deploy/compose.yaml -f deploy/compose.build.yaml up -d --build
 services:
@@ -14,3 +14,8 @@ services:
     build:
       context: ..
       dockerfile: server/Dockerfile
+  runtime:
+    image: your-space-runtime:local
+    build:
+      context: ..
+      dockerfile: runtime/Dockerfile

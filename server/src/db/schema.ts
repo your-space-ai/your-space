@@ -1,6 +1,6 @@
 // Your Space's own tables (T011, data-model.md): whether the owner exists, actors, and events.
 import { sql } from "drizzle-orm";
-import { check, pgTable, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organization, user } from "./auth-schema.ts";
 
 /** Exactly one row, created by the first migration. Owner existence is read from it, never inferred. */
@@ -48,7 +48,115 @@ export const event = pgTable("event", {
     .notNull()
     .references(() => actor.id, { onDelete: "restrict" }),
   subjectUserId: uuid("subject_user_id").references(() => user.id, { onDelete: "restrict" }),
+  subjectAppId: uuid("subject_app_id").references(() => app.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export type EventType = "owner.created" | "recovery.link_issued" | "recovery.password_reset";
+export type EventType =
+  | "owner.created"
+  | "recovery.link_issued"
+  | "recovery.password_reset"
+  | "app.installed";
+
+// Apps (journey 002, data-model.md).
+
+export type AppState = "installing" | "starting" | "running" | "degraded" | "stopped" | "failed" | "removed";
+export type AppDesired = "running" | "stopped" | "removed";
+
+export interface Adaptation {
+  service: string;
+  kind: "changed" | "left_out" | "added";
+  detail: string;
+}
+
+export interface Kit {
+  kit: 1;
+  source: { repo: string; path: string };
+  name?: string;
+  title?: string;
+  interface?: { service: string; port: number };
+  pane?: boolean;
+  generate?: Record<string, { bytes?: number; encoding?: "hex" | "base64url" }>;
+  derive?: Record<string, "app_origin" | "app_host">;
+  /** Values the app's own example settings give, which its file leaves empty. The owner can change them. */
+  set?: Record<string, string>;
+  secrets?: string[];
+  outbound?: string[];
+  /** Memory in bytes, parsed from the kit's 512M or 1G. */
+  limits?: Record<string, { memory?: number; cpus?: number }>;
+}
+
+export const app = pgTable(
+  "app",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull().unique(),
+    title: text("title").notNull(),
+    sourceUrl: text("source_url").notNull(),
+    repo: text("repo").notNull(),
+    path: text("path").notNull(),
+    ref: text("ref").notNull(),
+    commit: text("commit").notNull(),
+    compose: text("compose").notNull(),
+    kit: jsonb("kit").$type<Kit>(),
+    kitSource: text("kit_source"),
+    images: jsonb("images").$type<Record<string, { digest: string }>>().notNull(),
+    adaptations: jsonb("adaptations").$type<Adaptation[]>().notNull(),
+    interface: jsonb("interface").$type<{ service: string; port: number }>(),
+    pane: boolean("pane").notNull().default(true),
+    limits: jsonb("limits").$type<Record<string, { memory: number; cpus: number }>>().notNull(),
+    desired: text("desired", { enum: ["running", "stopped", "removed"] }).notNull().default("running"),
+    state: text("state", { enum: ["installing", "starting", "running", "degraded", "stopped", "failed", "removed"] })
+      .notNull()
+      .default("installing"),
+    stateReason: text("state_reason"),
+    installedBy: uuid("installed_by")
+      .notNull()
+      .references(() => actor.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    removedAt: timestamp("removed_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("app_name_valid", sql`${t.name} ~ '^[a-z][a-z0-9-]{0,29}$'`),
+    check("app_desired_valid", sql`${t.desired} in ('running', 'stopped', 'removed')`),
+    check(
+      "app_state_valid",
+      sql`${t.state} in ('installing', 'starting', 'running', 'degraded', 'stopped', 'failed', 'removed')`,
+    ),
+  ],
+);
+
+export const appSetting = pgTable(
+  "app_setting",
+  {
+    appId: uuid("app_id")
+      .notNull()
+      .references(() => app.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** AES-256-GCM ciphertext; null when unset. */
+    value: text("value"),
+    secret: boolean("secret").notNull().default(false),
+    generated: boolean("generated").notNull().default(false),
+    publishedDefault: text("published_default"),
+  },
+  (t) => [primaryKey({ columns: [t.appId, t.name] })],
+);
+
+export interface JobStep {
+  at: string;
+  message: string;
+}
+
+export const installJob = pgTable("install_job", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  appId: uuid("app_id")
+    .notNull()
+    .references(() => app.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["install", "apply"] }).notNull(),
+  state: text("state", { enum: ["running", "succeeded", "failed"] }).notNull().default("running"),
+  steps: jsonb("steps").$type<JobStep[]>().notNull().default([]),
+  error: text("error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+});
