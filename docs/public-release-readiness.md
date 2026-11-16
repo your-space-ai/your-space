@@ -58,6 +58,13 @@ release plan. These checks are a proposed minimum for that alternative, not a pr
   - [ ] Review repository history, branches, tags, commit identities, issues, PRs, logs, artifacts,
     and other potentially public material for private data and secrets; remediate findings and
     rotate or revoke exposed credentials where needed.
+    2026-11-16 review at `dd492df` (not yet complete): gitleaks 8.21.2 over all branches, tags and
+    pull request refs (272 commits) found 15 matches, all test values: a placeholder secret in
+    `server/tests/config.test.ts` and Sure's published `SECRET_KEY_BASE` default in
+    `runtime/tests/sure-resolved.json`, captured from Sure's `compose.example.yml` at `70647cb`. A
+    search for private hostnames, addresses and home paths found only documentation examples.
+    Open: the owner's personal email is the author or committer on 82 commits, and 189 unexpired
+    `playwright-report` Actions artifacts become visible with the repository.
   - [ ] Confirm publication rights for existing material, add the selected project licenses, and meet
     applicable third-party license and notice obligations.
   - [ ] Explain the project's purpose, current state, unimplemented functionality, and participation
@@ -121,14 +128,18 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     [GitHub's visibility guidance](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility).
 
 - [ ] **Establish project rights and licensing**
-  - [ ] Add AGPL-3.0 for Your Space (server, web client, CLI, and desktop app) and Apache-2.0 for the
+  - [ ] Add AGPL-3.0 for Your Space (server, web client, CLI, and desktop app) and MIT for the
     SDKs, with license files and headers where needed.
-  - [ ] Have a lawyer review the license setup, trademark, and contributor agreement before publication.
+    **Replaced (2026-11-16):** "…and Apache-2.0 for the SDKs…". See the
+    [2026-11-16 decision update](architecture/decisions.md#project-license-and-business-model).
+  - [ ] Have a lawyer review the license setup, trademark, and contributor terms (DCO) before publication.
   - [ ] Clear and file the "Your Space" trademark, and publish a short trademark policy for forks.
-  - [ ] Set up a contributor license agreement before publication, enforced on pull requests from
-    outside contributors.
+  - [ ] Require a DCO sign-off before publication, enforced on pull requests from outside contributors
+    by the DCO GitHub App.
+    **Replaced (2026-11-16):** "Set up a contributor license agreement…". See the
+    [2026-11-16 decision update](architecture/decisions.md#project-license-and-business-model).
   - [ ] Verify every shipped dependency's license is compatible with AGPL-3.0 distribution, and the SDKs'
-    dependencies with Apache-2.0.
+    dependencies with MIT.
   - [ ] Keep managed-service code in a separate private repository that integrates through the core's APIs.
   - [ ] Review ownership and permission to publish project code, documentation, assets, and generated
     material, including contributions and any imported material.

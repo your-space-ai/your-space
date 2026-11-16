@@ -174,7 +174,7 @@ Your Space: first public release
     ├── [gate] Security: review, safe defaults, vulnerability reporting, hardening pass
     ├── [gate] Privacy: no telemetry; only GitHub update checks, which can be turned off,
     │          and certificate requests for an owner-configured domain
-    ├── [gate] Legal: rights and notices; AGPL core, Apache SDKs, trademark, CLA,
+    ├── [gate] Legal: rights and notices; AGPL core, MIT SDKs, trademark, DCO,
     │          lawyer review
     └── [gate] Release: secrets review, docs, core journeys verified, release evidence
 ```
@@ -523,7 +523,8 @@ Your Space: first public release
   **Source:** [Project license and business model](architecture/decisions.md#project-license-and-business-model).
 
   - [ ] [High] Review publication rights, project and dependency licensing, and required notices.
-  - [ ] [High] License Your Space under AGPL-3.0 and the SDKs under Apache-2.0, file the "Your Space" trademark, and set up a contributor license agreement, all reviewed by a lawyer.
+  - [ ] [High] License Your Space under AGPL-3.0 and the SDKs under MIT, decide on the "Your Space" trademark, and require DCO sign-offs, all reviewed by a lawyer.
+    **Replaced (2026-11-16):** "…the SDKs under Apache-2.0, file the "Your Space" trademark, and set up a contributor license agreement…". See [project license and business model](architecture/decisions.md#project-license-and-business-model).
 
 - [ ] **Release**
 

@@ -1,0 +1,6 @@
+# Configuration for the DCO GitHub App (https://github.com/apps/dco).
+# Outside contributors must sign off every commit; see CONTRIBUTING.md.
+# Commits authored and signed (GPG or SSH) by members of the your-space-ai organization are exempt;
+# unsigned commits from members still need a sign-off.
+require:
+  members: false
