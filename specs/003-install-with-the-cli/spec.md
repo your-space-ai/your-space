@@ -4,8 +4,7 @@
 
 **Created**: 2026-11-16
 
-**Status**: Draft for review. One question is open; see
-[Decisions and Open Questions](#decisions-and-open-questions). Nothing in it is delivered yet.
+**Status**: Draft for review. Every question is decided. Nothing in it is delivered yet.
 
 **Journey**: 003 "Install and run with the CLI", the third of eight journeys in the
 [spec map](../../docs/spec-map.md)
@@ -129,7 +128,7 @@ Compose's or Docker's own messages, unless they ask for detail.
 | 3 | 3. Recover the owner and manage secrets | `owner reset-link`, `secrets show` and `secrets replace` |
 | 4 | 4. Your own domain | `init` asks for a domain, `start` checks the names and opens HTTPS, and `configure` changes the setup later |
 | 5 | 5. Your own proxy or tunnel | `init` with a proxy address; the summary lists the names the proxy must forward, apps included |
-| 6 | 6. Another engine, and a folder set up by hand | Colima, OrbStack, rootless Docker or a remote engine through Docker's own settings; the macOS builds and the Homebrew formula; a folder installed by hand works as it is |
+| 6 | 6. Another engine, and a folder set up by hand | Rootless Docker, or another engine through Docker's own settings; a folder installed by hand works as it is |
 | 7 | 7. The guide | The installation guide leads with the CLI; manual Compose becomes the advanced option |
 
 Slice 1 brings the CLI, its packaging, the installation concept and the summary `start` prints;
@@ -293,10 +292,7 @@ hand, I can manage that folder with the CLI without reinstalling.
    a Docker-compatible engine, names the options for the system (Docker Engine on Linux; OrbStack,
    Colima or Docker Desktop on a Mac), and starts nothing. Your Space providing its own engine comes
    with the desktop app.
-3. **Given** a release, **When** it is published, **Then** it includes macOS executables for ARM and
-   Intel, and a Homebrew formula installs the CLI on macOS and Linux. Running them on a real Mac is
-   checked in the [macOS and Windows pass](#changes-to-shared-direction).
-4. **Given** a folder installed by hand, **When** they run any command in it, **Then** the CLI
+3. **Given** a folder installed by hand, **When** they run any command in it, **Then** the CLI
    recognises it as an installation, keeps its `.env` lines and data, and manages it.
 
 ### User Story 7 - The Guide (Priority: P2)
@@ -337,8 +333,9 @@ option that is still complete.
 
 - **FR-001**: The CLI is published with each release in the ways people already install command-line
   tools: an npm package (`npx your-space`, or a project or global install), `.deb` and `.rpm`
-  packages for Linux, a Homebrew formula for macOS and Linux, and a standalone executable per
-  system and processor (Linux and macOS, ARM and Intel) that needs no language runtime.
+  packages for Linux, and a standalone Linux executable for ARM and Intel that needs no language
+  runtime. The macOS executables and a Homebrew formula come with the
+  [macOS and Windows pass](#changes-to-shared-direction); until then, macOS uses the npm package.
 - **FR-002**: Each release publishes checksums for its executables, packages and release files, and
   the documented ways of getting the CLI check them, as the package managers do themselves.
 - **FR-003**: The CLI and Your Space share one version. `init` downloads the release files of the
@@ -450,11 +447,12 @@ option that is still complete.
    on 2026-11-14.
 5. **Windows moves to the desktop app (journey 008).** Windows is not a server host, so it matters
    only for a local workspace, which the desktop app provides.
-6. **macOS and Windows are checked together, in one pass before release.** Each journey builds and
-   tests what it can on Linux in CI, including the macOS builds; running them on a real Mac, and
-   later on Windows, is gathered into one verification pass in the release gate, so it isn't
-   repeated after every journey. Journey 001's macOS checks (T055) and journey 002's Safari check
-   (T022) join it.
+6. **macOS and Windows come together, in one pass at the end.** The functionality is built and
+   tested on Linux first, in every journey. Packaging and checking for other systems (the macOS
+   executables, a Homebrew formula with its `your-space-ai/homebrew-tap` repository, running on a
+   real Mac, and later Windows) is gathered into one pass in the release gate, after the journeys,
+   so it isn't repeated after each one. Journey 001's macOS checks (T055) and journey 002's Safari
+   check (T022) join it.
 7. **People sign in only through the client.** The CLI runs the installation with the authority of
    access to its machine, and agents and scripts use the API through the CLI with a credential a
    person issued in the client ([Client and CLI](#client-and-cli)). The CLI has no sign-in command.
@@ -469,14 +467,9 @@ Decided on 2026-11-16:
   and standalone downloads, and published to npm as well. Command parsing and questions use
   well-known libraries rather than custom code; the plan names them (the candidates are Commander
   for commands and Inquirer's prompts for questions).
-- **The Supabase CLI's shape** (Change 1), **the name `your-space`** (Change 3), **no proxy- or
-  tunnel-specific code** (Change 2), **the engine and Windows with the desktop app** (Changes 4
-  and 5), and **one macOS and Windows pass before release** (Change 6).
+- **The Supabase CLI's shape** (Change 1), **no proxy- or tunnel-specific code** (Change 2), **the
+  name `your-space`** (Change 3), **the engine and Windows with the desktop app** (Changes 4 and 5),
+  **macOS, Windows and Homebrew in one pass at the end** (Change 6), and **people sign in only
+  through the client** (Change 7).
 
-Open:
-
-1. **The Homebrew formula needs its own repository**, `your-space-ai/homebrew-tap`, which Homebrew
-   reads formulas from (`brew install your-space-ai/tap/your-space`), as Supabase does with
-   `supabase/tap`. Proposed: create it for slice 6, where each release updates the formula. The
-   alternative is no Homebrew formula until the macOS pass, with macOS users on npm or the
-   standalone executable.
+No questions are open.
