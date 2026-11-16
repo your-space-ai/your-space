@@ -1,17 +1,19 @@
-// Journey 002 on the server: installing and managing apps, with a fake runtime and a stand-in for
-// GitHub. The runtime manager's own rules are tested in runtime/tests.
+// Journey 002 on the server: installing, managing and reaching apps, with a fake runtime and a
+// stand-in for GitHub. The runtime manager's own rules are tested in runtime/tests.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import { createGate, Handoffs, readCookie, safeReturn, signPass, verifyPass } from "../src/apps/gate.ts";
 import { fetchSource, parseLink, SourceError } from "../src/apps/github.ts";
 import { KitError, parseKit, parseMemory } from "../src/apps/kits.ts";
-import { stateFromServices } from "../src/apps/service.ts";
+import { appNameFromHost, stateFromServices } from "../src/apps/service.ts";
 import { buildSettings, decrypt, encrypt, looksSecret } from "../src/apps/settings.ts";
+import { session } from "../src/db/auth-schema.ts";
 import { app, appSetting, event, installJob } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_SECRET } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
 import { COMMIT, fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
-import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
+import { cookieHeader, send, startServer, type TestServer } from "./helpers/server.ts";
 
 const WHOAMI = `services:
   web:
@@ -92,7 +94,34 @@ describe("links, kits and settings", () => {
   });
 });
 
-describe("app state", () => {
+describe("the access gate's parts", () => {
+  it("signs passes for one app and one session, until they expire", () => {
+    const pass = signPass(TEST_SECRET, "sure", "session-1", 2_000_000_000);
+    expect(verifyPass(TEST_SECRET, pass, "sure", 1_900_000_000)).toBe("session-1");
+    expect(verifyPass(TEST_SECRET, pass, "twenty", 1_900_000_000)).toBeUndefined();
+    expect(verifyPass(TEST_SECRET, pass, "sure", 2_100_000_000)).toBeUndefined();
+    expect(verifyPass(`${TEST_SECRET}x`, pass, "sure", 1_900_000_000)).toBeUndefined();
+    expect(verifyPass(TEST_SECRET, `${pass.slice(0, -2)}xx`, "sure", 1_900_000_000)).toBeUndefined();
+  });
+
+  it("returns only to paths on the same origin", () => {
+    expect(safeReturn("/a?b=1")).toBe("/a?b=1");
+    for (const bad of ["//evil.example", "https://evil.example", "/\\evil.example", undefined, 3]) expect(safeReturn(bad)).toBe("/");
+  });
+
+  it("names an app only by a direct subdomain of Your Space's host", () => {
+    expect(appNameFromHost("http://space.localhost", "sure.space.localhost:8081")).toBe("sure");
+    expect(appNameFromHost("https://space.example.com", "Sure.Space.Example.com")).toBe("sure");
+    for (const bad of ["space.localhost", "a.b.space.localhost", "sure.localhost", "evil-space.localhost", "1x.space.localhost"]) {
+      expect(appNameFromHost("http://space.localhost", bad), bad).toBeUndefined();
+    }
+  });
+
+  it("reads one cookie from a header", () => {
+    expect(readCookie("a=1; ys-pass=abc.def; b=2", "ys-pass")).toBe("abc.def");
+    expect(readCookie("xys-pass=1", "ys-pass")).toBeUndefined();
+  });
+
   it("reports an app's state from its services", () => {
     expect(stateFromServices([{ name: "web", role: "app", state: "running" }]).state).toBe("running");
     expect(stateFromServices([{ name: "db", role: "app", state: "running", health: "starting" }]).state).toBe("starting");
@@ -184,7 +213,7 @@ describe("apps API", () => {
 
   it("lists the app and shows its details without secret values", async () => {
     const list = await (await api("/api/apps")).json() as any;
-    expect(list.apps).toEqual([expect.objectContaining({ name: "whoami", state: "running" })]);
+    expect(list.apps).toEqual([expect.objectContaining({ name: "whoami", state: "running", hasInterface: true })]);
     const text = await (await api("/api/apps/whoami")).text();
     const detail = JSON.parse(text);
     expect(detail).toMatchObject({ name: "whoami", state: "running", source: { repo: "ys-fixtures/whoami", commit: COMMIT } });
@@ -232,4 +261,89 @@ describe("apps API", () => {
     expect(review.settings.find((s: { name: string }) => s.name === "API_TOKEN")).toMatchObject({ generated: true, secret: true });
   });
 
+  describe("gate", () => {
+    let gateUrl: string;
+    let close: () => void;
+    beforeAll(async () => {
+      const gate = createGate({ db: t.db, publicUrl: server.publicUrl, authSecret: TEST_SECRET, handoffs: server.handoffs! });
+      await new Promise<void>((resolve) => {
+        const listener = gate.listen(0, "127.0.0.1", () => {
+          gateUrl = `http://127.0.0.1:${(listener.address() as { port: number }).port}`;
+          close = () => listener.close();
+          resolve();
+        });
+      });
+    });
+    afterAll(() => close?.());
+
+    const appHost = () => `whoami.${new URL(server.publicUrl).host}`;
+    const gate = (path: string, headers: Record<string, string> = {}) =>
+      send(`${gateUrl}${path}`, "GET", new Headers({ "x-forwarded-host": appHost(), "x-forwarded-uri": "/inbox?x=1", ...headers }), undefined);
+
+    it("sends a visitor without a pass to Your Space, then lets the owner in with one", async () => {
+      const first = await gate("/gate");
+      expect(first.status).toBe(302);
+      expect(first.headers.get("location")).toBe(`${server.publicUrl}/api/apps/whoami/open?return=%2Finbox%3Fx%3D1`);
+
+      const signedOut = await server.request("/api/apps/whoami/open?return=/inbox");
+      expect(signedOut.status).toBe(302);
+      expect(signedOut.headers.get("location")).toBe(`${server.publicUrl}/`);
+
+      const open = await api("/api/apps/whoami/open?return=/inbox");
+      expect(open.status).toBe(302);
+      const handoff = new URL(open.headers.get("location")!);
+      expect(handoff.host).toBe(appHost());
+      expect(handoff.pathname).toBe("/__ys/handoff");
+
+      expect(open.headers.get("referrer-policy")).toBe("no-referrer");
+      const handed = await gate(`/handoff${handoff.search}`);
+      expect(handed.status).toBe(302);
+      expect(handed.headers.get("referrer-policy")).toBe("no-referrer");
+      expect(handed.headers.get("location")).toBe("/inbox");
+      const setCookie = handed.headers.get("set-cookie")!;
+      expect(setCookie).toMatch(/^ys-pass=[^;]+; Path=\/; HttpOnly; SameSite=Lax; Max-Age=43200$/);
+      expect(setCookie).not.toMatch(/domain/i);
+      // A code works once.
+      expect((await gate(`/handoff${handoff.search}`)).status).toBe(403);
+
+      const pass = setCookie.split(";")[0]!;
+      const through = await gate("/gate", { cookie: `app=1; ${pass}` });
+      expect(through.status).toBe(200);
+      expect(through.headers.get("x-ys-upstream")).toBe("ys-whoami-ui:80");
+
+      // The pass names its app: another app's host doesn't accept it.
+      expect((await gate("/gate", { cookie: pass, "x-forwarded-host": `other.${new URL(server.publicUrl).host}` })).status).toBe(404);
+
+      // Signing out of Your Space closes the app.
+      await t.db.delete(session);
+      expect((await gate("/gate", { cookie: pass })).status).toBe(302);
+    });
+
+    it("allows certificates only for Your Space and its installed apps", async () => {
+      const host = new URL(server.publicUrl).hostname;
+      expect((await send(`${gateUrl}/tls-ask?domain=whoami.${host}`, "GET", new Headers(), undefined)).status).toBe(200);
+      expect((await send(`${gateUrl}/tls-ask?domain=${host}`, "GET", new Headers(), undefined)).status).toBe(200);
+      expect((await send(`${gateUrl}/tls-ask?domain=nope.${host}`, "GET", new Headers(), undefined)).status).toBe(404);
+      expect((await send(`${gateUrl}/tls-ask?domain=evil.example`, "GET", new Headers(), undefined)).status).toBe(404);
+    });
+  });
+
+});
+
+describe("handoff codes", () => {
+  it("notice a pane that keeps starting over, as when the browser blocks its cookies", () => {
+    const handoffs = new Handoffs();
+    expect([1, 2, 3].map(() => handoffs.looping("sure", "s1"))).toEqual([false, false, false]);
+    expect(handoffs.looping("sure", "s1")).toBe(true);
+    expect(handoffs.looping("twenty", "s1")).toBe(false);
+  });
+
+  it("expire, work once, and only for their app", () => {
+    const handoffs = new Handoffs();
+    const code = handoffs.issue("sure", "s1");
+    expect(handoffs.consume(code, "twenty")).toBeUndefined();
+    const again = handoffs.issue("sure", "s1");
+    expect(handoffs.consume(again, "sure")).toBe("s1");
+    expect(handoffs.consume(again, "sure")).toBeUndefined();
+  });
 });

@@ -226,3 +226,13 @@ export function listContainers(labels: string[]): Promise<ContainerSummary[]> {
   const filters = encodeURIComponent(JSON.stringify({ label: labels }));
   return engineJson<ContainerSummary[]>("GET", `/containers/json?all=1&filters=${filters}`);
 }
+
+export async function connectNetwork(network: string, container: string): Promise<void> {
+  const answer = await engine("POST", `/networks/${encodeURIComponent(network)}/connect`, {
+    Container: container,
+    EndpointConfig: {},
+  });
+  if (answer.status >= 400 && !/already exists|already attached/i.test(answer.body)) {
+    throw new EngineError(`Connecting to the app's network failed: ${answer.body.trim()}`);
+  }
+}

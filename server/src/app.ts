@@ -6,13 +6,14 @@ import { isStorageError, type Db } from "./db/client.ts";
 import { errorFields, log } from "./log.ts";
 import { ownerRoutes } from "./owner/routes.ts";
 import { appRoutes } from "./apps/routes.ts";
+import type { Handoffs } from "./apps/gate.ts";
 import type { AppsService } from "./apps/service.ts";
 
 export interface AppDeps {
   auth: Auth;
   db: Db;
   /** Apps (journey 002). Left out by tests that don't need a runtime. */
-  apps?: { service: AppsService };
+  apps?: { service: AppsService; handoffs: Handoffs };
 }
 
 export function createApp({ auth, db, apps }: AppDeps): express.Express {
@@ -57,7 +58,7 @@ export function createApp({ auth, db, apps }: AppDeps): express.Express {
   // The largest body is an app's settings.
   app.use(express.json({ limit: "64kb" }));
   app.use("/api", ownerRoutes(db));
-  if (apps) app.use("/api", appRoutes(auth, db, apps.service));
+  if (apps) app.use("/api", appRoutes(auth, db, apps.service, apps.handoffs));
 
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "not_found", message: "There is nothing at this address." });

@@ -32,15 +32,15 @@ test("sign in, sign out, and a replayed session is refused", async ({ page, cont
   await evidence(page, testInfo, "us2-2-home");
 
   // The session cookie is host-only and HttpOnly, so it is never sent to another host, including
-  // subdomains where apps may later live (FR-021).
+  // the subdomains where apps live (FR-021; journey 002, FR-014).
   const session = (await context.cookies()).find((c) => c.name.endsWith("session_token"));
   expect(session).toBeDefined();
-  expect(session!.domain).toBe("localhost"); // no leading dot: host-only
+  expect(session!.domain).toBe("space.localhost"); // no leading dot: host-only
   expect(session!.httpOnly).toBe(true);
   expect(session!.sameSite).toBe("Lax");
 
-  // Check it with real requests: a server on another port of localhost sees the cookie (cookies
-  // ignore ports), and the same server reached as app.localhost does not.
+  // Check it with real requests: a server on another port of space.localhost sees the cookie
+  // (cookies ignore ports), and the same server reached as an app's address does not.
   const seen = new Map<string, string>();
   const echo = createServer((req, res) => {
     seen.set(`${req.headers.host?.split(":")[0]}`, req.headers.cookie ?? "");
@@ -50,11 +50,11 @@ test("sign in, sign out, and a replayed session is refused", async ({ page, cont
   try {
     const port = (echo.address() as AddressInfo).port;
     const probe = await context.newPage();
-    await probe.goto(`http://localhost:${port}/`);
-    await probe.goto(`http://app.localhost:${port}/`);
+    await probe.goto(`http://space.localhost:${port}/`);
+    await probe.goto(`http://app.space.localhost:${port}/`);
     await probe.close();
-    expect(seen.get("localhost")).toContain(`${session!.name}=`);
-    expect(seen.get("app.localhost")).toBe("");
+    expect(seen.get("space.localhost")).toContain(`${session!.name}=`);
+    expect(seen.get("app.space.localhost")).toBe("");
   } finally {
     echo.close();
   }

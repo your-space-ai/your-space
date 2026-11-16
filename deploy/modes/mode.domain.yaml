@@ -1,5 +1,7 @@
 # Your own domain: YS_DOMAIN=space.example.com in .env. Ports 80 and 443 open on every IPv4
-# address, so Let's Encrypt and visitors can reach them. Caddy gets and renews the certificate.
+# address, so Let's Encrypt and visitors can reach them. Caddy gets and renews the certificate for
+# Your Space, and one for each installed app at <app>.space.example.com, which needs a wildcard DNS
+# record (*.space.example.com) pointing at this server too.
 services:
   caddy:
     ports:
@@ -8,4 +10,7 @@ services:
       - "0.0.0.0:443:443/udp"
     environment:
       YS_SITE: https://${YS_DOMAIN}
+      YS_APPS_SITE: https://*.${YS_DOMAIN}
+      YS_APPS_TLS: on_demand
+      YS_ORIGIN: https://${YS_DOMAIN}
       YS_REDIRECT_URL: https://${YS_DOMAIN}

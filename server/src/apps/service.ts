@@ -62,6 +62,16 @@ export function appAddress(publicUrl: string, name: string): { origin: string; h
   return { host, origin: `${url.protocol}//${host}${url.port ? `:${url.port}` : ""}` };
 }
 
+/** The app named by a request's host, or undefined when the host isn't an app's. */
+export function appNameFromHost(publicUrl: string, hostHeader: string | undefined): string | undefined {
+  if (!hostHeader) return undefined;
+  const host = hostHeader.toLowerCase().replace(/:\d+$/, "");
+  const suffix = `.${new URL(publicUrl).hostname}`;
+  if (!host.endsWith(suffix)) return undefined;
+  const name = host.slice(0, -suffix.length);
+  return /^[a-z][a-z0-9-]{0,29}$/.test(name) ? name : undefined;
+}
+
 function slug(text: string): string {
   const s = text.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^[^a-z]+/, "").replace(/-+$/, "").slice(0, 30).replace(/-+$/, "");
   return s || "app";
@@ -439,6 +449,8 @@ export class AppsService {
           state: r.state,
           stateReason: r.stateReason,
           origin: this.address(r.name).origin,
+          pane: r.pane,
+          hasInterface: Boolean(r.interface),
         })),
     };
   }
@@ -453,6 +465,8 @@ export class AppsService {
       state: row.state,
       stateReason: row.stateReason,
       desired: row.desired,
+      pane: row.pane,
+      interface: row.interface,
       source: { link: row.sourceUrl, repo: row.repo, path: row.path, ref: row.ref, commit: row.commit },
       kitSource: row.kitSource,
       images: row.images,
@@ -497,5 +511,10 @@ export class AppsService {
     if (this.busy.has(row.id)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
     await this.db.update(app).set({ desired: "running" }).where(eq(app.id, row.id));
     return this.queue(row.id, "apply");
+  }
+
+  async isInstalled(name: string): Promise<boolean> {
+    const rows = await this.db.select({ id: app.id }).from(app).where(and(eq(app.name, name), ne(app.state, "removed")));
+    return rows.length > 0;
   }
 }

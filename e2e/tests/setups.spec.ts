@@ -40,14 +40,14 @@ const SETUPS: Setup[] = [
     name: "this machine (nothing in .env)",
     env: {},
     ports: ["127.0.0.1:80->80/tcp"],
-    site: "http://localhost",
+    site: "http://space.localhost",
     server: { YS_DOMAIN: "", YS_PROXY_URL: "", YS_PORT: "" },
   },
   {
     name: "this machine on another port (YS_PORT=8081)",
     env: { YS_PORT: "8081" },
     ports: ["127.0.0.1:8081->80/tcp"],
-    site: "http://localhost",
+    site: "http://space.localhost",
     server: { YS_DOMAIN: "", YS_PROXY_URL: "", YS_PORT: "8081" },
   },
   {

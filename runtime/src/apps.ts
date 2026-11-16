@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { adapt, imageRef, type AppSpec, type CheckResult } from "./adapter.ts";
 import {
+  connectNetwork,
   docker,
   engine,
   engineInfo,
@@ -125,6 +126,11 @@ export async function check(spec: AppSpec): Promise<CheckAnswer> {
   return (await checkWithImages(spec)).answer;
 }
 
+async function installationContainer(service: string): Promise<string | undefined> {
+  const found = await listContainers([`com.docker.compose.project=${INSTALLATION}`, `com.docker.compose.service=${service}`]);
+  return found.find((c) => c.State === "running")?.Id ?? found[0]?.Id;
+}
+
 async function imagePresent(image: string): Promise<boolean> {
   const answer = await engine("GET", `/images/${encodeURIComponent(image)}/json`);
   return answer.status === 200;
@@ -132,7 +138,7 @@ async function imagePresent(image: string): Promise<boolean> {
 
 export type Emit = (event: Record<string, unknown>) => void;
 
-/** Pulls what is missing and starts the app. */
+/** Pulls what is missing, starts the app, and connects Your Space's proxy to its network. */
 export async function apply(spec: AppSpec, emit: Emit): Promise<void> {
   if (stopping) throw new EngineError("Your Space is stopping, so no app starts until it starts again.", 409);
   emit({ step: "check" });
@@ -159,7 +165,13 @@ export async function apply(spec: AppSpec, emit: Emit): Promise<void> {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+  await connectProxy(spec.project);
   emit({ step: "started" });
+}
+
+async function connectProxy(project: string): Promise<void> {
+  const caddy = await installationContainer("caddy");
+  if (caddy) await connectNetwork(`${project}_app`, caddy);
 }
 
 export async function stop(project: string): Promise<void> {
@@ -238,4 +250,17 @@ export async function stopAll(): Promise<string[]> {
   const projects = (await listApps()).map((a) => a.project);
   for (const project of projects) await stop(project);
   return projects;
+}
+
+/** Keeps Your Space's proxy connected to every app's network, for example after Caddy is recreated. */
+export async function connectProxyToAll(): Promise<void> {
+  const caddy = await installationContainer("caddy");
+  if (!caddy) return;
+  const detail = await engineJson<{ NetworkSettings: { Networks: Record<string, unknown> } }>("GET", `/containers/${caddy}/json`);
+  const joined = new Set(Object.keys(detail.NetworkSettings.Networks));
+  const filters = encodeURIComponent(JSON.stringify({ label: [INSTALLATION_LABEL] }));
+  const networks = await engineJson<{ Name: string }[]>("GET", `/networks?filters=${filters}`);
+  for (const network of networks) {
+    if (network.Name.endsWith("_app") && !joined.has(network.Name)) await connectNetwork(network.Name, caddy);
+  }
 }

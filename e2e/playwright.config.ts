@@ -1,8 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 import { createArgosReporterOptions } from "@argos-ci/playwright/reporter";
 
-// The stack runs this machine's setup; YS_PORT moves it when port 80 is taken.
-const baseURL = process.env.YS_PORT ? `http://localhost:${process.env.YS_PORT}` : "http://localhost";
+// The stack runs this machine's setup at http://space.localhost; YS_PORT moves it when port 80 is
+// taken. Browsers resolve *.localhost themselves (RFC 6761).
+const baseURL = process.env.YS_PORT ? `http://space.localhost:${process.env.YS_PORT}` : "http://space.localhost";
 const evidence = process.env.YS_E2E_EVIDENCE === "1";
 
 // The journeys run one at a time against a single Compose stack, which each spec resets.

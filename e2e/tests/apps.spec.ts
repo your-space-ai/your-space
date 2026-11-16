@@ -62,11 +62,46 @@ test("the owner installs an app from its link, after a review and a trust warnin
   const stranger = await browser.newContext();
   const refused = await stranger.request.get("/api/apps");
   expect(refused.status()).toBe(401);
-  expect((await stranger.request.post("/api/apps/preview", { headers: { origin: "http://localhost" }, data: { link: PROBE } })).status()).toBe(401);
+  expect((await stranger.request.post("/api/apps/preview", { headers: { origin: "http://space.localhost" }, data: { link: PROBE } })).status()).toBe(401);
   await stranger.close();
 
   // The container publishes no port of its own (FR-015).
   expect(await inspect("ys-whoami-web-1", "{{json .HostConfig.PortBindings}}")).toBe("{}");
+});
+
+test("the app opens in a pane on its own origin, only for the signed-in owner", async ({ page, browser, browserName }) => {
+  await asOwner(page);
+  await page.goto("/open/whoami");
+  const pane = page.frameLocator('[data-testid="app-pane"]');
+  let echoed: string;
+  if (browserName === "webkit") {
+    // WebKit treats each *.localhost name as its own site and blocks the app's cookies in a pane,
+    // so on this setup the app opens in its own tab instead (FR-016).
+    await expect(pane.getByRole("heading", { name: "This browser won't run the app here" })).toBeVisible({ timeout: 30_000 });
+    const [tab] = await Promise.all([page.context().waitForEvent("page"), pane.getByRole("link", { name: "Open in its own tab" }).click()]);
+    await expect(tab.locator("body")).toContainText("Hostname", { timeout: 30_000 });
+    echoed = (await tab.locator("body").textContent()) ?? "";
+    await tab.close();
+  } else {
+    await expect(pane.locator("body")).toContainText("Hostname", { timeout: 30_000 });
+    echoed = (await pane.locator("body").textContent()) ?? "";
+  }
+  // whoami echoes the request it received: its own host, and none of Your Space's cookies.
+  expect(echoed).toContain("Host: whoami.space.localhost");
+  expect(echoed).not.toMatch(/ys-pass|session_token/);
+
+  // Only Your Space may frame the app.
+  const direct = await page.request.get("http://whoami.space.localhost/");
+  expect(direct.headers()["content-security-policy"]).toContain("frame-ancestors http://space.localhost:*");
+  expect(direct.headers()["x-frame-options"]).toBeUndefined();
+
+  // Someone who isn't signed in reaches no part of the app (SC-005).
+  const stranger = await browser.newContext();
+  const visitor = await stranger.newPage();
+  await visitor.goto("http://whoami.space.localhost/anything");
+  await expect(visitor).toHaveURL(/^http:\/\/space\.localhost(:\d+)?\/sign-in/);
+  await expect(visitor.locator("body")).not.toContainText("Hostname");
+  await stranger.close();
 });
 
 test("the owner sees the engine and what each app uses", async ({ page }) => {

@@ -1,0 +1,69 @@
+// An app in a pane (journey 002, US4, FR-016): the app on its own origin inside Your Space's layout.
+// An app that can't run in a pane opens in its own tab, behind the same access check.
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { appsQuery, errorMessage, STATE_LABEL, type AppSummary } from "../apps-api.ts";
+
+export function AppPane({ name }: { name: string }) {
+  const apps = useQuery(appsQuery);
+  if (apps.isError) {
+    return (
+      <main className="page">
+        <p className="notice error" role="alert">
+          {errorMessage(apps.error)}
+        </p>
+      </main>
+    );
+  }
+  if (!apps.data) {
+    return (
+      <main className="page" aria-busy="true">
+        <p className="muted">Loading…</p>
+      </main>
+    );
+  }
+  const openable = apps.data.apps.filter((a) => a.hasInterface);
+  const first = openable.find((a) => a.name === name);
+  if (!first) {
+    return (
+      <main className="page">
+        <p>There is no app called {name} to open.</p>
+        <Link to="/apps">Back to Apps</Link>
+      </main>
+    );
+  }
+
+  return (
+    <main className="panes" data-state="app-pane">
+      <Pane app={first} />
+    </main>
+  );
+}
+
+function Pane({ app }: { app: AppSummary }) {
+  return (
+    <section className="pane" aria-label={app.title} data-pane={app.name}>
+      <header className="pane-bar">
+        <strong>{app.title}</strong>
+        {app.state !== "running" ? <span className={`state state-${app.state}`}>{STATE_LABEL[app.state]}</span> : null}
+        <span className="spacer" />
+        <Link to="/apps/$name" params={{ name: app.name }}>
+          Details
+        </Link>
+        <a href={app.origin} target="_blank" rel="noopener">
+          Open in its own tab
+        </a>
+      </header>
+      {app.pane ? (
+        <iframe data-testid="app-pane" title={app.title} src={`${app.origin}/`} />
+      ) : (
+        <div className="page">
+          <p>{app.title} can't run inside Your Space, so it opens in its own tab.</p>
+          <a className="button" href={app.origin} target="_blank" rel="noopener">
+            Open in its own tab
+          </a>
+        </div>
+      )}
+    </section>
+  );
+}

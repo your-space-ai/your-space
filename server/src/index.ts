@@ -7,10 +7,13 @@ import { ConfigError, loadConfig } from "./config.ts";
 import { createDatabase, isStorageError } from "./db/client.ts";
 import { errorFields, log } from "./log.ts";
 import { runMigrations } from "./migrate.ts";
+import { createGate, Handoffs } from "./apps/gate.ts";
 import { socketRuntime } from "./apps/runtime-client.ts";
 import { AppsService } from "./apps/service.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
+/** The gate's listener: only Caddy reaches it (deploy/Caddyfile). */
+const GATE_PORT = 3001;
 const RECONCILE_INTERVAL_MS = 15_000;
 const MIGRATE_ATTEMPTS = 30;
 
@@ -60,8 +63,11 @@ for (let attempt = 1; ; attempt++) {
 }
 
 const auth = createAuth({ config, db });
+const handoffs = new Handoffs();
 const apps = new AppsService(db, socketRuntime(), { publicUrl: config.publicUrl, authSecret: config.authSecret });
-const app = createApp({ auth, db, apps: { service: apps } });
+const app = createApp({ auth, db, apps: { service: apps, handoffs } });
+const gate = createGate({ db, publicUrl: config.publicUrl, authSecret: config.authSecret, handoffs });
+const gateServer: Server = gate.listen(GATE_PORT, "0.0.0.0");
 
 // Apps that should run are started, and recorded states corrected, at start and then regularly
 // (FR-007, FR-008). Each pass waits for the one before.
@@ -88,6 +94,7 @@ const server: Server = app.listen(PORT, "0.0.0.0", () => {
 function shutdown(signal: string): void {
   log("info", "server.stopping", { signal });
   clearInterval(reconcileTimer);
+  gateServer.close();
   server.close(() => {
     void pool.end().finally(() => process.exit(0));
   });

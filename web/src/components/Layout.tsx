@@ -1,11 +1,12 @@
-// The signed-in layout (journey 002): Your Space's navigation around every page.
+// The signed-in layout (journey 002, FR-016): Your Space's navigation around every page, including
+// an app's pane.
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet } from "@tanstack/react-router";
 import { appsQuery } from "../apps-api.ts";
 
 export function Layout() {
   const apps = useQuery(appsQuery);
-  const installed = apps.data?.apps ?? [];
+  const openable = (apps.data?.apps ?? []).filter((a) => a.hasInterface);
 
   return (
     <div className="shell">
@@ -23,11 +24,11 @@ export function Layout() {
             </Link>
           </li>
         </ul>
-        {installed.length > 0 ? (
+        {openable.length > 0 ? (
           <ul aria-label="Your apps">
-            {installed.map((app) => (
+            {openable.map((app) => (
               <li key={app.name}>
-                <Link to="/apps/$name" params={{ name: app.name }}>
+                <Link to="/open/$name" params={{ name: app.name }} search={{}}>
                   {app.title}
                 </Link>
               </li>

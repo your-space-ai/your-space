@@ -52,8 +52,8 @@ describe("Sure's own file", () => {
     expect(services.redis!.image).toBe("redis@sha256:ccc");
   });
 
-  it("puts every service on the sealed app network", () => {
-    expect(services.web!.networks).toEqual({ app: {} });
+  it("puts every service on the sealed app network, with the interface's alias", () => {
+    expect(services.web!.networks).toEqual({ app: { aliases: ["ys-sure-ui"] } });
     expect(services.worker!.networks).toEqual({ app: {} });
     const networks = result.adapted!.networks as Record<string, Record<string, unknown>>;
     expect(networks.app).toMatchObject({ internal: true, driver_opts: { "com.docker.network.bridge.gateway_mode_ipv4": "isolated" } });
