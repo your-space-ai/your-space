@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-17
 
-**Status**: Draft for review. Three questions are open; see
+**Status**: Draft for review. Scope decided on 2026-11-17; two questions are open; see
 [Decisions and Open Questions](#decisions-and-open-questions). Nothing in it is delivered yet.
 
 **Linear**: YOU-50. Delivered as the last pull request of journey 003's stack, after the guide
@@ -21,7 +21,9 @@ that replacing the auth secret leaves installed apps' settings unreadable.
   is encrypted with a key of its own; replacing the auth secret only signs people out; existing
   installations move onto the new key by themselves; and the guide says exactly what is encrypted,
   with what, and what that does and doesn't protect against.
-- **Not covered:** encrypting apps' own databases and volumes (each app's data is the app's), backup
+- **Not covered:** encrypting the whole database or the disk, which stays the owner's
+  responsibility for now (the guide says how; a streamlined way may come later), encrypting apps'
+  own databases and volumes (each app's data is the app's), backup
   encryption (journey 006, which can reuse this key), and a key held off the machine, such as in a
   secret manager (the decision record names OpenBao as the upgrade path).
 
@@ -57,20 +59,22 @@ under PostgreSQL, and self-hosters do the same with LUKS, ZFS or FileVault; that
 disk, not a copy taken while the machine runs. Secrets are then encrypted per field, by the app
 (Rails, Laravel) or with pgcrypto, or with an extension of the host's own such as Supabase's Vault.
 
-## Recommendation
+## Decision
 
-Option A now, with the guide recommending disk encryption on the host. It fixes the auth-secret
-problem, protects everything that is secret, adds no dependency, and keeps the key out of the
-database's reach, which A′ can't. Option C is worth revisiting if `pg_tde` reaches community
-PostgreSQL, or with journey 006's backups, when what leaves the machine matters most.
+Option A (2026-11-17): Your Space encrypts what is secret itself, with a key of its own, using
+Node's built-in crypto as it already does for apps' settings, so the key never reaches the database
+and nothing is added. Encrypting the whole database, or the disk under it, is the owner's
+responsibility for now: the guide recommends disk encryption on the host and says what it protects.
+A streamlined way to do it may come later, for example if `pg_tde` reaches community PostgreSQL.
 
-## Requirements (for option A)
+## Requirements
 
 - **FR-001**: Your Space generates a data key once, into the `ys-secrets` volume, like the auth
   secret and the database password, and never generates it again on its own. The owner can set it
   in `.env` (`YS_DATA_KEY`) instead; a key set there is used as given and never copied.
-- **FR-002**: Installed apps' settings and secrets, and session tokens, are encrypted with the data
-  key (AES-256-GCM, a fresh nonce per value). Nothing else changes how it is stored.
+- **FR-002**: Installed apps' settings and secrets are encrypted with the data key (AES-256-GCM, a
+  fresh nonce per value), and so are session tokens if [open question 1](#decisions-and-open-questions)
+  is settled that way. Nothing else changes how it is stored.
 - **FR-003**: On start, values still encrypted with the key derived from the auth secret are
   re-encrypted with the data key in one transaction, so existing installations move over by
   themselves. Once moved, replacing the auth secret only signs people out.
@@ -83,7 +87,9 @@ PostgreSQL, or with journey 006's backups, when what leaves the machine matters 
   show its value only when asked.
 - **FR-007**: The guide's "Secrets", "Replace a Secret" and "Lost Secrets" sections say what is
   encrypted, with which key, and that the key sits on the same machine as the data, so it protects
-  copies of the database, not the machine itself.
+  copies of the database, not the machine itself. A new section recommends encrypting the disk on
+  the host (LUKS or ZFS on Linux, FileVault on a Mac) for everything else, and says it protects a
+  stolen disk but not a copy taken while the machine runs.
 
 ## Success Criteria
 
@@ -95,9 +101,15 @@ PostgreSQL, or with journey 006's backups, when what leaves the machine matters 
 
 ## Decisions and Open Questions
 
-1. **Scope:** option A (recommended), A′ (pgcrypto), B, or C? And should the guide recommend disk
-   encryption on the host (recommended)?
-2. **Session tokens:** encrypt them (recommended, so a database copy can't be paired with a leaked
-   auth secret later), or leave them to the cookie signature as now?
-3. **Numbering:** this is the first specification that isn't a journey. `009` keeps it after the
+Decided on 2026-11-17: option A, and the whole database stays the owner's responsibility for now
+([Decision](#decision)).
+
+Open:
+
+1. **Session tokens.** Better Auth finds a session by its token, so a token encrypted with a fresh
+   nonce can't be looked up; it would have to be stored as a keyed hash instead, which depends on
+   what Better Auth offers natively (constitution VII: no layer around it). Proposed: store them as
+   a keyed hash if Better Auth supports that natively, and otherwise leave them as now, protected by
+   the cookie signature; the plan settles which.
+2. **Numbering.** This is the first specification that isn't a journey. Proposed: `009`, after the
    journeys; the alternative is a separate series for follow-up specifications.
