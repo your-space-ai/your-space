@@ -77,8 +77,8 @@ Compose is run in the installation's folder with no `-f` or `-p`, so it reads `c
 
 ### Server change
 
-One new operator command, `show-owner [--json]`, reports whether there is an owner, their username
-and name, and whether they have set a password. `start` needs it to decide whether to create the
+One new operator command, `show-owner [--json]`, reports whether there is an owner, and their
+username and name. `start` needs it to decide whether to create the
 owner, and none of the existing commands answers it without side effects (`reset-link` cancels an
 earlier link). It follows the
 [operator commands contract](../001-workspace-owner-access/contracts/operator-commands.md)'s output

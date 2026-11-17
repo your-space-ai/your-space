@@ -25,7 +25,7 @@ and the manual install share one format.
 
 ## R2. Command and question libraries
 
-Constitution VII asks for few dependencies, used fully. The CLI needs subcommands with options and
+Constitution VII asks for few dependencies, an existing one where it handles the need well, and no custom layers on top. The CLI needs subcommands with options and
 help, questions with defaults, and progress for slow steps.
 
 | Need | Chosen | Considered |
@@ -120,8 +120,10 @@ writes it as `YS_PORT`; a domain needs 80 and 443, so it offers the own-proxy se
 `start` creates the owner only when there is none, so it must know without side effects.
 `create-owner` needs the name and username first, and `reset-link` cancels an earlier link. A new
 read-only server command, `show-owner [--json]`, answers from the installation record and the
-owner's account: whether there is an owner, their username and name, and whether they have set a
-password. It follows the operator commands contract.
+owner's membership: whether there is an owner, and their username and name. Whether they have set
+their password can't be told reliably (`create-owner` gives the account a random password the owner
+never sees), so the summary always says how to get a new link. It follows the operator commands
+contract.
 
 ## R9. One installation per engine
 

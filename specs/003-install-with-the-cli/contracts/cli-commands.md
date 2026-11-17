@@ -89,7 +89,7 @@ Compose or the engine gave in `detail` when there was any.
   "running": true,
   "services": [{ "name": "server", "state": "running", "health": "healthy" }],
   "engine": { "version": "29.1.0", "os": "linux", "arch": "x86_64", "endpoint": "unix:///var/run/docker.sock" },
-  "owner": { "username": "sam", "name": "Sam Rivera", "passwordSet": false },
+  "owner": { "username": "sam", "name": "Sam Rivera" },
   "link": { "url": "http://space.localhost/reset-password#token=...", "expiresAt": "2026-11-17T12:30:00Z" },
   "apps": [{ "name": "sure", "state": "running", "address": "http://sure.space.localhost" }],
   "forward": null,
@@ -137,7 +137,7 @@ docker compose exec -T server show-owner --json
 ```
 
 ```json
-{ "ok": true, "owner": { "username": "sam", "name": "Sam Rivera", "passwordSet": true } }
+{ "ok": true, "owner": { "username": "sam", "name": "Sam Rivera" } }
 { "ok": true, "owner": null }
 ```
 

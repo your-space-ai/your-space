@@ -12,7 +12,7 @@ export interface CommandResult {
 }
 
 export function runCommand(
-  name: "create-owner" | "reset-link",
+  name: "create-owner" | "reset-link" | "show-owner",
   args: string[],
   options: { databaseUrl: string; publicUrl?: string; env?: Record<string, string> },
 ): Promise<CommandResult> {

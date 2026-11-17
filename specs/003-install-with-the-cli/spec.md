@@ -373,8 +373,8 @@ option that is still complete.
 - **FR-011**: `start` and `status` print one summary: the version, setup and address, each
   service's state and health, the engine, and each app's state and address (from the server's
   `list-apps --json`). With a proxy or tunnel it lists the names to forward. `start` adds the
-  set-password link when it created the owner; while the owner hasn't set a password, the summary
-  says to run `owner reset-link` for a new one.
+  set-password link when it created the owner, and otherwise says how to get a new one
+  (`owner reset-link`).
 - **FR-012**: `logs` shows Your Space's logs, for one service or all, and can follow them.
 - **FR-013**: `owner create`, `owner reset-link`, `secrets show` and `secrets replace` wrap the
   server's commands, with their rules, exit statuses and JSON output.

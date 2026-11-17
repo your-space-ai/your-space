@@ -1,12 +1,13 @@
 <!--
 Sync Impact Report (2026-11-17): 1.4.0 -> 1.4.1 (patch: clarification)
-- Clarified: VII. Reuse Before Building now says to use an added dependency as fully as its purpose
-  allows, and not to build custom extensions, wrappers or parallel layers on top of it; when its own
-  features fall short, revisit the choice rather than growing code around it.
+- Clarified: VII. Reuse Before Building now says to check whether an existing dependency handles a
+  need well before adding a new one, to use each dependency appropriately and as needed through its
+  own features, and not to build custom extensions, wrappers or parallel layers on top of it; when
+  its own features fall short, revisit the choice rather than growing code around it.
 - Rationale: the owner asked, while journey 003 chose its CLI libraries, that the project add as
-  few dependencies as possible and use the ones it adds to the fullest, without custom extensions.
-  The principle already asked for few dependencies and native features; this makes the second half
-  explicit.
+  few dependencies as possible, prefer one it already has when that one handles the problem well,
+  and use them without custom extensions. The principle already asked for few dependencies and
+  native features; this makes the rest explicit.
 - Impact: journey 003's plan uses Commander's own help, version, errors and exit handling and
   Clack's own prompts, spinners, logs and notes, with no output layer of its own beyond `--json`.
 
@@ -170,11 +171,12 @@ providing a capability the project should not own. Small, simple needs are writt
 than imported. Prefer one dependency that covers several needs over several narrow ones, and keep
 integrations thin.
 
-Once a dependency is added, use it as fully as its purpose allows before writing code around it.
-Do not build custom extensions, wrappers, or parallel layers on top of a dependency to add what it
-already offers or to reshape how it works; use its own features, configuration, and extension
-points, and when they fall short, revisit the choice of dependency rather than growing code around
-it.
+Before adding a dependency, check whether one the project already has handles the need well, and
+use it rather than adding another. "Well" matters: an existing dependency stretched past what it
+does well is no better than a new one. Use each dependency appropriately and as needed, through its
+own features, configuration, and extension points. Do not build custom extensions, wrappers, or
+parallel layers on top of it to add what it already offers or to reshape how it works; when its own
+features fall short, revisit the choice rather than growing code around it.
 
 Technical plans name the dependency or native feature each requirement relies on, and justify each
 new dependency and each piece of custom machinery.
