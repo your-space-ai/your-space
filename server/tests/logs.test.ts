@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runCommand, type CommandResult } from "./helpers/commands.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { send } from "./helpers/server.ts";
-import { TEST_SECRET } from "./helpers/env.ts";
+import { TEST_DATA_KEY, TEST_SECRET } from "./helpers/env.ts";
 import { OWNER } from "./helpers/owner.ts";
 
 const SERVER = fileURLToPath(new URL("../src/index.ts", import.meta.url));
@@ -78,6 +78,7 @@ beforeAll(async () => {
   secret("database URL", t.url);
   secret("second database URL", humanDb.url);
   secret("BETTER_AUTH_SECRET", TEST_SECRET);
+  secret("YS_DATA_KEY", TEST_DATA_KEY);
 
   const port = await freePort();
   baseUrl = `http://localhost:${port}`;
@@ -90,6 +91,7 @@ beforeAll(async () => {
       DATABASE_URL: t.url,
       YS_PORT: String(port),
       BETTER_AUTH_SECRET: TEST_SECRET,
+      YS_DATA_KEY: TEST_DATA_KEY,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

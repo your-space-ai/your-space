@@ -40,7 +40,7 @@ async function main(argv: string[]): Promise<number> {
   const opened = openForCommand(out);
   if (!opened) return EXIT.unexpected;
   const { config, database } = opened;
-  const apps = new AppsService(database.db, socketRuntime(), { publicUrl: config.publicUrl, authSecret: config.authSecret });
+  const apps = new AppsService(database.db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey });
   try {
     const review = await apps.preview(positionals[0]!, values.kit);
     if (!review.ok) {

@@ -47,7 +47,8 @@ export class AppError extends Error {
 export interface AppsConfig {
   /** Your Space's own address, e.g. http://space.localhost. */
   publicUrl: string;
-  authSecret: string;
+  /** Encrypts apps' settings (spec 009). */
+  dataKey: string;
   github?: GithubEndpoints;
   fetch?: typeof fetch;
 }
@@ -308,7 +309,7 @@ export class AppsService {
           settings.map((s) => ({
             appId: id,
             name: s.name,
-            value: s.value === null ? null : encrypt(this.config.authSecret, s.value),
+            value: s.value === null ? null : encrypt(this.config.dataKey, s.value),
             secret: s.secret,
             generated: s.generated,
             publishedDefault: s.publishedDefault,
@@ -330,7 +331,29 @@ export class AppsService {
 
   private async storedValues(appId: string): Promise<Map<string, string | null>> {
     const rows = await this.db.select().from(appSetting).where(eq(appSetting.appId, appId));
-    return new Map(rows.map((r) => [r.name, r.value === null ? null : decrypt(this.config.authSecret, r.value)]));
+    return new Map(rows.map((r) => [r.name, r.value === null ? null : this.read(r.value)]));
+  }
+
+  /** A stored setting, or an error that says what to do when no key Your Space has can read it. */
+  private read(stored: string): string {
+    try {
+      return decrypt(this.config.dataKey, stored);
+    } catch {
+      throw new AppError(
+        409,
+        "settings_unreadable",
+        "This app's settings were encrypted with a data key Your Space no longer has. Remove the app, keeping its data, and install it again.",
+      );
+    }
+  }
+
+  /** A setting to show, or null when it can't be read; the app's state says why. */
+  private readOrNull(stored: string): string | null {
+    try {
+      return decrypt(this.config.dataKey, stored);
+    } catch {
+      return null;
+    }
   }
 
   private envOf(settings: { name: string; value: string | null }[]): Record<string, string> {
@@ -584,7 +607,7 @@ export class AppsService {
           generated: s.generated,
           required: false,
           publishedDefault: s.publishedDefault,
-          value: s.value === null ? null : s.secret ? "set" : decrypt(this.config.authSecret, s.value),
+          value: s.value === null ? null : s.secret ? "set" : this.readOrNull(s.value),
           derived: Boolean(row.kit?.derive?.[s.name]),
         }),
       ),
@@ -673,7 +696,7 @@ export class AppsService {
       for (const [key, value] of changes) {
         await tx
           .update(appSetting)
-          .set({ value: value === null || value === "" ? null : encrypt(this.config.authSecret, value), generated: false })
+          .set({ value: value === null || value === "" ? null : encrypt(this.config.dataKey, value), generated: false })
           .where(and(eq(appSetting.appId, row.id), eq(appSetting.name, key)));
       }
       for (const [key, value] of templates) {
