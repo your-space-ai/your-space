@@ -49,18 +49,20 @@ settings unreadable until each app is reinstalled.
 | --- | --- | --- | --- |
 | **A. Your Space's own key for what is secret** | Apps' settings, session tokens, and any later secret column | Your Space encrypts chosen columns itself, as it already does for apps' settings, with a key of its own in `ys-secrets` | Small: one more generated secret and a migration. Names, emails and other metadata stay plain |
 | **B. A and every personal field** | A, plus names, usernames and emails | The same, with blind indexes (a keyed hash) for the fields Your Space looks up, such as usernames | Medium: lookups and unique checks change, and Better Auth's tables are read by Better Auth, so its fields need its own hooks |
-| **C. The whole database** | Everything PostgreSQL writes: tables, indexes, the write-ahead log | Transparent encryption by a PostgreSQL extension, such as Percona's `pg_tde`, in a PostgreSQL build that carries it | Large: the official `postgres` image doesn't have it, so Your Space would run Percona's distribution instead, and the key sits on the same machine as the data |
+| **A′. A, inside PostgreSQL** | The same as A | PostgreSQL's own pgcrypto extension, which ships with PostgreSQL and is in the official image (`CREATE EXTENSION pgcrypto`) | Small, but Your Space sends the key inside each query, so it can reach PostgreSQL's logs and statement statistics, as pgcrypto's own documentation warns |
+| **C. The whole database** | Everything PostgreSQL writes: tables, indexes, the write-ahead log | Transparent encryption with Percona's `pg_tde`, which "is bundled as a component of Percona Server for PostgreSQL and requires its patches to function" ([Percona's docs](https://docs.percona.com/pg-tde/)) | Large: no extension does this for community PostgreSQL today, so Your Space would run Percona's PostgreSQL build instead of the official image. The key still sits on the same machine as the data |
 
-pgcrypto, the extension that ships with PostgreSQL, is a set of functions for option A or B inside
-SQL; it still needs Your Space to hold the key, so it changes where the encryption runs, not what is
-protected. Disk encryption on the host (LUKS, FileVault) protects a stolen disk but not a copy taken
-while the machine runs; the guide can recommend it either way.
+How others handle it: managed databases (AWS RDS, Google Cloud SQL, Supabase) encrypt the storage
+under PostgreSQL, and self-hosters do the same with LUKS, ZFS or FileVault; that protects a stolen
+disk, not a copy taken while the machine runs. Secrets are then encrypted per field, by the app
+(Rails, Laravel) or with pgcrypto, or with an extension of the host's own such as Supabase's Vault.
 
 ## Recommendation
 
 Option A now, with the guide recommending disk encryption on the host. It fixes the auth-secret
-problem, protects everything that is secret, and adds no dependency. Option C is worth revisiting
-with journey 006's backups, when what leaves the machine matters most.
+problem, protects everything that is secret, adds no dependency, and keeps the key out of the
+database's reach, which A′ can't. Option C is worth revisiting if `pg_tde` reaches community
+PostgreSQL, or with journey 006's backups, when what leaves the machine matters most.
 
 ## Requirements (for option A)
 
@@ -93,7 +95,8 @@ with journey 006's backups, when what leaves the machine matters most.
 
 ## Decisions and Open Questions
 
-1. **Scope:** option A (recommended), B, or C?
+1. **Scope:** option A (recommended), A′ (pgcrypto), B, or C? And should the guide recommend disk
+   encryption on the host (recommended)?
 2. **Session tokens:** encrypt them (recommended, so a database copy can't be paired with a leaked
    auth secret later), or leave them to the cookie signature as now?
 3. **Numbering:** this is the first specification that isn't a journey. `009` keeps it after the
