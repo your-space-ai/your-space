@@ -4,8 +4,7 @@
 
 **Created**: 2026-11-17
 
-**Status**: Draft for review. Scope decided on 2026-11-17; two questions are open; see
-[Decisions and Open Questions](#decisions-and-open-questions). Nothing in it is delivered yet.
+**Status**: Draft for review. Every question is decided. Nothing in it is delivered yet.
 
 **Linear**: YOU-50. Delivered as the last pull request of journey 003's stack, after the guide
 slice. It is a follow-up specification, not one of the eight journeys in the
@@ -73,8 +72,8 @@ A streamlined way to do it may come later, for example if `pg_tde` reaches commu
   secret and the database password, and never generates it again on its own. The owner can set it
   in `.env` (`YS_DATA_KEY`) instead; a key set there is used as given and never copied.
 - **FR-002**: Installed apps' settings and secrets are encrypted with the data key (AES-256-GCM, a
-  fresh nonce per value), and so are session tokens if [open question 1](#decisions-and-open-questions)
-  is settled that way. Nothing else changes how it is stored.
+  fresh nonce per value). Nothing else changes how it is stored: session tokens stay as Better Auth
+  keeps them, protected by the cookie signature (see [Decisions](#decisions-and-open-questions)).
 - **FR-003**: On start, values still encrypted with the key derived from the auth secret are
   re-encrypted with the data key in one transaction, so existing installations move over by
   themselves. Once moved, replacing the auth secret only signs people out.
@@ -101,15 +100,13 @@ A streamlined way to do it may come later, for example if `pg_tde` reaches commu
 
 ## Decisions and Open Questions
 
-Decided on 2026-11-17: option A, and the whole database stays the owner's responsibility for now
-([Decision](#decision)).
+Decided on 2026-11-17:
 
-Open:
+- **Option A**, and the whole database stays the owner's responsibility for now ([Decision](#decision)).
+- **Session tokens stay as they are.** Better Auth finds a session by its token, so encrypting it
+  would break sign-in, and storing a keyed hash instead would mean a layer around Better Auth
+  (constitution VII). A copy of the database alone still can't forge a sign-in cookie, which is
+  also signed with the auth secret kept in `ys-secrets`.
+- **Numbering:** `009`, after the eight journeys; the first specification that isn't a journey.
 
-1. **Session tokens.** Better Auth finds a session by its token, so a token encrypted with a fresh
-   nonce can't be looked up; it would have to be stored as a keyed hash instead, which depends on
-   what Better Auth offers natively (constitution VII: no layer around it). Proposed: store them as
-   a keyed hash if Better Auth supports that natively, and otherwise leave them as now, protected by
-   the cookie signature; the plan settles which.
-2. **Numbering.** This is the first specification that isn't a journey. Proposed: `009`, after the
-   journeys; the alternative is a separate series for follow-up specifications.
+No questions are open.
