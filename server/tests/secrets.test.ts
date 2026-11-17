@@ -1,7 +1,7 @@
 // The platform secrets (research R16; the data key, spec 009): a value set in .env is used as given and never copied;
 // otherwise the copy in ys-secrets; otherwise, for a new installation, a generated one. A missing
 // secret next to an existing database stops start-up instead of making a new one.
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -191,7 +191,8 @@ describe("the data key (spec 009)", () => {
     makeDatabase("18", "docker");
     const outcome = settle({ BETTER_AUTH_SECRET: "x".repeat(40), POSTGRES_PASSWORD: "given" }).find(({ spec }) => spec === DATA_KEY);
     expect(outcome!.action).toBe("kept");
-    writeFileSync(join(secretsDir, DATA_KEY.dir, DATA_KEY.file), "");
+    // The key is lost (read-only, so it is removed rather than emptied, as a non-root user can).
+    rmSync(join(secretsDir, DATA_KEY.dir, DATA_KEY.file));
     expect(settle({ BETTER_AUTH_SECRET: "x".repeat(40), POSTGRES_PASSWORD: "given" }).find(({ spec }) => spec === DATA_KEY)!.action).toBe("generated");
   });
 
