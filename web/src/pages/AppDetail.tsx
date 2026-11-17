@@ -267,7 +267,7 @@ function Outbound({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { j
               <div>
                 <code>{r.host}</code>
                 <div className="muted small">
-                  Tried {r.attempts} time{r.attempts === 1 ? "" : "s"}, last at {when(r.lastSeen)}
+                  Tried {r.attempts} time{r.attempts === 1 ? "" : "s"}, last at <time dateTime={r.lastSeen}>{when(r.lastSeen)}</time>
                 </div>
               </div>
               <div className="actions">

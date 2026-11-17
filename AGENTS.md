@@ -48,4 +48,7 @@ the description current as the PR changes rather than appending history.
 While the repository is private, GitHub Actions minutes are limited. Run the checks locally before
 pushing, and push a stack of pull requests once per round of fixes rather than after each fix. The
 browser tests run on CircleCI, and the Compose setups checks on GitHub Actions. In a stack, only the
-pull request based on `main` runs them; the ones above it run them when they reach `main`.
+pull request based on `main` runs them; the ones above it run them when they reach `main`. A draft
+runs only the GitHub Actions checks: CircleCI's jobs, the browser tests and the Argos screenshots
+included, run when it is marked ready for review. Argos's screenshots are Chromium's, and a change
+to documents alone uploads none.

@@ -4,7 +4,12 @@
 import { argosScreenshot } from "@argos-ci/playwright";
 import type { Page, TestInfo } from "@playwright/test";
 
+// Times differ from run to run, so they are hidden in the screenshots; the page keeps its layout.
+const HIDE_TIMES = "time { visibility: hidden; }";
+
 export async function evidence(page: Page, testInfo: TestInfo, name: string): Promise<void> {
-  // Argos files each screenshot under its browser, so the three browsers keep separate copies.
-  await argosScreenshot(page, name);
+  // Chromium only: Argos's screenshot allowance is limited, and the other browsers' journeys are
+  // still checked, with a video of each in the run's Playwright report.
+  if (testInfo.project.name !== "chromium") return;
+  await argosScreenshot(page, name, { argosCSS: HIDE_TIMES });
 }

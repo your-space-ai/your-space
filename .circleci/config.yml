@@ -28,12 +28,47 @@ commands:
             echo 'export PATH=/opt/node26/bin:$PATH' >> "$BASH_ENV"
             /opt/node26/bin/node --version
 
+  ready-pull-request:
+    description: >-
+      Stops the job early on a draft pull request and, with bottom-only, on a pull request above the
+      bottom of a stack. Marking a draft ready starts a new pipeline (.github/workflows/ready.yml).
+    parameters:
+      bottom-only:
+        type: boolean
+    steps:
+      - run:
+          # GitHub's webhook says main for every pull request in a stack, so the pull request's own
+          # base, and whether it is a draft, come from the API, read with a read-only token kept in
+          # the project settings.
+          name: Ready pull request
+          command: |
+            if [ -z "${CIRCLE_PULL_REQUEST:-}" ]; then
+              echo "Not a pull request: running."
+              exit 0
+            fi
+            api=$(echo "$CIRCLE_PULL_REQUEST" | sed -E 's#https://github.com/([^/]+/[^/]+)/pull/([0-9]+)#https://api.github.com/repos/\1/pulls/\2#')
+            pr=$(curl -fsS -H "Authorization: Bearer $GITHUB_PR_READ_TOKEN" \
+              -H "Accept: application/vnd.github+json" "$api")
+            if [ "$(echo "$pr" | jq -r .draft)" = true ]; then
+              echo "It's a draft, so this job waits until it is marked ready for review."
+              circleci-agent step halt
+              exit 0
+            fi
+            base=$(echo "$pr" | jq -r .base.ref)
+            echo "This pull request is based on $base."
+            if [ "<< parameters.bottom-only >>" = true ] && [ "$base" != main ]; then
+              echo "It isn't the bottom of its stack, so it skips this job until it reaches main."
+              circleci-agent step halt
+            fi
+
 jobs:
   check-arm64:
     machine:
       image: ubuntu-2404:current
     resource_class: arm.medium
     steps:
+      - ready-pull-request:
+          bottom-only: false
       - checkout
       - run:
           name: PostgreSQL 18
@@ -58,26 +93,25 @@ jobs:
       # settings.
       YS_ARGOS_UPLOAD: "1"
     steps:
-      - run:
-          # While Actions and CircleCI time are limited, a stack of pull requests runs the browser
-          # tests once: on the pull request based on main, and on main itself. GitHub's webhook says
-          # main for every pull request in a stack, so the pull request's own base comes from the
-          # API, read with a read-only token kept in the project settings.
-          name: Bottom of the stack
-          command: |
-            if [ -z "${CIRCLE_PULL_REQUEST:-}" ]; then
-              echo "Not a pull request: running the browser tests."
-              exit 0
-            fi
-            api=$(echo "$CIRCLE_PULL_REQUEST" | sed -E 's#https://github.com/([^/]+/[^/]+)/pull/([0-9]+)#https://api.github.com/repos/\1/pulls/\2#')
-            base=$(curl -fsS -H "Authorization: Bearer $GITHUB_PR_READ_TOKEN" \
-              -H "Accept: application/vnd.github+json" "$api" | jq -r .base.ref)
-            echo "This pull request is based on $base."
-            if [ "$base" != main ]; then
-              echo "It isn't the bottom of its stack, so it skips the browser tests until it reaches main."
-              circleci-agent step halt
-            fi
+      - ready-pull-request:
+          bottom-only: true
       - checkout
+      - run:
+          # A change to documents alone can't change a screenshot, so it doesn't use Argos's limited
+          # allowance. main compares its last commit; a pull request, everything since main.
+          name: Argos upload
+          command: |
+            if [ -n "${CIRCLE_PULL_REQUEST:-}" ]; then
+              git fetch -q origin main && range=origin/main...HEAD
+            else
+              range=HEAD^..HEAD
+            fi
+            if git diff --name-only "$range" | grep -qvE '^(docs/|specs/|\.specify/)|\.md$'; then
+              echo "Uploading the screenshots to Argos."
+            else
+              echo "Only documents changed, so the screenshots aren't uploaded to Argos."
+              echo 'export YS_ARGOS_UPLOAD=0' >> "$BASH_ENV"
+            fi
       - node26:
           arch: x64
       - run: npm ci
@@ -145,8 +179,8 @@ parameters:
     description: Run the Arm browser tests on a branch other than main.
 
 workflows:
-  # Every pull request and every push to main; the job stops early on pull requests above the
-  # bottom of a stack.
+  # Every pull request and every push to main; the job stops early on drafts and on pull requests
+  # above the bottom of a stack.
   e2e:
     jobs:
       - e2e
