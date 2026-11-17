@@ -16,8 +16,8 @@ that replacing the auth secret leaves installed apps' settings unreadable.
 ## At a Glance
 
 - **Who:** the owner of a Your Space installation, and anyone who later holds a copy of its data.
-- **Done when:** what Your Space stores that could hurt the owner if a copy of the database leaked
-  is encrypted with a key of its own; replacing the auth secret only signs people out; existing
+- **Done when:** the secrets Your Space stores, which today are installed apps' settings (their
+  keys, passwords and API keys), are encrypted with a key of its own; replacing the auth secret only signs people out; existing
   installations move onto the new key by themselves; and the guide says exactly what is encrypted,
   with what, and what that does and doesn't protect against.
 - **Not covered:** encrypting the whole database or the disk, which stays the owner's
@@ -48,7 +48,7 @@ settings unreadable until each app is reinstalled.
 
 | | What it encrypts | How | Cost |
 | --- | --- | --- | --- |
-| **A. Your Space's own key for what is secret** | Apps' settings, session tokens, and any later secret column | Your Space encrypts chosen columns itself, as it already does for apps' settings, with a key of its own in `ys-secrets` | Small: one more generated secret and a migration. Names, emails and other metadata stay plain |
+| **A. Your Space's own key for what is secret** | Installed apps' settings, and any secret Your Space stores later | Your Space encrypts chosen columns itself, as it already does for apps' settings, with a key of its own in `ys-secrets` | Small: one more generated secret and a migration. Names, emails and other metadata stay plain |
 | **B. A and every personal field** | A, plus names, usernames and emails | The same, with blind indexes (a keyed hash) for the fields Your Space looks up, such as usernames | Medium: lookups and unique checks change, and Better Auth's tables are read by Better Auth, so its fields need its own hooks |
 | **A′. A, inside PostgreSQL** | The same as A | PostgreSQL's own pgcrypto extension, which ships with PostgreSQL and is in the official image (`CREATE EXTENSION pgcrypto`) | Small, but Your Space sends the key inside each query, so it can reach PostgreSQL's logs and statement statistics, as pgcrypto's own documentation warns |
 | **C. The whole database** | Everything PostgreSQL writes: tables, indexes, the write-ahead log | Transparent encryption with Percona's `pg_tde`, which "is bundled as a component of Percona Server for PostgreSQL and requires its patches to function" ([Percona's docs](https://docs.percona.com/pg-tde/)) | Large: no extension does this for community PostgreSQL today, so Your Space would run Percona's PostgreSQL build instead of the official image. The key still sits on the same machine as the data |
@@ -94,7 +94,7 @@ A streamlined way to do it may come later, for example if `pg_tde` reaches commu
 
 - **SC-001**: After `secrets replace auth-secret`, an installed app starts and its settings read back
   unchanged; the browser test that found the problem passes without reinstalling.
-- **SC-002**: A copy of the `ys-postgres` volume holds no app setting or session token in plain text.
+- **SC-002**: A copy of the `ys-postgres` volume holds no app setting in plain text.
 - **SC-003**: An installation with apps installed before this change starts after it with every
   app's settings readable, and no value left on the old key.
 
