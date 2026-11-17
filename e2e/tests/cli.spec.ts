@@ -218,19 +218,38 @@ test("owner recovery and secrets go through the server's own commands", async ()
   expect(shown.secrets).toEqual([
     { name: "BETTER_AUTH_SECRET", source: "generated" },
     { name: "POSTGRES_PASSWORD", source: "generated" },
+    { name: "YS_DATA_KEY", source: "generated" },
   ]);
   const revealed = ok(await cli.run(["secrets", "show", "--reveal", "--json"]));
   expect(revealed.secrets[0].value.length).toBeGreaterThan(30);
+
+  // The app's generated secret, as its container gets it from Your Space's encrypted settings.
+  const appToken = async () =>
+    (await docker(["inspect", "ys-whoami-web-1", "--format", "{{range .Config.Env}}{{println .}}{{end}}"], false)).stdout
+      .split("\n")
+      .find((line) => line.startsWith("API_TOKEN="));
+  const token = await appToken();
+  expect(token).toMatch(/^API_TOKEN=.{20,}$/);
 
   const unconfirmed = await cli.run(["secrets", "replace", "auth-secret", "--json"]);
   expect(unconfirmed.code).toBe(1);
   ok(await cli.run(["secrets", "replace", "auth-secret", "--yes", "--json"]));
   ok(await cli.run(["secrets", "replace", "database-password", "--yes", "--json"]));
+  ok(await cli.run(["secrets", "replace", "data-key", "--yes", "--json"]));
   const after = ok(await cli.run(["secrets", "show", "--reveal", "--json"]));
-  expect(after.secrets[0].value).not.toBe(revealed.secrets[0].value);
-  expect(after.secrets[1].value).not.toBe(revealed.secrets[1].value);
+  for (const i of [0, 1, 2]) expect(after.secrets[i].value).not.toBe(revealed.secrets[i].value);
   // The server reads the database with the new password, so the owner is still there.
   expect(ok(await cli.run(["status", "--json"])).owner).toEqual({ username: "sam", name: "Sam Rivera" });
+  // The previous data key is gone once the server re-encrypted with the new one.
+  expect((await cli.compose(["exec", "-T", "server", "ls", "/run/ys-secrets/data"])).stdout.trim()).toBe("key");
+
+  // The app's settings survive all three (spec 009): stopping and starting applies them again.
+  ok(await cli.run(["stop", "--json"]));
+  ok(await cli.run(["start", "--no-open", "--json"]));
+  await expect(async () => {
+    expect(ok(await cli.run(["status", "--json"])).apps[0].state).toBe("running");
+  }).toPass({ timeout: 120_000 });
+  expect(await appToken()).toBe(token);
 
   // A secret set in .env is left to .env.
   writeFileSync(join(cli.folder, ".env"), `${readFileSync(join(cli.folder, ".env"), "utf8")}BETTER_AUTH_SECRET=${after.secrets[0].value}\n`);

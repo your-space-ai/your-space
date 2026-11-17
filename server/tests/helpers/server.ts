@@ -7,7 +7,7 @@ import { Handoffs } from "../../src/apps/gate.ts";
 import type { Runtime } from "../../src/apps/runtime-client.ts";
 import { AppsService } from "../../src/apps/service.ts";
 import type { Db } from "../../src/db/client.ts";
-import { TEST_SECRET } from "./env.ts";
+import { TEST_DATA_KEY, TEST_SECRET } from "./env.ts";
 
 export interface TestServer {
   /** e.g. http://localhost:51234 */
@@ -42,7 +42,7 @@ export async function startServer(db: Db, options: { publicUrl?: string; apps?: 
   const apps = options.apps
     ? new AppsService(db, options.apps.runtime, {
         publicUrl,
-        authSecret: TEST_SECRET,
+        dataKey: TEST_DATA_KEY,
         fetch: options.apps.fetch,
         github: { api: "https://api.github.test", raw: "https://raw.github.test" },
       })

@@ -62,7 +62,7 @@ describe("the same rules as the server", () => {
   const secretsDir = mkdtempSync(join(tmpdir(), "ys-cli-rules-"));
   const serverAccepts = (env: Record<string, string>) => {
     try {
-      loadConfig({ DATABASE_URL: "postgres://yourspace:s@postgres:5432/yourspace", BETTER_AUTH_SECRET: "a-test-secret-that-is-long-enough-0123456789", ...env }, { secretsDir });
+      loadConfig({ DATABASE_URL: "postgres://yourspace:s@postgres:5432/yourspace", BETTER_AUTH_SECRET: "a-test-secret-that-is-long-enough-0123456789", YS_DATA_KEY: "a-test-data-key-that-is-long-enough-012345678", ...env }, { secretsDir });
       return true;
     } catch (error) {
       if (error instanceof ConfigError) return false;

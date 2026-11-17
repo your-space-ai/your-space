@@ -10,7 +10,7 @@ import { buildSettings, decrypt, encrypt, looksSecret } from "../src/apps/settin
 import { session } from "../src/db/auth-schema.ts";
 import { app, appAccessRequest, appSetting, event, installJob } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
-import { TEST_SECRET } from "./helpers/env.ts";
+import { TEST_DATA_KEY, TEST_SECRET } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
 import { COMMIT, fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
 import { cookieHeader, send, startServer, type TestServer } from "./helpers/server.ts";
@@ -342,7 +342,7 @@ describe("apps API", () => {
     expect(reused.status).toBe(202);
     await settled();
     const token = runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.env.API_TOKEN;
-    expect(token).toBe(decrypt(TEST_SECRET, kept!.value!));
+    expect(token).toBe(decrypt(TEST_DATA_KEY, kept!.value!));
 
     await post("/api/apps/whoami/remove", {});
     await settled();

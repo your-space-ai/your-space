@@ -3,8 +3,8 @@
 import { CliError } from "../errors.ts";
 import { Compose } from "../compose.ts";
 import { Installation } from "../installation.ts";
-import { givePostgresPassword, newSecrets, SECRET_ENV, type SecretName } from "../secrets.ts";
-import { expectOk, listApps, serverCommand } from "../server.ts";
+import { forgetPreviousDataKey, givePostgresPassword, newSecrets, SECRET_ENV, SECRET_NAMES, type SecretName } from "../secrets.ts";
+import { expectOk, serverCommand } from "../server.ts";
 import type { Ui } from "../ui.ts";
 
 interface Shown {
@@ -29,33 +29,31 @@ export async function secretsShow(ui: Ui, workdir: string, reveal: boolean): Pro
 }
 
 const CONSEQUENCE: Record<SecretName, string> = {
-  "auth-secret": "Replacing the auth secret signs out every device.",
+  "auth-secret": "Replacing the auth secret signs out every device. Nothing else changes.",
   "database-password": "Your Space restarts its server with the new database password. Your data stays.",
+  "data-key": "Your Space restarts its server, which re-encrypts installed apps' settings with the new data key. Nothing else changes.",
 };
 
 export async function secretsReplace(ui: Ui, workdir: string, name: string): Promise<void> {
-  if (name !== "auth-secret" && name !== "database-password") {
-    throw new CliError("invalid_input", "Name the secret to replace: auth-secret or database-password.");
+  if (!SECRET_NAMES.includes(name as SecretName)) {
+    throw new CliError("invalid_input", `Name the secret to replace: ${SECRET_NAMES.join(", ")}.`);
   }
+  const secret = name as SecretName;
   const installation = Installation.open(workdir);
   const compose = new Compose(installation.folder);
   // .env itself, since the running server sees a change to it only after it restarts.
-  if (installation.env()[SECRET_ENV[name]]) {
-    throw new CliError("secret_in_env", `${SECRET_ENV[name]} is set in .env, so Your Space uses it as given. Change it there instead.`);
+  if (installation.env()[SECRET_ENV[secret]]) {
+    throw new CliError("secret_in_env", `${SECRET_ENV[secret]} is set in .env, so Your Space uses it as given. Change it there instead.`);
   }
-  // Installed apps' settings are encrypted with a key from the auth secret (journey 002), so a new
-  // auth secret leaves them unreadable until that changes.
-  const apps = name === "auth-secret" && (await compose.running("server")) ? await listApps(compose).catch(() => []) : [];
-  const warning = apps.length
-    ? ` Installed apps' settings are encrypted with it, so ${apps.map((a) => a.name).join(", ")} won't start again until reinstalled.`
-    : "";
-  const go = await ui.confirm({ message: `${CONSEQUENCE[name]}${warning} Replace the ${name}?`, flag: "--yes", initial: false });
+  const go = await ui.confirm({ message: `${CONSEQUENCE[secret]} Replace the ${secret}?`, flag: "--yes", initial: false });
   if (!go) throw new CliError("cancelled", "Nothing was replaced.");
-  await ui.step(`Replacing the ${name}`, `Replaced the ${name}`, async () => {
-    await newSecrets(compose, [name]);
-    if (name === "database-password") await givePostgresPassword(compose);
+  await ui.step(`Replacing the ${secret}`, `Replaced the ${secret}`, async () => {
+    await newSecrets(compose, [secret]);
+    if (secret === "database-password") await givePostgresPassword(compose);
     await compose.must(["restart", "server"], "The server didn't restart.");
     await compose.must(["up", "-d", "--wait"], "Your Space didn't come back after the restart.");
+    // The server re-encrypted with the new data key before it became healthy, so the old one can go.
+    if (secret === "data-key") await forgetPreviousDataKey(compose);
   });
-  ui.result({ replaced: name }, () => ui.outro(name === "auth-secret" ? "Done. Sign in again on each device." : "Done."));
+  ui.result({ replaced: secret }, () => ui.outro(secret === "auth-secret" ? "Done. Sign in again on each device." : "Done."));
 }

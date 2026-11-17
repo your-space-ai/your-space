@@ -12,6 +12,7 @@ const NO_SECRETS = mkdtempSync(join(tmpdir(), "ys-config-test-"));
 const SECRETS = {
   DATABASE_URL: "postgres://yourspace:secret@postgres:5432/yourspace",
   BETTER_AUTH_SECRET: "a-test-secret-that-is-long-enough-0123456789",
+  YS_DATA_KEY: "a-test-data-key-that-is-long-enough-0123456789",
 };
 
 function problems(env: Record<string, string | undefined>): string[] {
@@ -172,8 +173,12 @@ describe("loadConfig: setting names", () => {
 });
 
 describe("loadConfig: secrets", () => {
-  function volume(auth?: string, password?: string): string {
+  function volume(auth?: string, password?: string, dataKey: string | undefined = auth === undefined ? undefined : "d".repeat(43)): string {
     const dir = mkdtempSync(join(tmpdir(), "ys-config-secrets-"));
+    if (dataKey !== undefined) {
+      mkdirSync(join(dir, "data"));
+      writeFileSync(join(dir, "data", "key"), `${dataKey}\n`);
+    }
     if (auth !== undefined) {
       mkdirSync(join(dir, "auth"));
       writeFileSync(join(dir, "auth", "secret"), `${auth}\n`);
@@ -221,8 +226,18 @@ describe("loadConfig: secrets", () => {
     } catch (error) {
       found = (error as ConfigError).problems;
     }
-    expect(found).toHaveLength(2);
+    expect(found).toHaveLength(3);
     expect(found[0]).toMatch(/POSTGRES_PASSWORD isn't set in \.env, and Your Space hasn't generated the database password yet\. Start it with docker compose up -d/);
     expect(found[1]).toMatch(/BETTER_AUTH_SECRET isn't set in \.env, and Your Space hasn't generated the auth secret yet/);
+    expect(found[2]).toMatch(/YS_DATA_KEY isn't set in \.env, and Your Space hasn't generated the data key yet/);
+  });
+
+  it("reads the data key, and the previous one a replacement left, from ys-secrets", () => {
+    const dir = volume(GENERATED_AUTH, "generatedpw", "k".repeat(43));
+    expect(loadConfig({ DATABASE_URL: COMPOSE_URL }, { secretsDir: dir }).previousDataKey).toBeUndefined();
+    writeFileSync(join(dir, "data", "previous"), `${"p".repeat(43)}\n`);
+    const config = loadConfig({ DATABASE_URL: COMPOSE_URL, YS_DATA_KEY: "e".repeat(40) }, { secretsDir: dir });
+    expect(config.dataKey).toBe("e".repeat(40));
+    expect(config.previousDataKey).toBe("p".repeat(43));
   });
 });

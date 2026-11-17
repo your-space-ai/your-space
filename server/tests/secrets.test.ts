@@ -1,4 +1,4 @@
-// The two platform secrets (research R16): a value set in .env is used as given and never copied;
+// The platform secrets (research R16; the data key, spec 009): a value set in .env is used as given and never copied;
 // otherwise the copy in ys-secrets; otherwise, for a new installation, a generated one. A missing
 // secret next to an existing database stops start-up instead of making a new one.
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { describeSecrets } from "../src/commands/show-secrets.ts";
-import { AUTH_SECRET, DATABASE_PASSWORD, databaseExists, SecretsError, settleSecrets } from "../src/secrets.ts";
+import { AUTH_SECRET, DATA_KEY, DATABASE_PASSWORD, databaseExists, forgetPreviousDataKey, PREVIOUS_DATA_KEY, SecretsError, settleSecrets } from "../src/secrets.ts";
 
 let secretsDir: string;
 let databaseDir: string;
@@ -21,7 +21,9 @@ beforeEach(() => {
 const settle = (env: NodeJS.ProcessEnv = {}, replace = [] as (typeof AUTH_SECRET)[]) =>
   settleSecrets({ dir: secretsDir, databaseDir, env, replace, chown: false });
 const stored = (spec: typeof AUTH_SECRET) => readFileSync(join(secretsDir, spec.dir, spec.file), "utf8").trim();
-const actions = (outcomes: ReturnType<typeof settle>) => outcomes.map(({ spec, action }) => `${spec.env}:${action}`);
+/** The auth secret's and database password's outcomes; the data key has its own tests below. */
+const actions = (outcomes: ReturnType<typeof settle>) =>
+  outcomes.filter(({ spec }) => spec !== DATA_KEY).map(({ spec, action }) => `${spec.env}:${action}`);
 const makeDatabase = (...path: string[]) => {
   mkdirSync(join(databaseDir, ...path), { recursive: true });
   writeFileSync(join(databaseDir, ...path, "PG_VERSION"), "18\n");
@@ -49,7 +51,7 @@ describe("settleSecrets on a new installation", () => {
   it("uses a value set in .env as given and copies it nowhere, but still makes the empty folders PostgreSQL mounts", () => {
     const outcomes = settle({ BETTER_AUTH_SECRET: "x".repeat(40), POSTGRES_PASSWORD: "p@ss/w#rd %41" });
     expect(actions(outcomes)).toEqual(["BETTER_AUTH_SECRET:from_env", "POSTGRES_PASSWORD:from_env"]);
-    expect(readdirSync(secretsDir).sort()).toEqual(["auth", "postgres"]);
+    expect(readdirSync(secretsDir).sort()).toEqual(["auth", "data", "postgres"]);
     for (const spec of [AUTH_SECRET, DATABASE_PASSWORD]) {
       expect(readdirSync(join(secretsDir, spec.dir))).toEqual([]);
       expect(statSync(join(secretsDir, spec.dir)).mode & 0o777).toBe(spec.dirMode);
@@ -165,10 +167,51 @@ describe("describeSecrets (show-secrets)", () => {
     expect(shown).toEqual([
       { name: "BETTER_AUTH_SECRET", label: "auth secret", source: "env", value: "y".repeat(40) },
       { name: "POSTGRES_PASSWORD", label: "database password", source: "generated", value: stored(DATABASE_PASSWORD) },
+      { name: "YS_DATA_KEY", label: "data key", source: "generated", value: stored(DATA_KEY) },
     ]);
   });
 
   it("names the settings that have no value yet", () => {
-    expect(describeSecrets({}, secretsDir).missing).toEqual(["BETTER_AUTH_SECRET", "POSTGRES_PASSWORD"]);
+    expect(describeSecrets({}, secretsDir).missing).toEqual(["BETTER_AUTH_SECRET", "POSTGRES_PASSWORD", "YS_DATA_KEY"]);
+  });
+});
+
+describe("the data key (spec 009)", () => {
+  const dataKey = () => settle().find(({ spec }) => spec === DATA_KEY)!.action;
+
+  it("is generated with the others, readable only by the server", () => {
+    expect(dataKey()).toBe("generated");
+    expect(stored(DATA_KEY)).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(statSync(join(secretsDir, DATA_KEY.dir, DATA_KEY.file)).mode & 0o777).toBe(0o400);
+    expect(dataKey()).toBe("kept");
+  });
+
+  it("is generated for an installation that already has a database, which the server then moves onto it", () => {
+    settle({ BETTER_AUTH_SECRET: "x".repeat(40), POSTGRES_PASSWORD: "given" });
+    makeDatabase("18", "docker");
+    const outcome = settle({ BETTER_AUTH_SECRET: "x".repeat(40), POSTGRES_PASSWORD: "given" }).find(({ spec }) => spec === DATA_KEY);
+    expect(outcome!.action).toBe("kept");
+    writeFileSync(join(secretsDir, DATA_KEY.dir, DATA_KEY.file), "");
+    expect(settle({ BETTER_AUTH_SECRET: "x".repeat(40), POSTGRES_PASSWORD: "given" }).find(({ spec }) => spec === DATA_KEY)!.action).toBe("generated");
+  });
+
+  it("keeps the replaced key until the server has moved everything, then forgets it", () => {
+    settle();
+    const first = stored(DATA_KEY);
+    settle({}, [DATA_KEY]);
+    expect(stored(PREVIOUS_DATA_KEY)).toBe(first);
+    expect(stored(DATA_KEY)).not.toBe(first);
+    // A second replacement before the server moved anything keeps the key that still holds the values.
+    settle({}, [DATA_KEY]);
+    expect(stored(PREVIOUS_DATA_KEY)).toBe(first);
+    expect(forgetPreviousDataKey(secretsDir)).toBe(true);
+    expect(readdirSync(join(secretsDir, DATA_KEY.dir))).toEqual(["key"]);
+    expect(forgetPreviousDataKey(secretsDir)).toBe(false);
+  });
+
+  it("is left to .env when set there", () => {
+    const outcome = settle({ YS_DATA_KEY: "k".repeat(40) }, [DATA_KEY]).find(({ spec }) => spec === DATA_KEY);
+    expect(outcome!.action).toBe("not_replaced");
+    expect(() => settle({ YS_DATA_KEY: "short" })).toThrow(/YS_DATA_KEY in \.env must be at least 32 characters/);
   });
 });

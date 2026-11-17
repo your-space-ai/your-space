@@ -2,11 +2,14 @@
 // ("Replace a Secret", "Lost Secrets", "Give PostgreSQL the Database Password").
 import type { Compose } from "./compose.ts";
 
-export type SecretName = "auth-secret" | "database-password";
+export type SecretName = "auth-secret" | "database-password" | "data-key";
+
+export const SECRET_NAMES: SecretName[] = ["auth-secret", "database-password", "data-key"];
 
 export const SECRET_ENV: Record<SecretName, string> = {
   "auth-secret": "BETTER_AUTH_SECRET",
   "database-password": "POSTGRES_PASSWORD",
+  "data-key": "YS_DATA_KEY",
 };
 
 /** The guide's psql step: reads the password inside the container, so it never reaches a log. */
@@ -19,6 +22,11 @@ ALTER ROLE yourspace PASSWORD :'pw';
 \\echo 'No database password in .env or ys-secrets, so nothing was changed.'
 \\endif
 `;
+
+/** Removes the replaced data key once the restarted server has re-encrypted with the new one. */
+export async function forgetPreviousDataKey(compose: Compose): Promise<void> {
+  await compose.must(["run", "--rm", "secrets", "--forget", "previous-data-key"], "Couldn't remove the previous data key.");
+}
 
 export async function newSecrets(compose: Compose, names: SecretName[]): Promise<void> {
   await compose.must(["run", "--rm", "secrets", ...names.flatMap((name) => ["--new", name])], "Couldn't generate the new secrets.");

@@ -5,10 +5,20 @@
 //   docker compose run --rm secrets --new auth-secret         new auth secret; then restart the server,
 //                                                             which signs out every device
 //   docker compose run --rm secrets --new database-password   new database password (see the guide)
+//   docker compose run --rm secrets --new data-key            new data key; restart the server, which
+//                                                             re-encrypts with it, then:
+//   docker compose run --rm secrets --forget previous-data-key
 import { log } from "../log.ts";
-import { SECRETS, SECRETS_DIR, SecretsError, settleSecrets, type SecretSpec } from "../secrets.ts";
+import { forgetPreviousDataKey, SECRETS, SECRETS_DIR, SecretsError, settleSecrets, type SecretSpec } from "../secrets.ts";
 
 const DATABASE_DIR = "/pgdata";
+
+const args = process.argv.slice(2);
+if (args.length === 2 && args[0] === "--forget" && args[1] === "previous-data-key") {
+  const forgotten = forgetPreviousDataKey(SECRETS_DIR);
+  log("info", forgotten ? "secrets.previous_data_key_forgotten" : "secrets.no_previous_data_key", {});
+  process.exit(0);
+}
 
 function parseArguments(args: string[]): SecretSpec[] | string {
   const replace: SecretSpec[] = [];
@@ -22,7 +32,7 @@ function parseArguments(args: string[]): SecretSpec[] | string {
   return replace;
 }
 
-const replace = parseArguments(process.argv.slice(2));
+const replace = parseArguments(args);
 if (typeof replace === "string") {
   console.error(replace);
   process.exit(1);
@@ -34,6 +44,8 @@ const AFTER_REPLACING: Record<string, string> = {
     "Replaced the auth secret. Restart the server to use it, which signs out every device: docker compose restart server",
   POSTGRES_PASSWORD:
     'Replaced the database password. PostgreSQL still has the old one: follow "Lost Secrets" in the installation guide to give it the new one, then restart the server.',
+  YS_DATA_KEY:
+    "Replaced the data key. Restart the server, which re-encrypts apps' settings with it, then: docker compose run --rm secrets --forget previous-data-key",
 };
 
 try {

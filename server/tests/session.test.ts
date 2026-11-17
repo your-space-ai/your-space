@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { account, session, user } from "../src/db/auth-schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
-import { TEST_SECRET } from "./helpers/env.ts";
+import { TEST_DATA_KEY, TEST_SECRET } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
 import { cookieHeader, send, startServer, type TestServer } from "./helpers/server.ts";
 import { counts, snapshot } from "./helpers/state.ts";
@@ -253,6 +253,7 @@ describe("sign-in limit in production", () => {
         DATABASE_URL: t.url,
         YS_PORT: String(port),
         BETTER_AUTH_SECRET: TEST_SECRET,
+        YS_DATA_KEY: TEST_DATA_KEY,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

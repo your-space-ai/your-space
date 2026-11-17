@@ -182,6 +182,16 @@ journey. Packaging and checks for macOS and Windows (macOS executables, a Homebr
 `your-space-ai/homebrew-tap` repository, checks on a real Mac, and Windows) are gathered into one
 pass before release, after the journeys, so they aren't repeated after each one.
 
+**Decision update (2026-11-17):** Your Space encrypts the secrets it stores, today installed apps'
+settings, with a data key of its own: a third platform secret generated into `ys-secrets`, or set in
+`.env` as `YS_DATA_KEY` ([spec 009](../../specs/009-encrypt-stored-data/spec.md)). It replaces the key
+derived from the auth secret, which tied the two together, and existing installations move onto it
+when the server starts. Standard PostgreSQL doesn't encrypt what it stores, and the only
+whole-database option, Percona's `pg_tde`, needs Percona's own PostgreSQL build rather than the
+official image, so encrypting the whole database or its disk stays the owner's responsibility for
+now, with the guide recommending disk encryption on the host. Session tokens stay as Better Auth keeps
+them: encrypting them would break sign-in, and the cookie signature already protects them.
+
 ### Server and Database
 
 - Use Node.js and Express for the platform server.
@@ -919,7 +929,7 @@ app roles. The [spec map](../spec-map.md) and [roadmap](../roadmap.md) follow it
 | App identity protocol | Apps keep their own sign-in in journey 002 (level 0). Level 1 is OpenID Connect with Your Space as the provider, likely through Better Auth's OAuth provider plugin; the protocol for level 2 and where each level lands are settled with journeys 004, 005 and 007. |
 | App integration | TypeScript and Python SDKs are selected for the first release, for apps that opt into level 2; other languages are post-open-source. Neither is part of journey 002 (2026-11-14). Role registration, authorization compatibility, and revocation mechanics need a later specification. |
 | App deployment file | The app's own Compose file, with an optional installation kit from a separate repository, replaces a Your Space-specific file with an `x-your-space` section (2026-11-14). The owner installs by pasting the file's GitHub URL. The approved settings list and the kit format are set in the [002 plan](../../specs/002-install-an-app/plan.md) and its contracts. Source builds and alternative formats are post-open-source. |
-| App runtime and data | Designed in the [002 plan](../../specs/002-install-an-app/plan.md) (2026-11-14): a runtime manager with no network alone holds the engine socket; each app is a Compose project on a sealed network with its own egress proxy and named volumes; removal keeps data until the owner deletes it. Verification is journey 002's delivery. Engines on other machines, apps someone already runs, and server hardening (Sysbox, rootless Docker) are later work. Found in journey 003 (2026-11-17): apps' settings are encrypted with a key derived from the auth secret, so replacing that secret, or starting with new secrets after losing them, leaves installed apps' settings unreadable until they are reinstalled; a key of their own is open. |
+| App runtime and data | Designed in the [002 plan](../../specs/002-install-an-app/plan.md) (2026-11-14): a runtime manager with no network alone holds the engine socket; each app is a Compose project on a sealed network with its own egress proxy and named volumes; removal keeps data until the owner deletes it. Verification is journey 002's delivery. Engines on other machines, apps someone already runs, and server hardening (Sysbox, rootless Docker) are later work. Found in journey 003 (2026-11-17), and settled by [spec 009](../../specs/009-encrypt-stored-data/spec.md): apps' settings are encrypted with a data key of their own, a third generated secret, so replacing the auth secret only signs people out. Encrypting the whole database or its disk stays the owner's responsibility for now; the guide recommends disk encryption on the host. |
 | App distribution | Installation from the app's own Compose file's GitHub URL, exact commit recording (with the kit's commit), and images pinned by digest are accepted for initial installation. Owner-triggered updates are pre-public; automatic updates are post-public. Failed updates roll back automatically to the previous image versions and pre-update data backup. Image identity validation and retention, artifact trust, catalog implementation, update selection and mechanics, and failed-update detection remain open. |
 
 These open choices do not erase the accepted requirements above.

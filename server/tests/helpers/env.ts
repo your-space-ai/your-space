@@ -1,5 +1,6 @@
 // Settings shared by the server tests.
 export const TEST_SECRET = "test-only-secret-not-for-real-use-0123456789";
+export const TEST_DATA_KEY = "test-only-data-key-not-for-real-use-012345678";
 export const PUBLIC_URL = "http://space.localhost:4100";
 
 /** The .env settings an owner writes to get this public address (server/src/config.ts). */

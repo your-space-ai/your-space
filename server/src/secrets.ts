@@ -1,4 +1,4 @@
-// The two platform secrets, and where each comes from (research R16):
+// The platform secrets, and where each comes from (research R16; spec 009 adds the data key):
 //   1. a value set in .env is used as given and never copied;
 //   2. otherwise the copy kept in the ys-secrets volume;
 //   3. otherwise, for a new installation, the secrets step (commands/secrets-step.ts) generates one.
@@ -27,7 +27,7 @@ export const SECRETS_DIR = "/run/ys-secrets";
 
 export interface SecretSpec {
   /** The .env setting that supplies the value instead. */
-  env: "BETTER_AUTH_SECRET" | "POSTGRES_PASSWORD";
+  env: "BETTER_AUTH_SECRET" | "POSTGRES_PASSWORD" | "YS_DATA_KEY";
   /** The name used in logs and messages. */
   label: string;
   /** The `--new` argument that replaces it. */
@@ -70,7 +70,30 @@ export const DATABASE_PASSWORD: SecretSpec = {
   minLength: 1,
 };
 
-export const SECRETS = [AUTH_SECRET, DATABASE_PASSWORD];
+/**
+ * The data key encrypts the secrets Your Space stores, today installed apps' settings (spec 009). It
+ * is its own key, so replacing the auth secret only signs people out. Only the server reads it.
+ */
+export const DATA_KEY: SecretSpec = {
+  env: "YS_DATA_KEY",
+  label: "data key",
+  argument: "data-key",
+  dir: "data",
+  file: "key",
+  uid: 1000,
+  gid: 1000,
+  dirMode: 0o700,
+  fileMode: 0o400,
+  minLength: 32,
+};
+
+/**
+ * The data key a `--new data-key` replaced, kept until the server has re-encrypted everything with
+ * the new one, then removed with `--forget previous-data-key`.
+ */
+export const PREVIOUS_DATA_KEY: SecretSpec = { ...DATA_KEY, label: "previous data key", file: "previous" };
+
+export const SECRETS = [AUTH_SECRET, DATABASE_PASSWORD, DATA_KEY];
 
 export type Source = "env" | "generated";
 
@@ -268,11 +291,33 @@ export function settleSecrets(options: SettleOptions): { spec: SecretSpec; actio
       missing.push(spec);
     }
   }
-  if (missing.length > 0 && databaseExists(databaseDir)) throw new SecretsError(recovery(missing));
+  // A missing data key is generated even when the database exists: the server re-encrypts what the
+  // old key held when it can, and reports any app whose settings it can't read, instead of refusing
+  // to start (spec 009, FR-004).
+  const blocking = missing.filter((spec) => spec !== DATA_KEY);
+  if (blocking.length > 0 && databaseExists(databaseDir)) throw new SecretsError(recovery(blocking));
 
   for (const { spec, action } of plan) {
     removeLeftovers(ensureFolder(spec, dir, chown));
+    // The replaced data key is kept until the server has moved everything onto the new one. A second
+    // replacement before that keeps the first previous key, which still holds the values.
+    if (spec === DATA_KEY && action === "replaced") {
+      const current = readStored(DATA_KEY, dir);
+      if (current && !readStored(PREVIOUS_DATA_KEY, dir)) writeSecret(PREVIOUS_DATA_KEY, dir, current, chown);
+    }
     if (action === "generated" || action === "replaced") writeSecret(spec, dir, generate(), chown);
   }
   return plan;
+}
+
+/** Removes the previous data key once the server has re-encrypted everything with the new one. */
+export function forgetPreviousDataKey(dir: string = SECRETS_DIR): boolean {
+  const path = join(dir, PREVIOUS_DATA_KEY.dir, PREVIOUS_DATA_KEY.file);
+  try {
+    rmSync(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
 }
