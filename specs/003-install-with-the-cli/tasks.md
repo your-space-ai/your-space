@@ -51,7 +51,7 @@ it merges.
 
 ## Slice 7: The guide
 
-- [ ] T025 Installation guide: the CLI first, manual Compose as the advanced option, Tailscale Services by hand (closes 002's T035)
+- [ ] T025 Installation guide: the CLI first, manual Compose as the advanced option
 - [ ] T026 Browser test follows the guide's CLI commands
 
 ## Later

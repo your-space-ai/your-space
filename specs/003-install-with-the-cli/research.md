@@ -30,8 +30,8 @@ help, questions with defaults, and progress for slow steps.
 
 | Need | Chosen | Considered |
 | --- | --- | --- |
-| Commands | **Commander** 14 (MIT, no dependencies, the most-used Node CLI parser). Subcommands, typed options, help, `--version`, and `exitOverride` for our exit statuses are built in. | Node's `util.parseArgs` (the server's commands use it): no subcommands or help, which we would have to write. yargs: larger. oclif: a framework with plugins and generators. citty: smaller community. |
-| Questions and progress | **@clack/prompts** (MIT, two small dependencies of its own): `text`, `select`, `confirm`, `spinner`, `log`, `note`, `intro`, `outro` and cancellation in one package. | Inquirer's prompts: questions only, so a spinner library would be a third dependency. ora plus readline: two pieces for what Clack does. |
+| Commands | **Commander** 15 (MIT, no dependencies, the most-used Node CLI parser). Subcommands, typed options, help, `--version`, and `exitOverride` for our exit statuses are built in. | Node's `util.parseArgs` (the server's commands use it): no subcommands or help, which we would have to write. yargs: larger. oclif: a framework with plugins and generators. citty: smaller community. |
+| Questions and progress | **@clack/prompts** (MIT; it brings `@clack/core` and four small packages of its own: `sisteransi`, `fast-wrap-ansi`, `fast-string-width`, `fast-string-truncated-width`): `text`, `select`, `confirm`, `spinner`, `log`, `note`, `intro`, `outro` and cancellation in one package. | Inquirer's prompts: questions only, so a spinner library would be a third dependency. ora plus readline: two pieces for what Clack does. |
 
 Both are bundled into the published CLI, so installing it adds nothing to a person's machine. The
 summary box uses Clack's `note`; the CLI adds no output layer of its own beyond `--json`.
@@ -145,8 +145,10 @@ always prints the link. A few lines of code; the `open` package wasn't needed.
 Your Space knows its own address and, behind a proxy, which names reach it: its own host and
 `<app>.<host>` for each app, or a wildcard. The summary lists them with where to forward:
 `http://127.0.0.1:<port>`, or `http://your-space:8080` on the `your-space_edge` network for a proxy in
-a container. A tunnel that can't forward a wildcard, such as Tailscale, needs one name per app; the
-guide shows how to add one by hand with Tailscale Services. Your Space has no code for any product
+a container. A proxy that can't forward a wildcard needs one name per app, which the summary lists.
+Tailscale can't hold names under a machine's name (`sure.myserver.tail1234.ts.net`), and a Tailscale
+Service's name sits beside the machine's, not under it, so apps over Tailscale stay unsupported
+until the hosting review settles a way (journey 002's T035). Your Space has no code for any product
 (spec, Change 2).
 
 ## R12. Verified in this journey, and not

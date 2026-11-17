@@ -55,7 +55,7 @@ space installed by hand can be managed with the CLI.
 Your Space knows how it is reached, not which product reaches it: the owner's domain, or the
 address of a proxy or tunnel they run. It never contains code for a particular proxy or tunnel,
 such as Tailscale. For a proxy or tunnel it says exactly which names to forward and where, and the
-installation guide shows how to do that with common ones, Tailscale included.
+installation guide shows how to do that with common ones.
 
 The journey is delivered as a stack of pull requests, one per slice, each ending with something a
 person can see working and tested end to end. The
@@ -269,10 +269,9 @@ Space behind it, and the CLI tells me exactly what to forward, including each ap
 2. **Given** an installation behind a proxy, **When** the owner runs `your-space status`, **Then**
    the summary lists the names the proxy must forward: Your Space's own and each app's
    (`<app>.<proxy's host>`), and says a wildcard name covers every app.
-3. **Given** a tunnel that can't forward a wildcard name, **When** the owner installs another app,
-   **Then** they can see the new name to add in `status`, and the installation guide shows how to
-   add it in common proxies and tunnels, Tailscale included. Your Space itself contains no code for
-   any of them.
+3. **Given** a proxy that can't forward a wildcard name, **When** the owner installs another app,
+   **Then** they can see the new name to add in `status`. Your Space itself contains no code for any
+   proxy or tunnel.
 4. **Given** the proxy's address isn't reachable from this machine, **When** they start, **Then**
    Your Space still starts (the proxy may be set up afterwards) and the summary says the address
    couldn't be reached yet.
@@ -442,9 +441,12 @@ option that is still complete.
    "install" as the first command in the decision record's minimum operations; `init` and `start`
    together are the install.
 2. **Your Space has no code for a particular proxy or tunnel.** It knows its own address and, behind
-   a proxy or tunnel, the names to forward. Setting up Tailscale Services for apps is documented,
-   not automated; this closes journey 002's task T035 that way. The decision record's "documented
-   guidance for a private tunnel such as Tailscale" stays as written.
+   a proxy or tunnel, the names to forward. Tailscale gives Your Space itself an HTTPS address, but
+   its names can't hold another name under a machine's name, so apps can't get their
+   `<app>.<Your Space's address>` names there, with or without Tailscale Services. Apps over
+   Tailscale stay unsupported, as the guide already says; journey 002's task T035 stays open for the
+   release gate's hosting review rather than being automated here. The decision record's
+   "documented guidance for a private tunnel such as Tailscale" stays as written.
 3. **The CLI's name is `your-space`, with no short alias.** `ys` is already the command of
    YAMLScript, a widely installed tool.
 4. **The engine Your Space provides itself comes with the desktop app (journey 008).** Until then the

@@ -85,7 +85,15 @@ jobs:
           # Node, and so Playwright's API requests, resolve names through the system, which doesn't
           # know *.localhost; browsers resolve those names themselves (RFC 6761).
           name: Test names on this machine
-          command: echo "127.0.0.1 space.localhost app.space.localhost whoami.space.localhost probe.space.localhost" | sudo tee -a /etc/hosts
+          # space.example.com is the CLI test's own domain, served with a certificate from Pebble.
+          command: echo "127.0.0.1 space.localhost app.space.localhost whoami.space.localhost probe.space.localhost space.example.com" | sudo tee -a /etc/hosts
+      - run:
+          # The CLI's browser test runs the standalone executable, as people get it.
+          name: The CLI's executable
+          command: |
+            npm run build --workspace cli
+            cli/scripts/executable.sh x64
+            echo "export YS_E2E_CLI=$PWD/cli/dist/your-space-linux-x64" >> "$BASH_ENV"
       - run:
           name: Chromium, Firefox and WebKit
           # A package mirror that doesn't answer can hold this step for half an hour, so it stops

@@ -4,7 +4,7 @@ import { CliError } from "../errors.ts";
 import { Compose } from "../compose.ts";
 import { Installation } from "../installation.ts";
 import { givePostgresPassword, newSecrets, SECRET_ENV, type SecretName } from "../secrets.ts";
-import { expectOk, serverCommand } from "../server.ts";
+import { expectOk, listApps, serverCommand } from "../server.ts";
 import type { Ui } from "../ui.ts";
 
 interface Shown {
@@ -29,7 +29,7 @@ export async function secretsShow(ui: Ui, workdir: string, reveal: boolean): Pro
 }
 
 const CONSEQUENCE: Record<SecretName, string> = {
-  "auth-secret": "Replacing the auth secret signs out every device. Nothing else changes.",
+  "auth-secret": "Replacing the auth secret signs out every device.",
   "database-password": "Your Space restarts its server with the new database password. Your data stays.",
 };
 
@@ -37,12 +37,19 @@ export async function secretsReplace(ui: Ui, workdir: string, name: string): Pro
   if (name !== "auth-secret" && name !== "database-password") {
     throw new CliError("invalid_input", "Name the secret to replace: auth-secret or database-password.");
   }
-  const compose = new Compose(Installation.open(workdir).folder);
-  const current = (await shown(compose)).find((s) => s.name === SECRET_ENV[name]);
-  if (current?.source === "env") {
+  const installation = Installation.open(workdir);
+  const compose = new Compose(installation.folder);
+  // .env itself, since the running server sees a change to it only after it restarts.
+  if (installation.env()[SECRET_ENV[name]]) {
     throw new CliError("secret_in_env", `${SECRET_ENV[name]} is set in .env, so Your Space uses it as given. Change it there instead.`);
   }
-  const go = await ui.confirm({ message: `${CONSEQUENCE[name]} Replace the ${name}?`, flag: "--yes", initial: false });
+  // Installed apps' settings are encrypted with a key from the auth secret (journey 002), so a new
+  // auth secret leaves them unreadable until that changes.
+  const apps = name === "auth-secret" && (await compose.running("server")) ? await listApps(compose).catch(() => []) : [];
+  const warning = apps.length
+    ? ` Installed apps' settings are encrypted with it, so ${apps.map((a) => a.name).join(", ")} won't start again until reinstalled.`
+    : "";
+  const go = await ui.confirm({ message: `${CONSEQUENCE[name]}${warning} Replace the ${name}?`, flag: "--yes", initial: false });
   if (!go) throw new CliError("cancelled", "Nothing was replaced.");
   await ui.step(`Replacing the ${name}`, `Replaced the ${name}`, async () => {
     await newSecrets(compose, [name]);

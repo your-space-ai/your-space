@@ -131,7 +131,7 @@ export async function whyNotStarted(compose: Compose, output: string): Promise<C
     if (/already has a\s+database/.test(log)) {
       return new CliError(
         "lost_secrets",
-        "Your Space's secrets are gone, but its database is still there, so it didn't start. Put the old values back in .env as BETTER_AUTH_SECRET and POSTGRES_PASSWORD, or start with new ones: your-space start --new-secrets (everyone is signed out; your data stays).",
+        "Your Space's secrets are gone, but its database is still there, so it didn't start. Put the old values back in .env as BETTER_AUTH_SECRET and POSTGRES_PASSWORD, or start with new ones: your-space start --new-secrets (everyone is signed out; your data stays, but installed apps' settings can't be read with a new auth secret, so apps must be reinstalled).",
         {},
         log,
       );

@@ -1,6 +1,6 @@
 # Spec Map
 
-**Last updated**: 2026-11-14
+**Last updated**: 2026-11-17
 
 The pre-public [roadmap](roadmap.md) is delivered through eight specifications. Each one follows a
 person through one complete journey, from where they start to a result they can see, and covers
@@ -15,7 +15,7 @@ Why: [journey-based specifications](architecture/decisions.md#journey-based-spec
 | --- | --- | --- |
 | 001 | **Set up my space** | The operator installs Your Space, creates the owner, signs in, and can recover the owner account. |
 | 002 | **Install an app and use it** | The owner installs Sure from the link to its own Compose file and uses it in a pane inside Your Space, with Twenty beside it. |
-| 003 | **Install and run with the CLI** | One guided install on a server or laptop gives a working HTTPS space. |
+| 003 | **Install and run with the CLI** | `your-space init` and `your-space start` in a folder give a working space, over HTTPS with your own domain. |
 | 004 | **Invite my team** | A member joins by invitation, gets app roles, and can recover their password. The owner can remove them. |
 | 005 | **Let my agent work for me** | An agent uses an app through the CLI with some of its person's roles. The owner sees what it did and can revoke it. |
 | 006 | **Keep my space safe over time** | The owner updates, backs up, restores, moves, and uninstalls without losing data. |
@@ -61,10 +61,15 @@ Roadmap layers: [1 Install and operate](roadmap.md#1-install-and-operate) ·
 - Sure as the first app and Twenty as the second. App roles, verified identity for apps and the
   TypeScript SDK moved to 004, 005 and 007 on 2026-11-14.
 
-**003 Install and run with the CLI**
-- Guided install for servers and local machines on macOS and Linux, and Windows (L).
-- Commands: install, start, stop, status, logs, owner recovery.
-- Asking for the domain during install, so HTTPS is set up for you, including app addresses.
+**003 Install and run with the CLI** ([spec](../specs/003-install-with-the-cli/spec.md))
+- The `your-space` command, shaped like the Supabase CLI: from npm, Linux packages and standalone
+  executables; `init` then `start` in a folder, with a summary of what is running.
+- Commands: init, start, stop, status, logs, configure, owner recovery and secrets.
+- Choosing how the space is reached: this machine, your own domain (names checked, HTTPS waited
+  for, failures explained), or your own proxy or tunnel (the names to forward, each app's included).
+- The CLI runs the installation on its own machine; people sign in only through the client.
+- Linux in this journey. macOS packaging and checks on a real Mac come in the macOS and Windows pass
+  before release; Windows moves to 008.
 - The manual Compose guide, kept as an advanced option (L).
 
 **004 Invite my team**
@@ -96,7 +101,8 @@ Roadmap layers: [1 Install and operate](roadmap.md#1-install-and-operate) ·
 **008 Use Your Space as an app on my computer**
 - Desktop app on macOS, Linux, and Windows (L), signed and self-updating; the intended primary client.
 - Installed apps in native views instead of iframes.
-- Local mode: provide the engine (Your Space's own VM by default; 003 or 008 settles how), set up
+- Windows (L), moved from 003: the CLI and a local workspace there.
+- Local mode: provide the engine (Your Space's own VM by default, settled into 008 by spec 003), set up
   through the CLI, start with the app, update, back up, uninstall.
 - A clear message when app, CLI, and server versions don't match; the installable PWA (L).
 
