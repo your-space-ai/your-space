@@ -41,8 +41,8 @@ it merges.
 
 ## Slice 5: Your own proxy or tunnel
 
-- [ ] T021 Names to forward in the summary
-- [ ] T022 Browser test: behind a proxy, with an app's name listed
+- [x] T021 Names to forward in the summary
+- [x] T022 Browser test: behind a proxy, with an app's name listed
 
 ## Slice 6: Another engine, and a folder set up by hand
 

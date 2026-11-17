@@ -49,9 +49,10 @@ function action<A extends unknown[]>(work: (ui: Ui, globals: Globals, ...args: A
 
 const setupOptions = (command: Command) =>
   command
-    .addOption(new Option("--this-machine", "use it on this machine only, at http://space.localhost").conflicts(["domain"]))
-    .option("--domain <name>", "your own domain, with HTTPS from Let's Encrypt")
-    .option("--port <n>", "another local port, when 80 is taken");
+    .addOption(new Option("--this-machine", "use it on this machine only, at http://space.localhost").conflicts(["domain", "proxyUrl"]))
+    .addOption(new Option("--domain <name>", "your own domain, with HTTPS from Let's Encrypt").conflicts(["proxyUrl"]))
+    .option("--proxy-url <url>", "the HTTPS address your own proxy or tunnel serves")
+    .option("--port <n>", "another local port, when 80 (or 8080 behind a proxy) is taken");
 
 const program = new Command()
   .name("your-space")
@@ -73,7 +74,7 @@ const program = new Command()
 setupOptions(program.command("init").description("make this folder a Your Space installation: download the release and write .env")).action(
   action(async (ui, g) => {
     const o = program.commands.find((c) => c.name() === "init")!.opts();
-    await init(ui, g.workdir, { thisMachine: o.thisMachine, domain: o.domain, port: o.port });
+    await init(ui, g.workdir, { thisMachine: o.thisMachine, domain: o.domain, proxyUrl: o.proxyUrl, port: o.port });
   }),
 );
 
@@ -158,7 +159,7 @@ setupOptions(program.command("configure").description("change how Your Space is 
   .action(
     action(async (ui, g) => {
       const o = program.commands.find((c) => c.name() === "configure")!.opts();
-      await configure(ui, g.workdir, { thisMachine: o.thisMachine, domain: o.domain, port: o.port, ignoreChecks: o.ignoreChecks });
+      await configure(ui, g.workdir, { thisMachine: o.thisMachine, domain: o.domain, proxyUrl: o.proxyUrl, port: o.port, ignoreChecks: o.ignoreChecks });
     }),
   );
 

@@ -63,6 +63,7 @@ test("init and start install Your Space on this machine, and the owner signs in"
     setup: { kind: "this-machine", address: "http://space.localhost", port: 80 },
     owner: { username: "sam", name: "Sam Rivera" },
     apps: [],
+    forward: null,
   });
   expect(started.link.url).toMatch(/^http:\/\/space\.localhost\/reset-password#token=/);
   expect(started.services.filter((s: any) => s.health === "healthy").map((s: any) => s.name).sort()).toEqual(["postgres", "server"]);
@@ -131,13 +132,25 @@ test("a taken port is moved only with consent, and configure changes the setup",
     await docker(["rm", "-f", "ys-e2e-port-80"]);
   }
 
+  const proxied = ok(await cli.run(["configure", "--proxy-url", "https://box.example.com", "--json"]));
+  // The proxy setup has its own default port, 8080, so the moved port 8081 doesn't carry over.
+  expect(proxied.env).toEqual(["YS_PROXY_URL=https://box.example.com"]);
+  expect(proxied.summary.forward).toEqual({
+    to: "http://127.0.0.1:8080",
+    network: "your-space_edge",
+    names: ["box.example.com", "whoami.box.example.com"],
+    wildcard: "*.box.example.com",
+  });
+  const human = await cli.run(["status"]);
+  expect(human.stdout).toContain("whoami.box.example.com");
+
   const wrong = await cli.run(["configure", "--domain", "space.localhost", "--json"]);
   expect(wrong.code).toBe(1);
   expect(wrong.json.error).toBe("invalid_input");
 
   const back = ok(await cli.run(["configure", "--this-machine", "--port", "80", "--json"]));
   expect(back.summary.setup).toEqual({ kind: "this-machine", address: "http://space.localhost", port: 80 });
-  expect(readFileSync(join(cli.folder, ".env"), "utf8")).not.toMatch(/^YS_PORT=/m);
+  expect(readFileSync(join(cli.folder, ".env"), "utf8")).not.toMatch(/^YS_(PORT|PROXY_URL)=/m);
 });
 
 test("owner recovery and secrets go through the server's own commands", async () => {
