@@ -73,6 +73,14 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: The CLI's executable and packages install and run
+        run: |
+          cli/scripts/executable.sh x64
+          sudo apt-get install -y rpm
+          cli/scripts/packages.sh x64
+          sudo dpkg -i cli/dist/your-space_*_amd64.deb
+          your-space --version
+          rpm -qpl cli/dist/your-space-*.x86_64.rpm | grep -qx /usr/bin/your-space
 
   setups:
     # While the repository is private, Actions minutes are limited: in a stack of pull requests,

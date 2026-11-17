@@ -1,0 +1,3 @@
+#!/bin/sh
+# Whether there is an owner, and who: docker compose exec server show-owner [--json]
+exec node "$(dirname "$(readlink -f "$0")")/../src/commands/show-owner.ts" "$@"

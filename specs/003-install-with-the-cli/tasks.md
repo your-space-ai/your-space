@@ -11,15 +11,15 @@ it merges.
 
 ## Slice 1: Init and start on this machine
 
-- [ ] T003 `cli/` workspace: Commander program, Clack output, `--json`, exit statuses (`cli/src/index.ts`, `cli/src/ui.ts`)
-- [ ] T004 Installation folder, `.env` editing and setups (`cli/src/installation.ts`, `cli/src/env-file.ts`, `cli/src/setup.ts`)
-- [ ] T005 Release download, checksum and unpack (`cli/src/release.ts`); `deploy/release-files.sh` shared with the release workflow
-- [ ] T006 Engine connection and Compose checks (`cli/src/engine.ts`, `cli/src/compose.ts`)
-- [ ] T007 Port check and offer of another port (`cli/src/checks.ts`)
-- [ ] T008 Server `show-owner` command (`server/src/commands/show-owner.ts`)
-- [ ] T009 `init` and `start` with owner creation, the summary and opening the link
-- [ ] T010 Bundle, standalone executable, `.deb` and `.rpm`, npm package (`cli/scripts/`, `.github/workflows/images.yml`)
-- [ ] T011 Browser test: CLI from a local release to signed in (`e2e/tests/cli.spec.ts`)
+- [x] T003 `cli/` workspace: Commander program, Clack output, `--json`, exit statuses (`cli/src/index.ts`, `cli/src/ui.ts`)
+- [x] T004 Installation folder, `.env` editing and setups (`cli/src/installation.ts`, `cli/src/env-file.ts`, `cli/src/setup.ts`)
+- [x] T005 Release download, checksum and unpack (`cli/src/release.ts`); `deploy/release-files.sh` shared with the release workflow
+- [x] T006 Engine connection and Compose checks (`cli/src/engine.ts`, `cli/src/compose.ts`)
+- [x] T007 Port check and offer of another port (`cli/src/checks.ts`)
+- [x] T008 Server `show-owner` command (`server/src/commands/show-owner.ts`)
+- [x] T009 `init` and `start` with owner creation, the summary and opening the link
+- [x] T010 Bundle, standalone executable, `.deb` and `.rpm`, npm package (`cli/scripts/`, `.github/workflows/images.yml`)
+- [x] T011 Browser test: CLI from a local release to signed in (`e2e/tests/cli.spec.ts`)
 
 ## Slice 2: Run it
 

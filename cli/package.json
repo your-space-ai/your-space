@@ -1,0 +1,35 @@
+{
+  "name": "your-space",
+  "version": "0.1.0",
+  "description": "Install and run Your Space: init a folder, start it, and manage it.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "homepage": "https://github.com/your-space-ai/your-space/blob/main/docs/install/README.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-space-ai/your-space.git",
+    "directory": "cli"
+  },
+  "bin": {
+    "your-space": "dist/your-space.cjs"
+  },
+  "files": [
+    "dist/your-space.cjs"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "start": "node src/index.ts",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@clack/prompts": "^1.9.0",
+    "@types/node": "^26.6.6",
+    "commander": "^15.1.0",
+    "esbuild": "^0.28.2",
+    "vitest": "^5.1.0"
+  }
+}
