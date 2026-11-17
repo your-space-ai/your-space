@@ -31,7 +31,8 @@ commands:
   ready-pull-request:
     description: >-
       Stops the job early on a draft pull request and, with bottom-only, on a pull request above the
-      bottom of a stack. Marking a draft ready starts a new pipeline, through the GitHub App pipeline's "PR marked ready for review" trigger.
+      bottom of a stack. Marking a draft ready starts a new pipeline, through the GitHub App
+      pipeline's "PR marked ready for review" trigger.
     parameters:
       bottom-only:
         type: boolean
