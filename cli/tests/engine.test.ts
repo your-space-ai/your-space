@@ -14,7 +14,7 @@ describe("the engine connection", () => {
 
   it("keeps the default socket, writes another one, and refuses a remote engine", () => {
     expect(engineSocket("unix:///var/run/docker.sock", "linux")).toBeNull();
-    expect(engineSocket("unix:///run/docker.sock", "linux")).toBeNull();
+    expect(engineSocket("unix:///run/docker.sock", "linux")).toBe("/run/docker.sock");
     expect(engineSocket("unix:///run/user/1000/docker.sock", "linux")).toBe("/run/user/1000/docker.sock");
     // A Mac's engine runs in a virtual machine, where its own socket is the default.
     expect(engineSocket("unix:///Users/sam/.colima/default/docker.sock", "darwin")).toBeNull();

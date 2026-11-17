@@ -2,7 +2,7 @@
 // folder, with nothing but Docker (spec User Stories 1 to 6; contracts/cli-commands.md). The CLI
 // doesn't use a browser except to sign in, so these run once, in Chromium.
 import { execFileSync } from "node:child_process";
-import { readFileSync, rmSync, symlinkSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { request } from "node:https";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
@@ -154,9 +154,9 @@ test("a taken port is moved only with consent, and configure changes the setup",
 });
 
 test("another Docker context's socket reaches the runtime manager, and a remote engine is refused", async () => {
-  const socket = "/tmp/ys-e2e-docker.sock";
-  rmSync(socket, { force: true });
-  symlinkSync("/var/run/docker.sock", socket);
+  // The engine's own socket under its other name (/var/run is /run on Linux), so the context differs
+  // from the default without a symlink, which an engine with a private /tmp can't follow.
+  const socket = "/run/docker.sock";
   await docker(["context", "rm", "-f", "ys-e2e"]);
   await docker(["context", "create", "ys-e2e", "--docker", `host=unix://${socket}`], false);
   try {
@@ -180,7 +180,6 @@ test("another Docker context's socket reaches the runtime manager, and a remote 
   expect(remote.code).toBe(2);
   expect(remote.json.error).toBe("engine_unsupported");
   writeFileSync(join(cli.folder, ".env"), readFileSync(join(cli.folder, ".env"), "utf8").replace(/^YS_ENGINE_SOCKET=.*\n/m, ""));
-  rmSync(socket, { force: true });
 });
 
 test("a folder installed by hand is managed as it is, and one engine runs one installation", async () => {

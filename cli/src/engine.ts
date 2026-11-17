@@ -14,7 +14,7 @@ export interface Engine {
 /** The installation guide's minimums: Engine 28.3.3 (CVE-2025-54388) and Compose 2.26.0. */
 export const MIN_ENGINE = "28.3.3";
 export const MIN_COMPOSE = "2.26.0";
-const DEFAULT_SOCKETS = ["/var/run/docker.sock", "/run/docker.sock"];
+const DEFAULT_SOCKET = "/var/run/docker.sock";
 
 /** Compares dotted versions, ignoring a leading `v` and anything after a `-` or `+`. */
 export function versionAtLeast(version: string, minimum: string): boolean {
@@ -66,7 +66,7 @@ export function engineSocket(host: string, platform: NodeJS.Platform = process.p
   }
   const path = host.slice("unix://".length);
   // On a Mac the engine runs in a virtual machine, where /var/run/docker.sock is its own socket.
-  if (platform === "darwin" || DEFAULT_SOCKETS.includes(path)) return null;
+  if (platform === "darwin" || path === DEFAULT_SOCKET) return null;
   return path;
 }
 
