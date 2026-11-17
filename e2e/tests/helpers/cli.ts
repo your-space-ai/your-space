@@ -130,3 +130,26 @@ export async function removeInstallation(cli?: Cli): Promise<void> {
   for (const id of (await docker(["volume", "ls", "-q", "--filter", project])).stdout.split("\n").filter(Boolean)) await docker(["volume", "rm", "-f", id]);
 }
 
+/** The GitHub stand-in beside the release's files, so an app can be installed (compose.e2e.yaml). */
+export function githubStandIn(folder: string): string {
+  const file = join(folder, "compose.e2e.yaml");
+  writeFileSync(
+    file,
+    `services:
+  github:
+    image: node:26-slim
+    command: ["node", "/github/server.mjs"]
+    read_only: true
+    volumes:
+      - ${join(root, "e2e/github")}:/github:ro
+  server:
+    environment:
+      YS_E2E_GITHUB_API: http://github:8080
+      YS_E2E_GITHUB_RAW: http://github:8080
+    depends_on:
+      github:
+        condition: service_started
+`,
+  );
+  return "compose.yaml:compose.e2e.yaml";
+}

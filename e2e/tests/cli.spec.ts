@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { cliIn, newFolder, removeInstallation, root, serveRelease, tagImages, type Cli, CLI_VERSION } from "./helpers/cli.ts";
+import { cliIn, githubStandIn, newFolder, removeInstallation, root, serveRelease, tagImages, type Cli, CLI_VERSION } from "./helpers/cli.ts";
 import { evidence } from "./helpers/evidence.ts";
 import { compose as e2eCompose, docker, removeApps } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
@@ -77,8 +77,41 @@ test("init and start install Your Space on this machine, and the owner signs in"
   expect(again.json.error).toBe("already_initialised");
 });
 
+test("status, stop and start keep apps, and logs show Your Space's output", async () => {
+  // The GitHub stand-in, beside the release's files, so an app can be installed.
+  cli.env.COMPOSE_FILE = githubStandIn(cli.folder);
+  ok(await cli.run(["start", "--no-open", "--json"]));
+  const installed = await cli.compose(["exec", "-T", "server", "install-app", WHOAMI, "--json"]);
+  expect(installed.code, installed.stdout + installed.stderr).toBe(0);
+
+  await expect(async () => {
+    const status = ok(await cli.run(["status", "--json"]));
+    expect(status.apps).toEqual([{ name: "whoami", state: "running", address: "http://whoami.space.localhost" }]);
+  }).toPass({ timeout: 120_000 });
+  const human = await cli.run(["status"]);
+  expect(human.stdout).toContain("Your Space is running");
+  expect(human.stdout).toContain("http://whoami.space.localhost");
+
+  const stopped = ok(await cli.run(["stop", "--json"]));
+  expect(stopped.stopped).toEqual(["whoami"]);
+  expect((await docker(["ps", "-q", "--filter", "label=ai.your-space.installation=your-space"])).stdout.trim()).toBe("");
+  const down = ok(await cli.run(["status", "--json"]));
+  expect(down).toMatchObject({ running: false, apps: null });
+  expect(ok(await cli.run(["stop", "--json"])).stopped).toEqual([]);
+
+  const restarted = ok(await cli.run(["start", "--no-open", "--json"]));
+  expect(restarted.link).toBeUndefined();
+  await expect(async () => {
+    expect(ok(await cli.run(["status", "--json"])).apps[0].state).toBe("running");
+  }).toPass({ timeout: 120_000 });
+
+  const logs = await cli.run(["logs", "server", "--tail", "20"]);
+  expect(logs.code).toBe(0);
+  expect(logs.stdout).toContain("server.listening");
+});
+
 test("a taken port is moved only with consent", async () => {
-  expect((await cli.compose(["stop"])).code).toBe(0);
+  ok(await cli.run(["stop", "--json"]));
   // Another container holds port 80, as another program would. CI doesn't run as root, so the test
   // can't listen on port 80 itself; Docker can.
   await docker(["rm", "-f", "ys-e2e-port-80"]);

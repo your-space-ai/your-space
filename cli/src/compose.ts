@@ -62,6 +62,10 @@ export class Compose {
     return parsePs(ran.stdout);
   }
 
+  async running(service: string): Promise<boolean> {
+    return (await this.ps()).some((s) => s.name === service && s.state === "running");
+  }
+
   logs(args: string[]): Promise<Ran> {
     return this.run(["logs", "--no-color", ...args]);
   }
