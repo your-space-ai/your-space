@@ -1,6 +1,7 @@
 // `your-space start`: checks, starts Your Space, creates the owner the first time, and prints the
 // summary (spec, User Stories 1, 2 and 4; contracts/cli-commands.md).
 import { CliError } from "../errors.ts";
+import { givePostgresPassword, newSecrets } from "../secrets.ts";
 import { expectOk, serverCommand, showOwner } from "../server.ts";
 import { openLink } from "../browser.ts";
 import type { Link } from "../summary.ts";
@@ -12,6 +13,7 @@ export interface StartFlags {
   ownerUsername?: string;
   ownerEmail?: string;
   open: boolean;
+  newSecrets?: boolean;
 }
 
 export async function start(ui: Ui, workdir: string, flags: StartFlags): Promise<void> {
@@ -19,6 +21,12 @@ export async function start(ui: Ui, workdir: string, flags: StartFlags): Promise
   const { installation, compose, engine } = await open(ui, workdir);
   await checkPorts(ui, installation, compose, installation.setup());
 
+  if (flags.newSecrets) {
+    await ui.step("Making new secrets", "New secrets made, and PostgreSQL given the new password", async () => {
+      await newSecrets(compose, ["auth-secret", "database-password"]);
+      await givePostgresPassword(compose);
+    });
+  }
   await startStack(ui, compose);
 
   let link: Link | undefined;

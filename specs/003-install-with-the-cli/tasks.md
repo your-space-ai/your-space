@@ -28,9 +28,9 @@ it merges.
 
 ## Slice 3: Recover the owner and manage secrets
 
-- [ ] T014 `owner create`, `owner reset-link`
-- [ ] T015 `secrets show`, `secrets replace`, `start --new-secrets`
-- [ ] T016 Browser test: reset link, replace both secrets, lost secrets
+- [x] T014 `owner create`, `owner reset-link`
+- [x] T015 `secrets show`, `secrets replace`, `start --new-secrets`
+- [x] T016 Browser test: reset link, replace both secrets, lost secrets
 
 ## Slice 4: Your own domain
 
