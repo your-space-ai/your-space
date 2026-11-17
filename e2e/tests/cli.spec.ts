@@ -2,7 +2,6 @@
 // folder, with nothing but Docker (spec User Stories 1 to 6; contracts/cli-commands.md). The CLI
 // doesn't use a browser except to sign in, so these run once, in Chromium.
 import { execFileSync } from "node:child_process";
-import { createServer as tcpServer } from "node:net";
 import { readFileSync, rmSync, symlinkSync, existsSync, writeFileSync } from "node:fs";
 import { request } from "node:https";
 import { join } from "node:path";
@@ -115,17 +114,22 @@ test("status, stop and start keep apps, and logs show Your Space's output", asyn
 
 test("a taken port is moved only with consent, and configure changes the setup", async () => {
   ok(await cli.run(["stop", "--json"]));
-  const blocker = tcpServer().listen(80, "127.0.0.1");
-  await new Promise((r) => blocker.once("listening", r));
+  // Another container holds port 80, as another program would. CI doesn't run as root, so the test
+  // can't listen on port 80 itself; Docker can.
+  await docker(["rm", "-f", "ys-e2e-port-80"]);
+  await docker(
+    ["run", "-d", "--name", "ys-e2e-port-80", "-p", "127.0.0.1:80:8080", "node:26-slim", "node", "-e", "require('net').createServer((s) => s.end()).listen(8080)"],
+    false,
+  );
   try {
     const taken = await cli.run(["start", "--no-open", "--json"]);
     expect(taken.code).toBe(2);
-    expect(taken.json).toMatchObject({ error: "port_in_use", port: 80 });
+    expect(taken.json).toMatchObject({ error: "port_in_use", port: 80, by: "the container ys-e2e-port-80" });
     const moved = ok(await cli.run(["start", "--no-open", "--yes", "--json"]));
     expect(moved.setup).toEqual({ kind: "this-machine", address: "http://space.localhost:8081", port: 8081 });
     expect(readFileSync(join(cli.folder, ".env"), "utf8")).toMatch(/^YS_PORT=8081$/m);
   } finally {
-    await new Promise((r) => blocker.close(r));
+    await docker(["rm", "-f", "ys-e2e-port-80"]);
   }
 
   const proxied = ok(await cli.run(["configure", "--proxy-url", "https://box.example.com", "--json"]));
