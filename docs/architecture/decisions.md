@@ -105,7 +105,7 @@ The research and alternatives are summarized in
 **Decision update (2026-11-14):** Your Space needs a Docker-compatible engine, not Docker Desktop.
 On Linux servers the host's Docker Engine is the default. On macOS, and later Windows, Your Space
 provides its own virtual machine with Docker Engine by default, and an engine the owner already runs
-is an advanced option. How Your Space provides the engine is settled in journey 003 or 008. Docker
+is an advanced option. How Your Space provides the engine is settled in journey 003 or 008 (settled on 2026-11-17: journey 008, with the desktop app). Docker
 Engine and Compose are open source (Apache-2.0); Docker Desktop is a separately licensed app, free
 only for personal use, education, non-commercial open source and small businesses, and open-source
 tools such as Colima and Lima run the same engine in a VM on macOS. This supersedes the statements
@@ -149,6 +149,38 @@ Guided installation remains the product direction. The initial guide and browser
 **Decision update (2026-11-02):** The app UI and sign-in specification (now part of journey 002 "install an app and use it"; see [journey-based specifications](#journey-based-specifications)) comes between the owner-access feature (spec 001) and the CLI specification. It decides app origins and routing, which set the DNS, certificates, and proxy configuration the CLI installs, and clients, apps, SDKs, and agent access all build on it. Settling it before the CLI avoids reworking the CLI's HTTPS setup. The resulting order is spec 001, then the app UI and sign-in specification, then the CLI specification, then the remaining pre-public items.
 
 **Decision update (2026-11-02):** The CLI provides an uninstall command before publication instead of documented manual removal. Apps run in containers Your Space starts outside the main Compose file, so `docker compose down` alone would leave app containers and data behind; only Your Space knows what it started.
+
+**Decision update (2026-11-17):** Journey 003 specifies the CLI
+([spec 003](../../specs/003-install-with-the-cli/spec.md)). At the owner's request it follows the
+Supabase CLI's shape: the `your-space` command comes from package managers (an npm package, `.deb`
+and `.rpm` packages built with the distributions' own tools, and standalone executables built with
+Node's own single-executable feature), works on the installation in the current folder, and
+installs with `init` then `start`, which prints a summary of what is running. It writes the same
+release files and `.env` lines as the manual install and runs the same Compose and server commands,
+so a space can be managed either way, and it keeps no state of its own. It is written in TypeScript
+with Commander and Clack. The name is `your-space` with no short alias, since `ys` is YAMLScript's
+command. This replaces "install" in the minimum operations above with `init` and `start`.
+
+**Decision update (2026-11-17):** People sign in only through the client (web, then desktop). The
+CLI runs the installation on its own machine, through the engine and the server's operator commands,
+never the HTTP API, with the authority of access to that machine, as `create-owner` and `reset-link`
+already have. Agents (journey 005) will use the CLI with a credential a person issued in the client;
+identity never comes from the CLI, which stores no credential and has no sign-in. How a credential
+reaches an agent is left to journey 005, which must keep it manageable for people who aren't
+technical. The desktop app drives the CLI only for a space on the same computer; managing one on
+another machine is possible later but not planned. This replaces "remote CLI authentication" for
+backup and restore: journey 006 chooses between the client and an issued credential.
+
+**Decision update (2026-11-17):** Your Space contains no code for a particular proxy or tunnel. It
+knows its own address and, behind a proxy or tunnel, the names to forward, which `your-space status`
+lists. Tailscale's names can't hold a name under a machine's name, so apps can't get their
+`<app>.<Your Space's address>` names over Tailscale; that stays unsupported until the release gate's
+hosting review settles a way.
+
+**Decision update (2026-11-17):** Functionality is built and tested on Linux first, in every
+journey. Packaging and checks for macOS and Windows (macOS executables, a Homebrew formula with its
+`your-space-ai/homebrew-tap` repository, checks on a real Mac, and Windows) are gathered into one
+pass before release, after the journeys, so they aren't repeated after each one.
 
 ### Server and Database
 
@@ -870,9 +902,9 @@ app roles. The [spec map](../spec-map.md) and [roadmap](../roadmap.md) follow it
 | Database configuration | PostgreSQL 18 with Drizzle and `pg`; Drizzle Kit migrations applied at server startup. Settled in the [001 plan](../../specs/001-workspace-owner-access/plan.md). Recovery from a failed migration belongs with update rollback in spec 006. |
 | Authentication configuration | Better Auth with its organization plugin; password rules, lifetimes, attempt limits, and adapter configuration are settled in the [001 plan](../../specs/001-workspace-owner-access/plan.md). |
 | Initial deployment details | macOS and Linux with manual Docker Compose are selected. HTTPS comes from a Caddy reverse proxy in the Compose stack, delivered in the owner-access feature, with automatic certificates for an owner-provided domain, a bring-your-own-proxy option, and documented tunnel guidance; plain HTTP is supported only on this machine, at `space.localhost` since 2026-11-14. Host versions (Docker Engine 28.3.3 and Compose 2.26.0 or newer), the one-line setups, and generated platform secrets are settled in the [001 plan](../../specs/001-workspace-owner-access/plan.md); support claims wait for verification on real hosts. |
-| Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers providing the engine (Your Space's own VM by default, since 2026-11-14; how is settled in journey 003 or 008), stack setup and startup, owner setup with the app running the owner command and setting the password for the user, and owner-triggered Your Space updates, backup, restore, and uninstall, all through the CLI; moving to a server is a backup and restore the person does (2026-11-14). Windows support is low priority. Releases are signed before publication: Apple Developer ID with notarization on macOS, SignPath's open-source program on Windows with Microsoft Artifact Signing as the fallback, all in CI. Self-update is required; packaging and self-update mechanics need a specification. |
-| CLI delivery | The CLI drives Docker Compose for local and server installations, runs on macOS, Windows, and Linux, and is driven by the desktop app in local mode. Its minimum operations are install, start, stop, status, logs, update Your Space, owner password recovery, backup, restore, and uninstall; uninstall removes managed app containers and keeps data unless the owner confirms deletion. A separate follow-up specification will define packaging, command names, prerequisite automation, and management behavior over the established Compose deployment. |
-| Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup and restore are required before publication, and moving between installations is a backup and restore the person does (2026-11-14); remote CLI authentication, restore into a broken or fresh installation, and backup format and protection remain open. |
+| Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers providing the engine (Your Space's own VM by default, since 2026-11-14; settled into journey 008 on 2026-11-17), stack setup and startup, owner setup with the app running the owner command and setting the password for the user, and owner-triggered Your Space updates, backup, restore, and uninstall, all through the CLI; moving to a server is a backup and restore the person does (2026-11-14). Windows support is low priority. Releases are signed before publication: Apple Developer ID with notarization on macOS, SignPath's open-source program on Windows with Microsoft Artifact Signing as the fallback, all in CI. Self-update is required; packaging and self-update mechanics need a specification. |
+| CLI delivery | Specified in [spec 003](../../specs/003-install-with-the-cli/spec.md) (2026-11-17): the `your-space` command, `init` then `start` in a folder, from npm, Linux packages and standalone executables; Linux first, macOS in the pass before release, Windows with journey 008. Update, backup, restore and uninstall come with journey 006; uninstall removes managed app containers and keeps data unless the owner confirms deletion. Agent commands come with journey 005. |
+| Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup and restore are required before publication, and moving between installations is a backup and restore the person does (2026-11-14); whether a remote backup goes through the client or a credential issued there (2026-11-17), restore into a broken or fresh installation, and backup format and protection remain open. |
 | Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
 | Public launch scope | A working core experience before publication is the direction. The pre-public scope was settled in the 2026-11-02 interview, and every pre-public roadmap item has a High, Medium, or Low priority; Windows support and PWA installation are Low. Detailed release criteria remain to be defined. See [public release readiness](../public-release-readiness.md). |
@@ -887,7 +919,7 @@ app roles. The [spec map](../spec-map.md) and [roadmap](../roadmap.md) follow it
 | App identity protocol | Apps keep their own sign-in in journey 002 (level 0). Level 1 is OpenID Connect with Your Space as the provider, likely through Better Auth's OAuth provider plugin; the protocol for level 2 and where each level lands are settled with journeys 004, 005 and 007. |
 | App integration | TypeScript and Python SDKs are selected for the first release, for apps that opt into level 2; other languages are post-open-source. Neither is part of journey 002 (2026-11-14). Role registration, authorization compatibility, and revocation mechanics need a later specification. |
 | App deployment file | The app's own Compose file, with an optional installation kit from a separate repository, replaces a Your Space-specific file with an `x-your-space` section (2026-11-14). The owner installs by pasting the file's GitHub URL. The approved settings list and the kit format are set in the [002 plan](../../specs/002-install-an-app/plan.md) and its contracts. Source builds and alternative formats are post-open-source. |
-| App runtime and data | Designed in the [002 plan](../../specs/002-install-an-app/plan.md) (2026-11-14): a runtime manager with no network alone holds the engine socket; each app is a Compose project on a sealed network with its own egress proxy and named volumes; removal keeps data until the owner deletes it. Verification is journey 002's delivery. Engines on other machines, apps someone already runs, and server hardening (Sysbox, rootless Docker) are later work. |
+| App runtime and data | Designed in the [002 plan](../../specs/002-install-an-app/plan.md) (2026-11-14): a runtime manager with no network alone holds the engine socket; each app is a Compose project on a sealed network with its own egress proxy and named volumes; removal keeps data until the owner deletes it. Verification is journey 002's delivery. Engines on other machines, apps someone already runs, and server hardening (Sysbox, rootless Docker) are later work. Found in journey 003 (2026-11-17): apps' settings are encrypted with a key derived from the auth secret, so replacing that secret, or starting with new secrets after losing them, leaves installed apps' settings unreadable until they are reinstalled; a key of their own is open. |
 | App distribution | Installation from the app's own Compose file's GitHub URL, exact commit recording (with the kit's commit), and images pinned by digest are accepted for initial installation. Owner-triggered updates are pre-public; automatic updates are post-public. Failed updates roll back automatically to the previous image versions and pre-update data backup. Image identity validation and retention, artifact trust, catalog implementation, update selection and mechanics, and failed-update detection remain open. |
 
 These open choices do not erase the accepted requirements above.

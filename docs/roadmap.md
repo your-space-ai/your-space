@@ -23,9 +23,12 @@ full pre-public scope by layer, and the [architecture overview](architecture/ove
 resulting system. Automatic app updates, building apps from source, alternative deployment-file
 formats, and a workspace MCP endpoint are post-open-source work.
 
-**Next step:** Deliver [spec 002](../specs/002-install-an-app/spec.md), "install an app and use
-it", as a stack of pull requests, one per slice; nothing in it is delivered yet. Journey 001's
-remaining tasks (T052, T055, and T056) close after the first release. Every pre-public item below has a priority; Low items
+**Next step:** Deliver [spec 003](../specs/003-install-with-the-cli/spec.md), "install and run
+with the CLI", as a stack of pull requests, one per slice. Journey 002 was delivered on 2026-11-17
+(your-space-ai/your-space#24 to your-space-ai/your-space#30), except installing Sure from the real
+GitHub (its task T034) and Safari on macOS (T022). Journey 001's remaining tasks (T052, T055, and
+T056) close after the first release; macOS and Windows checks are gathered into one pass before
+release (spec 003, Change 6). Every pre-public item below has a priority; Low items
 move to post-open-source work first if the timeline slips.
 
 The pre-public section is grouped into layers. Within each layer, each parent checkbox represents a
@@ -79,10 +82,11 @@ Your Space: first public release
 │   │   └── [001] Bring your own proxy or tunnel (M)
 │   ├── CLI (drives Compose for you)
 │   │   ├── [003] Guided local and server install
-│   │   ├── [003 006] install · start · stop · status · logs · update · owner recovery
+│   │   ├── [003 006] init · start · stop · status · logs · update · owner recovery
 │   │   ├── [006] Automatic rollback of failed Your Space updates (M)
 │   │   ├── [006] Uninstall: removes app containers, keeps data by default (M)
-│   │   └── [003] macOS + Linux · Windows (L)
+│   │   ├── [003] Linux · macOS (in the macOS and Windows pass)
+│   │   └── [008] Windows (L)
 │   └── Backup, restore, and migration
 │       ├── [006] Backup and restore, produced by the server, driven by the CLI
 │       └── [006] Backup and restore easy to script, for people and their agents (M)
@@ -213,14 +217,23 @@ Your Space: first public release
 
   - [ ] [High] Guide local and server installation through the Your Space CLI, which drives Docker Compose so users don't run Compose themselves.
   - [ ] [High] Provide at least install, start, stop, status, logs, update Your Space, and owner password recovery, plus the backup, restore, and uninstall commands covered by their own items.
+
+    **Reworded (2026-11-17):** installing is `init` then `start` (spec 003, Change 1); update stays with journey 006.
   - [ ] [Medium] Before updating Your Space, record versions and snapshot its data; if the update fails, roll back automatically.
   - [ ] [Medium] Uninstall Your Space and every app container it manages; keep data by default, and require explicit confirmation and offer a backup before deleting it.
   - [ ] [High] Run the CLI on macOS and Linux so the desktop app can drive it for local workspaces.
+
+    **Changed (2026-11-17):** Linux in spec 003; macOS's executables, Homebrew formula and checks on a real Mac come in the macOS and Windows pass before release ([spec 003](../specs/003-install-with-the-cli/spec.md#changes-to-shared-direction), Change 6). macOS runs the npm package until then.
   - [ ] [Low] Run the CLI on Windows so the desktop app can drive it for local workspaces there.
 
-  The CLI (spec 003) follows the owner-access feature and spec 002. Command names,
-  packaging, prerequisites, and the rest of the management scope remain to be specified. The update
-  rollback uses the same snapshot mechanism as app updates, and backup and restore build on it.
+    **Moved (2026-11-17):** to journey 008, with the local workspace; Windows is not a server host.
+
+  The CLI is specified in [spec 003](../specs/003-install-with-the-cli/spec.md) (2026-11-17): the
+  `your-space` command, shaped like the Supabase CLI (`init` then `start` in a folder, with a
+  summary), from npm, Linux packages and standalone executables. It runs the installation on its
+  own machine with the authority of access to it; people sign in only through the client. Update,
+  backup, restore and uninstall come with journey 006. The update rollback uses the same snapshot
+  mechanism as app updates, and backup and restore build on it.
 
 - [ ] **Backup, restore, and migration**
 
@@ -326,21 +339,21 @@ Your Space: first public release
   kits, replacing a Your Space-specific deployment file with an `x-your-space` section; see
   [app deployment](architecture/decisions.md#accepted-future-app-deployment-direction).
 
-  - [ ] [High] Let the owner install an app by pasting the GitHub link to its own Compose file in a public repository into the UI.
+  - [x] [High] Let the owner install an app by pasting the GitHub link to its own Compose file in a public repository into the UI. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
 
     **Replaced (2026-11-14):** "…the GitHub URL of its deployment file…".
-  - [ ] [High] Read the file at the exact commit the link resolves to and record it, with the commit of any installation kit applied; updates re-read the file from the same link.
-  - [ ] [High] Pin every image, including database services, to an exact version by digest, and validate and retain the installed image identity.
+  - [x] [High] Read the file at the exact commit the link resolves to and record it, with the commit of any installation kit applied; updates re-read the file from the same link. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
+  - [x] [High] Pin every image, including database services, to an exact version by digest, and validate and retain the installed image identity. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
 
     **Replaced (2026-11-14):** "…using the exact image and version declared in the app's integration files…". Apps' own files often name moving tags.
-  - [ ] [High] Check the app's fully resolved Compose file against an allowlist of settings; adapt it only by rules that hold for every app, reporting each change, and refuse anything else with reasons, including settings that would break app isolation.
-  - [ ] [High] Apply an installation kit, kept in a separate repository, for what a particular app needs (its interface, generated values, starter hosts, limits), with no app-specific logic in Your Space; an app without a kit installs if its own files are enough.
+  - [x] [High] Check the app's fully resolved Compose file against an allowlist of settings; adapt it only by rules that hold for every app, reporting each change, and refuse anything else with reasons, including settings that would break app isolation. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
+  - [x] [High] Apply an installation kit, kept in a separate repository, for what a particular app needs (its interface, generated values, starter hosts, limits), with no app-specific logic in Your Space; an app without a kit installs if its own files are enough. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
 
     **Replaced (2026-11-14):** "Read the app's name and requested access from the `x-your-space` section of its Compose file."
-  - [ ] [High] Let the owner provide app settings and secrets at installation and change them later; generate secrets instead of using published defaults, keep them out of output and logs, and store them encrypted in Your Space's database.
+  - [x] [High] Let the owner provide app settings and secrets at installation and change them later; generate secrets instead of using published defaults, keep them out of output and logs, and store them encrypted in Your Space's database. (2026-11-17, [PR #28](https://github.com/your-space-ai/your-space/pull/28))
 
     **Replaced (2026-11-14):** "…stored and supplied by a component in the Your Space Compose stack."
-  - [ ] [High] Install an app if its images run on the engine's processor type (ARM or Intel/AMD); fail installation with a clear message if no image matches.
+  - [x] [High] Install an app if its images run on the engine's processor type (ARM or Intel/AMD); fail installation with a clear message if no image matches. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
 
     **Replaced (2026-11-14):** "Require app images for both ARM and Intel/AMD machines…". See [app deployment](architecture/decisions.md#accepted-future-app-deployment-direction).
   - [ ] [High] Install [Sure](https://github.com/we-promise/sure), an existing open-source app, unchanged from its own Compose file as the first app, with [Twenty](https://github.com/twentyhq/twenty) beside it as the second, and verify the complete installation and usage journey.
@@ -349,8 +362,8 @@ Your Space: first public release
   - [ ] [Medium] Let the owner add an app someone already runs elsewhere through a connector that runs next to it and connects out to Your Space, instead of deploying it.
 
     **Replaced (2026-11-14):** "…by pointing Your Space at its running instance…". See [platform and independent apps](architecture/decisions.md#platform-and-independent-apps).
-  - [ ] [High] Restrict app installation and removal to the owner for the first public release.
-  - [ ] [High] Warn the owner when installing an app that it is trusted with its own data, and state in the documentation that Your Space protects itself and other apps but is not a sandbox for hostile code.
+  - [x] [High] Restrict app installation and removal to the owner for the first public release. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
+  - [x] [High] Warn the owner when installing an app that it is trusted with its own data, and state in the documentation that Your Space protects itself and other apps but is not a sandbox for hostile code. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
 
   Published images are the only first-release installation path; Your Space does not build app source
   during installation. Spec 002 and its plan define the allowlist, the kit format, and settings and
@@ -362,21 +375,21 @@ Your Space: first public release
 
   **Source:** [Responsibility and trust boundary](architecture/decisions.md#responsibility-and-trust-boundary).
 
-  - [ ] [High] Run each app's containers through a runtime manager, the only part of Your Space that holds the engine connection, on any Docker-compatible engine shared with Your Space; apps keep running through Your Space restarts and updates, and come back when it starts.
+  - [x] [High] Run each app's containers through a runtime manager, the only part of Your Space that holds the engine connection, on any Docker-compatible engine shared with Your Space; apps keep running through Your Space restarts and updates, and come back when it starts. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
 
     **Reworded (2026-11-14):** was "…using Docker on the same server as Your Space."
-  - [ ] [High] Run an app-declared database service alongside the app when needed.
+  - [x] [High] Run an app-declared database service alongside the app when needed. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
 
     **Raised to High (2026-11-02):** the Tasks app in spec 002 needs a database; see [journey-based specifications](architecture/decisions.md#journey-based-specifications). Sure, which replaced Tasks on 2026-11-14, needs one too.
-  - [ ] [High] Provide app-specific durable storage that survives restarts and remains after uninstall.
-  - [ ] [Medium] Let the owner explicitly delete retained app data from the administration UI.
-  - [ ] [High] Isolate apps from host filesystem access, devices, and Docker controls, and protect platform services and other apps: each app on its own sealed network with its own volumes.
-  - [ ] [High] Let apps reach only approved internet hosts: the installation kit's starter hosts, approved with the install, and hosts the owner approves when an app's attempt shows up as an access request.
+  - [x] [High] Provide app-specific durable storage that survives restarts and remains after uninstall. (2026-11-17, [PR #30](https://github.com/your-space-ai/your-space/pull/30))
+  - [x] [Medium] Let the owner explicitly delete retained app data from the administration UI. (2026-11-17, [PR #30](https://github.com/your-space-ai/your-space/pull/30))
+  - [x] [High] Isolate apps from host filesystem access, devices, and Docker controls, and protect platform services and other apps: each app on its own sealed network with its own volumes. (2026-11-17, [PR #29](https://github.com/your-space-ai/your-space/pull/29))
+  - [x] [High] Let apps reach only approved internet hosts: the installation kit's starter hosts, approved with the install, and hosts the owner approves when an app's attempt shows up as an access request. (2026-11-17, [PR #28](https://github.com/your-space-ai/your-space/pull/28))
 
     **Replaced (2026-11-14):** "…each app declares the access it needs in its `x-your-space` section, and the owner approves it at installation." See [app deployment](architecture/decisions.md#accepted-future-app-deployment-direction).
-  - [ ] [Medium] Run each managed app with memory and CPU limits so one app cannot take down the host.
-  - [ ] [Medium] Show the owner each app's status and logs.
-  - [ ] [Medium] Show the owner an Engine page with the engine connection, its version, and the space's resources and each app's use.
+  - [x] [Medium] Run each managed app with memory and CPU limits so one app cannot take down the host. (2026-11-17, [PR #29](https://github.com/your-space-ai/your-space/pull/29))
+  - [x] [Medium] Show the owner each app's status and logs. (2026-11-17, [PR #29](https://github.com/your-space-ai/your-space/pull/29))
+  - [x] [Medium] Show the owner an Engine page with the engine connection, its version, and the space's resources and each app's use. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
 
     **Added (2026-11-14)** with spec 002.
 
@@ -398,19 +411,19 @@ Your Space: first public release
 
   **Source:** [UI integration](architecture/decisions.md#ui-integration).
 
-  - [ ] [High] Open installed apps within the Your Space interface while platform navigation remains available.
-  - [ ] [High] Preserve normal frontend requests to the app backend without requiring each request to be rewritten for Your Space.
+  - [x] [High] Open installed apps within the Your Space interface while platform navigation remains available. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
+  - [x] [High] Preserve normal frontend requests to the app backend without requiring each request to be rewritten for Your Space. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
   - [ ] [High] Apply equivalent backend authorization checks to human UI and programmatic access.
 
     **Moved (2026-11-14):** to journey 005. Programmatic access to apps comes with agents and level 2 integration; journey 002's apps keep their own sign-in.
-  - [ ] [High] Run each app's interface on its own origin, isolated from Your Space and other apps, at `<app>.<Your Space's address>` in every setup (`space.localhost` on this machine), in a cross-origin iframe in the web client.
+  - [x] [High] Run each app's interface on its own origin, isolated from Your Space and other apps, at `<app>.<Your Space's address>` in every setup (`space.localhost` on this machine), in a cross-origin iframe in the web client. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
 
     **Reworded (2026-11-14):** the port-per-app fallback is dropped; see [UI integration](architecture/decisions.md#ui-integration).
-  - [ ] [High] Let only people signed in to Your Space reach an app's origin, through an access gate at the built-in proxy; Your Space's cookies never reach apps, and apps' cookies never reach Your Space or each other.
+  - [x] [High] Let only people signed in to Your Space reach an app's origin, through an access gate at the built-in proxy; Your Space's cookies never reach apps, and apps' cookies never reach Your Space or each other. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
 
     **Added (2026-11-14)** with spec 002.
-  - [ ] [Medium] Open several apps side by side in one layout on larger screens; show one app at a time on phones.
-  - [ ] [Medium] Open any app in its own browser tab or window when it cannot run in a pane.
+  - [x] [Medium] Open several apps side by side in one layout on larger screens; show one app at a time on phones. (2026-11-17, [PR #30](https://github.com/your-space-ai/your-space/pull/30))
+  - [x] [Medium] Open any app in its own browser tab or window when it cannot run in a pane. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
 
   Spec 002 decides framing (the proxy replaces an app's framing headers), sign-in inside a pane (the
   app's own), and routing. On the plain-HTTP local setup, WebKit can't keep an app's cookies in a
@@ -486,7 +499,7 @@ Your Space: first public release
   - [ ] [High] In local mode, drive the Your Space CLI to set up and run the Docker Compose stack on the same machine, then connect to it.
   - [ ] [High] Provide a Docker-compatible engine: Your Space's own virtual machine by default on macOS (and later Windows), or an engine the owner already runs as an advanced option.
 
-    **Replaced (2026-11-14):** "Detect Docker and link to the Docker Desktop download when it is missing." Journey 003 or 008 settles how Your Space provides the engine.
+    **Replaced (2026-11-14):** "Detect Docker and link to the Docker Desktop download when it is missing." Settled 2026-11-17: Your Space's own engine comes with the desktop app in journey 008; until then the CLI uses an engine the person runs ([spec 003](../specs/003-install-with-the-cli/spec.md#changes-to-shared-direction), Change 4).
   - [ ] [High] In local mode, create the owner through the CLI and set the password on the user's behalf, using the same owner command as every other installation.
   - [ ] [High] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
   - [ ] [Medium] Back up and restore the local workspace through the CLI.

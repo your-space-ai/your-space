@@ -17,11 +17,11 @@ work from the roadmap.
 └──────────────────────────────────────────────────────────────────────────────┘
                  │ humans                                    │ agents
 ┌────────────────▼────────────────────────────┐ ┌────────────▼─────────────────┐
-│ 2. CLIENTS                                  │ │ YOUR SPACE CLI               │
-│  Desktop (Electron, primary) · Web          │ │  operators: install, update, │
-│  PWA (L)                                    │ │  backup, uninstall, ...      │
-│  Apps in panes: native views (desktop),     │ │  agents: use app actions     │
-│  cross-origin iframes (web, PWA)            │ │  (later: MCP endpoint)       │
+│ 2. CLIENTS                                  │ │ YOUR SPACE CLI (your-space)  │
+│  Desktop (Electron, primary) · Web          │ │  operators, on the server's  │
+│  PWA (L)                                    │ │  machine: init, start, stop, │
+│  Apps in panes: native views (desktop),     │ │  status, ... (via Compose)   │
+│  cross-origin iframes (web, PWA)            │ │  agents: use app actions     │
 │  Desktop local mode drives the CLI          │ │                              │
 │  Simple by default; advanced controls       │ │                              │
 │  Version check against the server           │ │                              │
@@ -98,8 +98,12 @@ work from the roadmap.
 2. **Clients.** The Electron desktop app, the web client, and the installable PWA give people the
    same workspace; the desktop app is the intended primary client. Installed apps open in panes,
    several side by side on larger screens: native views in the desktop app, cross-origin iframes on
-   the web. See [UI integration](decisions.md#ui-integration). The desktop app's local mode drives
-   the CLI. The CLI serves both operators and agents.
+   the web. See [UI integration](decisions.md#ui-integration). People sign in only through these
+   clients. The `your-space` CLI runs the installation on the server's own machine, through Docker
+   Compose and the server's operator commands rather than the API, with the authority of access to
+   that machine; the desktop app's local mode drives it. Agents (journey 005) will use the CLI with
+   a credential a person issued in the client, through the edge like any client. See
+   [spec 003](../../specs/003-install-with-the-cli/spec.md#client-and-cli).
    See [first public-release audience and clients](decisions.md#first-public-release-audience-and-clients),
    [CLI delivery sequence](decisions.md#cli-delivery-sequence), and
    [product experience principles](decisions.md#product-experience-principles).
