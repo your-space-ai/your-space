@@ -153,6 +153,60 @@ test("a taken port is moved only with consent, and configure changes the setup",
   expect(readFileSync(join(cli.folder, ".env"), "utf8")).not.toMatch(/^YS_(PORT|PROXY_URL)=/m);
 });
 
+test("another Docker context's socket reaches the runtime manager, and a remote engine is refused", async () => {
+  // The engine's own socket under its other name (/var/run is /run on Linux), so the context differs
+  // from the default without a symlink, which an engine with a private /tmp can't follow.
+  const socket = "/run/docker.sock";
+  await docker(["context", "rm", "-f", "ys-e2e"]);
+  await docker(["context", "create", "ys-e2e", "--docker", `host=unix://${socket}`], false);
+  try {
+    const run = await cli.run(["start", "--no-open", "--json"], { env: { DOCKER_CONTEXT: "ys-e2e" } });
+    if (run.code !== 0) {
+      // What the stack looked like, for the report.
+      const ps = await cli.compose(["ps", "--all"]);
+      const runtime = await cli.compose(["logs", "--tail", "40", "runtime", "server"]);
+      console.log(`${JSON.stringify(run.json)}\n${ps.stdout}${ps.stderr}\n${runtime.stdout}${runtime.stderr}`);
+    }
+    const started = ok(run);
+    expect(started.engine.endpoint).toBe(`unix://${socket}`);
+    expect(readFileSync(join(cli.folder, ".env"), "utf8")).toMatch(new RegExp(`^YS_ENGINE_SOCKET=${socket}$`, "m"));
+    await expect(async () => {
+      expect(ok(await cli.run(["status", "--json"], { env: { DOCKER_CONTEXT: "ys-e2e" } })).apps[0].state).toBe("running");
+    }).toPass({ timeout: 120_000 });
+  } finally {
+    await docker(["context", "rm", "-f", "ys-e2e"]);
+  }
+  const remote = await cli.run(["status", "--json"], { env: { DOCKER_HOST: "tcp://10.255.255.1:2375" } });
+  expect(remote.code).toBe(2);
+  expect(remote.json.error).toBe("engine_unsupported");
+  writeFileSync(join(cli.folder, ".env"), readFileSync(join(cli.folder, ".env"), "utf8").replace(/^YS_ENGINE_SOCKET=.*\n/m, ""));
+});
+
+test("a folder installed by hand is managed as it is, and one engine runs one installation", async () => {
+  // The guide's manual steps: unpack the release, copy env.example to .env.
+  const manual = newFolder("manual");
+  const tarball = await fetch(`${release.url}/v${CLI_VERSION}/your-space.tar.gz`);
+  writeFileSync(join(manual, "your-space.tar.gz"), Buffer.from(await tarball.arrayBuffer()));
+  const hand = cliIn(manual, {});
+  execFileSync("tar", ["-xzf", "your-space.tar.gz"], { cwd: manual });
+  rmSync(join(manual, "your-space.tar.gz"));
+  writeFileSync(join(manual, ".env"), readFileSync(join(manual, "env.example"), "utf8"));
+
+  // While the CLI's installation runs, the same engine refuses a second one.
+  const second = await hand.run(["start", "--no-open", "--json"]);
+  expect(second.code).toBe(2);
+  expect(second.json).toMatchObject({ error: "another_installation", folder: cli.folder });
+
+  // The project and its volumes are named your-space in both, so the manual folder picks up the data.
+  await cli.compose(["down"]);
+  const adopted = ok(await hand.run(["start", "--no-open", "--json"]));
+  expect(adopted).toMatchObject({ running: true, folder: manual, owner: { username: "sam" } });
+  ok(await hand.run(["stop", "--json"]));
+  await hand.compose(["down"]);
+  rmSync(manual, { recursive: true, force: true });
+  ok(await cli.run(["start", "--no-open", "--json"]));
+});
+
 test("owner recovery and secrets go through the server's own commands", async () => {
   const link = ok(await cli.run(["owner", "reset-link", "--json"]));
   expect(link).toMatchObject({ username: "sam", url: expect.stringContaining("/reset-password#token=") });
