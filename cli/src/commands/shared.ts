@@ -138,7 +138,25 @@ export async function whyNotStarted(compose: Compose, output: string): Promise<C
     }
     return new CliError("start_failed", `The secrets step failed: ${log.split("\n").at(-1)}`, { service: "secrets" }, log);
   }
+  // A service that didn't start at all, such as the runtime manager when the engine's socket can't be
+  // mounted: Compose's own message says why, and the server waits for it.
+  const errorLine = output.split("\n").reverse().find((line) => /error/i.test(line))?.trim();
+  for (const name of ["postgres", "runtime"]) {
+    const service = services.find((s) => s.name === name);
+    if (service && service.state !== "running") {
+      const log = (await compose.logs(["--no-log-prefix", "--tail", "40", name])).stdout;
+      return new CliError(
+        "start_failed",
+        `The ${name === "runtime" ? "runtime manager" : "database"} didn't start${errorLine ? `: ${errorLine}` : "."} See its log with: your-space logs ${name}`,
+        { service: name },
+        `${output}\n${log}`,
+      );
+    }
+  }
   const server = services.find((s) => s.name === "server");
+  if (server && server.state !== "running") {
+    return new CliError("start_failed", `The server didn't start${errorLine ? `: ${errorLine}` : "."}`, { service: "server" }, output);
+  }
   if (server && server.health !== "healthy") {
     const log = (await compose.logs(["--no-log-prefix", "--tail", "60", "server"])).stdout;
     const config = /Invalid configuration:\n((?:\s+- .*\n?)+)/.exec(log)?.[1];
@@ -153,7 +171,7 @@ export async function whyNotStarted(compose: Compose, output: string): Promise<C
         log,
       );
     }
-    return new CliError("start_failed", "The server didn't become healthy. See its log with: your-space logs server", { service: "server" }, log);
+    return new CliError("start_failed", "The server didn't become healthy. See its log with: your-space logs server", { service: "server" }, `${output}\n${log}`);
   }
   if (/address already in use|port is already allocated/i.test(output)) {
     return new CliError("port_in_use", "A port Your Space needs is already in use. Free it, or choose another with: your-space configure --port <n>", {}, output);

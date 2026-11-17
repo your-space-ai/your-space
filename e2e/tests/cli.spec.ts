@@ -160,7 +160,14 @@ test("another Docker context's socket reaches the runtime manager, and a remote 
   await docker(["context", "rm", "-f", "ys-e2e"]);
   await docker(["context", "create", "ys-e2e", "--docker", `host=unix://${socket}`], false);
   try {
-    const started = ok(await cli.run(["start", "--no-open", "--json"], { env: { DOCKER_CONTEXT: "ys-e2e" } }));
+    const run = await cli.run(["start", "--no-open", "--json"], { env: { DOCKER_CONTEXT: "ys-e2e" } });
+    if (run.code !== 0) {
+      // What the stack looked like, for the report.
+      const ps = await cli.compose(["ps", "--all"]);
+      const runtime = await cli.compose(["logs", "--tail", "40", "runtime", "server"]);
+      console.log(`${JSON.stringify(run.json)}\n${ps.stdout}${ps.stderr}\n${runtime.stdout}${runtime.stderr}`);
+    }
+    const started = ok(run);
     expect(started.engine.endpoint).toBe(`unix://${socket}`);
     expect(readFileSync(join(cli.folder, ".env"), "utf8")).toMatch(new RegExp(`^YS_ENGINE_SOCKET=${socket}$`, "m"));
     await expect(async () => {
