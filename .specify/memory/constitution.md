@@ -1,4 +1,15 @@
 <!--
+Sync Impact Report (2026-11-17): 1.4.0 -> 1.4.1 (patch: clarification)
+- Clarified: VII. Reuse Before Building now says to use an added dependency as fully as its purpose
+  allows, and not to build custom extensions, wrappers or parallel layers on top of it; when its own
+  features fall short, revisit the choice rather than growing code around it.
+- Rationale: the owner asked, while journey 003 chose its CLI libraries, that the project add as
+  few dependencies as possible and use the ones it adds to the fullest, without custom extensions.
+  The principle already asked for few dependencies and native features; this makes the second half
+  explicit.
+- Impact: journey 003's plan uses Commander's own help, version, errors and exit handling and
+  Clack's own prompts, spinners, logs and notes, with no output layer of its own beyond `--json`.
+
 Sync Impact Report (2026-11-14): 1.3.0 -> 1.4.0 (minor: new principle)
 - Added: VIII. Build Around Concepts, Not Technologies. Your Space implements against concepts, such
   as an engine connection, an app endpoint or a secret store, that different technologies sit behind
@@ -159,6 +170,12 @@ providing a capability the project should not own. Small, simple needs are writt
 than imported. Prefer one dependency that covers several needs over several narrow ones, and keep
 integrations thin.
 
+Once a dependency is added, use it as fully as its purpose allows before writing code around it.
+Do not build custom extensions, wrappers, or parallel layers on top of a dependency to add what it
+already offers or to reshape how it works; use its own features, configuration, and extension
+points, and when they fall short, revisit the choice of dependency rather than growing code around
+it.
+
 Technical plans name the dependency or native feature each requirement relies on, and justify each
 new dependency and each piece of custom machinery.
 
@@ -218,4 +235,4 @@ clarifications and other non-semantic changes.
 When a proposal conflicts with the constitution, resolve the conflict explicitly by revising the
 proposal or amending the relevant principle.
 
-**Version**: 1.4.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-11-14
+**Version**: 1.4.1 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-11-17

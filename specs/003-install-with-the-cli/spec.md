@@ -163,8 +163,9 @@ name and username, open the set-password link from the summary, set a password a
    started yet, and the folder is the installation from now on.
 3. **Given** an initialised folder, **When** they run `your-space start`, **Then** the CLI checks
    the engine and the ports, starts Your Space, shows progress while the images download, waits
-   until it is healthy, asks for the owner's name and username the first time, creates the owner,
-   and prints a summary: the address, the set-password link, each service's state and the engine.
+   until it is healthy, asks for the owner's name and username when there is no owner yet, creates
+   the owner, and prints a summary: the address, the set-password link, each service's state and
+   the engine.
    It opens the link in the browser when the machine has one.
 4. **Given** the engine isn't running, Compose is missing or too old, or Docker Engine is older
    than the supported version, **When** they run `init` or `start`, **Then** nothing is downloaded
@@ -287,7 +288,9 @@ hand, I can manage that folder with the CLI without reinstalling.
 1. **Given** an engine that Docker's own client reaches through its current context or
    `DOCKER_HOST`, **When** they run `start`, **Then** the CLI uses that engine, writes its socket
    path for the runtime manager (`YS_ENGINE_SOCKET`) when it isn't the default, and starts as on
-   Linux. Tested in CI with rootless Docker and a non-default context.
+   Linux. Tested in CI with a non-default Docker context; rootless Docker uses the same path. An
+   engine on another machine (`tcp://` or `ssh://`) is refused with a message, since Your Space
+   runs on the engine of the machine it serves.
 2. **Given** no engine is running, **When** they run `start`, **Then** the CLI says Your Space needs
    a Docker-compatible engine, names the options for the system (Docker Engine on Linux; OrbStack,
    Colima or Docker Desktop on a Mac), and starts nothing. Your Space providing its own engine comes
@@ -311,8 +314,9 @@ option that is still complete.
 
 - `init` in a folder that already has an installation: it doesn't overwrite anything; it offers
   `configure`, or does nothing with `--yes`. `init` in a folder with other files asks first.
-- Two installations on one machine: each in its own folder and Compose project, named after the
-  folder. Both can't use port 80; the second is offered another port.
+- A second installation on the same engine: the Compose project is named `your-space` in every
+  installation, as in the manual install, so there is one per engine. `init` and `start` in another
+  folder find the first by its folder and say so, rather than taking over its containers and data.
 - The CLI's version differs from the installation's: the CLI says so and changes nothing except
   `status` and `logs`. Updating is journey 006.
 - The person isn't allowed to use the engine (not in the `docker` group, no root): the CLI says so
@@ -369,7 +373,8 @@ option that is still complete.
 - **FR-011**: `start` and `status` print one summary: the version, setup and address, each
   service's state and health, the engine, and each app's state and address (from the server's
   `list-apps --json`). With a proxy or tunnel it lists the names to forward. `start` adds the
-  set-password link while the owner has never signed in.
+  set-password link when it created the owner; while the owner hasn't set a password, the summary
+  says to run `owner reset-link` for a new one.
 - **FR-012**: `logs` shows Your Space's logs, for one service or all, and can follow them.
 - **FR-013**: `owner create`, `owner reset-link`, `secrets show` and `secrets replace` wrap the
   server's commands, with their rules, exit statuses and JSON output.
@@ -402,8 +407,8 @@ option that is still complete.
 
 ### Key Entities
 
-- **Installation**: a folder with the release files and `.env`; its Compose project name follows
-  the folder, as in the manual install. Its version and setup are read from the folder and the
+- **Installation**: a folder with the release files and `.env`; its Compose project is named
+  `your-space`, as in the manual install. Its version and setup are read from the folder and the
   running space; the CLI stores nothing else.
 - **Release files**: `compose.yaml`, `stack.yaml`, `modes/` and `env.example` for one version, with
   their checksums.
