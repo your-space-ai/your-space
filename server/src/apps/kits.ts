@@ -3,6 +3,7 @@
 import { parse } from "yaml";
 import type { Kit } from "../db/schema.ts";
 import { fetchSource, githubEndpoints, SourceError, type GithubEndpoints } from "./github.ts";
+import { TEMPLATE_REFERENCE, templateNames } from "./settings.ts";
 
 export const KITS_REPO = "your-space-ai/your-space-app-kits";
 
@@ -89,8 +90,13 @@ export function parseKit(text: string): Kit {
     kit.derive = {};
     for (const [name, value] of Object.entries(data.derive)) {
       if (!VARIABLE.test(name)) throw new KitError(`${name} isn't a setting name.`);
-      if (value !== "app_origin" && value !== "app_host") throw new KitError(`derive.${name} must be app_origin or app_host.`);
-      kit.derive[name] = value;
+      if (value === "app_origin" || value === "app_host") {
+        kit.derive[name] = value;
+      } else if (isObject(value) && Object.keys(value).length === 1 && typeof value.template === "string" && value.template.length <= 1000) {
+        kit.derive[name] = { template: value.template };
+      } else {
+        throw new KitError(`derive.${name} must be app_origin, app_host or { template: ... }.`);
+      }
     }
   }
   if (data.set !== undefined) {
@@ -101,6 +107,14 @@ export function parseKit(text: string): Kit {
       if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") throw new KitError(`set.${name} must be a value.`);
       kit.set[name] = String(value);
     }
+  }
+  for (const [name, value] of Object.entries(kit.derive ?? {})) {
+    if (typeof value === "string") continue;
+    for (const ref of templateNames(value.template)) {
+      const known = kit.generate?.[ref] !== undefined || kit.set?.[ref] !== undefined || typeof kit.derive?.[ref] === "string";
+      if (!known) throw new KitError(`derive.${name} uses ${ref}, which the kit doesn't generate, set or derive from the app's address.`);
+    }
+    if (value.template.replace(TEMPLATE_REFERENCE, "").includes("${")) throw new KitError(`derive.${name} has a placeholder that isn't \${SETTING_NAME}.`);
   }
   if (data.secrets !== undefined) {
     if (!Array.isArray(data.secrets) || !data.secrets.every((s) => typeof s === "string" && VARIABLE.test(s))) {

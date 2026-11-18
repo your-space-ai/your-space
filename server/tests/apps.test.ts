@@ -6,7 +6,7 @@ import { createGate, Handoffs, readCookie, safeReturn, signPass, verifyPass } fr
 import { fetchSource, parseLink, SourceError } from "../src/apps/github.ts";
 import { KitError, parseKit, parseMemory } from "../src/apps/kits.ts";
 import { appNameFromHost, stateFromServices } from "../src/apps/service.ts";
-import { buildSettings, decrypt, encrypt, looksSecret } from "../src/apps/settings.ts";
+import { buildSettings, decrypt, encrypt, looksSecret, resolveTemplates } from "../src/apps/settings.ts";
 import { session } from "../src/db/auth-schema.ts";
 import { app, appAccessRequest, appSetting, event, installJob } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
@@ -22,6 +22,7 @@ const WHOAMI = `services:
     environment:
       GREETING: \${GREETING:-hello}
       API_TOKEN: \${API_TOKEN:-published-default-token}
+      PAGE: \${PAGE:-}
 `;
 const KIT = `kit: 1
 source: { repo: ys-fixtures/whoami, path: compose.yaml }
@@ -30,6 +31,10 @@ title: Who Am I
 interface: { service: web, port: 80 }
 generate:
   API_TOKEN: { bytes: 24 }
+set:
+  GREETING: hello
+derive:
+  PAGE: { template: "\${GREETING} from whoami" }
 outbound: [example.com]
 limits:
   web: { memory: 64M, cpus: 0.5 }
@@ -60,6 +65,14 @@ describe("links, kits and settings", () => {
     expect(() => parseKit(KIT.replace("[example.com]", "['http://x']"))).toThrow(/host name/);
     expect(() => parseKit(KIT.replace("bytes: 24", "bytes: 4"))).toThrow(/16 to 128/);
     expect(parseMemory("1.5G")).toBe(1.5 * 1024 ** 3);
+
+    // Templates build a value from settings the kit itself names, never from each other.
+    const templated = (derive: string) => `kit: 1\nsource: { repo: a/b, path: c }\ngenerate: { DB_PASSWORD: {} }\nset: { DB_USER: app }\nderive:\n  APP_URL: app_origin\n${derive}`;
+    expect(parseKit(templated('  DATABASE_URL: { template: "postgresql://${DB_USER}:${DB_PASSWORD}@db/app" }')).derive!.DATABASE_URL).toEqual({ template: "postgresql://${DB_USER}:${DB_PASSWORD}@db/app" });
+    expect(() => parseKit(templated('  DATABASE_URL: { template: "postgresql://${NOPE}@db" }'))).toThrow(/uses NOPE/);
+    expect(() => parseKit(templated('  A: { template: "${APP_URL}" }\n  B: { template: "${A}" }'))).toThrow(/uses A/);
+    expect(() => parseKit(templated('  A: { template: "${lower-case}" }'))).toThrow(/placeholder/);
+    expect(() => parseKit(templated('  A: { template: "x", extra: 1 }'))).toThrow(/template/);
     expect(() => parseMemory("lots")).toThrow(KitError);
   });
 
@@ -83,6 +96,13 @@ describe("links, kits and settings", () => {
     expect(withKit.find((s) => s.name === "STORAGE_TYPE")).toMatchObject({ value: "local", generated: false, secret: false });
     expect(withKit.find((s) => s.name === "SERVER_URL")).toMatchObject({ derived: true, value: "http://x.space.localhost" });
     expect(withKit.find((s) => s.name === "APP_SECRET")!.value).toMatch(/^[0-9a-f]{64}$/);
+    // A template is filled from the values it uses, and is secret when any of them is.
+    const urlKit = parseKit(`kit: 1\nsource: { repo: a/b, path: c }\ngenerate: { DB_PASSWORD: {} }\nset: { DB_HOST: db, GREETING: hi }\nderive:\n  DATABASE_URL: { template: "postgresql://app:\${DB_PASSWORD}@\${DB_HOST}/app" }\n  PAGE: { template: "\${GREETING} there" }`);
+    const urlSettings = buildSettings([{ name: "DATABASE_URL", required: false, default: "postgresql://app:app@db/app" }], urlKit, address);
+    const dbPassword = urlSettings.find((s) => s.name === "DB_PASSWORD")!.value!;
+    expect(urlSettings.find((s) => s.name === "DATABASE_URL")).toMatchObject({ derived: true, secret: true, publishedDefault: null, value: `postgresql://app:${dbPassword}@db/app` });
+    expect(urlSettings.find((s) => s.name === "PAGE")).toMatchObject({ derived: true, secret: false, value: "hi there" });
+    expect(resolveTemplates(urlKit, new Map([["DB_PASSWORD", "p"], ["DB_HOST", null], ["GREETING", "yo"]])).get("DATABASE_URL")).toBe("postgresql://app:p@/app");
     // Kept values survive a reinstall, so a database keeps its password.
     expect(buildSettings(variables, null, address, new Map([["POSTGRES_PASSWORD", "kept"]])).find((s) => s.name === "POSTGRES_PASSWORD")!.value).toBe("kept");
     expect(looksSecret("SECRET_KEY_BASE") && looksSecret("ENCRYPTION_KEY") && !looksSecret("DB_PORT") && !looksSecret("KEYBOARD")).toBe(true);
@@ -286,6 +306,9 @@ describe("apps API", () => {
     expect(changed.status).toBe(202);
     await settled();
     expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.env.GREETING).toBe("hi there");
+    // A template setting follows the value it uses, and can't be changed itself.
+    expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.env.PAGE).toBe("hi there from whoami");
+    expect((await post("/api/apps/whoami/settings", { values: { PAGE: "x" } }, "PUT")).status).toBe(400);
     expect((await post("/api/apps/whoami/settings", { values: { NOPE: "x" } }, "PUT")).status).toBe(400);
   });
 

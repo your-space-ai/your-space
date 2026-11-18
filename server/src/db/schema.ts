@@ -84,7 +84,8 @@ export interface Kit {
   interface?: { service: string; port: number };
   pane?: boolean;
   generate?: Record<string, { bytes?: number; encoding?: "hex" | "base64url" }>;
-  derive?: Record<string, "app_origin" | "app_host">;
+  /** The app's address, or a template built from other settings the kit names, like `postgresql://u:${POSTGRES_PASSWORD}@db/app`. */
+  derive?: Record<string, "app_origin" | "app_host" | { template: string }>;
   /** Values the app's own example settings give, which its file leaves empty. The owner can change them. */
   set?: Record<string, string>;
   secrets?: string[];
