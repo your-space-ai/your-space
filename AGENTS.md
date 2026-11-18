@@ -51,5 +51,6 @@ browser tests run on CircleCI, and the Compose setups checks on GitHub Actions. 
 pull request based on `main` runs them; the ones above it run them when they reach `main`. A draft
 runs only the GitHub Actions checks: CircleCI's jobs, the browser tests and the Argos screenshots
 included, run when it is marked ready for review. Keep a pull request a draft until its reviewer is
-ready to review it, so that changes merged below it don't cost extra runs. Argos's screenshots are
-Chromium's, and a change to documents alone uploads none.
+ready to review it, so that changes merged below it don't cost extra runs. Code review runs on
+drafts too: fix its findings before marking a draft ready. Argos's screenshots are Chromium's, and a
+change to documents alone uploads none.
