@@ -20,7 +20,7 @@ import { errorFields, log } from "../log.ts";
 import { fetchSource, githubEndpoints, SourceError, type GithubEndpoints, type SourceFile } from "./github.ts";
 import { findKit, KitError } from "./kits.ts";
 import { RuntimeError, type AppSpec, type CheckAnswer, type Runtime, type ServiceState } from "./runtime-client.ts";
-import { buildSettings, decrypt, encrypt, publicSetting, type Setting } from "./settings.ts";
+import { buildSettings, decrypt, encrypt, publicSetting, resolveTemplates, type Setting } from "./settings.ts";
 
 export const DEFAULT_MEMORY = 1024 * 1024 * 1024;
 export const DEFAULT_CPUS = 1;
@@ -256,6 +256,9 @@ export class AppsService {
       setting.value = value === "" ? null : value;
       setting.generated = false;
     }
+    // Template settings follow the values the owner just gave.
+    const filled = resolveTemplates(p.kit, new Map(settings.map((s) => [s.name, s.value])));
+    for (const setting of settings) setting.value = filled.get(setting.name) ?? null;
     const missing = settings.filter((s) => s.required && !s.value).map((s) => s.name);
     if (missing.length) throw new AppError(400, "settings_required", `These settings need a value: ${missing.join(", ")}.`);
 
@@ -342,7 +345,7 @@ export class AppsService {
       project: `ys-${row.name}`,
       app: row.name,
       compose: row.compose,
-      env: this.envOf([...values].map(([name, value]) => ({ name, value }))),
+      env: this.envOf([...resolveTemplates(row.kit, values)].map(([name, value]) => ({ name, value }))),
       pins,
       interface: row.interface,
       limits: row.limits,
@@ -659,11 +662,24 @@ export class AppsService {
         throw new AppError(400, "secret_required", `${key} is a secret. Replace it with a new value instead of clearing it.`);
       }
     }
+    // Template settings that use a changed value are rewritten with it.
+    const next = new Map(current.map((s) => [s.name, s.value === null ? null : decrypt(this.config.authSecret, s.value)]));
+    for (const [key, value] of changes) next.set(key, value === null || value === "" ? null : value);
+    const filled = resolveTemplates(row.kit, next);
+    const templates = Object.entries(row.kit?.derive ?? {})
+      .filter(([name, derive]) => typeof derive === "object" && current.some((s) => s.name === name))
+      .map(([name]) => [name, filled.get(name) ?? null] as const);
     await this.db.transaction(async (tx) => {
       for (const [key, value] of changes) {
         await tx
           .update(appSetting)
           .set({ value: value === null || value === "" ? null : encrypt(this.config.authSecret, value), generated: false })
+          .where(and(eq(appSetting.appId, row.id), eq(appSetting.name, key)));
+      }
+      for (const [key, value] of templates) {
+        await tx
+          .update(appSetting)
+          .set({ value: value === null || value === "" ? null : encrypt(this.config.authSecret, value) })
           .where(and(eq(appSetting.appId, row.id), eq(appSetting.name, key)));
       }
     });
