@@ -1,6 +1,6 @@
 # Your Space: Caddy (HTTPS and the web client), the API server, and PostgreSQL.
 #
-# Leave .env without these lines to use Your Space on this machine, at http://localhost. One line
+# Leave .env without these lines to use Your Space on this machine, at http://space.localhost. One line
 # picks another setup (docs/install/README.md):
 #   YS_DOMAIN=space.example.com     your own domain, with HTTPS from Let's Encrypt
 #   YS_PROXY_URL=https://...        behind your own proxy or Tailscale

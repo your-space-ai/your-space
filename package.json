@@ -1,11 +1,12 @@
 {
-  "name": "your-space",
+  "name": "your-space-monorepo",
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
   "workspaces": [
     "server",
     "runtime",
+    "cli",
     "web",
     "e2e"
   ],
@@ -14,8 +15,8 @@
   },
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test --workspace server && npm test --workspace runtime",
-    "build": "npm run build --workspace web",
+    "test": "npm test --workspace server && npm test --workspace runtime && npm test --workspace cli",
+    "build": "npm run build --workspace web && npm run build --workspace cli",
     "e2e": "npm test --workspace e2e"
   },
   "devDependencies": {

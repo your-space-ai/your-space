@@ -1,0 +1,170 @@
+// Steps more than one command takes: opening the installation and its engine, checking ports,
+// starting Compose and reading what went wrong, and gathering the summary.
+import { freePort, portAnswers, portUser } from "../checks.ts";
+import { Compose, otherInstallation } from "../compose.ts";
+import { checkEngine, engineSocket, type Engine } from "../engine.ts";
+import { CliError } from "../errors.ts";
+import { Installation } from "../installation.ts";
+import { listApps, showOwner, type App, type Owner } from "../server.ts";
+import { setupPorts, type Setup } from "../setup.ts";
+import { buildSummary, summaryText, type Link, type Summary } from "../summary.ts";
+import type { Ui } from "../ui.ts";
+
+export interface Opened {
+  installation: Installation;
+  compose: Compose;
+  engine: Engine;
+}
+
+/** The engine, checked, and refused when it already runs Your Space from another folder. */
+export async function engineFor(ui: Ui, installation: Installation): Promise<Engine> {
+  const engine = await ui.step("Checking Docker", "Docker is ready", () => checkEngine());
+  const other = await otherInstallation(installation.project(), installation.folder);
+  if (other) {
+    throw new CliError(
+      "another_installation",
+      `This Docker engine already runs Your Space from ${other}. There is one installation per engine; manage that one with --workdir ${other}.`,
+      { folder: other },
+    );
+  }
+  return engine;
+}
+
+/** Writes YS_ENGINE_SOCKET when the engine's socket isn't the default and the person hasn't set it. */
+export function rememberSocket(ui: Ui, installation: Installation, engine: Engine): void {
+  const socket = engineSocket(engine.endpoint);
+  const env = installation.env();
+  if (socket && !env.YS_ENGINE_SOCKET) {
+    installation.writeEnv({ YS_ENGINE_SOCKET: socket });
+    ui.info(`Docker's engine is at ${socket}, so Your Space's runtime manager uses it (YS_ENGINE_SOCKET in .env).`);
+  }
+}
+
+export async function open(ui: Ui, workdir: string): Promise<Opened> {
+  const installation = Installation.open(workdir);
+  const engine = await engineFor(ui, installation);
+  rememberSocket(ui, installation, engine);
+  return { installation, compose: new Compose(installation.folder), engine };
+}
+
+/**
+ * Checks the ports the setup needs, skipping those Your Space already holds. A taken port for this
+ * machine or a proxy is moved with YS_PORT when the person agrees; a domain needs 80 and 443.
+ */
+export async function checkPorts(ui: Ui, installation: Installation, compose: Compose, setup: Setup): Promise<Setup> {
+  const caddy = (await compose.ps()).find((s) => s.name === "caddy" && s.state === "running");
+  for (const port of setupPorts(setup)) {
+    if (caddy?.ports.includes(port) || !(await portAnswers(port))) continue;
+    const by = await portUser(port);
+    const taken = `Port ${port} on this machine is already in use${by ? ` by ${by}` : ""}.`;
+    if (setup.kind === "domain") {
+      throw new CliError(
+        "port_in_use",
+        `${taken} Your own domain needs ports 80 and 443. Stop what uses it, then run this again.`,
+        { port, ...(by ? { by } : {}) },
+      );
+    }
+    const next = await freePort(port === 80 ? 8081 : port + 1);
+    const refuse = () =>
+      new CliError("port_in_use", `${taken} Free it, or run this again with --yes to use port ${next}.`, {
+        port,
+        ...(by ? { by } : {}),
+      });
+    if (!ui.interactive && !ui.yes) throw refuse();
+    if (!(await ui.confirm({ message: `${taken} Use port ${next} instead?`, flag: "--yes", initial: true }))) throw refuse();
+    installation.writeEnv({ YS_PORT: String(next) });
+    ui.info(`Your Space will use port ${next} (YS_PORT=${next} in .env).`);
+    return { ...setup, port: next };
+  }
+  return setup;
+}
+
+/** `docker compose up -d --wait`, and when it fails, what went wrong in Your Space's terms. */
+export async function startStack(ui: Ui, compose: Compose): Promise<void> {
+  await ui.step("Starting Your Space (the first start downloads the images)", "Your Space started", async () => {
+    const ran = await compose.run(["up", "-d", "--wait"]);
+    if (ran.code === 0) return;
+    throw await whyNotStarted(compose, `${ran.stdout}${ran.stderr}`);
+  });
+}
+
+export async function whyNotStarted(compose: Compose, output: string): Promise<CliError> {
+  const services = await compose.ps();
+  const secrets = services.find((s) => s.name === "secrets");
+  if (secrets && secrets.state === "exited" && secrets.exitCode !== 0) {
+    const log = (await compose.logs(["--no-log-prefix", "secrets"])).stdout.trim();
+    if (/already has a\s+database/.test(log)) {
+      return new CliError(
+        "lost_secrets",
+        "Your Space's secrets are gone, but its database is still there, so it didn't start. Put the old values back in .env as BETTER_AUTH_SECRET and POSTGRES_PASSWORD, or start with new ones by following Lost Secrets in the installation guide.",
+        {},
+        log,
+      );
+    }
+    return new CliError("start_failed", `The secrets step failed: ${log.split("\n").at(-1)}`, { service: "secrets" }, log);
+  }
+  // A service that didn't start at all, such as the runtime manager when the engine's socket can't be
+  // mounted: Compose's own message says why, and the server waits for it.
+  const errorLine = output.split("\n").reverse().find((line) => /error/i.test(line))?.trim();
+  for (const name of ["postgres", "runtime"]) {
+    const service = services.find((s) => s.name === name);
+    if (service && service.state !== "running") {
+      const log = (await compose.logs(["--no-log-prefix", "--tail", "40", name])).stdout;
+      return new CliError(
+        "start_failed",
+        `The ${name === "runtime" ? "runtime manager" : "database"} didn't start${errorLine ? `: ${errorLine}` : "."} See its log with: your-space logs ${name}`,
+        { service: name },
+        `${output}\n${log}`,
+      );
+    }
+  }
+  const server = services.find((s) => s.name === "server");
+  if (server && server.state !== "running") {
+    return new CliError("start_failed", `The server didn't start${errorLine ? `: ${errorLine}` : "."}`, { service: "server" }, output);
+  }
+  if (server && server.health !== "healthy") {
+    const log = (await compose.logs(["--no-log-prefix", "--tail", "60", "server"])).stdout;
+    const config = /Invalid configuration:\n((?:\s+- .*\n?)+)/.exec(log)?.[1];
+    if (config) {
+      return new CliError("start_failed", `Your Space's settings in .env need fixing:\n${config.trimEnd()}`, { service: "server" }, log);
+    }
+    if (/refused the database password/.test(log)) {
+      return new CliError(
+        "start_failed",
+        "PostgreSQL refused the database password: it changed after the database was created. Change POSTGRES_PASSWORD in .env back, or run your-space secrets replace database-password.",
+        { service: "server" },
+        log,
+      );
+    }
+    return new CliError("start_failed", "The server didn't become healthy. See its log with: your-space logs server", { service: "server" }, `${output}\n${log}`);
+  }
+  if (/address already in use|port is already allocated/i.test(output)) {
+    return new CliError("port_in_use", "A port Your Space needs is already in use. Free it, or choose another with: your-space configure --port <n>", {}, output);
+  }
+  return new CliError("start_failed", "Docker Compose couldn't start Your Space.", {}, output);
+}
+
+/** What the summary shows, read from the running space. */
+export async function gather(
+  installation: Installation,
+  compose: Compose,
+  engine: Engine | null,
+  extra: { link?: Link } = {},
+): Promise<Summary> {
+  const setup = installation.setup();
+  const services = await compose.ps();
+  const running = services.some((s) => s.name === "server" && s.state === "running");
+  let owner: Owner | null = null;
+  let apps: App[] | null = null;
+  if (running) {
+    owner = await showOwner(compose).catch(() => null);
+    apps = await listApps(compose).catch(() => null);
+  }
+  return buildSummary({ version: installation.version(), folder: installation.folder, setup, services, engine, owner, link: extra.link, apps });
+}
+
+export function showSummary(ui: Ui, summary: Summary): void {
+  ui.result({ ...summary }, () => {
+    for (const { title, body } of summaryText(summary)) ui.note(body, title);
+  });
+}

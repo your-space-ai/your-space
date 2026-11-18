@@ -1,7 +1,8 @@
 name: Images
 
 # Builds and publishes the server and web images for Intel/AMD and ARM (FR-022), and attaches the
-# install files (your-space.tar.gz) to each release, where the installation guide downloads them.
+# install files (your-space.tar.gz) and the CLI to each release, where the installation guide and
+# the CLI download them.
 # It runs on a release, or when started by hand, not on every push to main: building the ARM image
 # through emulation is slow, and Actions minutes are limited while the repository is private.
 on:
@@ -60,25 +61,59 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
   release-files:
+    # The install files and the CLI (journey 003): your-space.tar.gz, the standalone Linux
+    # executables for Intel/AMD and ARM, the .deb and .rpm packages, and SHA256SUMS listing them all,
+    # which the CLI checks the install files against. The npm package is published when the
+    # repository has an NPM_TOKEN secret.
     if: github.event_name == 'release'
     needs: image
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: write
+      id-token: write
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v5
-      # Each release's files run that release's images by default, so a later `docker compose pull`
-      # never pairs new images with old mode files. The tarball holds no .env, so unpacking it over
-      # an installation keeps the owner's settings. Its files sit at the top level, not in a folder.
-      - run: |
-          mkdir release
-          cp -r deploy/compose.yaml deploy/stack.yaml deploy/modes release/
-          sed -i "s/\${YS_VERSION:-latest}/\${YS_VERSION:-${TAG#v}}/g" release/stack.yaml
-          test "$(grep -c "YS_VERSION:-${TAG#v}}" release/stack.yaml)" -eq 3
-          if grep -rq "YS_VERSION:-latest" release; then exit 1; fi
-          cp deploy/.env.example release/env.example
-          tar -czf your-space.tar.gz -C release compose.yaml stack.yaml modes env.example
-          gh release upload "$TAG" your-space.tar.gz --clobber
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - name: Install files
+        run: deploy/release-files.sh "${TAG#v}" release
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+      - name: The CLI, with the release's version
+        run: |
+          npm version "${TAG#v}" --workspace cli --no-git-tag-version --allow-same-version
+          npm run build --workspace cli
+          sudo apt-get install -y rpm
+          for arch in x64 arm64; do
+            cli/scripts/executable.sh "$arch"
+            cli/scripts/packages.sh "$arch"
+            cp "cli/dist/your-space-linux-$arch" release/
+          done
+          cp cli/dist/*.deb cli/dist/*.rpm release/
+          (cd release && sha256sum -- * > SHA256SUMS)
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+      - name: The package installs and runs
+        run: |
+          sudo dpkg -i release/your-space_*_amd64.deb
+          test "$(your-space --version)" = "${TAG#v}"
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+      - run: gh release upload "$TAG" release/* --clobber
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
+      - name: npm
+        if: env.NPM_TOKEN != ''
+        working-directory: cli
+        run: npm publish --provenance --access public --tag "$([ "$PRERELEASE" = true ] && echo next || echo latest)"
+        env:
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
