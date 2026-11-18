@@ -23,8 +23,8 @@ it merges.
 
 ## Slice 2: Run it
 
-- [ ] T012 `stop`, `status`, `logs`; apps in the summary
-- [ ] T013 Browser test: stop and start with an app
+- [x] T012 `stop`, `status`, `logs`; apps in the summary
+- [x] T013 Browser test: stop and start with an app
 
 ## Slice 3: Recover the owner and manage secrets
 

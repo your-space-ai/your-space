@@ -3,7 +3,10 @@
 // current folder, or the one --workdir names (contracts/cli-commands.md).
 import { Command, CommanderError } from "commander";
 import { init } from "./commands/init.ts";
+import { logs } from "./commands/logs.ts";
 import { start } from "./commands/start.ts";
+import { status } from "./commands/status.ts";
+import { stop } from "./commands/stop.ts";
 import { CliError, EXIT } from "./errors.ts";
 import { isMissingProgram } from "./process.ts";
 import { Ui } from "./ui.ts";
@@ -86,6 +89,29 @@ program
         ownerEmail: o.ownerEmail,
         open: o.open,
       });
+    }),
+  );
+
+program
+  .command("stop")
+  .description("stop the apps, then Your Space; nothing is deleted")
+  .action(action(async (ui, g) => stop(ui, g.workdir)));
+
+program
+  .command("status")
+  .description("show what is running and how to reach it")
+  .action(action(async (ui, g) => status(ui, g.workdir)));
+
+program
+  .command("logs")
+  .description("show Your Space's logs")
+  .argument("[service]", "one service: server, caddy, postgres, runtime or secrets")
+  .option("-f, --follow", "keep showing new lines")
+  .option("--tail <n>", "only the last n lines")
+  .action(
+    action(async (_ui, g, service: string | undefined) => {
+      const o = program.commands.find((c) => c.name() === "logs")!.opts();
+      await logs(g.workdir, service, { follow: o.follow, tail: o.tail });
     }),
   );
 
