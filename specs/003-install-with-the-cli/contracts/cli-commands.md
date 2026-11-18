@@ -108,7 +108,7 @@ Compose or the engine gave in `detail` when there was any.
 | Command | Result |
 | --- | --- |
 | `init` | `{ ok, folder, version, setup, env: ["YS_DOMAIN=space.example.com"] }`: the lines written |
-| `stop` | `{ ok, stopped: ["sure"] }`: the apps stopped |
+| `stop` | `{ ok, stopped: ["sure"] }`: the apps stopped; `null` when Your Space couldn't list its apps, after `--yes` or a yes to the question |
 | `owner create`, `owner reset-link` | The server command's own JSON (`username`, `url`, `token`, `expiresAt`) |
 | `secrets show` | `{ ok, secrets: [{ name, source }] }`, with `value` only with `--reveal` |
 | `secrets replace` | `{ ok, replaced: "auth-secret" }` |
