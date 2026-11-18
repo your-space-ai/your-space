@@ -24,10 +24,12 @@ async function main(argv: string[]): Promise<number> {
   const { database } = opened;
   try {
     const installation = await readInstallation(database.db);
-    if (installation.state === "unclaimed" || !installation.workspaceId) {
+    if (installation.state === "unclaimed") {
       out.success({ ok: true, owner: null }, ["This installation has no owner yet."]);
       return EXIT.ok;
     }
+    // A claimed installation has an owner, so a missing workspace is damaged storage, never "no owner".
+    if (!installation.workspaceId) throw new StorageUnavailable("The claimed installation has no workspace.");
     const rows = await database.db
       .select({ username: user.username, name: user.name })
       .from(member)
