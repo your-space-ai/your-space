@@ -2,6 +2,7 @@
 // settings and approvals; the runtime manager runs it. Secret values leave the server only in the
 // app spec sent to the runtime manager.
 import { randomUUID } from "node:crypto";
+import { isIP } from "node:net";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { recordEvent } from "../actors.ts";
 import type { Db } from "../db/client.ts";
@@ -15,6 +16,7 @@ import {
   type EventType,
   type JobStep,
   type Kit,
+  type Publish,
 } from "../db/schema.ts";
 import { errorFields, log } from "../log.ts";
 import { fetchSource, githubEndpoints, SourceError, type GithubEndpoints, type SourceFile } from "./github.ts";
@@ -30,6 +32,8 @@ const HOST = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-
 /** Waiting access requests kept per app, so an app can't flood the owner's list. */
 const MAX_PENDING_REQUESTS = 50;
 const RESERVED_NAMES = new Set(["www", "api", "app", "apps", "space", "admin", "static", "assets", "mail"]);
+/** A published port listens only on this machine unless the owner chooses another address. */
+export const DEFAULT_BIND = "127.0.0.1";
 
 export class AppError extends Error {
   readonly status: number;
@@ -66,6 +70,8 @@ interface Preview {
   outbound: string[];
   limits: Record<string, { memory: number; cpus: number }>;
   interface: { service: string; port: number } | null;
+  /** The port publishing uses unless the owner chooses another. */
+  publishPort: number | null;
   pane: boolean;
   retained: boolean;
 }
@@ -89,6 +95,70 @@ export function appNameFromHost(publicUrl: string, hostHeader: string | undefine
   return /^[a-z][a-z0-9-]{0,29}$/.test(name) ? name : undefined;
 }
 
+/** The address settings of an app reached at the owner's link, in appAddress's form. */
+export function linkAddress(link: string): { origin: string; host: string } {
+  const url = new URL(link);
+  return { origin: url.origin, host: url.hostname };
+}
+
+const LINK_MESSAGE = "The link must be the address you reach the app at, like https://plane.example.com, with no path.";
+
+/** A link as an origin: http or https, with nothing after the host and port. */
+export function linkOrigin(link: string): string {
+  let url: URL;
+  try {
+    url = new URL(link.trim());
+  } catch {
+    throw new AppError(400, "bad_link", LINK_MESSAGE);
+  }
+  if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+    throw new AppError(400, "bad_link", LINK_MESSAGE);
+  }
+  return url.origin;
+}
+
+/**
+ * The port the app's own file publishes for its interface, or else the interface's own port. Your
+ * Space never looks for a free port: the owner chooses another when this one is taken.
+ */
+export function defaultPort(services: CheckAnswer["services"], iface: { service: string; port: number } | null): number | null {
+  if (!iface) return null;
+  const service = services.find((s) => s.name === iface.service);
+  return service?.published?.find((p) => p.target === iface.port)?.host ?? iface.port;
+}
+
+/** The owner's choices for publishing, checked, over the current or default ones. */
+export function publishFrom(input: unknown, current: Publish): Publish {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new AppError(400, "bad_publish", "Send the port, the address to listen on, and the link, or null to stop publishing.");
+  }
+  const { port, bind, link } = input as { port?: unknown; bind?: unknown; link?: unknown };
+  const next = { ...current };
+  if (port !== undefined) {
+    if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new AppError(400, "bad_port", "The port must be a whole number from 1 to 65535.");
+    }
+    next.port = port;
+  }
+  if (bind !== undefined) {
+    if (typeof bind !== "string" || !isIP(bind.trim())) {
+      throw new AppError(400, "bad_bind", "The address to listen on must be an IP address of this machine, like 127.0.0.1, or 0.0.0.0 for all of them.");
+    }
+    next.bind = bind.trim();
+  }
+  if (link !== undefined) {
+    if (link !== null && typeof link !== "string") throw new AppError(400, "bad_link", LINK_MESSAGE);
+    next.link = link === null || link.trim() === "" ? null : linkOrigin(link);
+  }
+  return next;
+}
+
+/** Two listening addresses share a port when they are the same, or either is every address. */
+function overlaps(a: string, b: string): boolean {
+  const every = (ip: string) => ip === "0.0.0.0" || ip === "::";
+  return a === b || every(a) || every(b);
+}
+
 function slug(text: string): string {
   const s = text.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^[^a-z]+/, "").replace(/-+$/, "").slice(0, 30).replace(/-+$/, "");
   return s || "app";
@@ -101,6 +171,7 @@ function now(): string {
 /** An app's state from what the runtime reports for its services. */
 export function stateFromServices(services: ServiceState[]): { state: AppState; reason: string | null } {
   const app = services.filter((s) => s.role === "app");
+  const forwarder = services.find((s) => s.role === "publish");
   if (app.length === 0) return { state: "stopped", reason: "Not running." };
   const problems: string[] = [];
   let starting = false;
@@ -124,6 +195,10 @@ export function stateFromServices(services: ServiceState[]): { state: AppState; 
     return { state: app.every((s) => s.state === "exited" && !s.oomKilled && s.exitCode !== undefined && [0, 137, 143].includes(s.exitCode)) ? "stopped" : "degraded", reason: `${problems.join("; ")}.` };
   }
   if (problems.length > 0) return { state: "degraded", reason: `${problems.join("; ")}.` };
+  // The app runs, but its published port isn't open, for example because something else took it.
+  if (forwarder && forwarder.state !== "running" && app.some((s) => s.state === "running")) {
+    return { state: "degraded", reason: "Its published port isn't open. Choose another port if something else uses it." };
+  }
   return starting ? { state: "starting", reason: null } : { state: "running", reason: null };
 }
 
@@ -142,6 +217,31 @@ export class AppsService {
 
   address(name: string) {
     return appAddress(this.config.publicUrl, name);
+  }
+
+  /** Values of the settings the kit derives from the app's address, when the owner gave a link. */
+  private linkValues(row: Pick<AppRow, "kit" | "publish">): Map<string, string> {
+    const values = new Map<string, string>();
+    if (!row.publish?.link) return values;
+    const address = linkAddress(row.publish.link);
+    for (const [name, derive] of Object.entries(row.kit?.derive ?? {})) {
+      if (derive === "app_origin") values.set(name, address.origin);
+      if (derive === "app_host") values.set(name, address.host);
+    }
+    return values;
+  }
+
+  /** Refuses a port another published app already uses. Anything else using it shows when the app starts. */
+  private async refuseTakenPort(publish: Publish, name: string): Promise<void> {
+    const rows = await this.db.select({ name: app.name, title: app.title, publish: app.publish }).from(app).where(ne(app.state, "removed"));
+    const other = rows.find((r) => r.name !== name && r.publish && r.publish.port === publish.port && overlaps(r.publish.bind, publish.bind));
+    if (other) {
+      throw new AppError(
+        409,
+        "port_in_use",
+        `Port ${publish.port} on ${publish.bind} is already used by ${other.title}, which Your Space publishes on ${other.publish!.bind}:${other.publish!.port}. Choose another port.`,
+      );
+    }
   }
 
   // ----- Preview and install (FR-011) -----
@@ -196,6 +296,7 @@ export class AppsService {
       outbound: kit?.outbound ?? [],
       limits,
       interface: kit?.interface ?? this.guessInterface(check),
+      publishPort: defaultPort(check.services, kit?.interface ?? this.guessInterface(check)),
       pane: kit?.pane ?? true,
       retained: Boolean(existing),
     };
@@ -235,6 +336,7 @@ export class AppsService {
       settings: p.settings.map(publicSetting),
       outbound: p.outbound,
       interface: p.interface,
+      publishPort: p.publishPort,
       pane: p.pane,
       retained: p.retained,
       warning:
@@ -242,7 +344,13 @@ export class AppsService {
     };
   }
 
-  async install(previewId: string, values: Record<string, string>, reuseData: boolean, actorId: string): Promise<{ name: string; jobId: string; done: Promise<void> }> {
+  async install(
+    previewId: string,
+    values: Record<string, string>,
+    reuseData: boolean,
+    actorId: string,
+    publishWith: unknown = null,
+  ): Promise<{ name: string; jobId: string; done: Promise<void> }> {
     const p = this.previews.get(previewId);
     if (!p || p.expiresAt < Date.now()) throw new AppError(404, "preview_expired", "This review has expired. Paste the link again.");
     const review = this.reviewOf(p);
@@ -263,8 +371,19 @@ export class AppsService {
     const missing = settings.filter((s) => s.required && !s.value).map((s) => s.name);
     if (missing.length) throw new AppError(400, "settings_required", `These settings need a value: ${missing.join(", ")}.`);
 
-    this.previews.delete(previewId);
     const images = Object.fromEntries(p.check.images.filter((i) => i.digest).map((i) => [i.ref, { digest: i.digest! }]));
+    let publish: Publish | null = null;
+    if (publishWith !== null && publishWith !== undefined) {
+      if (!p.interface || p.publishPort === null) throw new AppError(400, "no_interface", `${p.title} has no interface to publish.`);
+      publish = publishFrom(publishWith, { port: p.publishPort, bind: DEFAULT_BIND, link: null });
+      await this.refuseTakenPort(publish, p.name);
+      // Checked again with the forwarder, which pins its image with the app's own.
+      const pins = Object.fromEntries(Object.entries(images).map(([ref, { digest }]) => [ref, digest]));
+      const checked = await this.check({ project: `ys-${p.name}`, app: p.name, compose: p.source.text, env: this.envOf(settings), interface: p.interface, pins, publish });
+      for (const image of checked.images) if (image.digest && !images[image.ref]) images[image.ref] = { digest: image.digest };
+    }
+
+    this.previews.delete(previewId);
     const appId = await this.db.transaction(async (tx) => {
       const values = {
         title: p.title,
@@ -280,6 +399,7 @@ export class AppsService {
         adaptations: p.check.adaptations,
         interface: p.interface,
         pane: p.pane,
+        publish,
         limits: p.limits,
         desired: "running" as const,
         state: "installing" as const,
@@ -362,6 +482,8 @@ export class AppsService {
 
   async specFor(row: AppRow): Promise<AppSpec> {
     const values = await this.storedValues(row.id);
+    // Behind the owner's link, the app's address settings follow it; templates that use them too.
+    for (const [name, value] of this.linkValues(row)) if (values.has(name)) values.set(name, value);
     const outbound = await this.db.select({ host: appOutbound.host }).from(appOutbound).where(eq(appOutbound.appId, row.id));
     const pins = Object.fromEntries(Object.entries(row.images).map(([ref, { digest }]) => [ref, digest]));
     return {
@@ -373,6 +495,7 @@ export class AppsService {
       interface: row.interface,
       limits: row.limits,
       egress: outbound.map((o) => o.host),
+      publish: row.publish ? { port: row.publish.port, bind: row.publish.bind } : null,
     };
   }
 
@@ -567,6 +690,7 @@ export class AppsService {
           origin: this.address(r.name).origin,
           pane: r.pane,
           hasInterface: Boolean(r.interface),
+          publish: r.publish ?? null,
           pendingRequests: counts.get(r.id) ?? 0,
         })),
       retained: rows.filter((r) => r.state === "removed").map((r) => ({ name: r.name, title: r.title, repo: r.repo, removedAt: r.removedAt })),
@@ -585,6 +709,7 @@ export class AppsService {
     } catch {
       // The runtime manager is down; the record still shows.
     }
+    const fromLink = this.linkValues(row);
     return {
       name: row.name,
       title: row.title,
@@ -594,6 +719,7 @@ export class AppsService {
       desired: row.desired,
       pane: row.pane,
       interface: row.interface,
+      publish: row.publish ?? null,
       source: { link: row.sourceUrl, repo: row.repo, path: row.path, ref: row.ref, commit: row.commit },
       kitSource: row.kitSource,
       images: row.images,
@@ -607,7 +733,7 @@ export class AppsService {
           generated: s.generated,
           required: false,
           publishedDefault: s.publishedDefault,
-          value: s.value === null ? null : s.secret ? "set" : this.readOrNull(s.value),
+          value: s.value === null ? null : s.secret ? "set" : (fromLink.get(s.name) ?? this.readOrNull(s.value)),
           derived: Boolean(row.kit?.derive?.[s.name]),
         }),
       ),
@@ -707,6 +833,31 @@ export class AppsService {
       }
     });
     await this.event("app.settings_changed", actorId, row.id);
+    return this.queue(row.id, "apply");
+  }
+
+  /**
+   * Publishes the app on a port of this machine, changes how, or stops (null). The app restarts with
+   * it, and its address settings follow the link.
+   */
+  async updatePublish(name: string, publishWith: unknown, actorId: string): Promise<{ jobId: string }> {
+    const row = await this.liveRow(name);
+    if (this.busy.has(row.id)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
+    let publish: Publish | null = null;
+    let images = row.images;
+    if (publishWith !== null) {
+      if (!row.interface) throw new AppError(400, "no_interface", `${row.title} has no interface to publish.`);
+      // The check gives the port the app's file publishes, and pins the forwarder's image.
+      const spec = await this.specFor(row);
+      const checked = await this.check({ ...spec, publish: { port: row.publish?.port ?? row.interface.port, bind: row.publish?.bind ?? DEFAULT_BIND } });
+      const current = row.publish ?? { port: defaultPort(checked.services, row.interface) ?? row.interface.port, bind: DEFAULT_BIND, link: null };
+      publish = publishFrom(publishWith, current);
+      await this.refuseTakenPort(publish, row.name);
+      images = { ...row.images };
+      for (const image of checked.images) if (image.digest && !images[image.ref]) images[image.ref] = { digest: image.digest };
+    }
+    await this.db.update(app).set({ publish, images, updatedAt: new Date() }).where(eq(app.id, row.id));
+    await this.event("app.publish_changed", actorId, row.id);
     return this.queue(row.id, "apply");
   }
 

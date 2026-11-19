@@ -59,6 +59,27 @@ describe("the summary", () => {
     expect(forwardFor({ kind: "domain", domain: "space.example.com" }, ["sure"])).toBeNull();
   });
 
+  it("shows a published app at its link, and where its port is, instead of a name to forward", () => {
+    const summary = buildSummary({
+      version: "0.3.0",
+      folder: "/f",
+      setup: { kind: "proxy", url: "https://box.tail1.ts.net", port: 8080 },
+      services,
+      engine,
+      owner: null,
+      apps: [
+        { name: "plane", state: "running", publish: { port: 8081, bind: "127.0.0.1", link: "https://plane.tail1.ts.net" } },
+        { name: "sure", state: "running" },
+      ],
+      certificate: null,
+    });
+    expect(summary.apps!.map((a) => a.address)).toEqual(["https://plane.tail1.ts.net", "https://sure.box.tail1.ts.net"]);
+    expect(summary.forward!.names).toEqual(["box.tail1.ts.net", "sure.box.tail1.ts.net"]);
+    const published = summaryText(summary).find((s) => s.title === "Published on this machine")!;
+    expect(published.body).toContain("plane  http://127.0.0.1:8081");
+    expect(published.body).not.toContain("sure");
+  });
+
   it("is stopped, with no apps, when the server isn't running", () => {
     const summary = buildSummary({
       version: null,

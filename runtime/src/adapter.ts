@@ -16,6 +16,8 @@ export interface AppSpec {
   interface?: { service: string; port: number } | null;
   limits?: Record<string, { memory?: number; cpus?: number }>;
   egress?: string[];
+  /** Publishes the interface on a port of this machine, for the owner's own network setup. */
+  publish?: { port: number; bind: string } | null;
 }
 
 export interface Adaptation {
@@ -36,6 +38,8 @@ export interface ServiceSummary {
   interface: boolean;
   /** Container ports the file publishes or exposes, the first published first. */
   ports: number[];
+  /** The machine's ports the file publishes, each with the container port it leads to. */
+  published: { target: number; host: number }[];
   volumes: string[];
   dependsOn: string[];
 }
@@ -58,6 +62,12 @@ export const EGRESS_IMAGE = "ubuntu/squid";
 const EGRESS_MEMORY = 64 * 1024 * 1024;
 const EGRESS_CPUS = 0.25;
 const EGRESS_FILES = 4096;
+export const PUBLISH_SERVICE = "ys-publish";
+export const PUBLISH_IMAGE = "busybox";
+/** The port the forwarder listens on inside its container. */
+const PUBLISH_TARGET = 8080;
+const PUBLISH_MEMORY = 32 * 1024 * 1024;
+const PUBLISH_CPUS = 0.25;
 
 /** Kept as the app wrote them. */
 const ALLOWED = new Set([
@@ -274,6 +284,17 @@ function namedVolumes(service: Json): string[] {
   return service.volumes.filter((v): v is Json => isObject(v) && v.type === "volume" && typeof v.source === "string").map((v) => v.source as string);
 }
 
+function publishedPorts(service: Json): { target: number; host: number }[] {
+  const ports: { target: number; host: number }[] = [];
+  for (const p of Array.isArray(service.ports) ? service.ports : []) {
+    if (!isObject(p)) continue;
+    const target = Number(p.target);
+    const host = Number(p.published);
+    if (Number.isInteger(target) && Number.isInteger(host) && host > 0 && host <= 65535) ports.push({ target, host });
+  }
+  return ports;
+}
+
 function servicePorts(service: Json): number[] {
   const ports: number[] = [];
   for (const p of Array.isArray(service.ports) ? service.ports : []) {
@@ -321,8 +342,10 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
   if (Object.keys(services).length === 0) {
     refusals.push({ service: "", setting: "services", reason: "The file defines no services that run by default." });
   }
-  if (EGRESS_SERVICE in services) {
-    refusals.push({ service: EGRESS_SERVICE, setting: "services", reason: `The service name ${EGRESS_SERVICE} is reserved for Your Space.` });
+  for (const reserved of [EGRESS_SERVICE, PUBLISH_SERVICE]) {
+    if (reserved in services) {
+      refusals.push({ service: reserved, setting: "services", reason: `The service name ${reserved} is reserved for Your Space.` });
+    }
   }
   checkTopLevel(resolved, refusals);
   for (const [name, service] of Object.entries(services)) {
@@ -330,6 +353,9 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
   }
   if (spec.interface && !(spec.interface.service in services)) {
     refusals.push({ service: spec.interface.service, setting: "interface", reason: "The installation kit names an interface service the file doesn't have." });
+  }
+  if (spec.publish && !spec.interface) {
+    refusals.push({ service: "", setting: "publish", reason: "Only an app with an interface can be published on a port." });
   }
 
   const summaries: ServiceSummary[] = Object.entries(services)
@@ -339,6 +365,7 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
       image: String((s as Json).image ?? ""),
       interface: spec.interface?.service === name,
       ports: servicePorts(s as Json),
+      published: publishedPorts(s as Json),
       volumes: namedVolumes(s as Json),
       dependsOn: dependsOn(s as Json),
     }));
@@ -406,6 +433,43 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
   };
   adaptations.push({ service: EGRESS_SERVICE, kind: "added", detail: "Added Your Space's outbound proxy, which lets the app reach only approved hosts." });
 
+  const networks: Json = {
+    app: {
+      internal: true,
+      driver: "bridge",
+      driver_opts: { "com.docker.network.bridge.gateway_mode_ipv4": "isolated" },
+      labels,
+    },
+    egress: { driver: "bridge", labels },
+  };
+  if (spec.publish && spec.interface) {
+    // The app's own services stay on the sealed network, where Docker publishes no port. A forwarder
+    // of Your Space's joins it and a network of its own, and passes connections to the interface
+    // as they are, so the owner's proxy or tunnel reaches the app on this machine's port.
+    const publishImage = `${PUBLISH_IMAGE}:latest`;
+    outServices[PUBLISH_SERVICE] = {
+      image: spec.pins?.[publishImage] ? pinnedImage(PUBLISH_IMAGE, spec.pins[publishImage]!) : publishImage,
+      command: ["nc", "-lk", "-p", String(PUBLISH_TARGET), "-e", "nc", `${spec.project}-ui`, String(spec.interface.port)],
+      restart: "unless-stopped",
+      user: "65534:65534",
+      read_only: true,
+      cap_drop: ["ALL"],
+      networks: { app: {}, publish: {} },
+      ports: [{ target: PUBLISH_TARGET, published: String(spec.publish.port), host_ip: spec.publish.bind, protocol: "tcp" }],
+      labels: { ...labels, "ai.your-space.role": "publish" },
+      mem_limit: PUBLISH_MEMORY,
+      cpus: PUBLISH_CPUS,
+      oom_score_adj: 500,
+      security_opt: ["no-new-privileges:true"],
+    };
+    networks.publish = { driver: "bridge", labels };
+    adaptations.push({
+      service: PUBLISH_SERVICE,
+      kind: "added",
+      detail: `Added Your Space's port forwarder, which publishes the app's interface on ${spec.publish.bind}:${spec.publish.port}.`,
+    });
+  }
+
   const volumes = isObject(resolved.volumes) ? resolved.volumes : {};
   const outVolumes: Json = {};
   for (const name of Object.keys(volumes)) outVolumes[name] = { labels: labels };
@@ -413,15 +477,7 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
   const adapted: Json = {
     name: spec.project,
     services: escapeDollars(outServices) as Json,
-    networks: {
-      app: {
-        internal: true,
-        driver: "bridge",
-        driver_opts: { "com.docker.network.bridge.gateway_mode_ipv4": "isolated" },
-        labels,
-      },
-      egress: { driver: "bridge", labels },
-    },
+    networks,
     volumes: outVolumes,
     configs: { egress: { content: escapeDollars(egress) } },
   };

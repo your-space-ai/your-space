@@ -1,16 +1,18 @@
-// install-app <github-link> [--kit <link>] [--reuse-data] [--json] (FR-009, contracts/http-api.md).
-// Reviews the app, installs it as the operator, and waits until it runs or the install fails.
+// install-app <github-link> [--kit <link>] [--reuse-data] [--publish [--port <n>] [--bind <address>]
+// [--link <url>]] [--json] (FR-009, contracts/http-api.md). Reviews the app, installs it as the
+// operator, and waits until it runs or the install fails.
 import { parseArgs } from "node:util";
 import { operatorActorId } from "../actors.ts";
 import { errorFields, log } from "../log.ts";
 import { socketRuntime } from "../apps/runtime-client.ts";
 import { AppError, AppsService } from "../apps/service.ts";
-import { EXIT, openForCommand, output } from "./output.ts";
+import { EXIT, openForCommand, output, publishedLine } from "./output.ts";
 
-const USAGE = "Usage: install-app <github-link-to-compose-file> [--kit <link>] [--reuse-data] [--json]";
+const USAGE =
+  "Usage: install-app <github-link-to-compose-file> [--kit <link>] [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]";
 
 async function main(argv: string[]): Promise<number> {
-  let values: { kit?: string; json?: boolean; help?: boolean; "reuse-data"?: boolean };
+  let values: { kit?: string; json?: boolean; help?: boolean; "reuse-data"?: boolean; publish?: boolean; port?: string; bind?: string; link?: string };
   let positionals: string[];
   try {
     ({ values, positionals } = parseArgs({
@@ -18,6 +20,10 @@ async function main(argv: string[]): Promise<number> {
       options: {
         kit: { type: "string" },
         "reuse-data": { type: "boolean", default: false },
+        publish: { type: "boolean", default: false },
+        port: { type: "string" },
+        bind: { type: "string" },
+        link: { type: "string" },
         json: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
@@ -31,6 +37,10 @@ async function main(argv: string[]): Promise<number> {
     return EXIT.usage;
   }
   const out = output(values.json === true);
+  if (!values.publish && (values.port !== undefined || values.bind !== undefined || values.link !== undefined)) {
+    out.failure({ ok: false, error: "usage", message: `--port, --bind and --link need --publish. ${USAGE}` }, `--port, --bind and --link need --publish.\n${USAGE}`);
+    return EXIT.usage;
+  }
   if (values.help || positionals.length !== 1) {
     if (values.help) out.success({ ok: true, usage: USAGE }, [USAGE]);
     else out.failure({ ok: false, error: "usage", message: USAGE }, USAGE);
@@ -60,7 +70,10 @@ async function main(argv: string[]): Promise<number> {
       );
     }
     const actorId = await operatorActorId(database.db);
-    const { name, jobId, done } = await apps.install(review.previewId, {}, values["reuse-data"] === true, actorId);
+    const publish = values.publish
+      ? { ...(values.port !== undefined ? { port: Number(values.port) } : {}), ...(values.bind !== undefined ? { bind: values.bind } : {}), ...(values.link !== undefined ? { link: values.link } : {}) }
+      : null;
+    const { name, jobId, done } = await apps.install(review.previewId, {}, values["reuse-data"] === true, actorId, publish);
     await done;
     const job = await apps.job(jobId);
     const detail = await apps.detail(name);
@@ -69,8 +82,11 @@ async function main(argv: string[]): Promise<number> {
       return EXIT.notApplicable;
     }
     out.success(
-      { ok: true, name, state: detail.state, origin: detail.origin, commit: review.source.commit },
-      [`Installed ${review.title} (${detail.state}). Open it from Your Space, or at ${detail.origin}`],
+      { ok: true, name, state: detail.state, origin: detail.origin, publish: detail.publish, commit: review.source.commit },
+      [
+        `Installed ${review.title} (${detail.state}). Open it from Your Space, or at ${detail.publish?.link ?? detail.origin}`,
+        ...(detail.publish ? [publishedLine(review.title, detail.publish)] : []),
+      ],
     );
     return EXIT.ok;
   } catch (error) {

@@ -23,13 +23,16 @@ export class FakeRuntime implements Runtime {
     this.calls.push({ method: "check", spec });
     return {
       ok: true,
-      services: [{ name: "web", image: "traefik/whoami:latest", interface: spec.interface?.service === "web", ports: [80], volumes: [], dependsOn: [] }],
+      services: [
+        { name: "web", image: "traefik/whoami:latest", interface: spec.interface?.service === "web", ports: [80], published: [{ target: 80, host: 8000 }], volumes: [], dependsOn: [] },
+      ],
       variables: this.variables,
       adaptations: [{ service: "web", kind: "changed", detail: "Published ports removed: Your Space routes to the app's interface itself." }],
       refusals: [],
       images: [
         { ref: "traefik/whoami:latest", digest: "sha256:aaa", runsHere: true, platforms: ["linux/amd64"] },
         { ref: "ubuntu/squid:latest", digest: "sha256:bbb", runsHere: true, platforms: ["linux/amd64"] },
+        ...(spec.publish ? [{ ref: "busybox:latest", digest: "sha256:ccc", runsHere: true, platforms: ["linux/amd64"] }] : []),
       ],
     };
   }
@@ -42,6 +45,7 @@ export class FakeRuntime implements Runtime {
     this.running.set(spec.project, [
       { name: "web", role: "app", state: "running" },
       { name: "ys-egress", role: "egress", state: "running" },
+      ...(spec.publish ? [{ name: "ys-publish", role: "publish" as const, state: "running" }] : []),
     ]);
     onEvent({ step: "started" });
   }

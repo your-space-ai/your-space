@@ -1,6 +1,6 @@
 # Your Space Roadmap
 
-**Last updated**: 2026-11-14
+**Last updated**: 2026-11-19
 
 This roadmap tracks the functionality we want to build for Your Space: a self-hostable platform
 for independent apps, human users, and agents, with a managed offering planned later.
@@ -145,7 +145,8 @@ Your Space: first public release
 │   │   ├── [002] Each app at <app>.<Your Space's address>, in an iframe on the web
 │   │   ├── [002] Access gate: only people signed in to Your Space reach an app
 │   │   ├── [002] Several apps side by side on larger screens (M)
-│   │   └── [002] Open any app in its own tab or window (M)
+│   │   ├── [002] Open any app in its own tab or window (M)
+│   │   └── [002] Publish an app on a port for the owner's own proxy or tunnel (M)
 │   └── Developer kit
 │       ├── [005 007] Versioned public contracts, same for managed and external apps
 │       ├── [005 007] TypeScript + Python SDKs, each verified with a working app
@@ -424,6 +425,9 @@ Your Space: first public release
     **Added (2026-11-14)** with spec 002.
   - [x] [Medium] Open several apps side by side in one layout on larger screens; show one app at a time on phones. (2026-11-17, [PR #30](https://github.com/your-space-ai/your-space/pull/30))
   - [x] [Medium] Open any app in its own browser tab or window when it cannot run in a pane. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
+  - [ ] [Medium] Publish an app's interface on a port of this machine, opt-in per app, for the owner's own proxy or tunnel to reach at the owner's link; the app's address settings follow the link. Tailscale needs this, with one Tailscale Service per app.
+
+    **Added (2026-11-19):** see [running apps and reaching them](architecture/decisions.md#running-apps-and-reaching-them). It replaces journey 002's open task T035, Tailscale Services for apps.
 
   Spec 002 decides framing (the proxy replaces an app's framing headers), sign-in inside a pane (the
   app's own), and routing. On the plain-HTTP local setup, WebKit can't keep an app's cookies in a

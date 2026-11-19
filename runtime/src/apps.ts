@@ -1,8 +1,9 @@
 // What the runtime manager does with apps: check, apply, stop, remove, and report.
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { isIP } from "node:net";
 import { join } from "node:path";
-import { adapt, EGRESS_IMAGE, imageRef, type AppSpec, type CheckResult } from "./adapter.ts";
+import { adapt, EGRESS_IMAGE, imageRef, PUBLISH_IMAGE, type AppSpec, type CheckResult } from "./adapter.ts";
 import {
   connectNetwork,
   disconnectNetwork,
@@ -40,6 +41,11 @@ export function validateSpec(body: unknown): AppSpec {
   const env = spec.env ?? {};
   if (typeof env !== "object" || Object.entries(env).some(([k, v]) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) || typeof v !== "string")) {
     throw new SpecError("Settings must be names with text values.");
+  }
+  if (spec.publish !== undefined && spec.publish !== null) {
+    const { port, bind } = spec.publish as { port?: unknown; bind?: unknown };
+    if (!Number.isInteger(port) || (port as number) < 1 || (port as number) > 65535) throw new SpecError("The published port must be from 1 to 65535.");
+    if (typeof bind !== "string" || !isIP(bind)) throw new SpecError("The published port's address must be an IP address.");
   }
   return { ...spec, installation: INSTALLATION, env } as AppSpec;
 }
@@ -103,6 +109,7 @@ async function checkWithImages(spec: AppSpec): Promise<{ answer: CheckAnswer; ad
   if (!info.reachable) throw new EngineError("The engine can't be reached.", 503);
   const refs = [...new Set(Object.values((resolved.services as Record<string, { image?: string }>) ?? {}).map((s) => s.image).filter((i): i is string => !!i).map(imageRef))];
   refs.push(`${EGRESS_IMAGE}:latest`);
+  if (spec.publish) refs.push(`${PUBLISH_IMAGE}:latest`);
   const pins: Record<string, string> = { ...(spec.pins ?? {}) };
   const images = await Promise.all(
     refs.map(async (ref) => {
@@ -162,6 +169,14 @@ export async function apply(spec: AppSpec, emit: Emit): Promise<void> {
     writeFileSync(join(dir, "compose.json"), JSON.stringify(adapted), { mode: 0o600 });
     const up = await docker(["compose", "-p", spec.project, "--project-directory", dir, "-f", join(dir, "compose.json"), "up", "-d", "--remove-orphans", "--pull", "never"], {}, dir);
     if (up.code !== 0) {
+      // Docker says "port is already allocated" for another container's port, and "address already
+      // in use" for anything else on the machine.
+      if (spec.publish && /port is already allocated|address already in use/i.test(up.stderr)) {
+        throw new EngineError(
+          `Port ${spec.publish.port} on ${spec.publish.bind} is already in use on this machine, so ${spec.app} can't be published there. Choose another port for it.`,
+          409,
+        );
+      }
       throw new EngineError(`Starting the app failed: ${scrub(up.stderr, spec.env).split("\n").filter((l) => l.trim()).slice(-3).join(" ").slice(0, 600)}`);
     }
   } finally {
@@ -210,7 +225,7 @@ export async function deleteVolumes(project: string): Promise<void> {
 
 export interface ServiceState {
   name: string;
-  role: "app" | "egress";
+  role: "app" | "egress" | "publish";
   state: string;
   health?: string;
   exitCode?: number;
@@ -227,7 +242,7 @@ export async function listApps(): Promise<{ project: string; app: string; servic
     const entry = byProject.get(project) ?? { project, app, services: [] };
     const service: ServiceState = {
       name: c.Labels["com.docker.compose.service"] ?? c.Names[0] ?? c.Id,
-      role: c.Labels["ai.your-space.role"] === "egress" ? "egress" : "app",
+      role: c.Labels["ai.your-space.role"] === "egress" ? "egress" : c.Labels["ai.your-space.role"] === "publish" ? "publish" : "app",
       state: c.State,
     };
     const health = /\((healthy|unhealthy|health: starting)\)/.exec(c.Status)?.[1];

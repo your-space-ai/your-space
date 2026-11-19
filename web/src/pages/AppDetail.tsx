@@ -5,6 +5,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { api, appQuery, errorMessage, STATE_LABEL, type AppDetail as Detail } from "../apps-api.ts";
 import { JobProgress } from "../components/JobProgress.tsx";
+import { PUBLISH_NOTE, publishBody, PublishFields, type PublishForm } from "../components/PublishFields.tsx";
 
 const MIB = 1024 * 1024;
 
@@ -49,6 +50,7 @@ export function AppDetail({ name }: { name: string }) {
       ) : (
         <>
           <Settings detail={d} onStarted={started("Applying settings")} />
+          {d.interface ? <Publishing detail={d} onStarted={started("Applying publishing")} /> : null}
           <Outbound detail={d} onStarted={started("Updating internet access")} />
           <Advanced detail={d} onStarted={started("Applying limits")} />
           <Remove detail={d} onStarted={started(`Removing ${d.title}`)} />
@@ -80,6 +82,25 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
         <dd>
           <code>{d.origin}</code>
         </dd>
+        {d.publish ? (
+          <>
+            <dt>Published on</dt>
+            <dd>
+              <code>
+                {d.publish.bind.includes(":") ? `[${d.publish.bind}]` : d.publish.bind}:{d.publish.port}
+              </code>
+              {d.publish.link ? (
+                <>
+                  {" "}
+                  for{" "}
+                  <a href={d.publish.link} target="_blank" rel="noreferrer">
+                    {d.publish.link}
+                  </a>
+                </>
+              ) : null}
+            </dd>
+          </>
+        ) : null}
         <dt>Source</dt>
         <dd>
           <a href={`https://github.com/${d.source.repo}/blob/${d.source.commit}/${d.source.path}`} target="_blank" rel="noreferrer">
@@ -99,7 +120,11 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
         ) : null}
       </dl>
       <div className="actions">
-        {d.interface && d.state !== "removed" ? (
+        {d.interface && d.state !== "removed" && d.publish?.link ? (
+          <a className="button" href={d.publish.link} target="_blank" rel="noreferrer">
+            Open
+          </a>
+        ) : d.interface && d.state !== "removed" ? (
           <Link className="button" to="/open/$name" params={{ name: d.name }} search={{}}>
             Open
           </Link>
@@ -197,6 +222,47 @@ function Settings({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { j
             Save settings
           </button>
         </div>
+      </form>
+    </section>
+  );
+}
+
+/** Publishing the app on a port of this machine, for the owner's own proxy or tunnel (decision 2026-11-19). */
+function Publishing({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { jobId: string }) => void }) {
+  const queryClient = useQueryClient();
+  const [on, setOn] = useState(Boolean(d.publish));
+  const [form, setForm] = useState<PublishForm>({ port: d.publish ? String(d.publish.port) : "", bind: d.publish?.bind ?? "127.0.0.1", link: d.publish?.link ?? "" });
+  const save = useMutation({
+    mutationFn: () => api<{ jobId: string }>("PUT", `/api/apps/${d.name}/publish`, { publish: on ? publishBody(form) : null }),
+    onSuccess: (r) => {
+      onStarted(r);
+      void queryClient.invalidateQueries({ queryKey: ["apps"] });
+    },
+  });
+  return (
+    <section className="card" aria-labelledby="publishing-heading">
+      <h2 id="publishing-heading">Publishing</h2>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate();
+        }}
+      >
+        <label className="checkbox">
+          <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} />
+          Publish on a port of this machine
+          <small>{PUBLISH_NOTE}</small>
+        </label>
+        {on ? <PublishFields form={form} onChange={setForm} defaultPort={null} /> : null}
+        <p className="muted small">Saving restarts the app. Its data is kept.</p>
+        {save.isError ? (
+          <p className="notice error" role="alert">
+            {errorMessage(save.error)}
+          </p>
+        ) : null}
+        <button type="submit" disabled={save.isPending || (!on && !d.publish)}>
+          Save publishing
+        </button>
       </form>
     </section>
   );

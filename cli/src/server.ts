@@ -53,9 +53,12 @@ export async function showOwner(compose: Compose): Promise<Owner | null> {
 export interface App {
   name: string;
   state: string;
+  /** Published on a port of this machine for the owner's own proxy or tunnel (decision 2026-11-19). */
+  publish?: { port: number; bind: string; link: string | null } | null;
 }
 
 export async function listApps(compose: Compose): Promise<App[]> {
   const json = expectOk(await serverCommand(compose, "list-apps"));
-  return (json.apps as { name: string; state: string }[]).map(({ name, state }) => ({ name, state }));
+  // An app that isn't published keeps the shape it always had.
+  return (json.apps as App[]).map(({ name, state, publish }) => ({ name, state, ...(publish ? { publish } : {}) }));
 }

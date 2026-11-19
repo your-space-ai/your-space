@@ -23,11 +23,21 @@ export interface AppSpec {
   interface?: { service: string; port: number } | null;
   limits?: Record<string, { memory?: number; cpus?: number }>;
   egress?: string[];
+  publish?: { port: number; bind: string } | null;
 }
 
 export interface CheckAnswer {
   ok: boolean;
-  services: { name: string; image: string; interface: boolean; ports: number[]; volumes: string[]; dependsOn: string[] }[];
+  services: {
+    name: string;
+    image: string;
+    interface: boolean;
+    ports: number[];
+    /** The machine's ports the file publishes, each with the container port it leads to. */
+    published: { target: number; host: number }[];
+    volumes: string[];
+    dependsOn: string[];
+  }[];
   variables: { name: string; required: boolean; default: string }[];
   adaptations: { service: string; kind: "changed" | "left_out" | "added"; detail: string }[];
   refusals: { service: string; setting: string; reason: string }[];
@@ -36,7 +46,7 @@ export interface CheckAnswer {
 
 export interface ServiceState {
   name: string;
-  role: "app" | "egress";
+  role: "app" | "egress" | "publish";
   state: string;
   health?: string;
   exitCode?: number;

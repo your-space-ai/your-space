@@ -446,7 +446,9 @@ option that is still complete.
    `<app>.<Your Space's address>` names there, with or without Tailscale Services. Apps over
    Tailscale stay unsupported, as the guide already says; journey 002's task T035 stays open for the
    release gate's hosting review rather than being automated here. The decision record's
-   "documented guidance for a private tunnel such as Tailscale" stays as written.
+   "documented guidance for a private tunnel such as Tailscale" stays as written. (2026-11-19: apps
+   over Tailscale are published on a port, with a Tailscale Service per app; see the decision
+   record's "Running Apps and Reaching Them".)
 3. **The CLI's name is `your-space`, with no short alias.** `ys` is already the command of
    YAMLScript, a widely installed tool.
 4. **The engine Your Space provides itself comes with the desktop app (journey 008).** Until then the

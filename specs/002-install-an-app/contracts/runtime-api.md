@@ -16,18 +16,22 @@ An **app spec**, sent with every request that resolves or applies an app:
   "pins": { "ghcr.io/we-promise/sure:stable": "sha256:…" },
   "interface": { "service": "web", "port": 3000 },
   "limits": { "web": { "memory": 1073741824, "cpus": 1 } },
-  "egress": ["api.openai.com"]
+  "egress": ["api.openai.com"],
+  "publish": { "port": 3000, "bind": "127.0.0.1" }
 }
 ```
+
+`publish` (optional, decision 2026-11-19) adds the `ys-publish` forwarder, which publishes the
+interface on `bind:port` of this machine; the app's own services publish nothing.
 
 | Method and path | Body | Answer |
 | --- | --- | --- |
 | `GET /engine` | | `{ reachable, version, os, arch, cpus, memory, connection, stopping }`; `stopping` is true after `/stop-all` |
-| `POST /check` | app spec, `pins` optional | `{ ok, services: [{ name, image, interface, ports, volumes, dependsOn }], variables: [{ name, required, default }], adaptations: [...], refusals: [{ service, setting, reason }], images: [{ ref, digest, runsHere, platforms }] }` |
-| `POST /apply` | app spec | NDJSON stream: `{ "step": "pull", "image" }`, `{ "step": "start" }`, …, then `{ "done": true }` or `{ "error": "…" }` |
+| `POST /check` | app spec, `pins` optional | `{ ok, services: [{ name, image, interface, ports, published: [{ target, host }], volumes, dependsOn }], variables: [{ name, required, default }], adaptations: [...], refusals: [{ service, setting, reason }], images: [{ ref, digest, runsHere, platforms }] }` |
+| `POST /apply` | app spec | NDJSON stream: `{ "step": "pull", "image" }`, `{ "step": "start" }`, …, then `{ "done": true }` or `{ "error": "…" }`; a published port something else uses gives an error naming it |
 | `POST /apps/{project}/down` | | Removes containers and networks, keeps volumes |
 | `DELETE /apps/{project}/volumes` | | Removes the app's volumes |
-| `GET /apps` | | `[{ project, app, services: [{ name, state, health, exitCode, oomKilled }] }]` for every app this installation manages |
+| `GET /apps` | | `[{ project, app, services: [{ name, role, state, health, exitCode, oomKilled }] }]` for every app this installation manages; `role` is `app`, `egress` or `publish` |
 | `GET /apps/{project}/logs?service=&tail=` | | `{ lines: [...] }` |
 | `GET /apps/{project}/stats` | | `{ services: [{ name, memory, memoryLimit, cpuPercent }] }` |
 | `GET /apps/{project}/denials` | | `{ hosts: [{ host, attempts, lastSeen }] }` from the egress proxy's log |

@@ -70,4 +70,5 @@ it merges.
 - [x] T032 Install guide: apps, addresses, stop command, engine socket (`docs/install/README.md`)
 - [x] T033 Decision record, roadmap, spec map, architecture overview and constitution 1.4.0
 - [ ] T034 Fetch a real file from GitHub from the server container (this environment's containers have no internet)
-- [ ] T035 Tailscale Services for apps
+- [ ] T035 Tailscale Services for apps (replaced 2026-11-19: on Tailscale, the owner publishes an app on a
+  port and creates its Tailscale Service; see the decision record's "Running Apps and Reaching Them")

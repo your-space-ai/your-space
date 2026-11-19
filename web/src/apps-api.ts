@@ -70,6 +70,13 @@ export function errorMessage(error: unknown): string {
 
 export type AppState = "installing" | "starting" | "running" | "degraded" | "stopped" | "failed" | "removed";
 
+/** An app published on a port of this machine, for the owner's own proxy or tunnel (decision 2026-11-19). */
+export interface Publish {
+  port: number;
+  bind: string;
+  link: string | null;
+}
+
 export interface AppSummary {
   name: string;
   title: string;
@@ -79,6 +86,7 @@ export interface AppSummary {
   pane: boolean;
   hasInterface: boolean;
   pendingRequests: number;
+  publish: Publish | null;
 }
 
 export interface RetainedApp {
@@ -124,13 +132,14 @@ export interface Review {
   source: { link: string; repo: string; path: string; ref: string; commit: string; pinnedLink: string };
   kit: { source: string } | null;
   ok: boolean;
-  services: { name: string; image: string; interface: boolean; ports: number[]; volumes: string[]; dependsOn: string[] }[];
+  services: { name: string; image: string; interface: boolean; ports: number[]; published: { target: number; host: number }[]; volumes: string[]; dependsOn: string[] }[];
   images: { ref: string; digest?: string; runsHere: boolean }[];
   adaptations: Adaptation[];
   refusals: Refusal[];
   settings: PublicSetting[];
   outbound: string[];
   interface: { service: string; port: number } | null;
+  publishPort: number | null;
   pane: boolean;
   retained: boolean;
   warning: string;
@@ -151,7 +160,7 @@ export interface Job {
 
 export interface ServiceState {
   name: string;
-  role: "app" | "egress";
+  role: "app" | "egress" | "publish";
   state: string;
   health?: string;
   exitCode?: number;
@@ -168,6 +177,7 @@ export interface AppDetail {
   desired: "running" | "stopped" | "removed";
   pane: boolean;
   interface: { service: string; port: number } | null;
+  publish: Publish | null;
   source: { link: string; repo: string; path: string; ref: string; commit: string };
   kitSource: string | null;
   images: Record<string, { digest: string }>;

@@ -30,7 +30,8 @@ Why: [journey-based specifications](architecture/decisions.md#journey-based-spec
 ```
 
 - **002 before 003:** 002 puts every app at `<app>.<Your Space's address>`, which sets the wildcard
-  DNS, certificates and Tailscale Services the CLI configures on the proxy from 001.
+  DNS, certificates and Tailscale Services the CLI configures on the proxy from 001. (2026-11-19: on
+  Tailscale, an app is published on a port instead, and the owner creates its Tailscale Service.)
 - **006 after 004 and 005:** backup and restore must cover members, agents, and app data.
 - **008 last:** the desktop app wraps the CLI's finished commands without changing them.
 - **007 and 008** can run in parallel.

@@ -99,8 +99,11 @@ Compose or the engine gave in `detail` when there was any.
 
 - `setup.kind` is `this-machine`, `domain` or `proxy`; `address` is Your Space's address.
 - `link` appears only from the `start` that created the owner.
-- `apps` is `null` when Your Space isn't running.
+- `apps` is `null` when Your Space isn't running. A published app (decision 2026-11-19) also has
+  `"publish": { "port": 8081, "bind": "127.0.0.1", "link": "https://plane.example.com" }`, and its
+  `address` is its link when it has one.
 - `forward` (proxy setup): `{ "to": "http://127.0.0.1:8080", "network": "your-space_edge", "names": ["space.example.com", "sure.space.example.com"], "wildcard": "*.space.example.com" }`.
+  An app with its own link isn't in `names`: the proxy or tunnel sends its link to its published port.
 - `certificate` (domain setup): `{ "state": "valid" | "waiting" | "failed", "issuer": "...", "message": "..." }`.
 
 ### Other results

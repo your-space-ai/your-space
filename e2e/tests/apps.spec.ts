@@ -206,6 +206,44 @@ test("the owner sees each service, its logs and limits, and the engine", async (
   await expect(page.locator('tr[data-app="whoami"]')).toBeVisible();
 });
 
+test("the owner publishes an app on a port of this machine, for their own proxy or tunnel", async ({ page }) => {
+  await asOwner(page);
+  await page.goto("/apps/whoami");
+  const publishing = page.locator("section", { has: page.getByRole("heading", { name: "Publishing" }) });
+  await publishing.getByLabel(/^Publish on a port/).check();
+  await publishing.getByLabel(/^Port/).fill("18781");
+  await publishing.getByLabel(/^Link/).fill("http://127.0.0.1:18781");
+  await publishing.getByRole("button", { name: "Save publishing" }).click();
+  await waitForJob(page);
+
+  // The port reaches the app as it is, with the proxy's own headers and no gate in between.
+  const answer = await page.request.get("http://127.0.0.1:18781/inbox", { headers: { "X-Forwarded-Proto": "https" }, maxRedirects: 0 });
+  expect(answer.status()).toBe(200);
+  const echoed = await answer.text();
+  expect(echoed).toContain("GET /inbox");
+  expect(echoed).toContain("X-Forwarded-Proto: https");
+  // Only Your Space's forwarder publishes the port; the app's own container still publishes none (FR-015).
+  expect(await inspect("ys-whoami-web-1", "{{json .HostConfig.PortBindings}}")).toBe("{}");
+  expect(await inspect("ys-whoami-ys-publish-1", "{{json .HostConfig.PortBindings}}")).toContain('"HostIp":"127.0.0.1","HostPort":"18781"');
+
+  // Your Space opens it at its link.
+  await page.goto("/apps");
+  await expect(page.locator('li[data-app="whoami"]').getByRole("link", { name: /^Open/ })).toHaveAttribute("href", "http://127.0.0.1:18781");
+
+  // Stopping publishing closes the port, and the app is still at its own address.
+  await page.goto("/apps/whoami");
+  await publishing.getByLabel(/^Publish on a port/).uncheck();
+  await publishing.getByRole("button", { name: "Save publishing" }).click();
+  await waitForJob(page);
+  const closed = await page.request.get("http://127.0.0.1:18781/", { timeout: 5_000 }).then(
+    () => false,
+    () => true,
+  );
+  expect(closed).toBe(true);
+  await page.goto("/apps");
+  await expect(page.locator('li[data-app="whoami"]').getByRole("link", { name: /^Open/ })).toHaveAttribute("href", /\/open\/whoami$/);
+});
+
 test("two apps side by side on a large screen, one at a time on a phone", async ({ page }) => {
   await asOwner(page);
   await page.goto("/open/whoami?with=probe");
