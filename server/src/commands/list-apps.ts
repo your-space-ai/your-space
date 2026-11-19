@@ -26,7 +26,8 @@ async function main(argv: string[]): Promise<number> {
       origin: d.origin,
       publish: d.publish,
     }));
-    const published = (p: (typeof rows)[number]["publish"]) => (p ? `  published on ${p.bind}:${p.port}${p.link ? ` for ${p.link}` : ""}` : "");
+    // An app published with a link shows the link as its address.
+    const published = (p: (typeof rows)[number]["publish"]) => (p ? `  published on ${p.bind}:${p.port}` : "");
     out.success({ ok: true, apps: rows, retained }, [
       ...(rows.length
         ? rows.map((r) => `${r.name}  ${r.state}${r.reason ? ` (${r.reason})` : ""}  ${r.repo}/${r.path}@${r.commit.slice(0, 12)}  ${r.origin}${published(r.publish)}`)

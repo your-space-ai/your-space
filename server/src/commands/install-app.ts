@@ -90,7 +90,7 @@ async function main(argv: string[]): Promise<number> {
     out.success(
       { ok: true, name, state: detail.state, origin: detail.origin, publish: detail.publish, commit: review.source.commit },
       [
-        `Installed ${review.title} (${detail.state}). Open it from Your Space, or at ${detail.publish?.link ?? detail.origin}`,
+        `Installed ${review.title} (${detail.state}). Open it from Your Space, or at ${detail.origin}`,
         ...(detail.publish ? [publishedLine(review.title, detail.publish)] : []),
       ],
     );

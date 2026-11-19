@@ -245,7 +245,7 @@ function ReviewPanel(props: {
         ) : (
           ", without an installation kit"
         )}
-        . It will be at <code>{review.origin}</code>.
+        . It will be at <code>{(props.publishing && publishBody(props.publish).link) || review.origin}</code>.
       </p>
 
       {review.refusals.length > 0 ? (

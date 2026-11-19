@@ -2,7 +2,7 @@
 // reaches it there, at the link the owner gives, and the app's address settings follow the link.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { AppError, defaultPort, linkOrigin, publishFrom, stateFromServices } from "../src/apps/service.ts";
+import { AppError, appOrigin, defaultPort, linkOrigin, publishFrom, stateFromServices } from "../src/apps/service.ts";
 import { app, event } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
@@ -51,6 +51,14 @@ describe("publishing choices", () => {
     for (const bad of ["plane.example.com", "ftp://plane.example.com", "https://plane.example.com/app", "https://plane.example.com/?a=1", "https://u:p@plane.example.com", "javascript:alert(1)"]) {
       expect(() => linkOrigin(bad), bad).toThrow(AppError);
     }
+  });
+
+  it("reaches an app published with a link at the link, and any other app at its built-in address", () => {
+    const publicUrl = "https://space.example.com";
+    expect(appOrigin(publicUrl, { name: "plane", publish: null })).toBe("https://plane.space.example.com");
+    expect(appOrigin("http://space.localhost:8080", { name: "plane", publish: null })).toBe("http://plane.space.localhost:8080");
+    expect(appOrigin(publicUrl, { name: "plane", publish: { port: 8000, bind: "127.0.0.1", link: null } })).toBe("https://plane.space.example.com");
+    expect(appOrigin(publicUrl, { name: "plane", publish: { port: 8000, bind: "127.0.0.1", link: "https://plane.tail1234.ts.net" } })).toBe("https://plane.tail1234.ts.net");
   });
 
   it("defaults to the port the app's file publishes for its interface, else the interface's own", () => {
@@ -129,10 +137,12 @@ describe("publishing an app", () => {
 
     const detail = (await (await api("/api/apps/linked")).json()) as any;
     expect(detail.publish).toEqual({ port: 8000, bind: "127.0.0.1", link: "https://linked.tail1234.ts.net" });
-    expect(detail.origin).toBe(builtIn());
+    // Your Space sends the owner to the link, not to the built-in address it may not reach.
+    expect(detail.origin).toBe("https://linked.tail1234.ts.net");
     expect(detail.settings.find((s: { name: string }) => s.name === "APP_URL").value).toBe("https://linked.tail1234.ts.net");
     const list = (await (await api("/api/apps")).json()) as any;
     expect(list.apps[0].publish).toEqual(detail.publish);
+    expect(list.apps[0].origin).toBe("https://linked.tail1234.ts.net");
   });
 
   it("refuses a port another published app uses, naming it, and never suggests one", async () => {
@@ -148,6 +158,8 @@ describe("publishing an app", () => {
     expect(other.status).toBe(202);
     await waitForJob(((await other.json()) as { jobId: string }).jobId);
     expect(lastApply().publish).toEqual({ port: 8001, bind: "127.0.0.1" });
+    // Published without a link, the app stays at its built-in address.
+    expect(((await (await api("/api/apps/other")).json()) as { origin: string }).origin).toBe(`http://other.${new URL(server.publicUrl).host}`);
     // A port on another single address doesn't collide.
     const moved = await send("/api/apps/other/publish", { publish: { port: 8000, bind: "127.0.0.2" } }, "PUT");
     expect(moved.status).toBe(202);
@@ -197,6 +209,7 @@ describe("publishing an app", () => {
     expect(changed.status).toBe(202);
     expect((await waitForJob(((await changed.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
     expect(lastApply()).toMatchObject({ publish: { port: 8000, bind: "127.0.0.1" }, env: { APP_URL: "https://tasks.example.com", APP_DOMAIN: "tasks.example.com" } });
+    expect(((await (await api("/api/apps/linked")).json()) as { origin: string }).origin).toBe("https://tasks.example.com");
     const events = (await t.db.select().from(event)).map((e) => e.type);
     expect(events).toContain("app.publish_changed");
   });
@@ -219,6 +232,7 @@ describe("publishing an app", () => {
     expect(lastApply().env.APP_URL).toBe(builtIn());
     const detail = (await (await api("/api/apps/linked")).json()) as any;
     expect(detail.publish).toBeNull();
+    expect(detail.origin).toBe(builtIn());
     expect(detail.settings.find((s: { name: string }) => s.name === "APP_URL").value).toBe(builtIn());
   });
 
