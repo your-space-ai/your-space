@@ -88,12 +88,20 @@ export async function startStack(ui: Ui, compose: Compose): Promise<void> {
   });
 }
 
+/**
+ * True when the secrets step stopped because a secret is gone but the database is kept: each of its
+ * messages for that (server/src/secrets.ts), whichever secrets are missing.
+ */
+export function secretsLost(log: string): boolean {
+  return /already has a\s+database|database already\s+exists/.test(log);
+}
+
 export async function whyNotStarted(compose: Compose, output: string): Promise<CliError> {
   const services = await compose.ps();
   const secrets = services.find((s) => s.name === "secrets");
   if (secrets && secrets.state === "exited" && secrets.exitCode !== 0) {
     const log = (await compose.logs(["--no-log-prefix", "secrets"])).stdout.trim();
-    if (/already has a\s+database/.test(log)) {
+    if (secretsLost(log)) {
       return new CliError(
         "lost_secrets",
         "Your Space's secrets are gone, but its database is still there, so it didn't start. Put the old values back in .env as BETTER_AUTH_SECRET and POSTGRES_PASSWORD, or start with new ones: your-space start --new-secrets (everyone is signed out; your data stays, but installed apps' settings can't be read with a new auth secret, so apps must be reinstalled).",

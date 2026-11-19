@@ -127,7 +127,7 @@ Compose or the engine gave in `detail` when there was any.
 | `secrets show` | `show-secrets --json` |
 | `secrets replace auth-secret` | `docker compose run --rm secrets --new auth-secret`, then `docker compose restart server` |
 | `secrets replace database-password` | `docker compose run --rm secrets --new database-password`, the guide's `psql` step, then `docker compose restart server` |
-| `start --new-secrets` | `docker compose run --rm secrets --new auth-secret --new database-password`, `docker compose up -d --wait postgres`, the `psql` step, then `start` |
+| `start --new-secrets` | `start`; only when it stops with `lost_secrets`: `docker compose run --rm secrets --new auth-secret --new database-password`, `docker compose up -d --wait postgres`, the `psql` step, then `start` again. Secrets that aren't lost are kept |
 | `configure` | Sets the setup's lines in `.env`, then `docker compose up -d --wait` |
 
 ## The Server's `show-owner` Command

@@ -174,4 +174,9 @@ test("lost secrets stop the start with what to do, and new ones bring Your Space
   expect(lost.json.message).toContain("your-space start --new-secrets");
   const recovered = ok(await cli.run(["start", "--no-open", "--new-secrets", "--json"]));
   expect(recovered).toMatchObject({ running: true, owner: { username: "sam" } });
+
+  // Secrets that aren't lost are kept: --new-secrets changes nothing then.
+  const kept = ok(await cli.run(["secrets", "show", "--reveal", "--json"]));
+  ok(await cli.run(["start", "--no-open", "--new-secrets", "--json"]));
+  expect(ok(await cli.run(["secrets", "show", "--reveal", "--json"])).secrets).toEqual(kept.secrets);
 });
