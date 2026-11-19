@@ -23,9 +23,9 @@ did for apps' settings.
 
 | Part | Change |
 | --- | --- |
-| `server/src/secrets.ts` | `DATA_KEY` (dir `data`, file `key`, 0400, readable by the server only). A missing data key is generated even when the database exists: the server reports any app whose settings it can't read instead of refusing to start. `--new data-key` keeps the replaced key as `data/previous` until `--forget previous-data-key` removes it. |
+| `server/src/secrets.ts` | `DATA_KEY` (dir `data`, file `key`, 0400, readable by the server only). A missing data key is generated even when the database exists: the server reports any app whose settings it can't read instead of refusing to start. `--new data-key` keeps the replaced key as `data/previous` until `--forget previous-data-key` removes it, and refuses to replace the data key again until then. |
 | `server/src/commands/secrets-step.ts` | `--forget previous-data-key`. |
-| `server/src/config.ts` | `dataKey` and `previousDataKey`; `YS_DATA_KEY` is a known setting. |
+| `server/src/config.ts` | `dataKey` and `previousDataKey` (one that is there but can't be read stops the start); `YS_DATA_KEY` is a known setting. |
 | `server/src/apps/settings.ts` | `v2` values: AES-256-GCM with a key derived (HKDF) from the data key. `v1` values, from the auth secret, are only read, to move them. |
 | `server/src/apps/keys.ts` | `moveSettingsToDataKey`: at start, in one transaction, re-encrypts `v1` values and values on the previous data key; counts and leaves values no key can read. |
 | `server/src/apps/service.ts` | Uses the data key. A setting no key can read stops the app's next apply with "remove the app, keeping its data, and install it again". |
@@ -43,9 +43,10 @@ start finds nothing to move and the previous key can be forgotten.
 - `server/tests/data-key.test.ts`: moving `v1` values, replacing the auth secret afterwards, moving
   from a previous data key, and an unreadable value left as it is.
 - `server/tests/secrets.test.ts`: the data key is generated, kept, generated next to an existing
-  database, kept as previous on replacement (and not overwritten by a second one), forgotten, and left
-  to `.env`.
-- `server/tests/config.test.ts`: the data key and the previous one are read.
+  database, kept as previous on replacement (a second replacement is refused until it is forgotten),
+  forgotten, and left to `.env`.
+- `server/tests/config.test.ts`: the data key and the previous one are read, and a previous data key
+  that can't be read stops the start.
 - `e2e/tests/cli.spec.ts`: with an app installed, replacing the auth secret, the database password and
   the data key leaves the app running with the same generated `API_TOKEN`, and the previous data key
   is gone.

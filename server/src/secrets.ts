@@ -296,14 +296,24 @@ export function settleSecrets(options: SettleOptions): { spec: SecretSpec; actio
   // to start (spec 009, FR-004).
   const blocking = missing.filter((spec) => spec !== DATA_KEY);
   if (blocking.length > 0 && databaseExists(databaseDir)) throw new SecretsError(recovery(blocking));
+  // Only one replaced data key is kept. Replacing the data key again while it is still there would
+  // drop a key that may hold the settings: the previous one if the server hasn't moved them yet, or
+  // the current one if it has. So it waits until the server has moved them and the old key is gone.
+  if (plan.some(({ spec, action }) => spec === DATA_KEY && action === "replaced") && readStored(PREVIOUS_DATA_KEY, dir)) {
+    throw new SecretsError(
+      "The data key was replaced before, and the key it replaced is still kept until the server has moved apps' settings " +
+        "onto the new one. Restart the server and wait until it is healthy (docker compose restart server, then " +
+        "docker compose up -d --wait), then remove the old key: docker compose run --rm secrets --forget previous-data-key. " +
+        "Then replace the data key again if you still want to.",
+    );
+  }
 
   for (const { spec, action } of plan) {
     removeLeftovers(ensureFolder(spec, dir, chown));
-    // The replaced data key is kept until the server has moved everything onto the new one. A second
-    // replacement before that keeps the first previous key, which still holds the values.
+    // The replaced data key is kept until the server has moved everything onto the new one.
     if (spec === DATA_KEY && action === "replaced") {
       const current = readStored(DATA_KEY, dir);
-      if (current && !readStored(PREVIOUS_DATA_KEY, dir)) writeSecret(PREVIOUS_DATA_KEY, dir, current, chown);
+      if (current) writeSecret(PREVIOUS_DATA_KEY, dir, current, chown);
     }
     if (action === "generated" || action === "replaced") writeSecret(spec, dir, generate(), chown);
   }

@@ -578,7 +578,8 @@ first, then runs every step below. `your-space secrets show` says where each sec
 - **Data key:** `docker compose run --rm secrets --new data-key`, then `docker compose restart server`.
   The secrets step keeps the replaced key until the server, as it starts, has re-encrypted every
   app's settings with the new one. Once `docker compose ps` shows the server healthy, remove the old
-  key: `docker compose run --rm secrets --forget previous-data-key`.
+  key: `docker compose run --rm secrets --forget previous-data-key`. Until it is removed, the data
+  key can't be replaced again.
 - **Database password:** `docker compose run --rm secrets --new database-password`, then
   [give PostgreSQL the database password](#give-postgresql-the-database-password) and restart the
   server.

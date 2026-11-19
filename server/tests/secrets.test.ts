@@ -202,12 +202,18 @@ describe("the data key (spec 009)", () => {
     settle({}, [DATA_KEY]);
     expect(stored(PREVIOUS_DATA_KEY)).toBe(first);
     expect(stored(DATA_KEY)).not.toBe(first);
-    // A second replacement before the server moved anything keeps the key that still holds the values.
-    settle({}, [DATA_KEY]);
-    expect(stored(PREVIOUS_DATA_KEY)).toBe(first);
+    const second = stored(DATA_KEY);
+    // A second replacement while the previous key is kept is refused, along with the other secrets
+    // asked for, and changes nothing: either key may hold the settings.
+    const auth = stored(AUTH_SECRET);
+    expect(() => settle({}, [AUTH_SECRET, DATA_KEY])).toThrow(/--forget previous-data-key/);
+    expect([stored(AUTH_SECRET), stored(DATA_KEY), stored(PREVIOUS_DATA_KEY)]).toEqual([auth, second, first]);
     expect(forgetPreviousDataKey(secretsDir)).toBe(true);
     expect(readdirSync(join(secretsDir, DATA_KEY.dir))).toEqual(["key"]);
     expect(forgetPreviousDataKey(secretsDir)).toBe(false);
+    // Once it is forgotten, the data key can be replaced again.
+    settle({}, [DATA_KEY]);
+    expect(stored(PREVIOUS_DATA_KEY)).toBe(second);
   });
 
   it("is left to .env when set there", () => {

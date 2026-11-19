@@ -240,4 +240,10 @@ describe("loadConfig: secrets", () => {
     expect(config.dataKey).toBe("e".repeat(40));
     expect(config.previousDataKey).toBe("p".repeat(43));
   });
+
+  it("stops when the previous data key is there but can't be read, so its settings aren't left behind", () => {
+    const dir = volume(GENERATED_AUTH, "generatedpw", "k".repeat(43));
+    mkdirSync(join(dir, "data", "previous"));
+    expect(() => loadConfig({ DATABASE_URL: COMPOSE_URL }, { secretsDir: dir })).toThrow(/The previous data key in the ys-secrets volume can't be read \(EISDIR\)/);
+  });
 });

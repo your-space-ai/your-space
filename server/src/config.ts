@@ -205,10 +205,16 @@ function checkDataKey(env: NodeJS.ProcessEnv, dir: string, problems: string[]): 
   return value;
 }
 
-function previousDataKey(dir: string): string | undefined {
+/**
+ * The data key a replacement left, if any. One that is there but can't be read stops the start: the
+ * server would otherwise leave the settings it holds unmoved and become healthy, and the old key
+ * would then be forgotten.
+ */
+function previousDataKey(dir: string, problems: string[]): string | undefined {
   try {
     return readStored(PREVIOUS_DATA_KEY, dir);
-  } catch {
+  } catch (error) {
+    problems.push(`The ${PREVIOUS_DATA_KEY.label} in the ys-secrets volume can't be read (${(error as NodeJS.ErrnoException).code ?? "error"}).`);
     return undefined;
   }
 }
@@ -247,7 +253,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadOp
     authSecret: checkSecret(env, secretsDir, problems),
     dataKey: checkDataKey(env, secretsDir, problems),
   };
-  const previous = previousDataKey(secretsDir);
+  const previous = previousDataKey(secretsDir, problems);
   if (previous) config.previousDataKey = previous;
   if (problems.length > 0) throw new ConfigError(problems);
   return config;
