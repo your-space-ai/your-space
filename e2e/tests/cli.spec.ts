@@ -226,7 +226,7 @@ function setUpPebble(folder: string): void {
     join(folder, "compose.pebble.yaml"),
     `services:
   pebble:
-    image: ghcr.io/letsencrypt/pebble:latest
+    image: ghcr.io/letsencrypt/pebble:2.10.3
     environment:
       # Issue without reaching this machine from outside, and never refuse a nonce at random.
       PEBBLE_VA_ALWAYS_VALID: "1"
