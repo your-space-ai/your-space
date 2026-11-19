@@ -132,3 +132,51 @@ test("a taken port is moved only with consent", async () => {
 
 });
 
+test("owner recovery and secrets go through the server's own commands", async () => {
+  const link = ok(await cli.run(["owner", "reset-link", "--json"]));
+  expect(link).toMatchObject({ username: "sam", url: expect.stringContaining("/reset-password#token=") });
+  const exists = await cli.run(["owner", "create", "--name", "Other", "--username", "other", "--json"]);
+  expect(exists.code).toBe(2);
+  expect(exists.json.error).toBe("owner_exists");
+
+  const shown = ok(await cli.run(["secrets", "show", "--json"]));
+  expect(shown.secrets).toEqual([
+    { name: "BETTER_AUTH_SECRET", source: "generated" },
+    { name: "POSTGRES_PASSWORD", source: "generated" },
+  ]);
+  const revealed = ok(await cli.run(["secrets", "show", "--reveal", "--json"]));
+  expect(revealed.secrets[0].value.length).toBeGreaterThan(30);
+
+  const unconfirmed = await cli.run(["secrets", "replace", "auth-secret", "--json"]);
+  expect(unconfirmed.code).toBe(1);
+  ok(await cli.run(["secrets", "replace", "auth-secret", "--yes", "--json"]));
+  ok(await cli.run(["secrets", "replace", "database-password", "--yes", "--json"]));
+  const after = ok(await cli.run(["secrets", "show", "--reveal", "--json"]));
+  expect(after.secrets[0].value).not.toBe(revealed.secrets[0].value);
+  expect(after.secrets[1].value).not.toBe(revealed.secrets[1].value);
+  // The server reads the database with the new password, so the owner is still there.
+  expect(ok(await cli.run(["status", "--json"])).owner).toEqual({ username: "sam", name: "Sam Rivera" });
+
+  // A secret set in .env is left to .env.
+  writeFileSync(join(cli.folder, ".env"), `${readFileSync(join(cli.folder, ".env"), "utf8")}BETTER_AUTH_SECRET=${after.secrets[0].value}\n`);
+  const inEnv = await cli.run(["secrets", "replace", "auth-secret", "--yes", "--json"]);
+  expect(inEnv.code).toBe(2);
+  expect(inEnv.json.error).toBe("secret_in_env");
+  writeFileSync(join(cli.folder, ".env"), readFileSync(join(cli.folder, ".env"), "utf8").replace(/^BETTER_AUTH_SECRET=.*\n/m, ""));
+});
+
+test("lost secrets stop the start with what to do, and new ones bring Your Space back with its data", async () => {
+  await cli.compose(["down"]);
+  await docker(["volume", "rm", "your-space_ys-secrets"], false);
+  const lost = await cli.run(["start", "--no-open", "--json"]);
+  expect(lost.code).toBe(2);
+  expect(lost.json.error).toBe("lost_secrets");
+  expect(lost.json.message).toContain("your-space start --new-secrets");
+  const recovered = ok(await cli.run(["start", "--no-open", "--new-secrets", "--json"]));
+  expect(recovered).toMatchObject({ running: true, owner: { username: "sam" } });
+
+  // Secrets that aren't lost are kept: --new-secrets changes nothing then.
+  const kept = ok(await cli.run(["secrets", "show", "--reveal", "--json"]));
+  ok(await cli.run(["start", "--no-open", "--new-secrets", "--json"]));
+  expect(ok(await cli.run(["secrets", "show", "--reveal", "--json"])).secrets).toEqual(kept.secrets);
+});

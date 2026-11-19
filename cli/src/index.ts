@@ -4,6 +4,8 @@
 import { Command, CommanderError } from "commander";
 import { init } from "./commands/init.ts";
 import { logs } from "./commands/logs.ts";
+import { ownerCreate, ownerResetLink } from "./commands/owner.ts";
+import { secretsReplace, secretsShow } from "./commands/secrets.ts";
 import { start } from "./commands/start.ts";
 import { status } from "./commands/status.ts";
 import { stop } from "./commands/stop.ts";
@@ -80,6 +82,7 @@ program
   .option("--owner-username <username>", "the owner's username")
   .option("--owner-email <email>", "the owner's email address (optional)")
   .option("--no-open", "don't open the set-password link in the browser")
+  .option("--new-secrets", "start with new secrets when they were lost (signs everyone out)")
   .action(
     action(async (ui, g) => {
       const o = program.commands.find((c) => c.name() === "start")!.opts();
@@ -88,6 +91,7 @@ program
         ownerUsername: o.ownerUsername,
         ownerEmail: o.ownerEmail,
         open: o.open,
+        newSecrets: o.newSecrets,
       });
     }),
   );
@@ -114,6 +118,36 @@ program
       await logs(g.workdir, service, { follow: o.follow, tail: o.tail });
     }),
   );
+
+const owner = program.command("owner").description("the owner's account");
+owner
+  .command("create")
+  .description("create the owner, when start didn't")
+  .requiredOption("--name <name>", "the owner's name")
+  .requiredOption("--username <username>", "the owner's username")
+  .option("--email <email>", "an email address (optional)")
+  .action(
+    action(async (ui, g) => {
+      const o = owner.commands.find((c) => c.name() === "create")!.opts();
+      await ownerCreate(ui, g.workdir, { name: o.name, username: o.username, email: o.email });
+    }),
+  );
+owner
+  .command("reset-link")
+  .description("print a new set-password link for the owner")
+  .action(action(async (ui, g) => ownerResetLink(ui, g.workdir)));
+
+const secrets = program.command("secrets").description("the auth secret and the database password");
+secrets
+  .command("show")
+  .description("show where each secret comes from")
+  .option("--reveal", "also show the values")
+  .action(action(async (ui, g) => secretsShow(ui, g.workdir, secrets.commands.find((c) => c.name() === "show")!.opts().reveal === true)));
+secrets
+  .command("replace")
+  .description("replace a generated secret, with every step it needs")
+  .argument("<name>", "auth-secret or database-password")
+  .action(action(async (ui, g, name: string) => secretsReplace(ui, g.workdir, name)));
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   if (error instanceof CommanderError) {
