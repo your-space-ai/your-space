@@ -1,28 +1,34 @@
 # Install Your Space
 
-This guide installs Your Space with Docker Compose, creates its owner, and keeps it running. You
-need access to the server's command line: that access, not a web page, is what makes you the
-owner.
+This guide installs Your Space with the `your-space` command, creates its owner, and keeps it
+running. You need access to the machine's command line: that access, not a web page, is what makes
+you the owner. Installing by hand with Docker Compose is still possible; see
+[Install by Hand](#install-by-hand-advanced).
 
-Your Space runs as three containers, after a short step that runs first:
+Your Space runs as four containers, after a short step that runs first:
 
 - **secrets** runs once on each start, before the others, and exits. It generates the auth secret
   and the database password on the first start (see [Secrets](#secrets)), so `docker compose ps -a`
   lists it as exited.
 - **caddy** serves the web client and handles HTTPS, including getting certificates.
-- **server** is the API. It also holds the operator commands `create-owner`, `reset-link`, and
-  `show-secrets`.
+- **server** is the API. It also holds the operator commands `create-owner`, `reset-link`,
+  `show-owner` and `show-secrets`, which the `your-space` command runs for you.
+- **runtime** is the runtime manager, the only part of Your Space that uses the Docker engine. It
+  runs the apps you install.
 - **postgres** stores everything: your account, your workspace, and your sessions.
 
 ## Before You Start
 
 You need:
 
-- A Mac or Linux machine that can run Docker:
-  - macOS with [Docker Desktop](https://docs.docker.com/desktop/), or
+- A Linux or Mac machine with a Docker-compatible engine:
   - Linux with [Docker Engine](https://docs.docker.com/engine/install/) 28.3.3 or newer and the
     Docker Compose plugin. Older Engine versions can open ports meant for this machine only to the
     network after a firewall reload (CVE-2025-54388).
+  - macOS with an engine such as [OrbStack](https://orbstack.dev), [Colima](https://github.com/abiosoft/colima)
+    or [Docker Desktop](https://docs.docker.com/desktop/). Your Space doesn't need Docker Desktop
+    itself; Docker Desktop's license is free only for personal use, education, non-commercial open
+    source and small businesses.
 - Docker Compose 2.26.0 or newer: `docker compose version` prints `v2.26.0` or later.
 - About 1 GB of free memory and 2 GB of disk.
 - For access from other devices: a domain name pointing at the server, or [Tailscale](https://tailscale.com).
@@ -30,9 +36,9 @@ You need:
 
 Windows is not supported as a server.
 
-**Checked so far:** steps 2 to 5 and the later sections were checked only with locally built
-images on Linux on Intel/AMD (x86_64) with Docker Engine 29 and Compose 5.6, in Chromium, Firefox,
-and WebKit. Each setup's published ports and the generated secrets were checked on Compose 5.6 and
+**Checked so far:** the `your-space` command, from a release built from this repository, and the
+manual steps 2 to 5 and the later sections were checked only with locally built images on Linux on
+Intel/AMD (x86_64) with Docker Engine 29 and Compose 5.6, in Chromium, Firefox, and WebKit. Each setup's published ports and the generated secrets were checked on Compose 5.6 and
 2.26.0, and the this-machine and own-proxy setups also with a running stack. Downloading from
 a release, the published images, macOS, ARM machines such as Apple Silicon, IPv6, and HTTPS with a
 real domain or Tailscale have not been checked yet. [VERIFICATION.md](VERIFICATION.md) lists
@@ -45,161 +51,118 @@ docker version
 docker compose version
 ```
 
-If either command fails, install or start Docker first. On macOS, open Docker Desktop and wait
-until it says it is running.
+If either command fails, install or start Docker first. On macOS, start your engine (for example,
+open OrbStack, or run `colima start`) and wait until it is running. `your-space` checks all of this
+too, and says what is missing.
 
-## 1. Download
+## 1. Get the `your-space` Command
 
-Make a folder for Your Space, download the release into it, and make your settings file. It starts
-with every line commented out:
+It is published with each release, for Linux on Intel/AMD and ARM. Use whichever way you install
+command-line tools:
+
+- **npm**, if Node.js 22.12 or newer is installed: run it with `npx your-space`, or install it with
+  `npm install -g your-space`.
+- **A Linux package**: download the `.deb` or `.rpm` for your machine from the
+  [latest release](https://github.com/your-space-ai/your-space/releases/latest), then install it
+  with `sudo apt install ./your-space_*.deb` or `sudo dnf install ./your-space-*.rpm`.
+- **The standalone command**, which needs nothing else installed. On Intel/AMD (use `arm64` for ARM):
+
+  ```sh
+  curl -fsSLO https://github.com/your-space-ai/your-space/releases/latest/download/your-space-linux-x64
+  curl -fsSLO https://github.com/your-space-ai/your-space/releases/latest/download/SHA256SUMS
+  sha256sum -c --ignore-missing SHA256SUMS
+  install -m 755 your-space-linux-x64 ~/.local/bin/your-space
+  ```
+
+  `sha256sum` must print `your-space-linux-x64: OK`.
+
+Check it works:
+
+```sh
+your-space --version
+```
+
+On a Mac, use npm for now. Packages for macOS come later.
+
+## 2. Make a Folder for Your Space
 
 ```sh
 mkdir your-space && cd your-space
-curl -fsSL https://github.com/your-space-ai/your-space/releases/latest/download/your-space.tar.gz | tar -xz
-cp env.example .env
+your-space init
 ```
 
-The download holds `compose.yaml`, `stack.yaml`, a `modes` folder, and `env.example`. It never
-contains `.env`, so your settings are never overwritten by a download. Run every later command in
-this folder.
+`init` asks how you'll reach Your Space; press Enter for **This machine**, the default. It downloads
+the release that matches the `your-space` command's version, checks it against the release's
+checksums, and writes `.env`. With this machine, `.env` has no settings at all.
 
-## 2. Configure
+Run every later `your-space` command in this folder, or name it with `--workdir <folder>`.
 
-**For this machine, there's nothing to configure.** With nothing in `.env`, Your Space answers only
-on this machine, at `http://space.localhost`, and generates its own secrets (see [Secrets](#secrets)). To
-use it from other devices, add one line:
-
-| You want | Add to `.env` | What happens |
-| --- | --- | --- |
-| Use it on this machine only (the default) | nothing | Plain HTTP at `http://space.localhost`, reachable only from this machine |
-| Use your own domain | `YS_DOMAIN=space.example.com` | Ports 80 and 443 open to the network. Caddy gets and renews a Let's Encrypt certificate and redirects HTTP to HTTPS. See [Use Your Own Domain](#use-your-own-domain) |
-| Use your own proxy or Tailscale | `YS_PROXY_URL=https://<the proxy's address>` | Caddy serves plain HTTP on `127.0.0.1:8080` only; your proxy or Tailscale handles HTTPS. See [Use Your Own Reverse Proxy](#use-your-own-reverse-proxy) or [Use Tailscale](#use-tailscale) |
-
-If another program already uses port 80 on this machine (or 8080 with `YS_PROXY_URL`), also add
-`YS_PORT=8081`, or any free port. Your Space then answers at `http://space.localhost:8081`. `YS_PORT`
-doesn't apply to your own domain, which needs ports 80 and 443.
-
-Which line you write decides which ports open: only `YS_DOMAIN` opens any to the network. The
-server checks every line when it starts and refuses to start, with a message that says what to fix,
-if a value is wrong, if both `YS_DOMAIN` and `YS_PROXY_URL` are set, or if a setting's name is
-misspelled. Caddy waits for the server, so a wrong line never opens a port.
-
-### Secrets
-
-Your Space needs two secrets: the auth secret that signs sessions, and the database password. On
-the first start it generates each one, 32 random bytes, and keeps it in the `ys-secrets` volume. It
-never generates them again, and it never logs them. The log only notes that they were generated
-(`docker compose logs secrets`).
-
-To use your own instead, for example from a password manager, add them to `.env` before the first
-start:
+## 3. Start It
 
 ```sh
-BETTER_AUTH_SECRET=...   # at least 32 characters, e.g. from: openssl rand -base64 32
-POSTGRES_PASSWORD=...
+your-space start
 ```
 
-Your Space then uses them as given and never copies them anywhere. Keep `.env` private if you do.
+It checks Docker and the ports it needs, starts Your Space (the first start downloads the images,
+which takes a minute or two), and asks your name and the username you'll sign in with. Then it
+creates your account and prints a summary: your address, a link to set your password, and what is
+running. On a computer with a browser, it opens the link for you.
 
-To see the secrets in use and where each comes from:
+If something is in the way, `start` says what and what to do. For example, when another program
+already uses port 80, it offers the next free port and writes it to `.env` as `YS_PORT`.
 
-```sh
-docker compose exec server show-secrets
-```
+## 4. Set Your Password and Sign In
 
-Every line it prints is valid in `.env`, so to manage a generated secret yourself, copy its line
-there. To replace a secret later, see [Replace a Secret](#replace-a-secret).
+Open the link within 30 minutes. Choose a password of 12 to 128 characters; a long passphrase is a
+good choice. Then sign in with your username and that password.
 
-## 3. Start
+The link works once. If it expires or you lose it, `your-space owner reset-link` prints a new one.
 
-```sh
-docker compose up -d
-docker compose ps
-```
+## Run It
 
-The first start downloads the images, which takes a minute or two. `docker compose ps` should show
-all three services running, with `server` and `postgres` marked `healthy`. If they aren't:
-
-| You see | What to do |
+| To | Run |
 | --- | --- |
-| `service "secrets" didn't complete successfully` | Run `docker compose logs secrets`. It says what's wrong with a secret and how to fix it; see [Lost Secrets](#lost-secrets) |
-| `server` keeps restarting, and `docker compose logs server` says "PostgreSQL refused the database password" | The database password changed after the database was created. Change `POSTGRES_PASSWORD` in `.env` back, or [give PostgreSQL the new one](#give-postgresql-the-database-password) |
-| `dependency failed to start: container your-space-server-1 is unhealthy` | Run `docker compose logs server`. An `Invalid configuration` message names the setting to fix. Fix `.env` and run `docker compose up -d` again. No port was opened meanwhile |
-| `Set YS_DOMAIN (your own domain) or YS_PROXY_URL (your own proxy or Tailscale) in .env, not both` | Remove one of the two lines. Every `docker compose` command stops with this message until you do |
-| `address already in use` or `port is already allocated`, for port 80 or 8080 | Another program uses the port. Add `YS_PORT=8081` (or any free port) to `.env` |
-| The same, for port 443 with your own domain | Another program uses the port, such as another web server. Stop it, or put Your Space behind it as [your own proxy](#use-your-own-reverse-proxy) |
-| `server` is `unhealthy` after it was running | Run `docker compose logs server postgres` and see [When the Database Is Down](#when-the-database-is-down) |
+| See what is running, your address, and your apps | `your-space status` |
+| Stop Your Space and its apps (nothing is deleted) | `your-space stop` |
+| Start them again | `your-space start` |
+| Read the logs | `your-space logs`, or `your-space logs server --follow` for one service |
+| Change how Your Space is reached | `your-space configure` |
+| Get a new set-password link | `your-space owner reset-link` |
+| See or replace the secrets | `your-space secrets show`, `your-space secrets replace <name>` |
 
-Open your address (for example `http://space.localhost`). It says Your Space has no owner yet and shows
-the command to create one. There is no sign-up form: nobody can make an account from the web.
+Your Space also starts by itself when Docker starts, for example after a reboot, unless you stopped
+it.
 
-## 4. Create the Owner
+For scripts, add `--json` to any command but `logs`: it prints one JSON object and never asks a
+question, so each answer needs its option. `--yes` answers yes and takes the defaults:
 
 ```sh
-docker compose exec server create-owner --username you --name "Your Name"
+your-space init --yes --json
+your-space start --owner-name "Sam Rivera" --owner-username sam --json
 ```
 
-It prints a link:
+The exit status says what happened: 0 done, 1 an invalid option or answer, 2 something in the way
+(the message says what), 3 Docker or the database couldn't be reached, 4 something unexpected. The
+[command contract](../../specs/003-install-with-the-cli/contracts/cli-commands.md) lists every
+option and field.
 
-```text
-Owner created: Your Name (username you)
-Set your password here (expires 2026-11-04T02:45:00Z, works once):
-http://space.localhost/reset-password#token=...
-If it expires, run: docker compose exec server reset-link
-```
-
-The command creates your account, your workspace ("Your Name's space"), and your ownership of it.
-You sign in with the username. An email address is optional: add `--email you@example.com` to
-store one. Your Space doesn't send email yet, so the address stays unverified and is never used to
-sign in; a later release uses it for verification and recovery links.
-
-Account rules:
-
-- **Name:** 1 to 100 characters, without control characters such as tabs or line breaks.
-- **Username:** 3 to 30 letters, digits, `_` or `.`, with each `.` between other characters. It is stored in lowercase, and signing in
-  ignores case, so `You` and `you` are the same username.
-- **Email (optional):** up to 254 characters: letters, digits, and `_ ' + -` in parts separated by
-  single dots, then `@` and a domain such as `example.com`. It is stored in lowercase.
-
-Running `create-owner` again does nothing and says the installation already has an owner. If the
-command was interrupted (for example, the server stopped), run it again with the same username: it
-finishes the job without creating duplicates.
-
-For scripts, add `--json`. The output is one JSON object, including the link and its token, and the
-exit status says what happened:
-
-| Exit status | Meaning |
-| --- | --- |
-| 0 | Done |
-| 1 | Invalid input, such as a username with a space in it |
-| 2 | The installation already has an owner |
-| 3 | The database could not be read. No owner was created; once the database is back, run the same command again |
-| 4 | Something unexpected went wrong; nothing was reported as done |
-
-The [command contract](../../specs/001-workspace-owner-access/contracts/operator-commands.md) lists
-the exact output.
-
-## 5. Set Your Password and Sign In
-
-Open the link in a browser within 30 minutes. Choose a password of 12 to 128 characters; a long
-passphrase is a good choice. Then sign in with your username and that password.
-
-The link works once. If it expires or you lose it, run
-`docker compose exec server reset-link` for a new one.
-
-You now see your workspace, your name and username, and a way to sign out. The workspace is empty:
-installing apps comes in a later release.
+The `your-space` command runs `docker compose` in this folder, so every `docker compose` command in
+this guide still works here, and a folder you set up by hand works with `your-space` as it is.
+There is one Your Space per Docker engine: `your-space` refuses to start a second one from another
+folder, since both would share the same volumes.
 
 ## Certificates
 
-With `YS_DOMAIN` set, Caddy asks Let's Encrypt for a certificate when it starts and renews it
-automatically. To see what it is doing:
+With your own domain, Caddy asks Let's Encrypt for a certificate when it starts and renews it
+automatically. `your-space start` and `your-space configure` wait up to three minutes for it, and
+`your-space status` shows whether it is issued. If it isn't, they read Caddy's log and say why in
+plain words. To see the log itself:
 
 ```sh
-docker compose logs caddy
+your-space logs caddy
 ```
 
-If the certificate isn't issued, the log names the reason. The usual causes:
+The usual causes:
 
 - **The domain doesn't point at this server.** Check the DNS `A` record.
 - **Ports 80 or 443 are blocked.** Let's Encrypt must reach this server on both, from the internet.
@@ -224,9 +187,11 @@ another computer, give it an HTTPS address in one of three ways:
 A plain `http://` address on your network is not one of them; see
 [Plain HTTP on Your Network Is Not Supported](#plain-http-on-your-network-is-not-supported).
 
-After you change `.env`, apply it with `docker compose up -d`. Then open the address on the other
-device and sign in with the same username and password. It's the same account and workspace, so there
-is nothing to set up again.
+`your-space configure` changes the setup: it asks the same question as `init`, writes `.env`,
+checks what it can, and restarts Your Space with the new address. If the new setup can't start, it
+puts the old one back. By hand, change `.env` and run `docker compose up -d`. Then open the address
+on the other device and sign in with the same username and password. It's the same account and
+workspace, so there is nothing to set up again.
 
 ### Use Your Own Domain
 
@@ -234,15 +199,18 @@ is nothing to set up again.
    `AAAA` record.
 2. Open ports 80 and 443 to the internet, in the firewall and any router port forwarding. Let's
    Encrypt reaches the server through them to issue the certificate.
-3. Add the domain to `.env`, as just the name, without `https://`:
+3. For apps, point a wildcard record (`*.space.example.com`) at the same server too. Each app is
+   at `<app>.space.example.com`, and Caddy gets its certificate when it is first opened.
+4. Give Your Space the domain, as just the name, without `https://`:
 
    ```sh
-   YS_DOMAIN=space.example.com
+   your-space configure --domain space.example.com
    ```
 
-4. For apps, point a wildcard record (`*.space.example.com`) at the same server too. Each app is
-   at `<app>.space.example.com`, and Caddy gets its certificate when it is first opened.
-5. Run `docker compose up -d`.
+   Or choose it when you run `init`. `your-space` first checks that `space.example.com` and a name
+   under it both resolve, to the same addresses, and stops if they don't; add `--ignore-checks` to
+   go on anyway. It can't tell from inside whether those addresses are this server's public one, so
+   it shows them. By hand, add `YS_DOMAIN=space.example.com` to `.env` and run `docker compose up -d`.
 
 Caddy gets a certificate, renews it automatically, and redirects `http://space.example.com` to
 HTTPS. If the address doesn't load, see [Certificates](#certificates). The server refuses names
@@ -254,18 +222,19 @@ name, and says what to use instead.
 Use this if a proxy, such as nginx, Caddy, Traefik, or Nginx Proxy Manager, already handles HTTPS
 for other services.
 
-1. Add the address your proxy serves to `.env`:
+1. Give Your Space the address your proxy serves:
 
    ```sh
-   YS_PROXY_URL=https://space.example.com
+   your-space configure --proxy-url https://space.example.com
    ```
 
    Your Space then serves plain HTTP on `127.0.0.1:8080`, reachable only from this machine, and
    doesn't use ports 80 and 443 at all, so it doesn't compete with your proxy for them. It gets no
-   certificate. If another program has port 8080, add `YS_PORT=8090` (or any free port) and use that
-   port below.
+   certificate. If another program has port 8080, add `--port 8090` (or any free port) and use that
+   port below. By hand, add `YS_PROXY_URL=https://space.example.com` (and `YS_PORT`) to `.env`.
 
-2. Run `docker compose up -d`.
+2. If you set it by hand, run `docker compose up -d`. `your-space status` now lists, under "Your
+   proxy or tunnel forwards", the names your proxy must send to Your Space, each app's included.
 
 3. Point your proxy at Your Space:
 
@@ -331,17 +300,20 @@ reach. You need no domain and no ports open to the internet.
    close the terminal; `tailscale serve status` shows the address again. Until the next two steps
    are done, the address shows an error page.
 
-3. Add that address to `.env`, with `https://` and no trailing slash:
+3. Give Your Space that address, with `https://` and no trailing slash:
 
    ```sh
-   YS_PROXY_URL=https://myserver.tail1234.ts.net
+   your-space configure --proxy-url https://myserver.tail1234.ts.net
    ```
 
-4. Run `docker compose up -d`.
+   By hand, add `YS_PROXY_URL=https://myserver.tail1234.ts.net` to `.env` and run
+   `docker compose up -d`.
 
 Tailscale passes the original `Host` header and the visitor's tailnet address, so nothing else needs
-setting up. Apps need their own names on Tailscale (`<app>.<your tailnet name>` isn't one); setting
-up a Tailscale Service for each app is not covered yet.
+setting up. Apps don't work over Tailscale yet: each app needs a name under Your Space's address,
+such as `sure.myserver.tail1234.ts.net`, and Tailscale's names can't hold a name under a machine's
+name. A Tailscale Service gets a name beside it (`sure.tail1234.ts.net`) instead, which isn't the
+app's address.
 
 ### Plain HTTP on Your Network Is Not Supported
 
@@ -412,15 +384,15 @@ shows the engine Your Space uses and what each app uses.
 **Remove.** Removing an app stops and deletes its containers and keeps its data. Installing it
 again offers to reuse the data. Deleting kept data is a separate step, and can't be undone.
 
-**Stop Your Space and its apps.** `docker compose restart` and updates leave apps running. To stop
-everything:
+**Stop Your Space and its apps.** `docker compose restart` and updates leave apps running.
+`your-space stop` stops everything, apps first; by hand:
 
 ```sh
 docker compose exec runtime stop-apps
 docker compose stop
 ```
 
-`docker compose up -d` starts Your Space, and Your Space starts its apps.
+`your-space start`, or `docker compose up -d`, starts Your Space, and Your Space starts its apps.
 
 **Another Docker engine.** Your Space uses `/var/run/docker.sock`. To use another engine's socket,
 such as rootless Docker's or Colima's, set its path in `.env`:
@@ -461,7 +433,7 @@ These keep everything, including your sessions:
 Afterwards `docker compose ps` shows the services running again, you're still signed in, and you
 never need to create the owner again. Your Space also starts by itself when Docker starts, for
 example after a reboot, unless you stopped it with `docker compose stop` or `docker compose down`.
-On macOS, that needs Docker Desktop set to start when you sign in.
+On macOS, that needs your engine (OrbStack, Colima or Docker Desktop) set to start when you sign in.
 
 Apps keep their data in their own volumes, named after the app, such as `ys-sure_postgres-data`.
 `docker compose down -v` doesn't delete them, and doesn't stop the apps: stop them first with
@@ -519,15 +491,23 @@ Don't delete the `ys-postgres` volume to make the error go away: that deletes yo
 
 If the `ys-secrets` volume is gone but the database is still there, Your Space stops before it
 starts anything, instead of generating new secrets: a new database password wouldn't work, because
-PostgreSQL only accepts the one it was created with. `docker compose up -d` reports that the
-`secrets` service didn't complete, and `docker compose logs secrets` explains.
+PostgreSQL only accepts the one it was created with. `your-space start` says so and what to do; by
+hand, `docker compose up -d` reports that the `secrets` service didn't complete, and
+`docker compose logs secrets` explains.
 
 Ways to recover, best first:
 
 1. **Restore the `ys-secrets` volume** from a backup, or **put the old values back** in `.env` as
    `BETTER_AUTH_SECRET` and `POSTGRES_PASSWORD`. Then run `docker compose up -d`.
-2. **Start with new secrets.** Your account and workspace stay; every device is signed out. In the
-   folder with `compose.yaml`:
+2. **Start with new secrets.** Your account and workspace stay; every device is signed out.
+   Installed apps' settings are encrypted with a key from the auth secret, so with a new one they
+   can't be read, and each app must be reinstalled (its data volumes are kept). Run:
+
+   ```sh
+   your-space start --new-secrets
+   ```
+
+   It runs every step below for you. By hand, in the folder with `compose.yaml`:
 
    ```sh
    docker compose run --rm secrets --new auth-secret --new database-password
@@ -565,11 +545,15 @@ appears in a command line or a log. Then restart the server so it reconnects:
 
 ### Replace a Secret
 
-To replace a generated secret, for example because it may have leaked:
+To replace a generated secret, for example because it may have leaked, run
+`your-space secrets replace auth-secret` or `your-space secrets replace database-password`. It asks
+first, then runs every step below. `your-space secrets show` says where each secret comes from, and
+`--reveal` shows the values. By hand:
 
 - **Auth secret:** `docker compose run --rm secrets --new auth-secret`, then
-  `docker compose restart server`. Every device is signed out when the server restarts, and nothing
-  else changes.
+  `docker compose restart server`. Every device is signed out when the server restarts. Installed
+  apps' settings are encrypted with a key from the auth secret, so they can't be read afterwards and
+  each app must be reinstalled; `your-space secrets replace` names them before it asks.
 - **Database password:** `docker compose run --rm secrets --new database-password`, then
   [give PostgreSQL the database password](#give-postgresql-the-database-password) and restart the
   server.
@@ -580,8 +564,14 @@ PostgreSQL the database password as above.
 
 ## Recover the Owner Account
 
-If you've lost the owner's password, or the set-password link from `create-owner` expired, get a
-new link. On the server, in the folder with `compose.yaml`, run:
+If you've lost the owner's password, or the set-password link expired, get a new link. On the
+server, in Your Space's folder, run:
+
+```sh
+your-space owner reset-link
+```
+
+By hand, the same is:
 
 ```sh
 docker compose exec server reset-link
@@ -632,3 +622,156 @@ is Docker's own and there is no JSON. Start Your Space with `docker compose up -
 `reset-link` again. The
 [command contract](../../specs/001-workspace-owner-access/contracts/operator-commands.md) lists the
 exact output.
+
+## Install by Hand (Advanced)
+
+These are the steps the `your-space` command takes for you: download the release, configure `.env`,
+and run Docker Compose and the server's commands. Use them if you'd rather not install the command.
+Each step says which `your-space` command does the same.
+
+### 1. Download
+
+`your-space init` does this step.
+
+Make a folder for Your Space, download the release into it, and make your settings file. It starts
+with every line commented out:
+
+```sh
+mkdir your-space && cd your-space
+curl -fsSL https://github.com/your-space-ai/your-space/releases/latest/download/your-space.tar.gz | tar -xz
+cp env.example .env
+```
+
+The download holds `compose.yaml`, `stack.yaml`, a `modes` folder, and `env.example`. It never
+contains `.env`, so your settings are never overwritten by a download. Run every later command in
+this folder.
+
+### 2. Configure
+
+**For this machine, there's nothing to configure.** With nothing in `.env`, Your Space answers only
+on this machine, at `http://space.localhost`, and generates its own secrets (see [Secrets](#secrets)). To
+use it from other devices, add one line:
+
+| You want | Add to `.env` | What happens |
+| --- | --- | --- |
+| Use it on this machine only (the default) | nothing | Plain HTTP at `http://space.localhost`, reachable only from this machine |
+| Use your own domain | `YS_DOMAIN=space.example.com` | Ports 80 and 443 open to the network. Caddy gets and renews a Let's Encrypt certificate and redirects HTTP to HTTPS. See [Use Your Own Domain](#use-your-own-domain) |
+| Use your own proxy or Tailscale | `YS_PROXY_URL=https://<the proxy's address>` | Caddy serves plain HTTP on `127.0.0.1:8080` only; your proxy or Tailscale handles HTTPS. See [Use Your Own Reverse Proxy](#use-your-own-reverse-proxy) or [Use Tailscale](#use-tailscale) |
+
+If another program already uses port 80 on this machine (or 8080 with `YS_PROXY_URL`), also add
+`YS_PORT=8081`, or any free port. Your Space then answers at `http://space.localhost:8081`. `YS_PORT`
+doesn't apply to your own domain, which needs ports 80 and 443.
+
+Which line you write decides which ports open: only `YS_DOMAIN` opens any to the network. The
+server checks every line when it starts and refuses to start, with a message that says what to fix,
+if a value is wrong, if both `YS_DOMAIN` and `YS_PROXY_URL` are set, or if a setting's name is
+misspelled. Caddy waits for the server, so a wrong line never opens a port.
+
+#### Secrets
+
+Your Space needs two secrets: the auth secret that signs sessions, and the database password. On
+the first start it generates each one, 32 random bytes, and keeps it in the `ys-secrets` volume. It
+never generates them again, and it never logs them. The log only notes that they were generated
+(`docker compose logs secrets`).
+
+To use your own instead, for example from a password manager, add them to `.env` before the first
+start:
+
+```sh
+BETTER_AUTH_SECRET=...   # at least 32 characters, e.g. from: openssl rand -base64 32
+POSTGRES_PASSWORD=...
+```
+
+Your Space then uses them as given and never copies them anywhere. Keep `.env` private if you do.
+
+To see the secrets in use and where each comes from:
+
+```sh
+docker compose exec server show-secrets
+```
+
+Every line it prints is valid in `.env`, so to manage a generated secret yourself, copy its line
+there. To replace a secret later, see [Replace a Secret](#replace-a-secret).
+
+### 3. Start
+
+`your-space start` does this step and the next.
+
+```sh
+docker compose up -d
+docker compose ps
+```
+
+The first start downloads the images, which takes a minute or two. `docker compose ps` should show
+all four services running (`caddy`, `server`, `runtime` and `postgres`), with `server` and
+`postgres` marked `healthy`. If they aren't:
+
+| You see | What to do |
+| --- | --- |
+| `service "secrets" didn't complete successfully` | Run `docker compose logs secrets`. It says what's wrong with a secret and how to fix it; see [Lost Secrets](#lost-secrets) |
+| `server` keeps restarting, and `docker compose logs server` says "PostgreSQL refused the database password" | The database password changed after the database was created. Change `POSTGRES_PASSWORD` in `.env` back, or [give PostgreSQL the new one](#give-postgresql-the-database-password) |
+| `dependency failed to start: container your-space-server-1 is unhealthy` | Run `docker compose logs server`. An `Invalid configuration` message names the setting to fix. Fix `.env` and run `docker compose up -d` again. No port was opened meanwhile |
+| `Set YS_DOMAIN (your own domain) or YS_PROXY_URL (your own proxy or Tailscale) in .env, not both` | Remove one of the two lines. Every `docker compose` command stops with this message until you do |
+| `address already in use` or `port is already allocated`, for port 80 or 8080 | Another program uses the port. Add `YS_PORT=8081` (or any free port) to `.env` |
+| The same, for port 443 with your own domain | Another program uses the port, such as another web server. Stop it, or put Your Space behind it as [your own proxy](#use-your-own-reverse-proxy) |
+| `server` is `unhealthy` after it was running | Run `docker compose logs server postgres` and see [When the Database Is Down](#when-the-database-is-down) |
+
+Open your address (for example `http://space.localhost`). It says Your Space has no owner yet and shows
+the command to create one. There is no sign-up form: nobody can make an account from the web.
+
+### 4. Create the Owner
+
+```sh
+docker compose exec server create-owner --username you --name "Your Name"
+```
+
+It prints a link:
+
+```text
+Owner created: Your Name (username you)
+Set your password here (expires 2026-11-04T02:45:00Z, works once):
+http://space.localhost/reset-password#token=...
+If it expires, run: docker compose exec server reset-link
+```
+
+The command creates your account, your workspace ("Your Name's space"), and your ownership of it.
+You sign in with the username. An email address is optional: add `--email you@example.com` to
+store one. Your Space doesn't send email yet, so the address stays unverified and is never used to
+sign in; a later release uses it for verification and recovery links.
+
+Account rules:
+
+- **Name:** 1 to 100 characters, without control characters such as tabs or line breaks.
+- **Username:** 3 to 30 letters, digits, `_` or `.`, with each `.` between other characters. It is stored in lowercase, and signing in
+  ignores case, so `You` and `you` are the same username.
+- **Email (optional):** up to 254 characters: letters, digits, and `_ ' + -` in parts separated by
+  single dots, then `@` and a domain such as `example.com`. It is stored in lowercase.
+
+Running `create-owner` again does nothing and says the installation already has an owner. If the
+command was interrupted (for example, the server stopped), run it again with the same username: it
+finishes the job without creating duplicates.
+
+For scripts, add `--json`. The output is one JSON object, including the link and its token, and the
+exit status says what happened:
+
+| Exit status | Meaning |
+| --- | --- |
+| 0 | Done |
+| 1 | Invalid input, such as a username with a space in it |
+| 2 | The installation already has an owner |
+| 3 | The database could not be read. No owner was created; once the database is back, run the same command again |
+| 4 | Something unexpected went wrong; nothing was reported as done |
+
+The [command contract](../../specs/001-workspace-owner-access/contracts/operator-commands.md) lists
+the exact output.
+
+### 5. Set Your Password and Sign In
+
+Open the link in a browser within 30 minutes. Choose a password of 12 to 128 characters; a long
+passphrase is a good choice. Then sign in with your username and that password.
+
+The link works once. If it expires or you lose it, run
+`docker compose exec server reset-link` for a new one.
+
+You now see your workspace, your name and username, and a way to sign out. The workspace is empty:
+installing apps comes in a later release.

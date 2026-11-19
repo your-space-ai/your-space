@@ -51,8 +51,8 @@ it merges.
 
 ## Slice 7: The guide
 
-- [ ] T025 Installation guide: the CLI first, manual Compose as the advanced option
-- [ ] T026 Browser test follows the guide's CLI commands
+- [x] T025 Installation guide: the CLI first, manual Compose as the advanced option
+- [x] T026 Browser test follows the guide's CLI commands
 
 ## Later
 
