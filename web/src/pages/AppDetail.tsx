@@ -444,7 +444,11 @@ function Advanced({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { j
                   <tr key={service} data-service={service}>
                     <td>{service}</td>
                     <td>
-                      {s ? `${s.state}${s.health ? ` (${s.health})` : ""}${s.oomKilled ? ", ran out of memory" : ""}` : "not running"}
+                      {s
+                        ? s.completed
+                          ? "completed"
+                          : `${s.state}${s.health ? ` (${s.health})` : ""}${s.oomKilled ? ", ran out of memory" : ""}`
+                        : "not running"}
                     </td>
                     <td>
                       <input

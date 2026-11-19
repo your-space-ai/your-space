@@ -317,6 +317,8 @@ export interface ServiceState {
   health?: string;
   exitCode?: number;
   oomKilled?: boolean;
+  /** A service that runs once, such as a migration, and finished. */
+  completed?: boolean;
 }
 
 export async function listApps(): Promise<{ project: string; app: string; services: ServiceState[] }[]> {
@@ -335,9 +337,15 @@ export async function listApps(): Promise<{ project: string; app: string; servic
     const health = /\((healthy|unhealthy|health: starting)\)/.exec(c.Status)?.[1];
     if (health) service.health = health.replace("health: ", "");
     if (c.State === "exited" || c.State === "dead" || c.State === "restarting") {
-      const detail = await engineJson<{ State: { ExitCode: number; OOMKilled: boolean } }>("GET", `/containers/${c.Id}/json`);
+      const detail = await engineJson<{ State: { ExitCode: number; OOMKilled: boolean }; HostConfig?: { RestartPolicy?: { Name?: string } } }>(
+        "GET",
+        `/containers/${c.Id}/json`,
+      );
       service.exitCode = detail.State.ExitCode;
       service.oomKilled = detail.State.OOMKilled;
+      // Every other service is restarted until it is stopped, so only one that runs once can finish.
+      const policy = detail.HostConfig?.RestartPolicy?.Name ?? "";
+      if (c.State === "exited" && detail.State.ExitCode === 0 && (policy === "no" || policy === "" || policy === "on-failure")) service.completed = true;
     }
     entry.services.push(service);
     byProject.set(project, entry);

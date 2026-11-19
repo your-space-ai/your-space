@@ -153,6 +153,11 @@ describe("the access gate's parts", () => {
       { name: "worker", role: "app", state: "exited", exitCode: 137, oomKilled: true },
     ]);
     expect(oom).toEqual({ state: "degraded", reason: "worker stopped: it ran out of memory." });
+    // A service that ran once and finished, such as a migration, is neither a problem nor running.
+    const migrated = [{ name: "migrator", role: "app" as const, state: "exited", exitCode: 0, completed: true }];
+    expect(stateFromServices([{ name: "web", role: "app", state: "running" }, ...migrated]).state).toBe("running");
+    expect(stateFromServices([{ name: "web", role: "app", state: "exited", exitCode: 143 }, ...migrated]).state).toBe("stopped");
+    expect(stateFromServices([{ name: "web", role: "app", state: "restarting", exitCode: 1 }, ...migrated])).toEqual({ state: "degraded", reason: "web keeps restarting." });
   });
 });
 
