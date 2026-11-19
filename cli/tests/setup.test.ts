@@ -44,6 +44,8 @@ describe("setups", () => {
     expect(await chooseSetup(script, { port: "8081" }, current)).toEqual({ kind: "this-machine", port: 8081 });
     expect(await chooseSetup(script, { domain: "Space.Example.com" }, current)).toEqual({ kind: "domain", domain: "space.example.com" });
     expect(await chooseSetup(script, { proxyUrl: "https://a.example.com" }, current)).toEqual({ kind: "proxy", url: "https://a.example.com", port: 8080 });
+    const proxy = { kind: "proxy", url: "https://a.example.com", port: 8080 } as const;
+    expect(await chooseSetup(script, { port: "8090" }, proxy)).toEqual({ ...proxy, port: 8090 });
     await expect(chooseSetup(script, { domain: "space.example.com", port: "8081" }, current)).rejects.toThrow(/ports 80 and 443/);
     await expect(chooseSetup(script, { domain: "https://x.example.com" }, current)).rejects.toThrow(/--domain/);
     await expect(chooseSetup(script, { thisMachine: true, domain: "a.example.com" }, current)).rejects.toThrow(/Choose one/);

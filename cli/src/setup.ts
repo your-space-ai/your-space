@@ -165,16 +165,19 @@ export async function chooseSetup(ui: Ui, flags: SetupFlags, current: Setup): Pr
       return { kind, domain: domain.toLowerCase() };
     }
     case "proxy": {
+      // --port alone moves only the port, so it keeps the current address without asking.
       const url =
         flags.proxyUrl !== undefined
           ? valid(checkProxyUrl, flags.proxyUrl, "--proxy-url")
-          : await ui.text({
-              message: "The HTTPS address your proxy or tunnel serves:",
-              flag: "--proxy-url <url>",
-              placeholder: "https://space.example.com",
-              initial: current.kind === "proxy" ? current.url : undefined,
-              validate: checkProxyUrl,
-            });
+          : port !== undefined && current.kind === "proxy"
+            ? current.url
+            : await ui.text({
+                message: "The HTTPS address your proxy or tunnel serves:",
+                flag: "--proxy-url <url>",
+                placeholder: "https://space.example.com",
+                initial: current.kind === "proxy" ? current.url : undefined,
+                validate: checkProxyUrl,
+              });
       return { kind, url, port: port ?? (current.kind === "proxy" ? current.port : 8080) };
     }
   }
