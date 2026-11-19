@@ -30,17 +30,12 @@ commands:
 
   ready-pull-request:
     description: >-
-      Stops the job early on a draft pull request and, with bottom-only, on a pull request above the
-      bottom of a stack. Marking a draft ready starts a new pipeline, through the GitHub App
-      pipeline's "PR marked ready for review" trigger.
-    parameters:
-      bottom-only:
-        type: boolean
+      Stops the job early on a draft pull request. Marking a draft ready starts a new pipeline,
+      through the GitHub App pipeline's "PR marked ready for review" trigger.
     steps:
       - run:
-          # GitHub's webhook says main for every pull request in a stack, so the pull request's own
-          # base, and whether it is a draft, come from the API, read with a read-only token kept in
-          # the project settings.
+          # CircleCI doesn't say whether a pull request is a draft, so that comes from GitHub's API,
+          # read with a read-only token kept in the project settings.
           name: Ready pull request
           command: |
             if [ -z "${CIRCLE_PULL_REQUEST:-}" ]; then
@@ -53,13 +48,6 @@ commands:
             if [ "$(echo "$pr" | jq -r .draft)" = true ]; then
               echo "It's a draft, so this job waits until it is marked ready for review."
               circleci-agent step halt
-              exit 0
-            fi
-            base=$(echo "$pr" | jq -r .base.ref)
-            echo "This pull request is based on $base."
-            if [ "<< parameters.bottom-only >>" = true ] && [ "$base" != main ]; then
-              echo "It isn't the bottom of its stack, so it skips this job until it reaches main."
-              circleci-agent step halt
             fi
 
 jobs:
@@ -68,8 +56,7 @@ jobs:
       image: ubuntu-2404:current
     resource_class: arm.medium
     steps:
-      - ready-pull-request:
-          bottom-only: false
+      - ready-pull-request
       - checkout
       - run:
           name: PostgreSQL 18
@@ -94,9 +81,44 @@ jobs:
       # settings.
       YS_ARGOS_UPLOAD: "1"
     steps:
-      - ready-pull-request:
-          bottom-only: true
+      - ready-pull-request
       - checkout
+      - run:
+          # A pull request runs the journeys in Chromium, whose screenshots Argos compares; main runs
+          # them in Firefox and WebKit too, so a bug only those browsers show turns up after the
+          # merge.
+          name: Browsers
+          command: |
+            if [ "<< pipeline.git.branch >>" = main ]; then
+              echo 'export YS_E2E_BROWSERS="chromium firefox webkit"' >> "$BASH_ENV"
+            else
+              echo 'export YS_E2E_BROWSERS=chromium' >> "$BASH_ENV"
+            fi
+      - unless:
+          condition:
+            equal: [main, << pipeline.git.branch >>]
+          steps:
+            - run:
+                # Code that already passed this job in the same browsers doesn't run the journeys
+                # again, such as a pull request rebased onto main after the one below it merged, or
+                # given a new sign-off. The key is the commit's tree, so a change to any file runs
+                # them; main always runs them.
+                name: Same code as an earlier pass
+                command: |
+                  tree=$(git rev-parse 'HEAD^{tree}')
+                  echo "$CIRCLE_JOB $tree $YS_E2E_BROWSERS" | tee /tmp/e2e-pass-key
+            - restore_cache:
+                keys:
+                  - e2e-pass-v1-{{ checksum "/tmp/e2e-pass-key" }}
+            - run:
+                # A skipped run uploads nothing to Argos, so this commit gets no Argos check. The
+                # earlier run's build has the same screenshots, compared with main as it was then.
+                name: Skip if it passed
+                command: |
+                  if [ -f /tmp/e2e-pass/passed ]; then
+                    echo "This code passed in $(cat /tmp/e2e-pass/passed), so the journeys don't run again and Argos gets no new build."
+                    circleci-agent step halt
+                  fi
       - run:
           # A change to documents alone can't change a screenshot, so it doesn't use Argos's limited
           # allowance. main compares its last commit; a pull request, everything since main.
@@ -129,16 +151,17 @@ jobs:
             cli/scripts/executable.sh x64
             echo "export YS_E2E_CLI=$PWD/cli/dist/your-space-linux-x64" >> "$BASH_ENV"
       - run:
-          name: Chromium, Firefox and WebKit
+          name: Install the browsers
           # A package mirror that doesn't answer can hold this step for half an hour, so it stops
           # after 10 minutes.
-          command: timeout 10m npx playwright install --with-deps chromium firefox webkit
+          command: timeout 10m npx playwright install --with-deps $YS_E2E_BROWSERS
           working_directory: e2e
       - run:
-          # Builds the images, then runs the journeys against deploy/compose.yaml in all three
-          # browsers.
+          # Builds the images, then runs the journeys against deploy/compose.yaml in the browsers
+          # above.
           name: Browser journeys
-          command: timeout 30m npm run e2e
+          command: timeout 30m npx playwright test $(printf -- '--project=%s ' $YS_E2E_BROWSERS)
+          working_directory: e2e
       - run:
           name: Stack logs
           when: on_fail
@@ -150,6 +173,19 @@ jobs:
           path: e2e/playwright-report
       - store_artifacts:
           path: e2e/test-results
+      - unless:
+          condition:
+            equal: [main, << pipeline.git.branch >>]
+          steps:
+            - run:
+                name: Remember this pass
+                command: |
+                  mkdir -p /tmp/e2e-pass
+                  echo "$CIRCLE_BUILD_URL (commit $CIRCLE_SHA1)" > /tmp/e2e-pass/passed
+            - save_cache:
+                key: e2e-pass-v1-{{ checksum "/tmp/e2e-pass-key" }}
+                paths:
+                  - /tmp/e2e-pass
 
   e2e-arm64:
     machine:
@@ -187,8 +223,8 @@ parameters:
     description: Run the Arm browser tests on a branch other than main.
 
 workflows:
-  # Every pull request and every push to main; the job stops early on drafts and on pull requests
-  # above the bottom of a stack.
+  # Every pull request and every push to main; the job stops early on drafts and on code that
+  # already passed it.
   e2e:
     jobs:
       - e2e

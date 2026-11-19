@@ -47,10 +47,13 @@ the description current as the PR changes rather than appending history.
 
 While the repository is private, GitHub Actions minutes are limited. Run the checks locally before
 pushing, and push a stack of pull requests once per round of fixes rather than after each fix. The
-browser tests run on CircleCI, and the Compose setups checks on GitHub Actions. In a stack, only the
-pull request based on `main` runs them; the ones above it run them when they reach `main`. A draft
-runs only the GitHub Actions checks: CircleCI's jobs, the browser tests and the Argos screenshots
-included, run when it is marked ready for review. Keep a pull request a draft until its reviewer is
-ready to review it, so that changes merged below it don't cost extra runs. Code review runs on
-drafts too: fix its findings before marking a draft ready. Argos's screenshots are Chromium's, and a
-change to documents alone uploads none.
+browser tests run on CircleCI, on every pull request in a stack: in Chromium on pull requests, and
+in Chromium, Firefox and WebKit on `main`. A pull request whose code (its git tree) already passed
+them doesn't run them again. The Compose setups checks run on GitHub Actions; in a stack, only the
+pull request based on `main` runs them, and the ones above it run them when they reach `main`. A
+draft runs only the GitHub Actions checks: CircleCI's jobs, the browser tests and the Argos
+screenshots included, run when it is marked ready for review. Keep a pull request a draft until its
+reviewer is ready to review it, so that changes merged below it don't cost extra runs. Code review
+runs on drafts too: fix its findings before marking a draft ready. Argos's screenshots are
+Chromium's, and a change to documents alone, or a run skipped because its code already passed,
+uploads none.
