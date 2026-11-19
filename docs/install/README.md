@@ -703,7 +703,8 @@ docker compose ps
 ```
 
 The first start downloads the images, which takes a minute or two. `docker compose ps` should show
-all three services running, with `server` and `postgres` marked `healthy`. If they aren't:
+all four services running (`caddy`, `server`, `runtime` and `postgres`), with `server` and
+`postgres` marked `healthy`. If they aren't:
 
 | You see | What to do |
 | --- | --- |
