@@ -1,5 +1,6 @@
 // Journey 002: install apps from their own Compose files and use them in Your Space. A stand-in for
 // GitHub serves the fixture apps (e2e/github); Sure and Twenty run by hand (verification record).
+import { createServer } from "node:net";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { evidence } from "./helpers/evidence.ts";
 import { compose, createOwner, docker, resetStack, serverCommand, up } from "./helpers/stack.ts";
@@ -211,6 +212,21 @@ test("the owner publishes an app on a port of this machine, for their own proxy 
   await page.goto("/apps/whoami");
   const publishing = page.locator("section", { has: page.getByRole("heading", { name: "Publishing" }) });
   await publishing.getByLabel(/^Publish on a port/).check();
+
+  // A port another program on this machine uses is refused when the owner saves, not when the app starts.
+  const program = createServer();
+  await new Promise<void>((resolve) => program.listen(18782, "127.0.0.1", resolve));
+  try {
+    await publishing.getByLabel(/^Port/).fill("18782");
+    await publishing.getByRole("button", { name: "Save publishing" }).click();
+    // The first check also downloads the forwarder's image.
+    await expect(publishing.getByRole("alert")).toHaveText("Port 18782 on 127.0.0.1 is already used by another program on this machine. Choose another port.", {
+      timeout: 60_000,
+    });
+  } finally {
+    await new Promise((resolve) => program.close(resolve));
+  }
+
   await publishing.getByLabel(/^Port/).fill("18781");
   await publishing.getByLabel(/^Link/).fill("http://127.0.0.1:18781");
   await publishing.getByRole("button", { name: "Save publishing" }).click();

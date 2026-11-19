@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { join } from "node:path";
-import { adapt, EGRESS_IMAGE, imageRef, PUBLISH_IMAGE, type AppSpec, type CheckResult } from "./adapter.ts";
+import { adapt, EGRESS_IMAGE, imageRef, pinnedImage, PUBLISH_IMAGE, PUBLISH_TARGET, type AppSpec, type CheckResult } from "./adapter.ts";
 import {
   connectNetwork,
   disconnectNetwork,
@@ -16,6 +16,7 @@ import {
   listContainers,
   pullImage,
   scrub,
+  type ContainerSummary,
   type ImageCheck,
 } from "./engine.ts";
 
@@ -42,12 +43,27 @@ export function validateSpec(body: unknown): AppSpec {
   if (typeof env !== "object" || Object.entries(env).some(([k, v]) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) || typeof v !== "string")) {
     throw new SpecError("Settings must be names with text values.");
   }
-  if (spec.publish !== undefined && spec.publish !== null) {
-    const { port, bind } = spec.publish as { port?: unknown; bind?: unknown };
-    if (!Number.isInteger(port) || (port as number) < 1 || (port as number) > 65535) throw new SpecError("The published port must be from 1 to 65535.");
-    if (typeof bind !== "string" || !isIP(bind)) throw new SpecError("The published port's address must be an IP address.");
-  }
+  if (spec.publish !== undefined && spec.publish !== null) validatePublish(spec.publish);
   return { ...spec, installation: INSTALLATION, env } as AppSpec;
+}
+
+type Publish = { port: number; bind: string };
+
+function validatePublish(publish: unknown): Publish {
+  const { port, bind } = (typeof publish === "object" && publish !== null ? publish : {}) as { port?: unknown; bind?: unknown };
+  if (!Number.isInteger(port) || (port as number) < 1 || (port as number) > 65535) throw new SpecError("The published port must be from 1 to 65535.");
+  if (typeof bind !== "string" || !isIP(bind)) throw new SpecError("The published port's address must be an IP address.");
+  return { port: port as number, bind };
+}
+
+const DIGEST = /^sha256:[a-f0-9]{64}$/;
+
+/** A port check's request: where the app would be published, and the forwarder's image as pinned. */
+export function validatePortCheck(body: unknown): { publish: Publish; digest: string } {
+  const { publish, pins } = (typeof body === "object" && body !== null ? body : {}) as { publish?: unknown; pins?: unknown };
+  const digest = typeof pins === "object" && pins !== null ? (pins as Record<string, unknown>)[`${PUBLISH_IMAGE}:latest`] : undefined;
+  if (typeof digest !== "string" || !DIGEST.test(digest)) throw new SpecError(`The request needs the digest ${PUBLISH_IMAGE}:latest is pinned to.`);
+  return { publish: validatePublish(publish), digest };
 }
 
 let stopping = false;
@@ -169,9 +185,8 @@ export async function apply(spec: AppSpec, emit: Emit): Promise<void> {
     writeFileSync(join(dir, "compose.json"), JSON.stringify(adapted), { mode: 0o600 });
     const up = await docker(["compose", "-p", spec.project, "--project-directory", dir, "-f", join(dir, "compose.json"), "up", "-d", "--remove-orphans", "--pull", "never"], {}, dir);
     if (up.code !== 0) {
-      // Docker says "port is already allocated" for another container's port, and "address already
-      // in use" for anything else on the machine.
-      if (spec.publish && /port is already allocated|address already in use/i.test(up.stderr)) {
+      // Checked when the owner saved; something can still have taken the port since.
+      if (spec.publish && portTaken(up.stderr)) {
         throw new EngineError(
           `Port ${spec.publish.port} on ${spec.publish.bind} is already in use on this machine, so ${spec.app} can't be published there. Choose another port for it.`,
           409,
@@ -184,6 +199,78 @@ export async function apply(spec: AppSpec, emit: Emit): Promise<void> {
   }
   await connectProxy(spec.project);
   emit({ step: "started" });
+}
+
+/**
+ * Docker says "port is already allocated" for another container's port, and "address already in use"
+ * for anything else on the machine.
+ */
+export function portTaken(message: string): boolean {
+  return /port is already allocated|address already in use/i.test(message);
+}
+
+/** Two listening addresses share a port when they are the same, or either is every address. */
+function overlaps(a: string, b: string): boolean {
+  const every = (ip: string) => ip === "" || ip === "0.0.0.0" || ip === "::";
+  return a === b || every(a) || every(b);
+}
+
+/**
+ * The running container that publishes the port, if one does. Another project's is named first; the
+ * app's own (its forwarder, before the app restarts with the owner's new choice) means the port is
+ * the app's already.
+ */
+export function portHolder(containers: ContainerSummary[], project: string, publish: Publish): { container: string; own: boolean } | undefined {
+  const holders = containers.filter((c) => (c.Ports ?? []).some((p) => p.Type === "tcp" && p.PublicPort === publish.port && overlaps(p.IP ?? "", publish.bind)));
+  const own = (c: ContainerSummary) => c.Labels["ai.your-space.installation"] === INSTALLATION && c.Labels["com.docker.compose.project"] === project;
+  const holder = holders.find((c) => !own(c)) ?? holders[0];
+  return holder && { container: holder.Names[0]?.replace(/^\//, "") ?? holder.Id.slice(0, 12), own: own(holder) };
+}
+
+/**
+ * A container of the forwarder's image, hardened like it, that publishes the port the way the forwarder
+ * would and exits at once. It has no app's labels, so nothing counts it as part of an app.
+ */
+export function portProbe(image: string, publish: Publish): Record<string, unknown> {
+  const port = `${PUBLISH_TARGET}/tcp`;
+  return {
+    Image: image,
+    Cmd: ["true"],
+    User: "65534:65534",
+    Labels: { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "port-check" },
+    ExposedPorts: { [port]: {} },
+    HostConfig: {
+      PortBindings: { [port]: [{ HostIp: publish.bind, HostPort: String(publish.port) }] },
+      NetworkMode: "bridge",
+      ReadonlyRootfs: true,
+      CapDrop: ["ALL"],
+      SecurityOpt: ["no-new-privileges:true"],
+      Memory: 32 * 1024 * 1024,
+      NanoCpus: 250_000_000,
+    },
+  };
+}
+
+/**
+ * Whether the app can be published on the port. A container that publishes it is named, unless it is
+ * the app's own. Anything else, such as a program on this machine, shows when a short-lived container
+ * tries to publish it: the runtime manager has no network of its own, and can't see the machine's.
+ */
+export async function checkPort(project: string, publish: Publish, digest: string): Promise<{ inUse: boolean; by?: string }> {
+  const holder = portHolder(await engineJson<ContainerSummary[]>("GET", "/containers/json"), project, publish);
+  if (holder) return holder.own ? { inUse: false } : { inUse: true, by: `the container ${holder.container}` };
+  const image = pinnedImage(PUBLISH_IMAGE, digest);
+  if (!(await imagePresent(image))) await pullImage(image, () => {});
+  const { Id } = await engineJson<{ Id: string }>("POST", "/containers/create", portProbe(image, publish));
+  try {
+    await engineJson("POST", `/containers/${Id}/start`);
+    return { inUse: false };
+  } catch (error) {
+    if (error instanceof EngineError && portTaken(error.message)) return { inUse: true };
+    throw error;
+  } finally {
+    await engine("DELETE", `/containers/${Id}?force=1`).catch(() => {});
+  }
 }
 
 async function connectProxy(project: string): Promise<void> {

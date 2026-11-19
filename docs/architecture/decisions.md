@@ -740,10 +740,12 @@ app:
 
 - Publishing is opt-in per app. Your Space publishes only the app's interface, on a port of this
   machine: by default the port the app's own Compose file publishes for it, else the interface's
-  own port, listening on `127.0.0.1` unless the owner chooses another address. A port another
-  published app uses is refused with that app's name; anything else using it makes the app's start
-  fail with the port named. The owner then chooses another port; Your Space never looks for or
-  suggests one.
+  own port, listening on `127.0.0.1` unless the owner chooses another address. A port in use is
+  refused when the owner saves: another published app's with that app's name, a container's with
+  the container's name, and anything else's as another program's, found by a short-lived container
+  that tries to publish the port as the forwarder would. Something that takes the port after that
+  makes the app's start fail with the port named. The owner then chooses another port; Your Space
+  never looks for or suggests one.
 - The app's own services stay on its sealed network, where Docker publishes no port. A forwarder
   of Your Space's, `ys-publish` (BusyBox's `nc`, its image pinned with the app's), joins that
   network and one of its own and passes each connection to the interface as it is, so the app sees

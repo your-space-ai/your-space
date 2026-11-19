@@ -392,7 +392,8 @@ port of this machine, for your own proxy or tunnel, such as `tailscale serve`, t
 address to. Choose it when installing the app, or later on the app's page, under Publishing:
 
 - **Port:** by default the port the app's own Compose file publishes for its interface. If another
-  app or program uses it, Your Space says so; choose another. Your Space never picks one for you.
+  app or program uses it, Your Space says so when you save; choose another. Your Space never picks
+  one for you.
 - **Address to listen on:** `127.0.0.1`, this machine only, by default. `0.0.0.0` listens on every
   network the machine is on.
 - **Link:** the address you reach the app at through your proxy or tunnel, such as

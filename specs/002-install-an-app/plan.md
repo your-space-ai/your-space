@@ -178,9 +178,14 @@ the owner can publish an app's interface on a port of this machine for their own
 The app record keeps `publish: { port, bind, link }`. The runtime manager adds a `ys-publish`
 service, BusyBox's `nc -lk -e nc ys-<app>-ui <port>` as user 65534 with a read-only root and no
 capabilities, on the app network and a `publish` network of its own, and publishes only its port
-on `bind:port`. The app's services stay on the sealed network, where Docker publishes nothing. The
-server refuses a port another published app uses; Docker's own bind error names anything else. With
-a link, `app_origin` and `app_host` settings are the link's on every start.
+on `bind:port`. The app's services stay on the sealed network, where Docker publishes nothing.
+Before saving the owner's choice, the server refuses a port another published app uses, then asks
+the runtime manager, which has no network of its own and can't see the machine's ports: it names a
+running container that publishes the port (the app's own forwarder doesn't count), and otherwise
+starts a short-lived container of the forwarder's pinned image, hardened like it, that publishes
+the port on Docker's default bridge and exits at once; Docker's bind error means another program
+uses it. A check that can't run doesn't stop saving, and Docker's bind error at the start names a
+port taken since. With a link, `app_origin` and `app_host` settings are the link's on every start.
 
 ### Limits and resources (FR-021, FR-021a)
 

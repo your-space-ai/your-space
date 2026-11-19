@@ -65,7 +65,7 @@ const EGRESS_FILES = 4096;
 export const PUBLISH_SERVICE = "ys-publish";
 export const PUBLISH_IMAGE = "busybox";
 /** The port the forwarder listens on inside its container. */
-const PUBLISH_TARGET = 8080;
+export const PUBLISH_TARGET = 8080;
 const PUBLISH_MEMORY = 32 * 1024 * 1024;
 const PUBLISH_CPUS = 0.25;
 

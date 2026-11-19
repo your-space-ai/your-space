@@ -31,6 +31,7 @@ derive:
 const LINKED = "https://github.com/ys-fixtures/linked/blob/main/compose.yaml";
 const OTHER = "https://github.com/ys-fixtures/other/blob/main/compose.yaml";
 const PLAIN = "https://github.com/ys-fixtures/plain/blob/main/compose.yaml";
+const THIRD = "https://github.com/ys-fixtures/third/blob/main/compose.yaml";
 
 describe("publishing choices", () => {
   const current = { port: 8000, bind: "127.0.0.1", link: null };
@@ -81,6 +82,7 @@ describe("publishing an app", () => {
       "your-space-ai/your-space-app-kits/apps/ys-fixtures/linked.yaml": KIT,
       "ys-fixtures/other/compose.yaml": COMPOSE,
       "ys-fixtures/plain/compose.yaml": COMPOSE,
+      "ys-fixtures/third/compose.yaml": COMPOSE,
     });
     server = await startServer(t.db, { apps: { runtime, fetch } });
     await createOwnerWithPassword(t.db, OWNER, server.publicUrl);
@@ -150,6 +152,44 @@ describe("publishing an app", () => {
     const moved = await send("/api/apps/other/publish", { publish: { port: 8000, bind: "127.0.0.2" } }, "PUT");
     expect(moved.status).toBe(202);
     await waitForJob(((await moved.json()) as { jobId: string }).jobId);
+  });
+
+  it("refuses, before saving, a port something else on this machine uses, naming the container when it is one", async () => {
+    runtime.portsInUse.set(8100, "the container web-1").set(8101, undefined);
+    const review = (await (await send("/api/apps/preview", { link: THIRD })).json()) as { previewId: string };
+    const byContainer = await send("/api/apps", { previewId: review.previewId, publish: { port: 8100 } });
+    expect(byContainer.status).toBe(409);
+    expect(await byContainer.json()).toMatchObject({ error: "port_in_use", message: "Port 8100 on 127.0.0.1 is already used by the container web-1. Choose another port." });
+    const byProgram = await send("/api/apps", { previewId: review.previewId, publish: { port: 8101 } });
+    expect(byProgram.status).toBe(409);
+    expect(((await byProgram.json()) as { message: string }).message).toBe("Port 8101 on 127.0.0.1 is already used by another program on this machine. Choose another port.");
+    expect(runtime.calls.filter((c) => c.method === "checkPort").at(-1)).toMatchObject({ project: "ys-third", publish: { port: 8101, bind: "127.0.0.1" } });
+    expect(await t.db.select().from(app).where(eq(app.name, "third"))).toEqual([]);
+
+    // The review is kept, so the owner chooses another port and installs.
+    const installed = await send("/api/apps", { previewId: review.previewId, publish: { port: 8102 } });
+    expect(installed.status).toBe(202);
+    expect((await waitForJob(((await installed.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+
+    // Moving an installed app to a taken port is refused the same way, and it keeps its port.
+    const moved = await send("/api/apps/third/publish", { publish: { port: 8100 } }, "PUT");
+    expect(moved.status).toBe(409);
+    expect(((await moved.json()) as { message: string }).message).toMatch(/^Port 8100 on 127\.0\.0\.1 is already used by the container web-1\./);
+    const [row] = await t.db.select({ publish: app.publish }).from(app).where(eq(app.name, "third"));
+    expect(row!.publish).toMatchObject({ port: 8102 });
+    runtime.portsInUse.clear();
+  });
+
+  it("saves when the port can't be checked, and leaves a taken port to the start", async () => {
+    runtime.failPortCheck = "The engine answered with an error.";
+    try {
+      const moved = await send("/api/apps/third/publish", { publish: { port: 8103 } }, "PUT");
+      expect(moved.status).toBe(202);
+      expect((await waitForJob(((await moved.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+      expect(lastApply().publish).toEqual({ port: 8103, bind: "127.0.0.1" });
+    } finally {
+      runtime.failPortCheck = undefined;
+    }
   });
 
   it("restarts the app at a new link, and its address settings follow", async () => {

@@ -231,8 +231,11 @@ export class AppsService {
     return values;
   }
 
-  /** Refuses a port another published app already uses. Anything else using it shows when the app starts. */
-  private async refuseTakenPort(publish: Publish, name: string): Promise<void> {
+  /**
+   * Refuses, before the owner's choice is saved, a port another published app uses or that anything
+   * else on this machine uses. Something that takes the port after that shows when the app starts.
+   */
+  private async refuseTakenPort(publish: Publish, name: string, images: AppRow["images"]): Promise<void> {
     const rows = await this.db.select({ name: app.name, title: app.title, publish: app.publish }).from(app).where(ne(app.state, "removed"));
     const other = rows.find((r) => r.name !== name && r.publish && r.publish.port === publish.port && overlaps(r.publish.bind, publish.bind));
     if (other) {
@@ -241,6 +244,20 @@ export class AppsService {
         "port_in_use",
         `Port ${publish.port} on ${publish.bind} is already used by ${other.title}, which Your Space publishes on ${other.publish!.bind}:${other.publish!.port}. Choose another port.`,
       );
+    }
+    let answer: { inUse: boolean; by?: string };
+    try {
+      const pins = Object.fromEntries(Object.entries(images).map(([ref, { digest }]) => [ref, digest]));
+      answer = await this.runtime.checkPort(`ys-${name}`, { port: publish.port, bind: publish.bind }, pins);
+    } catch (error) {
+      if (!(error instanceof RuntimeError)) throw error;
+      // The check couldn't run, for example because the forwarder's image can't be downloaded. Saving
+      // goes ahead, and the start names the port if it is taken.
+      log("warn", "app.port_check_failed", { app: name, ...errorFields(error) });
+      return;
+    }
+    if (answer.inUse) {
+      throw new AppError(409, "port_in_use", `Port ${publish.port} on ${publish.bind} is already used by ${answer.by ?? "another program on this machine"}. Choose another port.`);
     }
   }
 
@@ -376,11 +393,11 @@ export class AppsService {
     if (publishWith !== null && publishWith !== undefined) {
       if (!p.interface || p.publishPort === null) throw new AppError(400, "no_interface", `${p.title} has no interface to publish.`);
       publish = publishFrom(publishWith, { port: p.publishPort, bind: DEFAULT_BIND, link: null });
-      await this.refuseTakenPort(publish, p.name);
       // Checked again with the forwarder, which pins its image with the app's own.
       const pins = Object.fromEntries(Object.entries(images).map(([ref, { digest }]) => [ref, digest]));
       const checked = await this.check({ project: `ys-${p.name}`, app: p.name, compose: p.source.text, env: this.envOf(settings), interface: p.interface, pins, publish });
       for (const image of checked.images) if (image.digest && !images[image.ref]) images[image.ref] = { digest: image.digest };
+      await this.refuseTakenPort(publish, p.name, images);
     }
 
     this.previews.delete(previewId);
@@ -852,9 +869,9 @@ export class AppsService {
       const checked = await this.check({ ...spec, publish: { port: row.publish?.port ?? row.interface.port, bind: row.publish?.bind ?? DEFAULT_BIND } });
       const current = row.publish ?? { port: defaultPort(checked.services, row.interface) ?? row.interface.port, bind: DEFAULT_BIND, link: null };
       publish = publishFrom(publishWith, current);
-      await this.refuseTakenPort(publish, row.name);
       images = { ...row.images };
       for (const image of checked.images) if (image.digest && !images[image.ref]) images[image.ref] = { digest: image.digest };
+      await this.refuseTakenPort(publish, row.name, images);
     }
     await this.db.update(app).set({ publish, images, updatedAt: new Date() }).where(eq(app.id, row.id));
     await this.event("app.publish_changed", actorId, row.id);

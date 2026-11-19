@@ -7,12 +7,12 @@ Errors use journey 001's shape `{ "error": "<code>", "message": "…" }`.
 | --- | --- | --- |
 | `GET /api/apps` | | `{ apps: [{ name, title, state, stateReason, origin, pane, hasInterface, pendingRequests, publish }], retained: [{ name, title, removedAt }] }` |
 | `POST /api/apps/preview` | `{ link, kit? }` | The review: `{ previewId, name, title, source: { repo, path, commit }, kit, services, images, adaptations, settings: [{ name, secret, generated, value? }], outbound, publishPort, retained }`. Secret values are never included. `publishPort` is the port publishing uses by default, or null without an interface. |
-| `POST /api/apps` | `{ previewId, settings?: { NAME: value }, reuseData?: boolean, publish?: { port?, bind?, link? } }` | `202 { name, jobId }`; `409 port_in_use` when another published app uses the port |
+| `POST /api/apps` | `{ previewId, settings?: { NAME: value }, reuseData?: boolean, publish?: { port?, bind?, link? } }` | `202 { name, jobId }`; `409 port_in_use` when another published app, a container or another program on this machine uses the port |
 | `GET /api/apps/{name}` | | The app: state, services with state, settings (secrets as set or not set), outbound hosts, access requests, limits, the latest job |
 | `GET /api/apps/{name}/logs?service=` | | `{ lines }` |
 | `PUT /api/apps/{name}/settings` | `{ values: { NAME: value \| null } }` | `202 { jobId }`; the app is applied again |
 | `PUT /api/apps/{name}/limits` | `{ limits: { service: { memory, cpus } } }` | `202 { jobId }` |
-| `PUT /api/apps/{name}/publish` | `{ publish: { port?, bind?, link? } \| null }` | `202 { jobId }`; the app is applied again. `null` stops publishing; a field left out keeps its value, or its default the first time. `409 port_in_use` when another published app uses the port |
+| `PUT /api/apps/{name}/publish` | `{ publish: { port?, bind?, link? } \| null }` | `202 { jobId }`; the app is applied again. `null` stops publishing; a field left out keeps its value, or its default the first time. `409 port_in_use` when another published app, a container or another program on this machine uses the port |
 | `POST /api/apps/{name}/outbound` | `{ host }` | `202 { jobId }` |
 | `DELETE /api/apps/{name}/outbound/{host}` | | `202 { jobId }` |
 | `POST /api/apps/{name}/requests/{id}/approve` | | `202 { jobId }` |

@@ -83,6 +83,8 @@ export interface Runtime {
   logs(project: string, service: string, tail?: number): Promise<string[]>;
   stats(project: string): Promise<{ services: { name: string; memory: number; memoryLimit: number; cpuPercent: number }[] }>;
   denials(project: string): Promise<{ hosts: { host: string; attempts: number; lastSeen: string }[] }>;
+  /** Whether the app can be published on bind:port of this machine; `by` names a container that uses it. */
+  checkPort(project: string, publish: { port: number; bind: string }, pins: Record<string, string>): Promise<{ inUse: boolean; by?: string }>;
 }
 
 function call(method: string, path: string, body?: unknown, onLine?: (line: string) => void, socketPath = RUNTIME_SOCKET): Promise<{ status: number; text: string }> {
@@ -164,5 +166,6 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
       (await json<{ lines: string[] }>("GET", `${p(project)}/logs?service=${encodeURIComponent(service)}&tail=${tail}`, undefined, socketPath)).lines,
     stats: (project) => json("GET", `${p(project)}/stats`, undefined, socketPath),
     denials: (project) => json("GET", `${p(project)}/denials`, undefined, socketPath),
+    checkPort: (project, publish, pins) => json("POST", `${p(project)}/port`, { publish, pins }, socketPath),
   };
 }
