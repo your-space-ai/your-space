@@ -1,15 +1,17 @@
-// install-app <github-link> [--kit <link>] [--reuse-data] [--publish [--port <n>] [--bind <address>]
-// [--link <url>]] [--json] (FR-009, contracts/http-api.md). Reviews the app, installs it as the
-// operator, and waits until it runs or the install fails.
+// install-app <github-link> [--kit <link | file | folder | ->] [--reuse-data] [--publish [--port <n>]
+// [--bind <address>] [--link <url>]] [--json] (FR-009, contracts/http-api.md). Reviews the app,
+// installs it as the operator, and waits until it runs or the install fails.
 import { parseArgs } from "node:util";
 import { operatorActorId } from "../actors.ts";
 import { errorFields, log } from "../log.ts";
+import { SourceError } from "../apps/github.ts";
+import { KitFileError, readLocalKit } from "../apps/kits.ts";
 import { socketRuntime } from "../apps/runtime-client.ts";
 import { AppError, AppsService } from "../apps/service.ts";
 import { EXIT, openForCommand, output, publishedLine } from "./output.ts";
 
 const USAGE =
-  "Usage: install-app <github-link-to-compose-file> [--kit <link>] [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]";
+  "Usage: install-app <github-link-to-compose-file> [--kit <link | file | folder | ->] [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]";
 
 async function main(argv: string[]): Promise<number> {
   let values: { kit?: string; json?: boolean; help?: boolean; "reuse-data"?: boolean; publish?: boolean; port?: string; bind?: string; link?: string };
@@ -52,7 +54,11 @@ async function main(argv: string[]): Promise<number> {
   const { config, database } = opened;
   const apps = new AppsService(database.db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey });
   try {
-    const review = await apps.preview(positionals[0]!, values.kit);
+    // A kit link is read from GitHub; anything else is a kit on this machine.
+    const kitLink = values.kit !== undefined && /^https?:\/\//i.test(values.kit) ? values.kit : undefined;
+    // The command runs in the server's container, so standard input (`--kit -`) is how a file on the host reaches it.
+    const kitText = values.kit !== undefined && !kitLink ? readLocalKit(values.kit, positionals[0]!) : undefined;
+    const review = await apps.preview(positionals[0]!, kitLink, kitText);
     if (!review.ok) {
       const reasons = review.refusals.map((r) => `  - ${r.service ? `${r.service}: ` : ""}${r.reason}`);
       out.failure({ ok: false, error: "refused", name: review.name, refusals: review.refusals }, [`Your Space can't run ${review.title} as it is:`, ...reasons].join("\n"));
@@ -61,7 +67,7 @@ async function main(argv: string[]): Promise<number> {
     if (!out.json) {
       process.stderr.write(
         [
-          `${review.title} from ${review.source.repo} at ${review.source.commit.slice(0, 12)}${review.kit ? ", with its installation kit" : ""}`,
+          `${review.title} from ${review.source.repo} at ${review.source.commit.slice(0, 12)}${review.kit ? (kitText !== undefined ? ", with the kit file you gave" : ", with its installation kit") : ""}`,
           ...review.services.map((s) => `  ${s.name}: ${s.image}${s.interface ? " (interface)" : ""}`),
           ...review.adaptations.map((a) => `  ${a.service}: ${a.detail}`),
           review.warning,
@@ -90,6 +96,10 @@ async function main(argv: string[]): Promise<number> {
     );
     return EXIT.ok;
   } catch (error) {
+    if (error instanceof KitFileError || error instanceof SourceError) {
+      out.failure({ ok: false, error: "kit_file", message: error.message }, error.message);
+      return EXIT.notApplicable;
+    }
     if (error instanceof AppError) {
       out.failure({ ok: false, error: error.code, message: error.message }, error.message);
       return error.status >= 500 ? EXIT.storage : EXIT.notApplicable;

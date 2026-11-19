@@ -1,7 +1,8 @@
 # Installation Kit Format
 
 A kit is a YAML file in the kits repository at `apps/<owner>/<repo>.yaml`, or anywhere on GitHub when
-the owner gives its link. It refers to the app's own file and never copies it.
+the owner gives its link, or a file on this machine given to `install-app --kit`, such as one from a
+private kits repository. It refers to the app's own file and never copies it.
 
 ```yaml
 kit: 1                        # format version

@@ -371,7 +371,8 @@ shows the exact commit and image versions that will run, what Your Space changes
 the file, the settings it reads, and the internet hosts it may reach. Secrets the file gives a
 published default for get generated values instead, and they are never shown. Install runs in the
 background; you can leave the page. From the server, `docker compose exec server install-app <link>`
-does the same.
+does the same. A kit Your Space can't read from GitHub, such as one in a private repository, can come
+from this machine instead: `docker compose exec -T server install-app <link> --kit - < kit.yaml`.
 
 Installing an app trusts it with everything you put into it. Your Space keeps it away from your
 other apps, Your Space's own data and this machine, and controls who can reach it, but it can't see

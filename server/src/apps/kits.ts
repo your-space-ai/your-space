@@ -1,8 +1,11 @@
 // Installation kits (component D, FR-002a, contracts/kit-format.md): what makes a particular app fit
 // Your Space, kept in a separate repository and read as data. Your Space has no app-specific logic.
+import { createHash } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { parse } from "yaml";
 import type { Kit } from "../db/schema.ts";
-import { fetchSource, githubEndpoints, SourceError, type GithubEndpoints } from "./github.ts";
+import { fetchSource, githubEndpoints, MAX_FILE_BYTES, parseLink, SourceError, type GithubEndpoints } from "./github.ts";
 import { TEMPLATE_REFERENCE, templateNames } from "./settings.ts";
 
 export const KITS_REPO = "your-space-ai/your-space-app-kits";
@@ -149,8 +152,46 @@ export function parseKit(text: string): Kit {
 
 export interface FoundKit {
   kit: Kit;
-  /** The kit's link at its exact commit. */
+  /** The kit's link at its exact commit, or `sha256:<hex>` for a kit file given on this machine. */
   source: string;
+}
+
+export class KitFileError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "KitFileError";
+  }
+}
+
+/**
+ * The text of a kit on this machine, for the app at `link`: `-` reads standard input, a folder is a
+ * kits repository with the app's kit at `apps/<owner>/<repo>.yaml`, and anything else is the file.
+ */
+export function readLocalKit(kit: string, link: string, stdin: number | string = 0): string {
+  let path = kit;
+  try {
+    if (kit === "-") return readFileSync(stdin, "utf8");
+    if (statSync(kit).isDirectory()) path = join(kit, "apps", `${parseLink(link).repo.toLowerCase()}.yaml`);
+    if (statSync(path).size > MAX_FILE_BYTES) throw new KitFileError(`The kit file ${path} is larger than a kit should be.`);
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    if (error instanceof KitFileError || error instanceof SourceError) throw error;
+    throw new KitFileError(`The kit file ${path} can't be read (${(error as NodeJS.ErrnoException).code ?? "error"}).`);
+  }
+}
+
+/**
+ * A kit file the owner gives on this machine, such as one from a private kits repository, which Your
+ * Space can't read from GitHub. It must fit the app's file, as a kit link must; the record keeps its
+ * digest, since a path on the machine identifies nothing.
+ */
+export function kitFromFile(text: string, repo: string, path: string): FoundKit {
+  if (Buffer.byteLength(text) > MAX_FILE_BYTES) throw new KitError("the file is larger than a kit should be.");
+  const kit = parseKit(text);
+  if (kit.source.repo.toLowerCase() !== repo.toLowerCase() || kit.source.path !== path) {
+    throw new KitError(`it is for ${kit.source.repo}/${kit.source.path}, not ${repo}/${path}.`);
+  }
+  return { kit, source: `sha256:${createHash("sha256").update(text).digest("hex")}` };
 }
 
 /**
