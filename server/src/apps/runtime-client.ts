@@ -51,6 +51,8 @@ export interface ServiceState {
   health?: string;
   exitCode?: number;
   oomKilled?: boolean;
+  /** A service that runs once, such as a migration, and finished. */
+  completed?: boolean;
 }
 
 export interface EngineInfo {

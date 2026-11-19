@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { adapt, egressConfig, imageRef, pinnedImage, type AppSpec } from "../src/adapter.ts";
+import { adapt, egressConfig, imageRef, pinnedImage, restartPolicy, type AppSpec } from "../src/adapter.ts";
 import { parseDenials, SpecError, validateSpec } from "../src/apps.ts";
 
 // Sure's compose.example.yml at 70647cb, resolved by `docker compose -p ys-sure config --format json`.
@@ -164,6 +164,38 @@ describe("publishing the interface on a port", () => {
     for (const publish of [{ port: 0, bind: "127.0.0.1" }, { port: 70000, bind: "127.0.0.1" }, { port: 80, bind: "localhost" }, { port: "80", bind: "127.0.0.1" }]) {
       expect(() => validateSpec({ ...base, publish }), JSON.stringify(publish)).toThrow(SpecError);
     }
+  });
+});
+
+describe("restarts", () => {
+  it("keeps services running, except one its file says runs once", () => {
+    expect(restartPolicy({})).toBe("unless-stopped");
+    expect(restartPolicy({ restart: "always" })).toBe("always");
+    expect(restartPolicy({ restart: "no" })).toBe("no");
+    expect(restartPolicy({ restart: "on-failure:5" })).toBe("on-failure:5");
+    // Compose's deploy settings are replaced, but their restart policy is kept.
+    expect(restartPolicy({ deploy: { replicas: 1, restart_policy: { condition: "on-failure" } } })).toBe("on-failure");
+    expect(restartPolicy({ deploy: { restart_policy: { condition: "on-failure", max_attempts: 3 } } })).toBe("on-failure:3");
+    expect(restartPolicy({ deploy: { restart_policy: { condition: "none" } } })).toBe("no");
+    expect(restartPolicy({ deploy: { restart_policy: { condition: "any" } } })).toBe("unless-stopped");
+    expect(restartPolicy({ restart: "unless-stopped", deploy: { restart_policy: { condition: "none" } } })).toBe("unless-stopped");
+  });
+
+  it("runs a migration like Plane's once, and its other services until they are stopped", () => {
+    const result = adapt(
+      { ...spec, interface: null },
+      {
+        services: {
+          migrator: { image: "busybox", deploy: { replicas: 1, restart_policy: { condition: "on-failure" } } },
+          api: { image: "busybox", depends_on: { migrator: { condition: "service_completed_successfully" } } },
+        },
+      },
+    );
+    const services = result.adapted!.services as Record<string, Service>;
+    expect(services.migrator!.restart).toBe("on-failure");
+    expect(services.migrator!.deploy).toBeUndefined();
+    expect(services.api!.restart).toBe("unless-stopped");
+    expect(services.api!.depends_on).toMatchObject({ migrator: { condition: "service_completed_successfully" } });
   });
 });
 

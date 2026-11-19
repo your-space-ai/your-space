@@ -304,6 +304,24 @@ function servicePorts(service: Json): number[] {
   return ports;
 }
 
+/**
+ * How Docker restarts a service. Your Space keeps services running, so they come back after a
+ * restart of the machine, except a service its file says runs once, such as a database migration:
+ * `restart: "no"` or `on-failure`, or Compose's `deploy.restart_policy` (whose other settings Your
+ * Space replaces) with `none` or `on-failure`. Without either, it is `unless-stopped`.
+ */
+export function restartPolicy(service: Json): string {
+  const restart = typeof service.restart === "string" ? service.restart : undefined;
+  if (restart) return restart;
+  const policy = isObject(service.deploy) && isObject(service.deploy.restart_policy) ? service.deploy.restart_policy : {};
+  if (policy.condition === "none") return "no";
+  if (policy.condition === "on-failure") {
+    const attempts = Number(policy.max_attempts);
+    return Number.isInteger(attempts) && attempts > 0 ? `on-failure:${attempts}` : "on-failure";
+  }
+  return "unless-stopped";
+}
+
 /** The Squid configuration for an app's egress proxy (FR-019). */
 export function egressConfig(hosts: string[]): string {
   const lines = [
@@ -385,7 +403,7 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
       const digest = spec.pins?.[imageRef(out.image)];
       if (digest) out.image = pinnedImage(out.image, digest);
     }
-    out.restart = service.restart && service.restart !== "no" ? service.restart : "unless-stopped";
+    out.restart = restartPolicy(service);
     const environment = isObject(service.environment) ? { ...service.environment } : {};
     for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]) environment[key] = proxy;
     environment.NO_PROXY = noProxy;

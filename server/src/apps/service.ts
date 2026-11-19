@@ -170,7 +170,8 @@ function now(): string {
 
 /** An app's state from what the runtime reports for its services. */
 export function stateFromServices(services: ServiceState[]): { state: AppState; reason: string | null } {
-  const app = services.filter((s) => s.role === "app");
+  // A service that runs once, such as a migration, and finished takes no part in the app's state.
+  const app = services.filter((s) => s.role === "app" && !s.completed);
   const forwarder = services.find((s) => s.role === "publish");
   if (app.length === 0) return { state: "stopped", reason: "Not running." };
   const problems: string[] = [];

@@ -88,7 +88,11 @@ service:
 forms pointing at `ys-egress:3128` and `NO_PROXY` listing the app's own services; `mem_limit`,
 `cpus`, `oom_score_adj: 500`, `security_opt: [no-new-privileges:true]`; labels
 `ai.your-space.installation` and `ai.your-space.app`; and a dependency on the egress proxy's health,
-so no service starts before it can reach approved hosts. Networks: `app` is `internal` with
+so no service starts before it can reach approved hosts. Every service restarts `unless-stopped`,
+so it comes back after a restart of the machine, except one the file says runs once, such as a
+database migration: `restart: "no"` or `on-failure`, or `deploy.restart_policy` with `none` or
+`on-failure` (kept from the otherwise replaced `deploy`). Such a service that exits 0 shows as
+completed, not as a problem (2026-11-19). Networks: `app` is `internal` with
 `com.docker.network.bridge.gateway_mode_ipv4=isolated` (no route to the host or out); `egress` is a
 normal bridge. Apps' raised out-of-memory score makes the kernel stop them before Your Space's own
 services, which keep the default; a negative score would fail on rootless engines (FR-D06).

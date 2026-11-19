@@ -165,6 +165,7 @@ export interface ServiceState {
   health?: string;
   exitCode?: number;
   oomKilled?: boolean;
+  completed?: boolean;
   limit: { memory: number; cpus: number } | null;
 }
 
