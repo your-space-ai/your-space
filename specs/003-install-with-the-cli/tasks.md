@@ -46,8 +46,8 @@ it merges.
 
 ## Slice 6: Another engine, and a folder set up by hand
 
-- [ ] T023 Engine endpoint and `YS_ENGINE_SOCKET`; remote engines refused; one installation per engine
-- [ ] T024 Browser test: a non-default Docker context, and a folder installed by hand
+- [x] T023 Engine endpoint and `YS_ENGINE_SOCKET`; remote engines refused; one installation per engine
+- [x] T024 Browser test: a non-default Docker context, and a folder installed by hand
 
 ## Slice 7: The guide
 
