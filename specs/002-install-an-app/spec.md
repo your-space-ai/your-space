@@ -247,7 +247,9 @@ then try to reach Sure's address while signed out of Your Space.
 5. **Given** each setup from journey 001, **When** the owner opens an app, **Then** it is at
    `<app>.<Your Space's address>`: `sure.space.localhost` on this machine with no setup,
    `sure.space.example.com` on your own domain after one wildcard DNS record, a Tailscale Service
-   name on Tailscale, and the forwarded wildcard name behind your own proxy.
+   name on Tailscale, and the forwarded wildcard name behind your own proxy. (2026-11-19: Tailscale
+   names can't hold these; there the owner publishes the app on a port, with a Tailscale Service
+   per app; see the decision record's "Running Apps and Reaching Them".)
 6. **Given** Sure in a pane, **When** its requests reach Sure, **Then** none of them carries Your
    Space's sign-in cookie, and no cookie Sure sets reaches Your Space or another app.
 7. **Given** an app that sends a header forbidding framing, **When** it opens in a pane, **Then** it
@@ -453,14 +455,17 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
   this journey the only endpoint is a container on Your Space's engine; later endpoint types (an
   app on another engine, or an app someone already runs, reached through a connector) add to it
   without changing these.
-- **FR-014**: Only people signed in to Your Space may reach an app's origin. The platform session
+- **FR-014**: Only people signed in to Your Space may reach an app's origin (2026-11-19: apart from a
+  port the owner publishes the app on, which is outside the gate; see FR-015). The platform session
   stays on the platform's own host: a `__Host-` cookie that apps can't overwrite. An app's origin
   gets its own short-lived pass, issued by Your Space to someone already signed in, and the proxy
   removes that pass before forwarding requests to the app.
 - **FR-014a**: The proxy removes Your Space's cookies from every request to an app, and removes any
   `Domain` attribute from cookies an app sets, so no app's cookie reaches Your Space or another app.
 - **FR-015**: Apps must be reachable only through Your Space; app containers publish no ports of their
-  own.
+  own. (2026-11-19: the owner can publish an app's interface on a port of this machine, through a
+  forwarder of Your Space's, for their own proxy or tunnel; that port is outside the access gate. See
+  the decision record's "Running Apps and Reaching Them".)
 - **FR-016**: Apps open in panes inside Your Space, with its navigation available, and in their own
   tab when they can't run in a pane. When a browser blocks an app's cookies in a pane, Your Space
   notices and offers the app in its own tab instead of failing silently. WebKit does this on the
@@ -520,7 +525,7 @@ What is specific to the first runtime adapter. The research behind it is
 - **FR-D03**: The adapter checks an app's fully resolved Compose file (after `include`, `extends`,
   anchors and placeholders) against an allowlist of settings, never the raw file.
 - **FR-D04**: Rules that apply to every app: published host ports are replaced by Your Space's
-  routing, networks are assigned by the adapter, images are pinned by digest, services behind
+  routing (and, since 2026-11-19, by Your Space's forwarder when the owner publishes the app), networks are assigned by the adapter, images are pinned by digest, services behind
   profiles are left out, and host folders, devices, privileged mode, host namespaces and engine
   access are refused.
 - **FR-D05**: Each app's network is internal, with no route to the host (Docker 28's isolated gateway
@@ -650,7 +655,8 @@ request after agreement.
    own proxy. Ports and paths share cookies between apps, as Umbrel, CasaOS, Runtipi and Home
    Assistant's add-ons show; a host name per app is what Codespaces, Gitpod, Coder, OrbStack and
    JupyterHub use. Still to check on a running version: Safari on macOS with `*.localhost`, and
-   whether Your Space can create Tailscale Services itself. See research R2.
+   whether Your Space can create Tailscale Services itself. See research R2. (2026-11-19: on
+   Tailscale, the owner publishes an app on a port and creates its Tailscale Service.)
 6. **Q6, panes and cookies (decided 2026-11-14)**: the proxy replaces framing headers so only Your
    Space can frame an app, keeps Your Space's cookies away from apps and apps' cookies away from
    Your Space and each other (FR-014, FR-014a, FR-017), and leaves apps' own cookies alone. Tested

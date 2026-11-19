@@ -1,5 +1,6 @@
 // Journey 002: install apps from their own Compose files and use them in Your Space. A stand-in for
 // GitHub serves the fixture apps (e2e/github); Sure and Twenty run by hand (verification record).
+import { createServer } from "node:net";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { evidence } from "./helpers/evidence.ts";
 import { compose, createOwner, docker, resetStack, serverCommand, up } from "./helpers/stack.ts";
@@ -204,6 +205,59 @@ test("the owner sees each service, its logs and limits, and the engine", async (
   await expect(page.getByRole("heading", { name: "Engine" })).toBeVisible();
   await expect(page.locator("[data-field=reachable]")).toHaveText("Reachable");
   await expect(page.locator('tr[data-app="whoami"]')).toBeVisible();
+});
+
+test("the owner publishes an app on a port of this machine, for their own proxy or tunnel", async ({ page }) => {
+  await asOwner(page);
+  await page.goto("/apps/whoami");
+  const publishing = page.locator("section", { has: page.getByRole("heading", { name: "Publishing" }) });
+  await publishing.getByLabel(/^Publish on a port/).check();
+
+  // A port another program on this machine uses is refused when the owner saves, not when the app starts.
+  const program = createServer();
+  await new Promise<void>((resolve) => program.listen(18782, "127.0.0.1", resolve));
+  try {
+    await publishing.getByLabel(/^Port/).fill("18782");
+    await publishing.getByRole("button", { name: "Save publishing" }).click();
+    // The first check also downloads the forwarder's image.
+    await expect(publishing.getByRole("alert")).toHaveText("Port 18782 on 127.0.0.1 is already used by another program on this machine. Choose another port.", {
+      timeout: 60_000,
+    });
+  } finally {
+    await new Promise((resolve) => program.close(resolve));
+  }
+
+  await publishing.getByLabel(/^Port/).fill("18781");
+  await publishing.getByLabel(/^Link/).fill("http://127.0.0.1:18781");
+  await publishing.getByRole("button", { name: "Save publishing" }).click();
+  await waitForJob(page);
+
+  // The port reaches the app as it is, with the proxy's own headers and no gate in between.
+  const answer = await page.request.get("http://127.0.0.1:18781/inbox", { headers: { "X-Forwarded-Proto": "https" }, maxRedirects: 0 });
+  expect(answer.status()).toBe(200);
+  const echoed = await answer.text();
+  expect(echoed).toContain("GET /inbox");
+  expect(echoed).toContain("X-Forwarded-Proto: https");
+  // Only Your Space's forwarder publishes the port; the app's own container still publishes none (FR-015).
+  expect(await inspect("ys-whoami-web-1", "{{json .HostConfig.PortBindings}}")).toBe("{}");
+  expect(await inspect("ys-whoami-ys-publish-1", "{{json .HostConfig.PortBindings}}")).toContain('"HostIp":"127.0.0.1","HostPort":"18781"');
+
+  // Your Space opens it at its link.
+  await page.goto("/apps");
+  await expect(page.locator('li[data-app="whoami"]').getByRole("link", { name: /^Open/ })).toHaveAttribute("href", "http://127.0.0.1:18781");
+
+  // Stopping publishing closes the port, and the app is still at its own address.
+  await page.goto("/apps/whoami");
+  await publishing.getByLabel(/^Publish on a port/).uncheck();
+  await publishing.getByRole("button", { name: "Save publishing" }).click();
+  await waitForJob(page);
+  const closed = await page.request.get("http://127.0.0.1:18781/", { timeout: 5_000 }).then(
+    () => false,
+    () => true,
+  );
+  expect(closed).toBe(true);
+  await page.goto("/apps");
+  await expect(page.locator('li[data-app="whoami"]').getByRole("link", { name: /^Open/ })).toHaveAttribute("href", /\/open\/whoami$/);
 });
 
 test("two apps side by side on a large screen, one at a time on a phone", async ({ page }) => {

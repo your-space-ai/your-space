@@ -310,10 +310,23 @@ reach. You need no domain and no ports open to the internet.
    `docker compose up -d`.
 
 Tailscale passes the original `Host` header and the visitor's tailnet address, so nothing else needs
-setting up. Apps don't work over Tailscale yet: each app needs a name under Your Space's address,
-such as `sure.myserver.tail1234.ts.net`, and Tailscale's names can't hold a name under a machine's
-name. A Tailscale Service gets a name beside it (`sure.tail1234.ts.net`) instead, which isn't the
-app's address.
+setting up for Your Space itself. Apps can't have their built-in names over Tailscale, such as
+`sure.myserver.tail1234.ts.net`, because Tailscale's names can't hold a name under a machine's name.
+Instead, [publish each app on a port](#publish-an-app-on-a-port) and give it a
+[Tailscale Service](https://tailscale.com/kb/1552/tailscale-services) of its own: each app needs its
+own address, and Tailscale gives one name per service. For Sure published on port 8081:
+
+1. In Tailscale's admin console, under Services, define a service named `sure`.
+2. On the server, run (on Linux, with `sudo`):
+
+   ```sh
+   tailscale serve --service=svc:sure --https=443 http://127.0.0.1:8081
+   ```
+
+3. In the admin console, approve this server as the service's host, and let your devices reach
+   `svc:sure` in your access policy.
+4. Give Your Space the service's address as the app's link, `https://sure.tail1234.ts.net`, in the
+   app's Publishing settings.
 
 ### Plain HTTP on Your Network Is Not Supported
 
@@ -365,10 +378,42 @@ other apps, Your Space's own data and this machine, and controls who can reach i
 or check what the app does with your data.
 
 **Open.** Each app is at `<app>.<Your Space's address>`, such as `http://sure.space.localhost`, and
-only you, signed in to Your Space, can reach it. Apps open in a pane beside Your Space's navigation;
+only you, signed in to Your Space, can reach it. On this machine that works with no setup, through
+`*.localhost`; on your own domain it needs one wildcard DNS record. Where it can't work, as on
+Tailscale, [publish the app on a port](#publish-an-app-on-a-port). Apps open in a pane beside Your Space's navigation;
 on a large screen, two apps open side by side. An app keeps its own accounts: you sign up in the app
 the first time. On this machine, Safari doesn't keep apps' cookies inside Your Space, so apps open in
 their own tab there; over HTTPS they open in a pane in every browser.
+
+#### Publish an App on a Port
+
+Your Space runs apps; your own network setup can reach them. Publishing puts an app's interface on a
+port of this machine, for your own proxy or tunnel, such as `tailscale serve`, to send its own
+address to. Choose it when installing the app, or later on the app's page, under Publishing:
+
+- **Port:** by default the port the app's own Compose file publishes for its interface. If another
+  app or program uses it, Your Space says so when you save; choose another. Your Space never picks
+  one for you.
+- **Address to listen on:** `127.0.0.1`, this machine only, by default. `0.0.0.0` listens on every
+  network the machine is on.
+- **Link:** the address you reach the app at through your proxy or tunnel, such as
+  `https://sure.example.com`. The app's own address settings, such as the URL it puts in its links,
+  use it, and Your Space opens the app there, in its own tab. A changed link reaches them when the
+  app restarts, which saving does.
+
+A published port isn't behind Your Space's sign-in: anyone who can reach it reaches the app, and only
+the app's own sign-in protects it. The app's own services still publish nothing, and its built-in
+address keeps working.
+
+From the server:
+
+```sh
+docker compose exec server publish-app sure --port 8081 --link https://sure.example.com
+docker compose exec server publish-app sure --off
+```
+
+`install-app <link> --publish`, with the same `--port`, `--bind` and `--link`, installs an app
+published.
 
 **Settings.** An app's page shows its settings. Saving restarts the app with the new values and
 keeps its data. Replacing a generated secret, such as a database password, can break the app.

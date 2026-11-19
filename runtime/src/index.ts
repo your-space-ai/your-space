@@ -6,6 +6,7 @@ import { dirname } from "node:path";
 import {
   apply,
   check,
+  checkPort,
   connectProxyToAll,
   deleteVolumes,
   denials,
@@ -17,6 +18,7 @@ import {
   SpecError,
   stats,
   stopAll,
+  validatePortCheck,
   validateSpec,
 } from "./apps.ts";
 import { engineInfo, EngineError } from "./engine.ts";
@@ -98,6 +100,10 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (method === "DELETE" && action === "/volumes") return (await deleteVolumes(project), send(res, 200, { ok: true }));
     if (method === "GET" && action === "/stats") return send(res, 200, await stats(project));
     if (method === "GET" && action === "/denials") return send(res, 200, await denials(project));
+    if (method === "POST" && action === "/port") {
+      const { publish, digest } = validatePortCheck(await readBody(req));
+      return send(res, 200, await checkPort(project, publish, digest));
+    }
     if (method === "GET" && action === "/logs") {
       const service = url.searchParams.get("service") ?? "";
       return send(res, 200, { lines: await logs(project, service, Number(url.searchParams.get("tail") ?? 200)) });

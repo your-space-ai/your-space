@@ -16,9 +16,21 @@ async function main(argv: string[]): Promise<number> {
   try {
     const { apps: list, retained } = await apps.list();
     const details = await Promise.all(list.map((a) => apps.detail(a.name)));
-    const rows = details.map((d) => ({ name: d.name, state: d.state, reason: d.stateReason, repo: d.source.repo, path: d.source.path, commit: d.source.commit, origin: d.origin }));
+    const rows = details.map((d) => ({
+      name: d.name,
+      state: d.state,
+      reason: d.stateReason,
+      repo: d.source.repo,
+      path: d.source.path,
+      commit: d.source.commit,
+      origin: d.origin,
+      publish: d.publish,
+    }));
+    const published = (p: (typeof rows)[number]["publish"]) => (p ? `  published on ${p.bind}:${p.port}${p.link ? ` for ${p.link}` : ""}` : "");
     out.success({ ok: true, apps: rows, retained }, [
-      ...(rows.length ? rows.map((r) => `${r.name}  ${r.state}${r.reason ? ` (${r.reason})` : ""}  ${r.repo}/${r.path}@${r.commit.slice(0, 12)}  ${r.origin}`) : ["No app is installed."]),
+      ...(rows.length
+        ? rows.map((r) => `${r.name}  ${r.state}${r.reason ? ` (${r.reason})` : ""}  ${r.repo}/${r.path}@${r.commit.slice(0, 12)}  ${r.origin}${published(r.publish)}`)
+        : ["No app is installed."]),
       ...retained.map((r) => `${r.name}  removed, data kept`),
     ]);
     return EXIT.ok;

@@ -4,7 +4,7 @@
 
 **Recorded**: 2026-10-28
 
-**Last updated**: 2026-11-14
+**Last updated**: 2026-11-19
 
 **Scope**: Project-wide direction, independent of any feature specification
 
@@ -175,7 +175,9 @@ backup and restore: journey 006 chooses between the client and an issued credent
 knows its own address and, behind a proxy or tunnel, the names to forward, which `your-space status`
 lists. Tailscale's names can't hold a name under a machine's name, so apps can't get their
 `<app>.<Your Space's address>` names over Tailscale; that stays unsupported until the release gate's
-hosting review settles a way.
+hosting review settles a way. (Superseded for apps 2026-11-19: an app is published on a port of
+this machine and reached at the owner's link; see
+[running apps and reaching them](#running-apps-and-reaching-them).)
 
 **Decision update (2026-11-17):** Functionality is built and tested on Linux first, in every
 journey. Packaging and checks for macOS and Windows (macOS executables, a Homebrew formula with its
@@ -690,6 +692,9 @@ CasaOS and Runtipi show, while a host name per app is what Codespaces, Gitpod, C
 JupyterHub use. This supersedes the port-per-app fallback for hosts without wildcard DNS. The owner
 creates Tailscale Services for now; whether Your Space can create them is left for journey 003. See
 [research R2](../../specs/002-install-an-app/research.md#r2-apps-in-panes-framing-cookies-and-app-addresses).
+(2026-11-19: Tailscale names can't hold `<app>.<Your Space's address>`; on Tailscale an app is
+published on a port and gets a Tailscale Service of its own; see
+[running apps and reaching them](#running-apps-and-reaching-them).)
 
 **Decision update (2026-11-14):** Only people signed in to Your Space reach an app's origin. Caddy's
 app site (`*.space.localhost`, or `*.<domain>`) asks the server's gate with `forward_auth` before
@@ -721,6 +726,47 @@ tab, behind the same gate. Chromium and Firefox run apps in panes on that setup,
 real domain, Your Space and its apps are one site in WebKit too. Safari on macOS uses a different
 cookie stack and is still to check. See
 [research R3](../../specs/002-install-an-app/research.md#cookies-and-panes-on-the-local-setup).
+
+#### Running Apps and Reaching Them
+
+**Decision update (2026-11-19):** Your Space runs apps; the owner's network setup reaches them. Your
+Space installs, runs and manages apps (settings, logs, limits, sealed networks) and later the agent
+gateway. How people reach an app belongs to whatever network setup the owner uses: `tailscale
+serve`, a tunnel, a reverse proxy, or the managed platform's edge. The built-in addressing above
+(`<app>.<Your Space's address>`, the access gate, the handoff and panes) stays the default and is
+unchanged: on this machine it works with no setup through `*.localhost`, and on the owner's own
+domain with one wildcard DNS record. Where it can't work, as on Tailscale, the owner publishes the
+app:
+
+- Publishing is opt-in per app. Your Space publishes only the app's interface, on a port of this
+  machine: by default the port the app's own Compose file publishes for it, else the interface's
+  own port, listening on `127.0.0.1` unless the owner chooses another address. A port in use is
+  refused when the owner saves: another published app's with that app's name, a container's with
+  the container's name, and anything else's as another program's, found by a short-lived container
+  that tries to publish the port as the forwarder would. Something that takes the port after that
+  makes the app's start fail with the port named. The owner then chooses another port; Your Space
+  never looks for or suggests one.
+- The app's own services stay on its sealed network, where Docker publishes no port. A forwarder
+  of Your Space's, `ys-publish` (BusyBox's `nc`, its image pinned with the app's), joins that
+  network and one of its own and passes each connection to the interface as it is, so the app sees
+  the original host and forwarded headers.
+- The owner gives the link they reach the app at. The settings a kit derives from the app's address
+  (`app_origin`, `app_host`) use the link instead of `<app>.<Your Space's address>`, and follow a
+  changed link when the app next starts. The owner can't set those settings by hand, so nothing they
+  set changes. Your Space opens a published app at its link, in its own tab.
+- A published port is outside Your Space's access gate: whoever reaches it reaches the app, and only
+  the app's own sign-in protects it. That is why it listens on this machine only by default.
+- On Tailscale, each published app needs its own Tailscale Service (`svc:plane` for
+  `https://plane.<tailnet>.ts.net`), because each app needs its own origin and Tailscale gives
+  one-level names only. The owner creates them; Your Space has no Tailscale code.
+- An app already running elsewhere, such as a self-hosted instance on another machine, will be an
+  app with a link that Your Space didn't install: the same record, without running it. The agent
+  gateway will treat both alike. This is later work.
+
+Rationale: Your Space should care which local ports it runs apps on, and leave the rest to tools that
+already do it. This supersedes, for apps, the 2026-11-17 statement that apps over Tailscale stay
+unsupported, and narrows journey 002's FR-015: apps still publish no ports of their own, and only
+the owner can publish an app's interface. Constitution 1.5.0 amends principle II to match.
 
 Embedding and routing are separate decisions from how an app interprets authenticated identity and roles.
 Frontend controls may reflect granted access, but hiding a control is not authorization enforcement.
@@ -800,7 +846,7 @@ Platform isolation must protect platform services and other apps; SDK checks alo
 ### Agent Access Through Your Space
 
 - Agents never call apps directly. Your Space is the API gateway between agents and apps, so every agent request passes its permission checks.
-- App containers are reachable only through Your Space and do not publish their own network ports. External apps keep the same guarantee by accepting only requests that carry identity verified by Your Space.
+- App containers are reachable only through Your Space and do not publish their own network ports. External apps keep the same guarantee by accepting only requests that carry identity verified by Your Space. (2026-11-19: an app the owner publishes on a port is also reachable through the owner's own network setup; see [running apps and reaching them](#running-apps-and-reaching-them). How agents reach a published app is settled with the gateway in journey 005.)
 - People create, view, revoke, and rotate their agents' credentials in the app. Revoking one leaked credential does not change the agent's roles.
 - For each agent request, Your Space verifies the agent's credential, confirms the agent holds an active delegation for that app installation, applies revocation immediately, and forwards the request with the verified identity and delegated roles. The app still enforces its own role and domain rules.
 - In the first public release, agents use apps through the Your Space CLI with their own credentials. The CLI talks to the gateway, wherever the server runs.
@@ -922,7 +968,7 @@ app roles. The [spec map](../spec-map.md) and [roadmap](../roadmap.md) follow it
 | Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
 | Public launch scope | A working core experience before publication is the direction. The pre-public scope was settled in the 2026-11-02 interview, and every pre-public roadmap item has a High, Medium, or Low priority; Windows support and PWA installation are Low. Detailed release criteria remain to be defined. See [public release readiness](../public-release-readiness.md). |
-| App UI execution | Apps open in panes, side by side on larger screens: cross-origin iframes in the web client and PWA, native views in the desktop app. Each app is at `<app>.<Your Space's address>` behind Caddy's `forward_auth` gate, with no port fallback; Caddy replaces framing headers, and apps keep their own sign-in (2026-11-14). The platform session is a `__Host-` cookie over HTTPS and host-only on the plain-HTTP local setup, where WebKit opens apps in their own tab. Shell-to-app messages remain open; whether Your Space can create Tailscale Services is left for journey 003; Safari on macOS is still to check. |
+| App UI execution | Apps open in panes, side by side on larger screens: cross-origin iframes in the web client and PWA, native views in the desktop app. Each app is at `<app>.<Your Space's address>` behind Caddy's `forward_auth` gate, with no port fallback; Caddy replaces framing headers, and apps keep their own sign-in (2026-11-14). The platform session is a `__Host-` cookie over HTTPS and host-only on the plain-HTTP local setup, where WebKit opens apps in their own tab. An app can also be published on a port of this machine for the owner's own proxy or tunnel, and is then opened at the owner's link, outside the gate (2026-11-19); on Tailscale the owner creates one Tailscale Service per published app. Shell-to-app messages remain open; Safari on macOS is still to check. |
 | Project license | AGPL-3.0 for Your Space and Apache-2.0 for the SDKs, with a "Your Space" trademark and a contributor license agreement, all in place and reviewed by a lawyer before publication. Trademark filing details and agreement wording remain open. |
 | Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off, apart from the built-in proxy's certificate requests for an owner-configured domain, which are part of HTTPS setup (2026-11-03). Future reporting must be opt-in; opt-out is prohibited. |
 | External apps | Apps can be managed or hosted elsewhere. An app someone already runs is added through a connector that connects out to Your Space and plugs into the app endpoint (2026-11-14). The connector, and whether such an app must also verify Your Space identity, need definition in a later specification. |

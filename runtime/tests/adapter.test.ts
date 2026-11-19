@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { adapt, egressConfig, imageRef, pinnedImage, type AppSpec } from "../src/adapter.ts";
-import { parseDenials } from "../src/apps.ts";
+import { parseDenials, SpecError, validateSpec } from "../src/apps.ts";
 
 // Sure's compose.example.yml at 70647cb, resolved by `docker compose -p ys-sure config --format json`.
 const sure = JSON.parse(readFileSync(new URL("./sure-resolved.json", import.meta.url), "utf8")) as Record<string, unknown>;
@@ -115,6 +115,55 @@ describe("Sure's own file", () => {
   it("gives the egress proxy only the approved hosts, in lower case", () => {
     const content = (result.adapted!.configs as { egress: { content: string } }).egress.content;
     expect(content).toContain("acl approved dstdomain api.openai.com");
+  });
+});
+
+describe("publishing the interface on a port", () => {
+  const published = adapt({ ...spec, publish: { port: 3000, bind: "127.0.0.1" }, pins: { ...spec.pins, "busybox:latest": "sha256:eee" } }, sure);
+  const services = published.adapted!.services as Record<string, Service>;
+  const networks = published.adapted!.networks as Record<string, Record<string, unknown>>;
+
+  it("reports the machine's ports the file publishes for each service", () => {
+    expect(published.services.find((s) => s.name === "web")!.published).toEqual([{ target: 3000, host: 3000 }]);
+    expect(published.services.find((s) => s.name === "db")!.published).toEqual([]);
+  });
+
+  it("publishes only a forwarder of Your Space's, never an app's own service", () => {
+    expect(published.refusals).toEqual([]);
+    const forwarder = services["ys-publish"]!;
+    expect(forwarder.image).toBe("busybox@sha256:eee");
+    expect(forwarder.ports).toEqual([{ target: 8080, published: "3000", host_ip: "127.0.0.1", protocol: "tcp" }]);
+    expect(forwarder.command).toEqual(["nc", "-lk", "-p", "8080", "-e", "nc", "ys-sure-ui", "3000"]);
+    expect(forwarder).toMatchObject({ user: "65534:65534", read_only: true, cap_drop: ["ALL"], security_opt: ["no-new-privileges:true"] });
+    expect((forwarder.labels as Record<string, string>)["ai.your-space.role"]).toBe("publish");
+    for (const [name, service] of Object.entries(services)) if (name !== "ys-publish") expect(service.ports).toBeUndefined();
+  });
+
+  it("keeps the app's services on the sealed network, and only the forwarder on the network Docker publishes from", () => {
+    expect(services["ys-publish"]!.networks).toEqual({ app: {}, publish: {} });
+    expect(networks.publish).toMatchObject({ driver: "bridge" });
+    expect(networks.publish!.internal).toBeUndefined();
+    expect(networks.app).toMatchObject({ internal: true });
+    expect(services.web!.networks).toEqual({ app: { aliases: ["ys-sure-ui"] } });
+  });
+
+  it("adds nothing for an app that isn't published", () => {
+    const plain = adapt(spec, sure).adapted!;
+    expect((plain.services as Record<string, Service>)["ys-publish"]).toBeUndefined();
+    expect((plain.networks as Record<string, unknown>).publish).toBeUndefined();
+  });
+
+  it("refuses to publish an app without an interface, and reserves the forwarder's name", () => {
+    expect(adapt({ ...spec, interface: null, publish: { port: 80, bind: "127.0.0.1" } }, sure).refusals.map((r) => r.setting)).toContain("publish");
+    expect(adapt(spec, { services: { "ys-publish": { image: "busybox" } } }).refusals.map((r) => r.setting)).toContain("services");
+  });
+
+  it("checks the port and address it is sent", () => {
+    const base = { project: "ys-sure", app: "sure", compose: "services: {}" };
+    expect(validateSpec({ ...base, publish: { port: 80, bind: "::1" } }).publish).toEqual({ port: 80, bind: "::1" });
+    for (const publish of [{ port: 0, bind: "127.0.0.1" }, { port: 70000, bind: "127.0.0.1" }, { port: 80, bind: "localhost" }, { port: "80", bind: "127.0.0.1" }]) {
+      expect(() => validateSpec({ ...base, publish }), JSON.stringify(publish)).toThrow(SpecError);
+    }
   });
 });
 

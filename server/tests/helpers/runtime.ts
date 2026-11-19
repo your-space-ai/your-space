@@ -1,9 +1,9 @@
 // A runtime that records what it is asked and reports what a test sets, in place of the runtime
 // manager. The check follows the real adapter's shape for a fixture file.
-import type { ApplyEvent, AppSpec, CheckAnswer, Runtime, ServiceState } from "../../src/apps/runtime-client.ts";
+import { RuntimeError, type ApplyEvent, type AppSpec, type CheckAnswer, type Runtime, type ServiceState } from "../../src/apps/runtime-client.ts";
 
 export class FakeRuntime implements Runtime {
-  calls: { method: string; spec?: AppSpec; project?: string }[] = [];
+  calls: { method: string; spec?: AppSpec; project?: string; publish?: { port: number; bind: string } }[] = [];
   /** Per project: the services the runtime reports. */
   running = new Map<string, ServiceState[]>();
   denied = new Map<string, { host: string; attempts: number; lastSeen: string }[]>();
@@ -12,6 +12,10 @@ export class FakeRuntime implements Runtime {
     { name: "API_TOKEN", required: false, default: "published-default-token" },
   ];
   failApply: string | undefined;
+  /** Per port of this machine: what uses it, as the port check names it, or undefined for a program. */
+  portsInUse = new Map<number, string | undefined>();
+  /** A port check that can't run, for example without the forwarder's image. */
+  failPortCheck: string | undefined;
 
   stopping = false;
 
@@ -23,13 +27,16 @@ export class FakeRuntime implements Runtime {
     this.calls.push({ method: "check", spec });
     return {
       ok: true,
-      services: [{ name: "web", image: "traefik/whoami:latest", interface: spec.interface?.service === "web", ports: [80], volumes: [], dependsOn: [] }],
+      services: [
+        { name: "web", image: "traefik/whoami:latest", interface: spec.interface?.service === "web", ports: [80], published: [{ target: 80, host: 8000 }], volumes: [], dependsOn: [] },
+      ],
       variables: this.variables,
       adaptations: [{ service: "web", kind: "changed", detail: "Published ports removed: Your Space routes to the app's interface itself." }],
       refusals: [],
       images: [
         { ref: "traefik/whoami:latest", digest: "sha256:aaa", runsHere: true, platforms: ["linux/amd64"] },
         { ref: "ubuntu/squid:latest", digest: "sha256:bbb", runsHere: true, platforms: ["linux/amd64"] },
+        ...(spec.publish ? [{ ref: "busybox:latest", digest: "sha256:ccc", runsHere: true, platforms: ["linux/amd64"] }] : []),
       ],
     };
   }
@@ -42,6 +49,7 @@ export class FakeRuntime implements Runtime {
     this.running.set(spec.project, [
       { name: "web", role: "app", state: "running" },
       { name: "ys-egress", role: "egress", state: "running" },
+      ...(spec.publish ? [{ name: "ys-publish", role: "publish" as const, state: "running" }] : []),
     ]);
     onEvent({ step: "started" });
   }
@@ -70,6 +78,14 @@ export class FakeRuntime implements Runtime {
 
   async denials(project: string) {
     return { hosts: this.denied.get(project) ?? [] };
+  }
+
+  async checkPort(project: string, publish: { port: number; bind: string }) {
+    this.calls.push({ method: "checkPort", project, publish });
+    if (this.failPortCheck) throw new RuntimeError(this.failPortCheck, 502, "engine_error");
+    if (!this.portsInUse.has(publish.port)) return { inUse: false };
+    const by = this.portsInUse.get(publish.port);
+    return by ? { inUse: true, by } : { inUse: true };
   }
 }
 

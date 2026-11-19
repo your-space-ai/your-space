@@ -1,4 +1,18 @@
 <!--
+Sync Impact Report (2026-11-19): 1.4.1 -> 1.5.0 (minor: narrowed principle)
+- Changed: II. Preserve User Control and Hosting Choice. Your Space controls who reaches every
+  installed app at Your Space's own addresses; an app the owner publishes on a port of the machine
+  is reached through the owner's own network setup instead.
+- Rationale: the owner decided to separate running apps from reaching them (decision record,
+  "Running Apps and Reaching Them"). Your Space runs and manages apps; reaching them belongs to the
+  owner's proxy, tunnel or platform edge, which setups such as Tailscale need, since their names
+  can't hold an app's built-in address. Publishing meets the same principle's "opened by an
+  explicit choice": it is opt-in per app and listens on 127.0.0.1 unless the owner chooses another
+  address.
+- Impact: journey 002's FR-014 and FR-015 note the published port as the exception; its access gate
+  stays the default way to reach an app, unchanged. How agents reach a published app is left to
+  journey 005's gateway. A major increment is the alternative if this is read as a redefinition.
+
 Sync Impact Report (2026-11-17): 1.4.0 -> 1.4.1 (patch: clarification)
 - Clarified: VII. Reuse Before Building now says to check whether an existing dependency handles a
   need well before adding a new one, to use each dependency appropriately and as needed through its
@@ -95,7 +109,9 @@ needs: anything reachable from the network is opened by an explicit choice.
 Your Space defines the authentication model and provides server-managed user accounts and
 sessions. Authentication must not require an external identity service.
 
-Your Space controls who reaches every installed app. Apps that integrate with it use
+Your Space controls who reaches every installed app at Your Space's own addresses. An app the owner
+chooses to publish on a port of their machine is reached through the owner's own network setup
+instead, such as a proxy or tunnel, and only its own sign-in guards it there. Apps that integrate with it use
 platform-provided identity and respect platform permissions while enforcing their own domain rules;
 apps that don't keep their own accounts. Self-hosted and managed deployments expose compatible, versioned app
 contracts.
@@ -237,4 +253,4 @@ clarifications and other non-semantic changes.
 When a proposal conflicts with the constitution, resolve the conflict explicitly by revising the
 proposal or amending the relevant principle.
 
-**Version**: 1.4.1 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-11-17
+**Version**: 1.5.0 | **Ratified**: 2026-10-28 | **Last Amended**: 2026-11-19

@@ -28,7 +28,7 @@ The journey is delivered in the slice order the spec sets.
 | Principle | How this plan meets it |
 | --- | --- |
 | I. Platform and apps independent | Apps are installed from their own repositories and published images; kits live outside Your Space (separate repository). Your Space contains no app-specific code. |
-| II. User control and hosting choice | No new setting is required. One optional setting, `YS_ENGINE_SOCKET`, points at another engine's socket. App addresses are derived from Your Space's address. Generated secrets. |
+| II. User control and hosting choice | No new setting is required. One optional setting, `YS_ENGINE_SOCKET`, points at another engine's socket. App addresses are derived from Your Space's address. Generated secrets. Since 1.5.0 (2026-11-19), an app the owner publishes on a port is reached through their own network setup, by their explicit choice, listening on `127.0.0.1` by default. |
 | III. Identity, permissions, ownership | Every app route checks the owner server-side; installs, setting changes, approvals and removals record the actor. An installed app gets no access to workspace resources. |
 | IV. Apps directly installable | Install from a public GitHub link; the exact commit, kit commit and image digests are recorded. |
 | V. Protect private data | Settings are encrypted at rest; secret values never leave the server except to the runtime manager over a local socket, and never appear in logs, output or reviews. |
@@ -168,7 +168,24 @@ set, so the worst it can do is sign the owner out. Research R3 records this.
 | Own proxy | `YS_PROXY_URL` | `<app>.<proxy host>` | One `:8080` site, split by host |
 
 Tailscale Services need one service per app name, created by the owner for now; automating them is
-left for journey 003.
+left for journey 003. (2026-11-19: Tailscale names can't hold these; there the owner publishes the
+app on a port and gives its link; see [Publishing an app on a port](#publishing-an-app-on-a-port).)
+
+### Publishing an app on a port
+
+Since 2026-11-19 ([decision record](../../docs/architecture/decisions.md#running-apps-and-reaching-them)),
+the owner can publish an app's interface on a port of this machine for their own proxy or tunnel.
+The app record keeps `publish: { port, bind, link }`. The runtime manager adds a `ys-publish`
+service, BusyBox's `nc -lk -e nc ys-<app>-ui <port>` as user 65534 with a read-only root and no
+capabilities, on the app network and a `publish` network of its own, and publishes only its port
+on `bind:port`. The app's services stay on the sealed network, where Docker publishes nothing.
+Before saving the owner's choice, the server refuses a port another published app uses, then asks
+the runtime manager, which has no network of its own and can't see the machine's ports: it names a
+running container that publishes the port (the app's own forwarder doesn't count), and otherwise
+starts a short-lived container of the forwarder's pinned image, hardened like it, that publishes
+the port on Docker's default bridge and exits at once; Docker's bind error means another program
+uses it. A check that can't run doesn't stop saving, and Docker's bind error at the start names a
+port taken since. With a link, `app_origin` and `app_host` settings are the link's on every start.
 
 ### Limits and resources (FR-021, FR-021a)
 
@@ -190,6 +207,7 @@ volumes, then the record.
 | Docker CLI and Compose plugin (Apache-2.0), from the `docker:29-cli` image | Runtime manager image | Compose resolves, validates and runs app files exactly as their authors tested them | Reimplementing Compose with dockerode: large and would drift from Compose's semantics |
 | `ubuntu/squid` image (Squid is GPL-2.0, image by Canonical) | One per app, unmodified | Allowlisting forward proxy with denial logs, maintained and published | Smokescreen (MIT) publishes no image and identifies clients by TLS certificate; a custom proxy is security code to maintain |
 | `yaml` (ISC), server | Parse installation kits | Kits are YAML for people to write | JSON kits: harder to review |
+| `busybox` image (GPL-2.0) | `ys-publish`, one per published app, unmodified | Its `nc` passes connections to the interface unchanged, in a tiny official image for ARM and Intel/AMD | Caddy rewrites forwarded headers unless told which proxies to trust; Squid isn't built for websockets; a custom forwarder is code to maintain |
 | `traefik/whoami` (MIT), `busybox` (GPL-2.0) images | Tests only | Q8 | |
 
 No new dependency for jobs (a table and the server process), encryption (`node:crypto`), Docker API
@@ -227,4 +245,5 @@ See [data-model.md](data-model.md): `app`, `app_setting`, `app_outbound`, `app_a
 - The one-setting engine override covers sockets (Docker Engine, rootless Docker, Colima, OrbStack).
   `ssh://` and `tcp://` engines need network access for the runtime manager and are left for when an
   engine on another machine is in scope.
-- Tailscale Services automation and Safari on macOS with `*.localhost` are still to check.
+- Safari on macOS with `*.localhost` is still to check. Tailscale Services are the owner's, one per
+  published app (2026-11-19).

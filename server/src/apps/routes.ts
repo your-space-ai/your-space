@@ -77,7 +77,7 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
   router.post(
     "/apps",
     owner(async (req, res, who) => {
-      const { previewId, settings, reuseData } = body(req);
+      const { previewId, settings, reuseData, publish } = body(req);
       if (typeof previewId !== "string") throw new AppError(400, "preview_required", "Review the app before installing it.");
       if (settings !== undefined && (typeof settings !== "object" || settings === null || Array.isArray(settings))) {
         throw new AppError(400, "invalid_setting", "Settings must be names with text values.");
@@ -86,7 +86,7 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
       for (const [key, value] of Object.entries(values)) {
         if (typeof value !== "string") throw new AppError(400, "invalid_setting", `${key} must be text.`);
       }
-      const { name, jobId } = await apps.install(previewId, values as Record<string, string>, reuseData === true, who.actorId);
+      const { name, jobId } = await apps.install(previewId, values as Record<string, string>, reuseData === true, who.actorId, publish ?? null);
       res.status(202).json({ name, jobId });
     }),
   );
@@ -111,6 +111,14 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
       const limits = body(req).limits as Record<string, { memory?: number; cpus?: number }> | undefined;
       if (!limits || typeof limits !== "object") throw new AppError(400, "limits_required", "Send the limits to change.");
       res.status(202).json(await apps.updateLimits(name(req), limits, who.actorId));
+    }),
+  );
+  router.put(
+    "/apps/:name/publish",
+    owner(async (req, res, who) => {
+      const { publish } = body(req);
+      if (publish === undefined) throw new AppError(400, "publish_required", "Send how to publish the app, or null to stop publishing it.");
+      res.status(202).json(await apps.updatePublish(name(req), publish, who.actorId));
     }),
   );
   router.post(

@@ -66,8 +66,9 @@ export function buildSummary(parts: {
     engine: parts.engine && { version: parts.engine.version, os: parts.engine.os, arch: parts.engine.arch, endpoint: parts.engine.endpoint },
     owner: parts.owner,
     ...(parts.link ? { link: parts.link } : {}),
-    apps: parts.apps && parts.apps.map((app) => ({ ...app, address: appAddress(setup, app.name) })),
-    forward: forwardFor(setup, (parts.apps ?? []).map((a) => a.name)),
+    apps: parts.apps && parts.apps.map((app) => ({ ...app, address: app.publish?.link ?? appAddress(setup, app.name) })),
+    // An app with its own link is reached there, through its published port, not at a name under Your Space's.
+    forward: forwardFor(setup, (parts.apps ?? []).filter((a) => !a.publish?.link).map((a) => a.name)),
     certificate: parts.certificate,
   };
 }
@@ -111,6 +112,16 @@ export function summaryText(summary: Summary): { title: string; body: string }[]
     });
   }
   if (summary.apps?.length) sections.push({ title: "Apps", body: rows(summary.apps.map((a) => [a.name, `${a.state}  ${a.address}`])) });
+  const published = (summary.apps ?? []).filter((a) => a.publish);
+  if (published.length) {
+    sections.push({
+      title: "Published on this machine",
+      body: [
+        rows(published.map((a) => [a.name, `http://${a.publish!.bind.includes(":") ? `[${a.publish!.bind}]` : a.publish!.bind}:${a.publish!.port}`])),
+        "Your proxy or tunnel sends each app's link to its port.",
+      ].join("\n"),
+    });
+  }
   if (summary.forward) {
     const f = summary.forward;
     sections.push({

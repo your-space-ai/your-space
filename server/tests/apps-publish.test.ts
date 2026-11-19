@@ -1,0 +1,235 @@
+// Publishing an app on a port of this machine (decision 2026-11-19): the owner's own proxy or tunnel
+// reaches it there, at the link the owner gives, and the app's address settings follow the link.
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { AppError, defaultPort, linkOrigin, publishFrom, stateFromServices } from "../src/apps/service.ts";
+import { app, event } from "../src/db/schema.ts";
+import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
+import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
+import { fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
+import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
+
+const COMPOSE = `services:
+  web:
+    image: traefik/whoami:latest
+    ports: ["8000:80"]
+    environment:
+      GREETING: \${GREETING:-hello}
+      API_TOKEN: \${API_TOKEN:-published-default-token}
+`;
+// A kit whose settings follow the app's address, as Plane's WEB_URL and CORS origins do.
+const KIT = `kit: 1
+source: { repo: ys-fixtures/linked, path: compose.yaml }
+name: linked
+title: Linked
+interface: { service: web, port: 80 }
+derive:
+  APP_URL: app_origin
+  APP_DOMAIN: app_host
+  CORS_ORIGINS: { template: "\${APP_URL},https://extra.example" }
+`;
+const LINKED = "https://github.com/ys-fixtures/linked/blob/main/compose.yaml";
+const OTHER = "https://github.com/ys-fixtures/other/blob/main/compose.yaml";
+const PLAIN = "https://github.com/ys-fixtures/plain/blob/main/compose.yaml";
+const THIRD = "https://github.com/ys-fixtures/third/blob/main/compose.yaml";
+
+describe("publishing choices", () => {
+  const current = { port: 8000, bind: "127.0.0.1", link: null };
+
+  it("keeps what the owner doesn't change, and checks what they do", () => {
+    expect(publishFrom({}, current)).toEqual(current);
+    expect(publishFrom({ port: 8443, bind: " ::1 ", link: "https://Plane.Example.com/" }, current)).toEqual({ port: 8443, bind: "::1", link: "https://plane.example.com" });
+    expect(publishFrom({ link: "" }, { ...current, link: "https://a.example" }).link).toBeNull();
+    expect(publishFrom({ link: null }, { ...current, link: "https://a.example" }).link).toBeNull();
+    for (const bad of [null, [], { port: 0 }, { port: 70000 }, { port: "80" }, { port: 1.5 }, { bind: "localhost" }, { bind: 1 }, { link: 3 }]) {
+      expect(() => publishFrom(bad, current), JSON.stringify(bad)).toThrow(AppError);
+    }
+  });
+
+  it("takes only a link to an address, never one with a path or credentials", () => {
+    expect(linkOrigin("http://127.0.0.1:8080")).toBe("http://127.0.0.1:8080");
+    for (const bad of ["plane.example.com", "ftp://plane.example.com", "https://plane.example.com/app", "https://plane.example.com/?a=1", "https://u:p@plane.example.com", "javascript:alert(1)"]) {
+      expect(() => linkOrigin(bad), bad).toThrow(AppError);
+    }
+  });
+
+  it("defaults to the port the app's file publishes for its interface, else the interface's own", () => {
+    const services = [{ name: "proxy", image: "x", interface: true, ports: [80, 443], published: [{ target: 443, host: 8443 }, { target: 80, host: 8080 }], volumes: [], dependsOn: [] }];
+    expect(defaultPort(services, { service: "proxy", port: 80 })).toBe(8080);
+    expect(defaultPort(services, { service: "proxy", port: 3000 })).toBe(3000);
+    expect(defaultPort(services, null)).toBeNull();
+  });
+
+  it("shows an app whose published port isn't open as needing attention", () => {
+    const app = { name: "web", role: "app" as const, state: "running" };
+    expect(stateFromServices([app, { name: "ys-publish", role: "publish", state: "running" }]).state).toBe("running");
+    expect(stateFromServices([app, { name: "ys-publish", role: "publish", state: "created" }])).toMatchObject({ state: "degraded", reason: expect.stringMatching(/published port/) });
+    // A stopped app's forwarder is stopped too.
+    expect(stateFromServices([{ ...app, state: "exited", exitCode: 143 }, { name: "ys-publish", role: "publish", state: "exited", exitCode: 137 }]).state).toBe("stopped");
+  });
+});
+
+describe("publishing an app", () => {
+  let t: TestDatabase;
+  let server: TestServer;
+  let cookie: string;
+  const runtime = new FakeRuntime();
+
+  beforeAll(async () => {
+    t = await createTestDatabase();
+    const fetch = fakeGithub({
+      "ys-fixtures/linked/compose.yaml": COMPOSE,
+      "your-space-ai/your-space-app-kits/apps/ys-fixtures/linked.yaml": KIT,
+      "ys-fixtures/other/compose.yaml": COMPOSE,
+      "ys-fixtures/plain/compose.yaml": COMPOSE,
+      "ys-fixtures/third/compose.yaml": COMPOSE,
+    });
+    server = await startServer(t.db, { apps: { runtime, fetch } });
+    await createOwnerWithPassword(t.db, OWNER, server.publicUrl);
+    const signedIn = await server.request("/api/auth/sign-in/username", { method: "POST", body: JSON.stringify({ username: OWNER.username, password: OWNER.password }) });
+    cookie = cookieHeader(signedIn);
+  });
+  afterAll(async () => {
+    await server?.close();
+    await t?.destroy();
+  });
+
+  const api = (path: string, init: RequestInit = {}) => server.request(path, { ...init, headers: { cookie, ...(init.headers as object) } });
+  const send = (path: string, body: unknown, method = "POST") => api(path, { method, body: JSON.stringify(body) });
+  const lastApply = () => runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!;
+  const builtIn = () => `http://linked.${new URL(server.publicUrl).host}`;
+
+  async function waitForJob(jobId: string): Promise<{ state: string; error: string | null }> {
+    for (let i = 0; i < 200; i++) {
+      const job = (await (await api(`/api/jobs/${jobId}`)).json()) as { state: string; error: string | null };
+      if (job.state !== "running") return job;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    throw new Error("The job didn't finish.");
+  }
+
+  async function install(link: string, publish?: unknown): Promise<Response> {
+    const review = (await (await send("/api/apps/preview", { link })).json()) as { previewId: string; publishPort: number };
+    return send("/api/apps", { previewId: review.previewId, ...(publish === undefined ? {} : { publish }) });
+  }
+
+  it("offers the port the app's file publishes, and installs it published with the owner's link", async () => {
+    const review = (await (await send("/api/apps/preview", { link: LINKED })).json()) as { publishPort: number };
+    expect(review.publishPort).toBe(8000);
+
+    const installed = await install(LINKED, { link: "https://linked.tail1234.ts.net" });
+    expect(installed.status).toBe(202);
+    expect((await waitForJob(((await installed.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+
+    const spec = lastApply();
+    expect(spec.publish).toEqual({ port: 8000, bind: "127.0.0.1" });
+    expect(spec.env).toMatchObject({ APP_URL: "https://linked.tail1234.ts.net", APP_DOMAIN: "linked.tail1234.ts.net", CORS_ORIGINS: "https://linked.tail1234.ts.net,https://extra.example" });
+    // The forwarder's image is pinned with the app's own.
+    expect(spec.pins).toMatchObject({ "busybox:latest": "sha256:ccc", "traefik/whoami:latest": "sha256:aaa" });
+
+    const detail = (await (await api("/api/apps/linked")).json()) as any;
+    expect(detail.publish).toEqual({ port: 8000, bind: "127.0.0.1", link: "https://linked.tail1234.ts.net" });
+    expect(detail.origin).toBe(builtIn());
+    expect(detail.settings.find((s: { name: string }) => s.name === "APP_URL").value).toBe("https://linked.tail1234.ts.net");
+    const list = (await (await api("/api/apps")).json()) as any;
+    expect(list.apps[0].publish).toEqual(detail.publish);
+  });
+
+  it("refuses a port another published app uses, naming it, and never suggests one", async () => {
+    const refused = await install(OTHER, {});
+    expect(refused.status).toBe(409);
+    const body = (await refused.json()) as { error: string; message: string };
+    expect(body.error).toBe("port_in_use");
+    expect(body.message).toBe("Port 8000 on 127.0.0.1 is already used by Linked, which Your Space publishes on 127.0.0.1:8000. Choose another port.");
+    // Every address overlaps a single one.
+    expect((await install(OTHER, { port: 8000, bind: "0.0.0.0" })).status).toBe(409);
+    // Another port works.
+    const other = await install(OTHER, { port: 8001 });
+    expect(other.status).toBe(202);
+    await waitForJob(((await other.json()) as { jobId: string }).jobId);
+    expect(lastApply().publish).toEqual({ port: 8001, bind: "127.0.0.1" });
+    // A port on another single address doesn't collide.
+    const moved = await send("/api/apps/other/publish", { publish: { port: 8000, bind: "127.0.0.2" } }, "PUT");
+    expect(moved.status).toBe(202);
+    await waitForJob(((await moved.json()) as { jobId: string }).jobId);
+  });
+
+  it("refuses, before saving, a port something else on this machine uses, naming the container when it is one", async () => {
+    runtime.portsInUse.set(8100, "the container web-1").set(8101, undefined);
+    const review = (await (await send("/api/apps/preview", { link: THIRD })).json()) as { previewId: string };
+    const byContainer = await send("/api/apps", { previewId: review.previewId, publish: { port: 8100 } });
+    expect(byContainer.status).toBe(409);
+    expect(await byContainer.json()).toMatchObject({ error: "port_in_use", message: "Port 8100 on 127.0.0.1 is already used by the container web-1. Choose another port." });
+    const byProgram = await send("/api/apps", { previewId: review.previewId, publish: { port: 8101 } });
+    expect(byProgram.status).toBe(409);
+    expect(((await byProgram.json()) as { message: string }).message).toBe("Port 8101 on 127.0.0.1 is already used by another program on this machine. Choose another port.");
+    expect(runtime.calls.filter((c) => c.method === "checkPort").at(-1)).toMatchObject({ project: "ys-third", publish: { port: 8101, bind: "127.0.0.1" } });
+    expect(await t.db.select().from(app).where(eq(app.name, "third"))).toEqual([]);
+
+    // The review is kept, so the owner chooses another port and installs.
+    const installed = await send("/api/apps", { previewId: review.previewId, publish: { port: 8102 } });
+    expect(installed.status).toBe(202);
+    expect((await waitForJob(((await installed.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+
+    // Moving an installed app to a taken port is refused the same way, and it keeps its port.
+    const moved = await send("/api/apps/third/publish", { publish: { port: 8100 } }, "PUT");
+    expect(moved.status).toBe(409);
+    expect(((await moved.json()) as { message: string }).message).toMatch(/^Port 8100 on 127\.0\.0\.1 is already used by the container web-1\./);
+    const [row] = await t.db.select({ publish: app.publish }).from(app).where(eq(app.name, "third"));
+    expect(row!.publish).toMatchObject({ port: 8102 });
+    runtime.portsInUse.clear();
+  });
+
+  it("saves when the port can't be checked, and leaves a taken port to the start", async () => {
+    runtime.failPortCheck = "The engine answered with an error.";
+    try {
+      const moved = await send("/api/apps/third/publish", { publish: { port: 8103 } }, "PUT");
+      expect(moved.status).toBe(202);
+      expect((await waitForJob(((await moved.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+      expect(lastApply().publish).toEqual({ port: 8103, bind: "127.0.0.1" });
+    } finally {
+      runtime.failPortCheck = undefined;
+    }
+  });
+
+  it("restarts the app at a new link, and its address settings follow", async () => {
+    const changed = await send("/api/apps/linked/publish", { publish: { link: "https://tasks.example.com" } }, "PUT");
+    expect(changed.status).toBe(202);
+    expect((await waitForJob(((await changed.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+    expect(lastApply()).toMatchObject({ publish: { port: 8000, bind: "127.0.0.1" }, env: { APP_URL: "https://tasks.example.com", APP_DOMAIN: "tasks.example.com" } });
+    const events = (await t.db.select().from(event)).map((e) => e.type);
+    expect(events).toContain("app.publish_changed");
+  });
+
+  it("refuses bad choices and leaves the app as it was", async () => {
+    for (const publish of [{ port: 0 }, { bind: "localhost" }, { link: "https://tasks.example.com/app" }, "yes"]) {
+      const response = await send("/api/apps/linked/publish", { publish }, "PUT");
+      expect(response.status, JSON.stringify(publish)).toBe(400);
+    }
+    expect((await send("/api/apps/linked/publish", {}, "PUT")).status).toBe(400);
+    const [row] = await t.db.select({ publish: app.publish }).from(app).where(eq(app.name, "linked"));
+    expect(row!.publish).toEqual({ port: 8000, bind: "127.0.0.1", link: "https://tasks.example.com" });
+  });
+
+  it("stops publishing, and the app is back at its built-in address", async () => {
+    const stopped = await send("/api/apps/linked/publish", { publish: null }, "PUT");
+    expect(stopped.status).toBe(202);
+    await waitForJob(((await stopped.json()) as { jobId: string }).jobId);
+    expect(lastApply().publish).toBeNull();
+    expect(lastApply().env.APP_URL).toBe(builtIn());
+    const detail = (await (await api("/api/apps/linked")).json()) as any;
+    expect(detail.publish).toBeNull();
+    expect(detail.settings.find((s: { name: string }) => s.name === "APP_URL").value).toBe(builtIn());
+  });
+
+  it("publishes an installed app on the port its file publishes", async () => {
+    const installed = await install(PLAIN);
+    await waitForJob(((await installed.json()) as { jobId: string }).jobId);
+    expect(lastApply().publish).toBeNull();
+    // 8000 is free again now that Linked isn't published.
+    const published = await send("/api/apps/plain/publish", { publish: {} }, "PUT");
+    expect(published.status).toBe(202);
+    await waitForJob(((await published.json()) as { jobId: string }).jobId);
+    expect(lastApply()).toMatchObject({ publish: { port: 8000, bind: "127.0.0.1" }, pins: { "busybox:latest": "sha256:ccc" } });
+  });
+});

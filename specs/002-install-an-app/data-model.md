@@ -21,6 +21,7 @@ One row per app on this installation, kept after removal as the record of its re
 | adaptations | jsonb | `[{ "service", "kind": "changed" \| "left_out" \| "added", "detail" }]` |
 | interface | jsonb, null | `{ "service", "port" }`; null when the app has no interface |
 | pane | boolean | Whether it opens in a pane (default) or its own tab |
+| publish | jsonb, null | `{ "port": 8081, "bind": "127.0.0.1", "link": "https://…" or null }` when the owner publishes the app on a port of this machine (decision 2026-11-19); null otherwise |
 | limits | jsonb | `{ "<service>": { "memory": bytes, "cpus": number } }` |
 | desired | text | `running`, `stopped` or `removed` |
 | state | text | `installing`, `starting`, `running`, `degraded`, `stopped`, `failed` or `removed` |
@@ -74,7 +75,7 @@ A job left `running` when the server starts is marked failed with "Interrupted b
 ## event (changed)
 
 Adds `subject_app_id uuid null → app (on delete set null)` and the types `app.installed`,
-`app.settings_changed`, `app.limits_changed`, `app.outbound_approved`, `app.outbound_removed`,
+`app.settings_changed`, `app.limits_changed`, `app.publish_changed`, `app.outbound_approved`, `app.outbound_removed`,
 `app.request_dismissed`, `app.removed` and `app.data_deleted`.
 
 ## Not stored

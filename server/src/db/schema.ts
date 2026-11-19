@@ -62,6 +62,7 @@ export type EventType =
   | "app.outbound_approved"
   | "app.outbound_removed"
   | "app.request_dismissed"
+  | "app.publish_changed"
   | "app.removed"
   | "app.data_deleted";
 
@@ -94,6 +95,17 @@ export interface Kit {
   limits?: Record<string, { memory?: number; cpus?: number }>;
 }
 
+/**
+ * An app published on a port of this machine, for the owner's own network setup to reach (decision
+ * 2026-11-19). `link` is the address the owner reaches it at; its address settings follow it.
+ */
+export interface Publish {
+  port: number;
+  /** The IP address the port listens on: 127.0.0.1 unless the owner chose another. */
+  bind: string;
+  link: string | null;
+}
+
 export const app = pgTable(
   "app",
   {
@@ -112,6 +124,7 @@ export const app = pgTable(
     adaptations: jsonb("adaptations").$type<Adaptation[]>().notNull(),
     interface: jsonb("interface").$type<{ service: string; port: number }>(),
     pane: boolean("pane").notNull().default(true),
+    publish: jsonb("publish").$type<Publish>(),
     limits: jsonb("limits").$type<Record<string, { memory: number; cpus: number }>>().notNull(),
     desired: text("desired", { enum: ["running", "stopped", "removed"] }).notNull().default("running"),
     state: text("state", { enum: ["installing", "starting", "running", "degraded", "stopped", "failed", "removed"] })

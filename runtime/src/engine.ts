@@ -220,6 +220,8 @@ export interface ContainerSummary {
   State: string;
   Status: string;
   Labels: Record<string, string>;
+  /** The machine's ports a running container publishes. */
+  Ports?: { IP?: string; PrivatePort: number; PublicPort?: number; Type: string }[];
 }
 
 export function listContainers(labels: string[]): Promise<ContainerSummary[]> {

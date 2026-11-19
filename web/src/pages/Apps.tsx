@@ -5,6 +5,7 @@ import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { api, appsQuery, errorMessage, shortDigest, STATE_LABEL, type AppList, type Review } from "../apps-api.ts";
 import { JobProgress } from "../components/JobProgress.tsx";
+import { PUBLISH_NOTE, publishBody, PublishFields, type PublishForm } from "../components/PublishFields.tsx";
 import { DeleteData } from "./AppDetail.tsx";
 
 export function Apps() {
@@ -44,7 +45,12 @@ function AppTable({ list }: { list: AppList }) {
                 {app.stateReason ? <div className="muted small">{app.stateReason}</div> : null}
               </div>
               <div className="actions">
-                {app.hasInterface ? (
+                {app.hasInterface && app.publish?.link ? (
+                  // Behind the owner's link, the app's settings point there, so it opens there in its own tab.
+                  <a className="button" href={app.publish.link} target="_blank" rel="noreferrer" aria-label={`Open ${app.title}`}>
+                    Open
+                  </a>
+                ) : app.hasInterface ? (
                   <Link className="button" to="/open/$name" params={{ name: app.name }} search={{}} aria-label={`Open ${app.title}`}>
                     Open
                   </Link>
@@ -84,7 +90,9 @@ function Install() {
   const [review, setReview] = useState<Review | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [reuse, setReuse] = useState(true);
-  const [installing, setInstalling] = useState<{ name: string; title: string; jobId: string } | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [publish, setPublish] = useState<PublishForm>({ port: "", bind: "127.0.0.1", link: "" });
+  const [installing, setInstalling] = useState<{ name: string; title: string; jobId: string; link: string | null } | null>(null);
   const [finished, setFinished] = useState<boolean | null>(null);
 
   const preview = useMutation({
@@ -93,6 +101,8 @@ function Install() {
       setReview(data);
       setValues({});
       setReuse(true);
+      setPublishing(false);
+      setPublish({ port: data.publishPort ? String(data.publishPort) : "", bind: "127.0.0.1", link: "" });
     },
   });
 
@@ -102,9 +112,10 @@ function Install() {
         previewId: r.previewId,
         settings: Object.fromEntries(Object.entries(values).filter(([, v]) => v !== "")),
         reuseData: r.retained ? reuse : false,
+        ...(publishing ? { publish: publishBody(publish) } : {}),
       }),
     onSuccess: (data, r) => {
-      setInstalling({ name: data.name, title: r.title, jobId: data.jobId });
+      setInstalling({ name: data.name, title: r.title, jobId: data.jobId, link: publishing ? publishBody(publish).link : null });
       setFinished(null);
       setReview(null);
       setLink("");
@@ -155,6 +166,10 @@ function Install() {
           setValue={(name, value) => setValues((v) => ({ ...v, [name]: value }))}
           reuse={reuse}
           setReuse={setReuse}
+          publishing={publishing}
+          setPublishing={setPublishing}
+          publish={publish}
+          setPublish={setPublish}
           onInstall={() => install.mutate(review)}
           onCancel={() => setReview(null)}
           installing={install.isPending}
@@ -166,9 +181,15 @@ function Install() {
           <JobProgress jobId={installing.jobId} title={`Installing ${installing.title}`} onDone={setFinished} />
           {finished ? (
             <p>
-              <Link className="button" to="/open/$name" params={{ name: installing.name }} search={{}}>
-                Open {installing.title}
-              </Link>
+              {installing.link ? (
+                <a className="button" href={installing.link} target="_blank" rel="noreferrer">
+                  Open {installing.title}
+                </a>
+              ) : (
+                <Link className="button" to="/open/$name" params={{ name: installing.name }} search={{}}>
+                  Open {installing.title}
+                </Link>
+              )}
             </p>
           ) : null}
         </>
@@ -191,6 +212,10 @@ function ReviewPanel(props: {
   setValue: (name: string, value: string) => void;
   reuse: boolean;
   setReuse: (value: boolean) => void;
+  publishing: boolean;
+  setPublishing: (value: boolean) => void;
+  publish: PublishForm;
+  setPublish: (form: PublishForm) => void;
   onInstall: () => void;
   onCancel: () => void;
   installing: boolean;
@@ -332,6 +357,18 @@ function ReviewPanel(props: {
       ) : (
         <p>The app starts with no internet access. It asks you when it needs a host.</p>
       )}
+
+      {review.interface ? (
+        <>
+          <h3>Publishing</h3>
+          <label className="checkbox">
+            <input type="checkbox" checked={props.publishing} onChange={(e) => props.setPublishing(e.target.checked)} />
+            Publish on a port of this machine
+            <small>{PUBLISH_NOTE}</small>
+          </label>
+          {props.publishing ? <PublishFields form={props.publish} onChange={props.setPublish} defaultPort={review.publishPort} /> : null}
+        </>
+      ) : null}
 
       {review.retained ? (
         <label className="checkbox">
