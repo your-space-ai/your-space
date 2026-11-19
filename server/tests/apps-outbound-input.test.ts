@@ -61,7 +61,7 @@ async function desired(): Promise<string> {
 import { describe, it } from "vitest";
 import { appAccessRequest, appSetting } from "../src/db/schema.ts";
 import { decrypt } from "../src/apps/settings.ts";
-import { TEST_SECRET } from "./helpers/env.ts";
+import { TEST_DATA_KEY } from "./helpers/env.ts";
 
 const runtime = new FakeRuntime();
 useServer(runtime);
@@ -95,6 +95,6 @@ describe("outbound and settings input", () => {
     expect(response.status).toBe(400);
     expect(((await response.json()) as any).error).toBe("secret_required");
     const [token] = await t.db.select().from(appSetting).where(eq(appSetting.name, "API_TOKEN"));
-    expect(decrypt(TEST_SECRET, token!.value!)).not.toBe("published-default-token");
+    expect(decrypt(TEST_DATA_KEY, token!.value!)).not.toBe("published-default-token");
   });
 });

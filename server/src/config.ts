@@ -7,7 +7,7 @@
 //   YS_PROXY_URL=https://...       behind your own proxy or Tailscale
 // YS_PORT moves the local port when 80 (or 8080 behind a proxy) is taken. Everything else is derived.
 // The two secrets come from .env when set there, otherwise from the ys-secrets volume (secrets.ts).
-import { AUTH_SECRET, DATABASE_PASSWORD, resolveSecret, SECRETS_DIR, type SecretSpec } from "./secrets.ts";
+import { AUTH_SECRET, DATA_KEY, DATABASE_PASSWORD, PREVIOUS_DATA_KEY, readStored, resolveSecret, SECRETS_DIR, type SecretSpec } from "./secrets.ts";
 
 export type Mode = "local" | "domain" | "proxy";
 
@@ -17,6 +17,10 @@ export interface Config {
   publicUrl: string;
   databaseUrl: string;
   authSecret: string;
+  /** Encrypts the secrets Your Space stores (spec 009). */
+  dataKey: string;
+  /** The data key a replacement left, until the server has re-encrypted with the new one. */
+  previousDataKey?: string;
 }
 
 export class ConfigError extends Error {
@@ -29,7 +33,7 @@ export class ConfigError extends Error {
   }
 }
 
-const OWNER_KEYS = ["YS_DOMAIN", "YS_PROXY_URL", "YS_PORT", "YS_VERSION", "YS_ENGINE_SOCKET"];
+const OWNER_KEYS = ["YS_DOMAIN", "YS_PROXY_URL", "YS_PORT", "YS_VERSION", "YS_ENGINE_SOCKET", "YS_DATA_KEY"];
 
 /**
  * This machine's address. Apps are at <app>.space.localhost, a subdomain of it, so they are same-site
@@ -192,6 +196,29 @@ function checkSecret(env: NodeJS.ProcessEnv, dir: string, problems: string[]): s
   return value;
 }
 
+function checkDataKey(env: NodeJS.ProcessEnv, dir: string, problems: string[]): string {
+  const value = secret(DATA_KEY, env, dir, problems);
+  if (value === undefined) return "";
+  if (value.length < 32) {
+    problems.push("YS_DATA_KEY must be at least 32 characters. Remove it from .env to use a generated one, or make one with: openssl rand -base64 32");
+  }
+  return value;
+}
+
+/**
+ * The data key a replacement left, if any. One that is there but can't be read stops the start: the
+ * server would otherwise leave the settings it holds unmoved and become healthy, and the old key
+ * would then be forgotten.
+ */
+function previousDataKey(dir: string, problems: string[]): string | undefined {
+  try {
+    return readStored(PREVIOUS_DATA_KEY, dir);
+  } catch (error) {
+    problems.push(`The ${PREVIOUS_DATA_KEY.label} in the ys-secrets volume can't be read (${(error as NodeJS.ErrnoException).code ?? "error"}).`);
+    return undefined;
+  }
+}
+
 export interface LoadOptions {
   /** Where the ys-secrets volume is mounted. */
   secretsDir?: string;
@@ -224,7 +251,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadOp
     publicUrl,
     databaseUrl: checkDatabaseUrl(env, secretsDir, problems),
     authSecret: checkSecret(env, secretsDir, problems),
+    dataKey: checkDataKey(env, secretsDir, problems),
   };
+  const previous = previousDataKey(secretsDir, problems);
+  if (previous) config.previousDataKey = previous;
   if (problems.length > 0) throw new ConfigError(problems);
   return config;
 }

@@ -1,25 +1,48 @@
-// App settings and secrets (component F, FR-006, FR-018). Values are encrypted at rest with a key
-// derived from the auth secret, and secret values are never returned by any route or command.
+// App settings and secrets (component F, FR-006, FR-018). Values are encrypted at rest with the data
+// key (spec 009), and secret values are never returned by any route or command. Values written
+// before the data key existed are "v1", encrypted with a key derived from the auth secret; the
+// server moves them onto the data key when it starts (keys.ts).
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import type { Kit } from "../db/schema.ts";
 
-function key(authSecret: string): Buffer {
-  return Buffer.from(hkdfSync("sha256", authSecret, "your-space", "app-settings", 32));
+/** The AES-256-GCM key for apps' settings, from the data key (v2) or, before it, the auth secret (v1). */
+function key(secret: string): Buffer {
+  return Buffer.from(hkdfSync("sha256", secret, "your-space", "app-settings", 32));
 }
 
-export function encrypt(authSecret: string, value: string): string {
+function seal(version: "v1" | "v2", secret: string, value: string): string {
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key(authSecret), iv);
+  const cipher = createCipheriv("aes-256-gcm", key(secret), iv);
   const data = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
-  return ["v1", iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
+  return [version, iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
 }
 
-export function decrypt(authSecret: string, stored: string): string {
-  const [version, iv, tag, data] = stored.split(".");
-  if (version !== "v1" || !iv || !tag || data === undefined) throw new Error("Unknown setting format.");
-  const decipher = createDecipheriv("aes-256-gcm", key(authSecret), Buffer.from(iv, "base64url"));
+function open(version: "v1" | "v2", secret: string, stored: string): string {
+  const [found, iv, tag, data] = stored.split(".");
+  if (found !== version || !iv || !tag || data === undefined) throw new Error("Unknown setting format.");
+  const decipher = createDecipheriv("aes-256-gcm", key(secret), Buffer.from(iv, "base64url"));
   decipher.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([decipher.update(Buffer.from(data, "base64url")), decipher.final()]).toString("utf8");
+}
+
+/** Encrypts a setting with the data key. */
+export function encrypt(dataKey: string, value: string): string {
+  return seal("v2", dataKey, value);
+}
+
+/** Decrypts a setting encrypted with the data key; throws for any other key or format. */
+export function decrypt(dataKey: string, stored: string): string {
+  return open("v2", dataKey, stored);
+}
+
+/** Decrypts a setting written before the data key, with the auth secret it was encrypted with. */
+export function decryptLegacy(authSecret: string, stored: string): string {
+  return open("v1", authSecret, stored);
+}
+
+/** Writes a setting the way it was before the data key, for tests of the move onto it. */
+export function encryptLegacy(authSecret: string, value: string): string {
+  return seal("v1", authSecret, value);
 }
 
 const SECRET_NAME = /SECRET|PASSWORD|PASSWD|TOKEN|PRIVATE|CREDENTIAL|(^|_)KEY($|_)|API_?KEY|ENCRYPTION/i;

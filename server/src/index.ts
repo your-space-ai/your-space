@@ -9,6 +9,7 @@ import { errorFields, log } from "./log.ts";
 import { runMigrations } from "./migrate.ts";
 import { createGate, Handoffs } from "./apps/gate.ts";
 import { socketRuntime } from "./apps/runtime-client.ts";
+import { moveSettingsToDataKey } from "./apps/keys.ts";
 import { AppsService } from "./apps/service.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -62,9 +63,21 @@ for (let attempt = 1; ; attempt++) {
   }
 }
 
+// Apps' settings move onto the data key before anything is served (spec 009): values from before it
+// existed, and values a replaced data key left. Values no key can read are counted and left as they
+// are; the app says what to do when it next needs them.
+try {
+  const moved = await moveSettingsToDataKey(db, config);
+  if (moved.moved || moved.unreadable) log(moved.unreadable ? "warn" : "info", "settings.data_key", { ...moved });
+} catch (error) {
+  log("error", "settings.data_key_failed", errorFields(error));
+  console.error("Apps' settings couldn't be moved onto the data key, so the server did not start. Nothing was changed.");
+  process.exit(1);
+}
+
 const auth = createAuth({ config, db });
 const handoffs = new Handoffs();
-const apps = new AppsService(db, socketRuntime(), { publicUrl: config.publicUrl, authSecret: config.authSecret });
+const apps = new AppsService(db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey });
 const app = createApp({ auth, db, apps: { service: apps, handoffs } });
 const gate = createGate({ db, publicUrl: config.publicUrl, authSecret: config.authSecret, handoffs });
 const gateServer: Server = gate.listen(GATE_PORT, "0.0.0.0");

@@ -9,7 +9,7 @@ const FIRST_PASSWORD = "first passphrase for the log check";
 const WRONG_PASSWORD = "wrong passphrase for the log check";
 const SECOND_PASSWORD = "second passphrase for the log check";
 
-/** The auth secret and database password the secrets step generated for this stack. */
+/** The auth secret, database password and data key the secrets step generated for this stack. */
 async function stackSecrets(): Promise<string[]> {
   const shown = await serverCommand("show-secrets");
   expect(shown.code).toBe(0);
@@ -47,7 +47,7 @@ test("logs contain no credentials after the whole journey", async ({ page, conte
   const output = await logs();
   expect(output.length).toBeGreaterThan(0);
   const generated = await stackSecrets();
-  expect(generated).toHaveLength(2);
+  expect(generated).toHaveLength(3);
   for (const secret of [...secrets, ...generated]) {
     expect(secret.length).toBeGreaterThan(8);
     expect(output.includes(secret), `logs must not contain ${secret.slice(0, 4)}…`).toBe(false);

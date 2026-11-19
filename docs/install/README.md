@@ -487,6 +487,26 @@ web page says "Can't reach Your Space".
 
 Don't delete the `ys-postgres` volume to make the error go away: that deletes your workspace.
 
+## What Your Space Encrypts
+
+Your Space's database is PostgreSQL, which doesn't encrypt what it stores: anyone with a copy of the
+`ys-postgres` volume, a file backup, or the disk can read it.
+
+- **Installed apps' settings** (their keys, passwords and API keys, generated or yours) are
+  encrypted by Your Space with the data key, AES-256-GCM. The data key is kept apart from the
+  database, in the `ys-secrets` volume or in `.env`, so a copy of the database alone doesn't reveal
+  them.
+- **Passwords and set-password links** are never stored: only one-way hashes of them are.
+- **Sessions** can't be used from a copy of the database alone: a sign-in cookie is also signed
+  with the auth secret, which is in `ys-secrets`.
+- **Everything else**, such as names, usernames, email addresses, which apps are installed, and the
+  activity log, is stored as it is.
+
+The data key sits on the same machine as the database, so it protects copies of the database, not
+the machine itself. To protect everything on a disk that could be lost, stolen or thrown away,
+encrypt the disk itself: LUKS (or ZFS's own encryption) on Linux, FileVault on a Mac. That protects
+the disk while the machine is off, not a copy taken while it runs.
+
 ## Lost Secrets
 
 If the `ys-secrets` volume is gone but the database is still there, Your Space stops before it
@@ -499,9 +519,10 @@ Ways to recover, best first:
 
 1. **Restore the `ys-secrets` volume** from a backup, or **put the old values back** in `.env` as
    `BETTER_AUTH_SECRET` and `POSTGRES_PASSWORD`. Then run `docker compose up -d`.
-2. **Start with new secrets.** Your account and workspace stay; every device is signed out.
-   Installed apps' settings are encrypted with a key from the auth secret, so with a new one they
-   can't be read, and each app must be reinstalled (its data volumes are kept). Run:
+2. **Start with new secrets.** Your account and workspace stay; every device is signed out. If the
+   data key was lost too (it is in the same volume, unless you set `YS_DATA_KEY` in `.env`),
+   installed apps' settings can't be read, and each app must be removed, keeping its data, and
+   installed again; its page says so. Run:
 
    ```sh
    your-space start --new-secrets
@@ -546,14 +567,19 @@ appears in a command line or a log. Then restart the server so it reconnects:
 ### Replace a Secret
 
 To replace a generated secret, for example because it may have leaked, run
-`your-space secrets replace auth-secret` or `your-space secrets replace database-password`. It asks
+`your-space secrets replace auth-secret`, `your-space secrets replace database-password` or
+`your-space secrets replace data-key`. It asks
 first, then runs every step below. `your-space secrets show` says where each secret comes from, and
 `--reveal` shows the values. By hand:
 
 - **Auth secret:** `docker compose run --rm secrets --new auth-secret`, then
-  `docker compose restart server`. Every device is signed out when the server restarts. Installed
-  apps' settings are encrypted with a key from the auth secret, so they can't be read afterwards and
-  each app must be reinstalled; `your-space secrets replace` names them before it asks.
+  `docker compose restart server`. Every device is signed out when the server restarts, and nothing
+  else changes.
+- **Data key:** `docker compose run --rm secrets --new data-key`, then `docker compose restart server`.
+  The secrets step keeps the replaced key until the server, as it starts, has re-encrypted every
+  app's settings with the new one. Once `docker compose ps` shows the server healthy, remove the old
+  key: `docker compose run --rm secrets --forget previous-data-key`. Until it is removed, the data
+  key can't be replaced again.
 - **Database password:** `docker compose run --rm secrets --new database-password`, then
   [give PostgreSQL the database password](#give-postgresql-the-database-password) and restart the
   server.
@@ -669,10 +695,11 @@ misspelled. Caddy waits for the server, so a wrong line never opens a port.
 
 #### Secrets
 
-Your Space needs two secrets: the auth secret that signs sessions, and the database password. On
-the first start it generates each one, 32 random bytes, and keeps it in the `ys-secrets` volume. It
-never generates them again, and it never logs them. The log only notes that they were generated
-(`docker compose logs secrets`).
+Your Space needs three secrets: the auth secret that signs sessions, the database password, and the
+data key that encrypts installed apps' settings (see
+[What Your Space Encrypts](#what-your-space-encrypts)). On the first start it generates each one, 32
+random bytes, and keeps it in the `ys-secrets` volume. It never generates them again, and it never
+logs them. The log only notes that they were generated (`docker compose logs secrets`).
 
 To use your own instead, for example from a password manager, add them to `.env` before the first
 start:
@@ -680,6 +707,7 @@ start:
 ```sh
 BETTER_AUTH_SECRET=...   # at least 32 characters, e.g. from: openssl rand -base64 32
 POSTGRES_PASSWORD=...
+YS_DATA_KEY=...          # at least 32 characters
 ```
 
 Your Space then uses them as given and never copies them anywhere. Keep `.env` private if you do.

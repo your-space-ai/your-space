@@ -151,7 +151,7 @@ secrets
 secrets
   .command("replace")
   .description("replace a generated secret, with every step it needs")
-  .argument("<name>", "auth-secret or database-password")
+  .argument("<name>", "auth-secret, database-password or data-key")
   .action(action(async (ui, g, name: string) => secretsReplace(ui, g.workdir, name)));
 
 setupOptions(program.command("configure").description("change how Your Space is reached, and restart it"))
