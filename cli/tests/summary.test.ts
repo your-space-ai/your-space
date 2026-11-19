@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { canOpen } from "../src/browser.ts";
 import { parseJsonLines, parsePs } from "../src/compose.ts";
 import { expectOk } from "../src/server.ts";
-import { buildSummary, summaryText } from "../src/summary.ts";
+import { buildSummary, forwardFor, summaryText } from "../src/summary.ts";
 
 const services = parsePs(
   [
@@ -40,12 +40,23 @@ describe("the summary", () => {
       running: true,
       setup: { kind: "this-machine", address: "http://space.localhost", port: 80 },
       apps: [{ name: "sure", state: "running", address: "http://sure.space.localhost" }],
+      forward: null,
       engine: { version: "29.9.2", os: "linux", arch: "amd64", endpoint: "unix:///var/run/docker.sock" },
     });
     expect(summary.engine).not.toHaveProperty("compose");
     const text = summaryText(summary);
     expect(text.map((s) => s.title)).toEqual(["Your Space is running", "Set your password", "Services", "Apps", "Engine"]);
     expect(text[2]!.body).not.toMatch(/secrets/);
+  });
+
+  it("lists the names a proxy or tunnel forwards, each app's included", () => {
+    expect(forwardFor({ kind: "proxy", url: "https://box.tail1.ts.net", port: 8090 }, ["sure", "twenty"])).toEqual({
+      to: "http://127.0.0.1:8090",
+      network: "your-space_edge",
+      names: ["box.tail1.ts.net", "sure.box.tail1.ts.net", "twenty.box.tail1.ts.net"],
+      wildcard: "*.box.tail1.ts.net",
+    });
+    expect(forwardFor({ kind: "domain", domain: "space.example.com" }, ["sure"])).toBeNull();
   });
 
   it("is stopped, with no apps, when the server isn't running", () => {

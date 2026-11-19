@@ -11,6 +11,13 @@ export interface Link {
   expiresAt: string;
 }
 
+export interface Forward {
+  to: string;
+  network: string;
+  names: string[];
+  wildcard: string;
+}
+
 export interface Summary {
   version: string | null;
   folder: string;
@@ -21,7 +28,20 @@ export interface Summary {
   owner: Owner | null;
   link?: Link;
   apps: (App & { address: string })[] | null;
+  forward: Forward | null;
   certificate: Certificate | null;
+}
+
+/** Where a proxy or tunnel sends Your Space's names (research R11). */
+export function forwardFor(setup: Setup, apps: string[]): Forward | null {
+  if (setup.kind !== "proxy") return null;
+  const host = new URL(setup.url).host;
+  return {
+    to: `http://127.0.0.1:${setup.port}`,
+    network: "your-space_edge",
+    names: [host, ...apps.map((app) => `${app}.${host}`)],
+    wildcard: `*.${host}`,
+  };
 }
 
 export function buildSummary(parts: {
@@ -47,6 +67,7 @@ export function buildSummary(parts: {
     owner: parts.owner,
     ...(parts.link ? { link: parts.link } : {}),
     apps: parts.apps && parts.apps.map((app) => ({ ...app, address: appAddress(setup, app.name) })),
+    forward: forwardFor(setup, (parts.apps ?? []).map((a) => a.name)),
     certificate: parts.certificate,
   };
 }
@@ -90,6 +111,18 @@ export function summaryText(summary: Summary): { title: string; body: string }[]
     });
   }
   if (summary.apps?.length) sections.push({ title: "Apps", body: rows(summary.apps.map((a) => [a.name, `${a.state}  ${a.address}`])) });
+  if (summary.forward) {
+    const f = summary.forward;
+    sections.push({
+      title: "Your proxy or tunnel forwards",
+      body: [
+        `${f.names.join("\n")}`,
+        `(or ${f.wildcard} for every app)`,
+        `to ${f.to}, or to http://your-space:8080 on the ${f.network} network for a proxy in a container.`,
+        "It must pass the original host name.",
+      ].join("\n"),
+    });
+  }
   if (summary.engine) {
     sections.push({ title: "Engine", body: rows([["Docker", `${summary.engine.version} (${summary.engine.os}, ${summary.engine.arch})`], ["Endpoint", summary.engine.endpoint]]) });
   }

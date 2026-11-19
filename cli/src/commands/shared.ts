@@ -60,7 +60,7 @@ export async function checkPorts(ui: Ui, installation: Installation, compose: Co
     if (setup.kind === "domain") {
       throw new CliError(
         "port_in_use",
-        `${taken} Your own domain needs ports 80 and 443. Stop what uses it, then run this again.`,
+        `${taken} Your own domain needs ports 80 and 443. Stop what uses it, or put Your Space behind it as your own proxy: your-space configure --proxy-url https://${setup.domain}`,
         { port, ...(by ? { by } : {}) },
       );
     }

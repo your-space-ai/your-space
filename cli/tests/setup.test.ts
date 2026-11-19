@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ConfigError, loadConfig } from "../../server/src/config.ts";
 import { CliError } from "../src/errors.ts";
-import { address, appAddress, checkDomain, checkPort, chooseSetup, setupFromEnv, setupLines, setupPorts } from "../src/setup.ts";
+import { address, appAddress, checkDomain, checkPort, checkProxyUrl, chooseSetup, setupFromEnv, setupLines, setupPorts } from "../src/setup.ts";
 import { Ui } from "../src/ui.ts";
 
 const script = new Ui({ json: true, verbose: false, yes: false });
@@ -43,6 +43,9 @@ describe("setups", () => {
     expect(await chooseSetup(new Ui({ json: true, verbose: false, yes: true }), {}, current)).toEqual(current);
     expect(await chooseSetup(script, { port: "8081" }, current)).toEqual({ kind: "this-machine", port: 8081 });
     expect(await chooseSetup(script, { domain: "Space.Example.com" }, current)).toEqual({ kind: "domain", domain: "space.example.com" });
+    expect(await chooseSetup(script, { proxyUrl: "https://a.example.com" }, current)).toEqual({ kind: "proxy", url: "https://a.example.com", port: 8080 });
+    const proxy = { kind: "proxy", url: "https://a.example.com", port: 8080 } as const;
+    expect(await chooseSetup(script, { port: "8090" }, proxy)).toEqual({ ...proxy, port: 8090 });
     await expect(chooseSetup(script, { domain: "space.example.com", port: "8081" }, current)).rejects.toThrow(/ports 80 and 443/);
     await expect(chooseSetup(script, { domain: "https://x.example.com" }, current)).rejects.toThrow(/--domain/);
     await expect(chooseSetup(script, { thisMachine: true, domain: "a.example.com" }, current)).rejects.toThrow(/Choose one/);
@@ -53,7 +56,7 @@ describe("setups", () => {
     const current = { kind: "this-machine", port: 80 } as const;
     // --yes keeps the current setup. A question without a terminal fails, naming its flag.
     expect(await chooseSetup(yes, {}, { kind: "domain", domain: "a.example.com" })).toEqual({ kind: "domain", domain: "a.example.com" });
-    await expect(chooseSetup(new Ui({ json: false, verbose: false, yes: false }), {}, current)).rejects.toThrow(/--this-machine or --domain <name>/);
+    await expect(chooseSetup(new Ui({ json: false, verbose: false, yes: false }), {}, current)).rejects.toThrow(/--this-machine, --domain <name> or --proxy-url <url>/);
   });
 });
 
@@ -75,7 +78,10 @@ describe("the same rules as the server", () => {
     }
   });
 
-  it("agrees on ports", () => {
+  it("agrees on proxy addresses and ports", () => {
+    for (const url of ["https://a.example.com", "http://a.example.com", "https://a.example.com/", "https://A.example.com", "https://a.example.com:8443", "https://a.example.com/path", "nonsense"]) {
+      expect(checkProxyUrl(url) === undefined, url).toBe(serverAccepts({ YS_PROXY_URL: url }));
+    }
     for (const port of ["8081", "0", "65536", "80a"]) expect(checkPort(port) === undefined, port).toBe(serverAccepts({ YS_PORT: port }));
   });
 });
