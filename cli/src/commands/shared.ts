@@ -1,12 +1,12 @@
-// Steps more than one command takes: opening the installation and its engine, checking ports,
-// starting Compose and reading what went wrong, and gathering the summary.
-import { freePort, portAnswers, portUser } from "../checks.ts";
+// Steps more than one command takes: opening the installation and its engine, checking ports and a
+// domain, starting Compose and reading what went wrong, and gathering the summary.
+import { certificateProblem, checkNames, freePort, portAnswers, portUser, readCertificate, type Certificate } from "../checks.ts";
 import { Compose, otherInstallation } from "../compose.ts";
 import { checkEngine, engineSocket, type Engine } from "../engine.ts";
 import { CliError } from "../errors.ts";
 import { Installation } from "../installation.ts";
 import { listApps, showOwner, type App, type Owner } from "../server.ts";
-import { setupPorts, type Setup } from "../setup.ts";
+import { setupPorts, wildcardProbe, type Setup } from "../setup.ts";
 import { buildSummary, summaryText, type Link, type Summary } from "../summary.ts";
 import type { Ui } from "../ui.ts";
 
@@ -66,7 +66,7 @@ export async function checkPorts(ui: Ui, installation: Installation, compose: Co
     }
     const next = await freePort(port === 80 ? 8081 : port + 1);
     const refuse = () =>
-      new CliError("port_in_use", `${taken} Free it, or run this again with --yes to use port ${next}.`, {
+      new CliError("port_in_use", `${taken} Free it, run this again with --yes to use port ${next}, or choose one with: your-space configure --port <n>`, {
         port,
         ...(by ? { by } : {}),
       });
@@ -77,6 +77,41 @@ export async function checkPorts(ui: Ui, installation: Installation, compose: Co
     return { ...setup, port: next };
   }
   return setup;
+}
+
+/** A domain's names, before Caddy asks for a certificate (research R6). */
+export async function checkDomain(ui: Ui, setup: Setup, ignore: boolean): Promise<void> {
+  if (setup.kind !== "domain") return;
+  const result = await ui.step(`Checking ${setup.domain}`, `Checked ${setup.domain}`, () => checkNames(setup.domain, wildcardProbe(setup.domain)));
+  if (result.ok) {
+    ui.info(`${setup.domain} and *.${setup.domain} point at ${result.checks[0]!.addresses.join(", ")}. If that is this server, you're set.`);
+    return;
+  }
+  for (const problem of result.problems) ui.warn(problem);
+  if (ignore) return;
+  // A failed check is passed only by --ignore-checks, or by a person at the terminal; never by --yes.
+  const go = ui.interactive && !ui.yes ? await ui.confirm({ message: "Start anyway? The certificate will fail until the names point here.", flag: "--ignore-checks", initial: false }) : false;
+  if (!go) {
+    throw new CliError("check_failed", `${result.problems.join(" ")} Fix the DNS records, or run with --ignore-checks.`, { checks: result.checks });
+  }
+}
+
+/** Waits for the domain's certificate, reading Caddy's log for why it fails. */
+export async function waitForCertificate(ui: Ui, compose: Compose, setup: Setup, seconds: number): Promise<Certificate | null> {
+  if (setup.kind !== "domain") return null;
+  const since = new Date(Date.now() - 5000).toISOString();
+  return ui.step("Getting the HTTPS certificate", "HTTPS certificate checked", async (update) => {
+    const deadline = Date.now() + seconds * 1000;
+    let problem: string | undefined;
+    while (Date.now() < deadline) {
+      const certificate = await readCertificate(setup.domain);
+      if (certificate.state === "valid") return certificate;
+      problem = certificateProblem((await compose.logs(["--no-log-prefix", "--since", since, "caddy"])).stdout, setup.domain);
+      if (problem) update(`Getting the HTTPS certificate (Caddy keeps trying: ${problem})`);
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    return problem ? { state: "failed", message: problem } : { state: "waiting" };
+  });
 }
 
 /** `docker compose up -d --wait`, and when it fails, what went wrong in Your Space's terms. */
@@ -157,7 +192,7 @@ export async function gather(
   installation: Installation,
   compose: Compose,
   engine: Engine | null,
-  extra: { link?: Link } = {},
+  extra: { link?: Link; certificate?: Certificate | null } = {},
 ): Promise<Summary> {
   const setup = installation.setup();
   const services = await compose.ps();
@@ -168,11 +203,15 @@ export async function gather(
     owner = await showOwner(compose).catch(() => null);
     apps = await listApps(compose).catch(() => null);
   }
-  return buildSummary({ version: installation.version(), folder: installation.folder, setup, services, engine, owner, link: extra.link, apps });
+  let certificate = extra.certificate ?? null;
+  if (certificate === null && setup.kind === "domain" && running) certificate = await readCertificate(setup.domain);
+  return buildSummary({ version: installation.version(), folder: installation.folder, setup, services, engine, owner, link: extra.link, apps, certificate });
 }
 
 export function showSummary(ui: Ui, summary: Summary): void {
   ui.result({ ...summary }, () => {
     for (const { title, body } of summaryText(summary)) ui.note(body, title);
+    if (summary.certificate?.state === "failed" && summary.certificate.message) ui.warn(summary.certificate.message);
+    if (summary.certificate?.state === "waiting") ui.warn("The HTTPS certificate isn't issued yet. Check again with: your-space status");
   });
 }

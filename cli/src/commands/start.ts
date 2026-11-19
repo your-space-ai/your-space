@@ -7,26 +7,34 @@ import { expectOk, serverCommand, showOwner } from "../server.ts";
 import { openLink } from "../browser.ts";
 import type { Link } from "../summary.ts";
 import type { Ui } from "../ui.ts";
-import { checkPorts, gather, open, showSummary, startStack } from "./shared.ts";
+import { checkDomain, checkPorts, gather, open, showSummary, startStack, waitForCertificate } from "./shared.ts";
 
 export interface StartFlags {
   ownerName?: string;
   ownerUsername?: string;
   ownerEmail?: string;
   open: boolean;
+  ignoreChecks?: boolean;
   newSecrets?: boolean;
 }
+
+/** How long `start` waits for a domain's certificate, in seconds. Caddy keeps trying afterwards. */
+const CERTIFICATE_WAIT = 180;
 
 export async function start(ui: Ui, workdir: string, flags: StartFlags): Promise<void> {
   ui.intro("Your Space");
   const { installation, compose, engine } = await open(ui, workdir);
-  await checkPorts(ui, installation, compose, installation.setup());
+  let setup = installation.setup();
+  await checkDomain(ui, setup, flags.ignoreChecks === true);
+  setup = await checkPorts(ui, installation, compose, setup);
 
   await startOrRecover(ui, compose, flags.newSecrets === true);
 
   let link: Link | undefined;
   if ((await showOwner(compose)) === null) link = await createOwner(ui, compose, flags);
-  const summary = await gather(installation, compose, engine, { link });
+  const certificate = await waitForCertificate(ui, compose, setup, CERTIFICATE_WAIT);
+
+  const summary = await gather(installation, compose, engine, { link, certificate });
   showSummary(ui, summary);
   if (link && flags.open && !ui.json) {
     if (await openLink(link.url)) ui.info("Opened the link in your browser.");

@@ -54,6 +54,11 @@ export class Installation {
       .map(([key, value]) => `${key}=${value}`);
   }
 
+  /** Puts `.env` back as it was, word for word. */
+  writeEnvText(text: string): void {
+    writeFileSync(this.envPath, text, { mode: 0o600 });
+  }
+
   setup(): Setup {
     return setupFromEnv(this.env());
   }

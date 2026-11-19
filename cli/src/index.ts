@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // your-space: install and run Your Space (journey 003). Every command acts on the installation in the
 // current folder, or the one --workdir names (contracts/cli-commands.md).
-import { Command, CommanderError } from "commander";
+import { Command, CommanderError, Option } from "commander";
+import { configure } from "./commands/configure.ts";
 import { init } from "./commands/init.ts";
 import { logs } from "./commands/logs.ts";
 import { ownerCreate, ownerResetLink } from "./commands/owner.ts";
@@ -48,7 +49,8 @@ function action<A extends unknown[]>(work: (ui: Ui, globals: Globals, ...args: A
 
 const setupOptions = (command: Command) =>
   command
-    .option("--this-machine", "use it on this machine only, at http://space.localhost")
+    .addOption(new Option("--this-machine", "use it on this machine only, at http://space.localhost").conflicts(["domain"]))
+    .option("--domain <name>", "your own domain, with HTTPS from Let's Encrypt")
     .option("--port <n>", "another local port, when 80 is taken");
 
 const program = new Command()
@@ -71,7 +73,7 @@ const program = new Command()
 setupOptions(program.command("init").description("make this folder a Your Space installation: download the release and write .env")).action(
   action(async (ui, g) => {
     const o = program.commands.find((c) => c.name() === "init")!.opts();
-    await init(ui, g.workdir, { thisMachine: o.thisMachine, port: o.port });
+    await init(ui, g.workdir, { thisMachine: o.thisMachine, domain: o.domain, port: o.port });
   }),
 );
 
@@ -82,6 +84,7 @@ program
   .option("--owner-username <username>", "the owner's username")
   .option("--owner-email <email>", "the owner's email address (optional)")
   .option("--no-open", "don't open the set-password link in the browser")
+  .option("--ignore-checks", "start even when the domain's names don't resolve")
   .option("--new-secrets", "start with new secrets when they were lost (signs everyone out)")
   .action(
     action(async (ui, g) => {
@@ -91,6 +94,7 @@ program
         ownerUsername: o.ownerUsername,
         ownerEmail: o.ownerEmail,
         open: o.open,
+        ignoreChecks: o.ignoreChecks,
         newSecrets: o.newSecrets,
       });
     }),
@@ -148,6 +152,15 @@ secrets
   .description("replace a generated secret, with every step it needs")
   .argument("<name>", "auth-secret or database-password")
   .action(action(async (ui, g, name: string) => secretsReplace(ui, g.workdir, name)));
+
+setupOptions(program.command("configure").description("change how Your Space is reached, and restart it"))
+  .option("--ignore-checks", "go on even when the domain's names don't resolve")
+  .action(
+    action(async (ui, g) => {
+      const o = program.commands.find((c) => c.name() === "configure")!.opts();
+      await configure(ui, g.workdir, { thisMachine: o.thisMachine, domain: o.domain, port: o.port, ignoreChecks: o.ignoreChecks });
+    }),
+  );
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   if (error instanceof CommanderError) {
