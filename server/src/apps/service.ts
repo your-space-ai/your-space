@@ -686,7 +686,7 @@ export class AppsService {
       }
     }
     // Template settings that use a changed value are rewritten with it.
-    const next = new Map(current.map((s) => [s.name, s.value === null ? null : decrypt(this.config.authSecret, s.value)]));
+    const next = new Map(current.map((s) => [s.name, s.value === null ? null : this.read(s.value)]));
     for (const [key, value] of changes) next.set(key, value === null || value === "" ? null : value);
     const filled = resolveTemplates(row.kit, next);
     const templates = Object.entries(row.kit?.derive ?? {})
@@ -702,7 +702,7 @@ export class AppsService {
       for (const [key, value] of templates) {
         await tx
           .update(appSetting)
-          .set({ value: value === null || value === "" ? null : encrypt(this.config.authSecret, value) })
+          .set({ value: value === null || value === "" ? null : encrypt(this.config.dataKey, value) })
           .where(and(eq(appSetting.appId, row.id), eq(appSetting.name, key)));
       }
     });
