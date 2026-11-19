@@ -1,5 +1,6 @@
 // The summary `start` and `status` print (contracts/cli-commands.md, "The summary"): what is running
 // and how to reach it, like the Supabase CLI's table after `supabase start`.
+import type { Certificate } from "./checks.ts";
 import type { ServiceState } from "./compose.ts";
 import type { Engine } from "./engine.ts";
 import type { App, Owner } from "./server.ts";
@@ -20,6 +21,7 @@ export interface Summary {
   owner: Owner | null;
   link?: Link;
   apps: (App & { address: string })[] | null;
+  certificate: Certificate | null;
 }
 
 export function buildSummary(parts: {
@@ -31,6 +33,7 @@ export function buildSummary(parts: {
   owner: Owner | null;
   link?: Link;
   apps: App[] | null;
+  certificate: Certificate | null;
 }): Summary {
   const { setup } = parts;
   const running = parts.services.some((s) => s.name === "server" && s.state === "running");
@@ -44,6 +47,7 @@ export function buildSummary(parts: {
     owner: parts.owner,
     ...(parts.link ? { link: parts.link } : {}),
     apps: parts.apps && parts.apps.map((app) => ({ ...app, address: appAddress(setup, app.name) })),
+    certificate: parts.certificate,
   };
 }
 
@@ -64,6 +68,10 @@ export function summaryText(summary: Summary): { title: string; body: string }[]
     ["Folder", summary.folder],
   ];
   if (summary.owner) space.push(["Owner", `${summary.owner.name} (${summary.owner.username})`]);
+  if (summary.certificate) {
+    const text = { valid: `valid, from ${summary.certificate.issuer}`, waiting: "not issued yet", failed: "failed" }[summary.certificate.state];
+    space.push(["Certificate", text]);
+  }
   sections.push({ title: summary.running ? "Your Space is running" : "Your Space is stopped", body: rows(space) });
 
   if (summary.link) {

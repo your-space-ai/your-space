@@ -34,9 +34,9 @@ it merges.
 
 ## Slice 4: Your own domain
 
-- [ ] T017 DNS checks, certificate wait and Caddy's log in plain words
-- [ ] T018 `configure`
-- [ ] T019 Browser test: a domain with HTTPS from Pebble (`e2e/pebble/`)
+- [x] T017 DNS checks, certificate wait and Caddy's log in plain words
+- [x] T018 `configure`
+- [x] T019 Browser test: a domain with HTTPS from Pebble (`e2e/pebble/`)
 - [ ] T020 A real domain with Let's Encrypt (release gate, on a real server)
 
 ## Slice 5: Your own proxy or tunnel

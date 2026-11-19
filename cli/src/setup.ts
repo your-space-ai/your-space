@@ -1,5 +1,6 @@
 // How the space is reached: this machine, your own domain, or your own proxy or tunnel. The setup
 // is the `.env` lines journey 001 defined (YS_DOMAIN, YS_PROXY_URL, YS_PORT), nothing else.
+import { randomBytes } from "node:crypto";
 import { CliError } from "./errors.ts";
 import type { Ui } from "./ui.ts";
 
@@ -58,6 +59,35 @@ export function setupPorts(setup: Setup): number[] {
   return setup.kind === "domain" ? [80, 443] : [setup.port];
 }
 
+/** A name under the domain that only a wildcard record answers, to check apps' names resolve. */
+export function wildcardProbe(domain: string): string {
+  return `ys-check-${randomBytes(4).toString("hex")}.${domain}`;
+}
+
+// The same rules as the server's settings check (server/src/config.ts), so a wrong answer is caught
+// before anything starts. The server checks again when it starts.
+const NOT_PUBLIC = [
+  { suffix: "localhost", hint: "for this machine, choose \"This machine\"" },
+  { suffix: "ts.net", hint: "for Tailscale, choose \"Your own proxy or tunnel\"" },
+  ...["local", "internal", "home.arpa", "test", "invalid"].map((suffix) => ({ suffix, hint: "use a domain whose DNS points at this server" })),
+];
+const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+export function checkDomain(value: string): string | undefined {
+  const name = value.trim().toLowerCase();
+  if (/^[a-z]+:\/\//.test(name) || name.includes("/") || name.includes(":")) {
+    return "Write just the name, like space.example.com, without \"https://\", a port, or a path.";
+  }
+  const reserved = NOT_PUBLIC.find(({ suffix }) => name === suffix || name.endsWith(`.${suffix}`));
+  if (reserved) return `"${name}" can't get a public certificate: ${reserved.hint}.`;
+  const labels = name.split(".");
+  if (labels.length < 2 || !labels.every((label) => LABEL.test(label)) || name.length > 253) {
+    return `"${value}" isn't a domain name. Write one like space.example.com.`;
+  }
+  if (/^\d+$/.test(labels.at(-1)!)) return "Write a domain name, not an IP address. Certificates are only issued for names.";
+  return undefined;
+}
+
 export function checkPort(value: string): string | undefined {
   const port = Number(value.trim());
   if (!/^\d+$/.test(value.trim()) || port < 1 || port > 65535) return "Write a port number from 1 to 65535, like 8081.";
@@ -66,6 +96,7 @@ export function checkPort(value: string): string | undefined {
 
 export interface SetupFlags {
   thisMachine?: boolean;
+  domain?: string;
   port?: string;
 }
 
@@ -75,11 +106,47 @@ function valid(check: (value: string) => string | undefined, value: string, flag
   return value.trim();
 }
 
-/** The setup from the flags; `current` is the default. Shared by `init` and, later, `configure`. */
-export async function chooseSetup(_ui: Ui, flags: SetupFlags, current: Setup): Promise<Setup> {
+/** The setup from the flags, or by asking; `current` is the default. Shared by `init` and `configure`. */
+export async function chooseSetup(ui: Ui, flags: SetupFlags, current: Setup): Promise<Setup> {
+  if (flags.thisMachine && flags.domain !== undefined) throw new CliError("usage", "Choose one of --this-machine and --domain.");
   const port = flags.port === undefined ? undefined : Number(valid(checkPort, flags.port, "--port"));
-  if (port !== undefined) return { kind: "this-machine", port };
-  // A setup set by hand in .env is kept; choosing another comes with the domain and proxy slices.
-  if (!flags.thisMachine && current.kind !== "this-machine") return current;
-  return { kind: "this-machine", port: current.kind === "this-machine" ? current.port : 80 };
+
+  let kind: SetupKind;
+  if (flags.thisMachine) kind = "this-machine";
+  else if (flags.domain !== undefined) kind = "domain";
+  else if (port !== undefined) kind = current.kind;
+  else {
+    kind = await ui.select<SetupKind>({
+      message: "How will you reach Your Space?",
+      flag: "--this-machine or --domain <name>",
+      initial: current.kind,
+      options: [
+        { value: "this-machine", label: "This machine", hint: "http://space.localhost, nothing opens to the network" },
+        { value: "domain", label: "Your own domain", hint: "HTTPS from Let's Encrypt; needs DNS and ports 80 and 443" },
+      ],
+    });
+  }
+
+  switch (kind) {
+    case "this-machine":
+      if (port !== undefined) return { kind, port };
+      return { kind, port: current.kind === "this-machine" ? current.port : 80 };
+    case "domain": {
+      if (port !== undefined) throw new CliError("usage", "--port doesn't apply to your own domain, which needs ports 80 and 443.");
+      const domain =
+        flags.domain !== undefined
+          ? valid(checkDomain, flags.domain, "--domain")
+          : await ui.text({
+              message: "Your domain, whose DNS points at this server:",
+              flag: "--domain <name>",
+              placeholder: "space.example.com",
+              initial: current.kind === "domain" ? current.domain : undefined,
+              validate: checkDomain,
+            });
+      return { kind, domain: domain.toLowerCase() };
+    }
+    case "proxy":
+      // A proxy set by hand in .env; choosing one comes with the proxy slice.
+      return current;
+  }
 }

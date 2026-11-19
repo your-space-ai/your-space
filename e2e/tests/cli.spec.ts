@@ -3,6 +3,7 @@
 // doesn't use a browser except to sign in, so these run once, in Chromium.
 import { execFileSync } from "node:child_process";
 import { readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { request } from "node:https";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { cliIn, githubStandIn, newFolder, removeInstallation, root, serveRelease, tagImages, type Cli, CLI_VERSION } from "./helpers/cli.ts";
@@ -110,7 +111,7 @@ test("status, stop and start keep apps, and logs show Your Space's output", asyn
   expect(logs.stdout).toContain("server.listening");
 });
 
-test("a taken port is moved only with consent", async () => {
+test("a taken port is moved only with consent, and configure changes the setup", async () => {
   ok(await cli.run(["stop", "--json"]));
   // Another container holds port 80, as another program would. CI doesn't run as root, so the test
   // can't listen on port 80 itself; Docker can.
@@ -130,6 +131,13 @@ test("a taken port is moved only with consent", async () => {
     await docker(["rm", "-f", "ys-e2e-port-80"]);
   }
 
+  const wrong = await cli.run(["configure", "--domain", "space.localhost", "--json"]);
+  expect(wrong.code).toBe(1);
+  expect(wrong.json.error).toBe("invalid_input");
+
+  const back = ok(await cli.run(["configure", "--this-machine", "--port", "80", "--json"]));
+  expect(back.summary.setup).toEqual({ kind: "this-machine", address: "http://space.localhost", port: 80 });
+  expect(readFileSync(join(cli.folder, ".env"), "utf8")).not.toMatch(/^YS_PORT=/m);
 });
 
 test("owner recovery and secrets go through the server's own commands", async () => {
@@ -180,3 +188,68 @@ test("lost secrets stop the start with what to do, and new ones bring Your Space
   ok(await cli.run(["start", "--no-open", "--new-secrets", "--json"]));
   expect(ok(await cli.run(["secrets", "show", "--reveal", "--json"])).secrets).toEqual(kept.secrets);
 });
+
+test("your own domain: the names are checked, and HTTPS comes up with the certificate", async () => {
+  await removeInstallation(cli);
+  const folder = newFolder("domain");
+  setUpPebble(folder);
+  const domain = cliIn(folder, { YS_E2E_RELEASES: release.url, COMPOSE_FILE: "compose.yaml:compose.pebble.yaml" });
+  try {
+    ok(await domain.run(["init", "--domain", "space.example.com", "--yes", "--json"]));
+    expect(readFileSync(join(folder, ".env"), "utf8")).toMatch(/^YS_DOMAIN=space\.example\.com$/m);
+    // space.example.com is in this machine's hosts file; no wildcard record can be, so the check fails.
+    const checked = await domain.run(["start", "--no-open", "--owner-name", "Sam Rivera", "--owner-username", "sam", "--json"]);
+    expect(checked.code).toBe(2);
+    expect(checked.json.error).toBe("check_failed");
+    expect(checked.json.message).toContain("*.space.example.com doesn't resolve");
+
+    const started = ok(await domain.run(["start", "--no-open", "--ignore-checks", "--owner-name", "Sam Rivera", "--owner-username", "sam", "--json"]));
+    expect(started.setup).toEqual({ kind: "domain", address: "https://space.example.com" });
+    expect(started.certificate).toMatchObject({ state: "valid", issuer: expect.stringContaining("Pebble") });
+    expect(started.link.url).toMatch(/^https:\/\/space\.example\.com\/reset-password#token=/);
+    expect(await health("space.example.com")).toBe(200);
+  } finally {
+    await removeInstallation(domain);
+  }
+});
+
+/** A test copy of the Caddyfile that asks Pebble, Let's Encrypt's test authority, for certificates. */
+function setUpPebble(folder: string): void {
+  // Pebble's public test root (e2e/pebble/README.md), so Caddy trusts Pebble's own HTTPS.
+  const caddyfile = readFileSync(join(root, "deploy/Caddyfile"), "utf8").replace(
+    "{\n\tservers :8080 {",
+    "{\n\tacme_ca https://pebble:14000/dir\n\tacme_ca_root /pebble/root.pem\n\tservers :8080 {",
+  );
+  if (!caddyfile.includes("acme_ca https://pebble")) throw new Error("The Caddyfile's global options changed; update this test.");
+  writeFileSync(join(folder, "Caddyfile.pebble"), caddyfile);
+  writeFileSync(
+    join(folder, "compose.pebble.yaml"),
+    `services:
+  pebble:
+    image: ghcr.io/letsencrypt/pebble:2.10.3
+    environment:
+      # Issue without reaching this machine from outside, and never refuse a nonce at random.
+      PEBBLE_VA_ALWAYS_VALID: "1"
+      PEBBLE_WFE_NONCEREJECT: "0"
+  caddy:
+    volumes:
+      - ./Caddyfile.pebble:/etc/caddy/Caddyfile:ro
+      - ${join(root, "e2e/pebble/pebble.minica.pem")}:/pebble/root.pem:ro
+    depends_on:
+      pebble:
+        condition: service_started
+`,
+  );
+}
+
+/** GET /api/health over HTTPS on this machine, with the domain as the TLS server name. */
+function health(name: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: "127.0.0.1", port: 443, path: "/api/health", servername: name, headers: { host: name }, rejectUnauthorized: false }, (res) => {
+      res.resume();
+      resolve(res.statusCode ?? 0);
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}

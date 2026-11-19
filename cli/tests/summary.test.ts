@@ -34,6 +34,7 @@ describe("the summary", () => {
       owner: { username: "sam", name: "Sam Rivera" },
       link: { url: "http://space.localhost/reset-password#token=abc", expiresAt: "2026-11-17T12:30:00Z" },
       apps: [{ name: "sure", state: "running" }],
+      certificate: null,
     });
     expect(summary).toMatchObject({
       running: true,
@@ -56,6 +57,7 @@ describe("the summary", () => {
       engine: null,
       owner: null,
       apps: null,
+      certificate: null,
     });
     expect(summary).toMatchObject({ running: false, apps: null, setup: { kind: "domain", address: "https://space.example.com" } });
     expect(summary.setup).not.toHaveProperty("port");

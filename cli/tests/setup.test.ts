@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ConfigError, loadConfig } from "../../server/src/config.ts";
 import { CliError } from "../src/errors.ts";
-import { address, appAddress, checkPort, chooseSetup, setupFromEnv, setupLines, setupPorts } from "../src/setup.ts";
+import { address, appAddress, checkDomain, checkPort, chooseSetup, setupFromEnv, setupLines, setupPorts } from "../src/setup.ts";
 import { Ui } from "../src/ui.ts";
 
 const script = new Ui({ json: true, verbose: false, yes: false });
@@ -39,11 +39,22 @@ describe("setups", () => {
 
   it("chooses from flags without asking, and refuses what doesn't fit", async () => {
     const current = { kind: "this-machine", port: 80 } as const;
-    expect(await chooseSetup(script, {}, current)).toEqual(current);
+    await expect(chooseSetup(script, {}, current)).rejects.toThrow(/Answer it with/);
+    expect(await chooseSetup(new Ui({ json: true, verbose: false, yes: true }), {}, current)).toEqual(current);
     expect(await chooseSetup(script, { port: "8081" }, current)).toEqual({ kind: "this-machine", port: 8081 });
-    await expect(chooseSetup(script, { port: "80a" }, current)).rejects.toThrow(/--port/);
+    expect(await chooseSetup(script, { domain: "Space.Example.com" }, current)).toEqual({ kind: "domain", domain: "space.example.com" });
+    await expect(chooseSetup(script, { domain: "space.example.com", port: "8081" }, current)).rejects.toThrow(/ports 80 and 443/);
+    await expect(chooseSetup(script, { domain: "https://x.example.com" }, current)).rejects.toThrow(/--domain/);
+    await expect(chooseSetup(script, { thisMachine: true, domain: "a.example.com" }, current)).rejects.toThrow(/Choose one/);
   });
 
+  it("asks only in a terminal, naming the flag otherwise", async () => {
+    const yes = new Ui({ json: false, verbose: false, yes: true });
+    const current = { kind: "this-machine", port: 80 } as const;
+    // --yes keeps the current setup. A question without a terminal fails, naming its flag.
+    expect(await chooseSetup(yes, {}, { kind: "domain", domain: "a.example.com" })).toEqual({ kind: "domain", domain: "a.example.com" });
+    await expect(chooseSetup(new Ui({ json: false, verbose: false, yes: false }), {}, current)).rejects.toThrow(/--this-machine or --domain <name>/);
+  });
 });
 
 describe("the same rules as the server", () => {
@@ -57,6 +68,12 @@ describe("the same rules as the server", () => {
       throw error;
     }
   };
+
+  it("agrees on domains", () => {
+    for (const name of ["space.example.com", "a.b.example.org", "space.localhost", "box.tail1.ts.net", "x.test", "https://a.example.com", "a.example.com:443", "nodot", "1.2.3.4", "-bad.example.com"]) {
+      expect(checkDomain(name) === undefined, name).toBe(serverAccepts({ YS_DOMAIN: name }));
+    }
+  });
 
   it("agrees on ports", () => {
     for (const port of ["8081", "0", "65536", "80a"]) expect(checkPort(port) === undefined, port).toBe(serverAccepts({ YS_PORT: port }));
