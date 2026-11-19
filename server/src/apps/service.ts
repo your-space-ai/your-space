@@ -20,7 +20,7 @@ import {
 } from "../db/schema.ts";
 import { errorFields, log } from "../log.ts";
 import { fetchSource, githubEndpoints, SourceError, type GithubEndpoints, type SourceFile } from "./github.ts";
-import { findKit, KitError } from "./kits.ts";
+import { findKit, kitFromFile, KitError } from "./kits.ts";
 import { RuntimeError, type AppSpec, type CheckAnswer, type Runtime, type ServiceState } from "./runtime-client.ts";
 import { buildSettings, decrypt, encrypt, publicSetting, resolveTemplates, type Setting } from "./settings.ts";
 
@@ -263,7 +263,8 @@ export class AppsService {
 
   // ----- Preview and install (FR-011) -----
 
-  async preview(link: string, kitLink?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
+  /** Reviews an app. Its kit is the one the owner linked or gave as a file's text, else the kits repository's. */
+  async preview(link: string, kitLink?: string, kitText?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
     for (const [id, p] of this.previews) if (p.expiresAt < Date.now()) this.previews.delete(id);
     const github = this.config.github ?? githubEndpoints();
     const fetcher = this.config.fetch ?? fetch;
@@ -271,7 +272,7 @@ export class AppsService {
     let found;
     try {
       source = await fetchSource(link, github, fetcher);
-      found = await findKit(source.repo, source.path, kitLink, github, fetcher);
+      found = kitText !== undefined ? kitFromFile(kitText, source.repo, source.path) : await findKit(source.repo, source.path, kitLink, github, fetcher);
     } catch (error) {
       if (error instanceof SourceError || error instanceof KitError) throw new AppError(400, "source", error.message);
       throw error;

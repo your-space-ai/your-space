@@ -40,12 +40,17 @@ derives with `app_origin` and `app_host` take the link's values whenever the app
 ## Commands
 
 ```bash
-docker compose exec server install-app <github-link> [--kit <link>] [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]
+docker compose exec -T server install-app <github-link> [--kit <link | file | folder | ->] [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]
 docker compose exec server publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--off] [--json]
 docker compose exec server list-apps [--json]
 docker compose exec runtime stop-apps
 ```
 
 `install-app` prints the review, installs, and waits until the app is running or failed; exit status
-0 or 1. `publish-app` publishes an installed app, changes how (an option left out keeps its value),
+0 or 1. `--kit` takes a kit's GitHub link, or a kit on this machine, which Your Space can't read
+from GitHub when its repository is private: `-` reads it from standard input (`--kit - < kit.yaml`),
+a folder is a kits repository with the app's kit at `apps/<owner>/<repo>.yaml`, and any other value
+is the kit file. The command runs in the server's container, so a path is one inside it; standard
+input is how a file on the host gets there. A kit on this machine is checked like one from GitHub
+and recorded as `sha256:<digest>`. `publish-app` publishes an installed app, changes how (an option left out keeps its value),
 or stops publishing it with `--off`, and waits until the app has restarted. With `--json`, one JSON object on stdout and logs on stderr, as `create-owner` does.

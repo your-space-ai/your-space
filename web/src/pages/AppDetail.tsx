@@ -112,9 +112,16 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
           <>
             <dt>Installation kit</dt>
             <dd>
-              <a href={d.kitSource} target="_blank" rel="noreferrer">
-                {d.kitSource.replace(/^https:\/\/github\.com\//, "")}
-              </a>
+              {d.kitSource.startsWith("https://") ? (
+                <a href={d.kitSource} target="_blank" rel="noreferrer">
+                  {d.kitSource.replace(/^https:\/\/github\.com\//, "")}
+                </a>
+              ) : (
+                // A kit file given on this machine is recorded by its digest.
+                <>
+                  A kit file from this machine, <code title={d.kitSource}>{d.kitSource.slice(0, 19)}</code>
+                </>
+              )}
             </dd>
           </>
         ) : null}
