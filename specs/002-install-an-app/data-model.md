@@ -16,7 +16,7 @@ One row per app on this installation, kept after removal as the record of its re
 | commit | text | The exact commit the link resolved to (FR-003) |
 | compose | text | The app's file at that commit, unchanged |
 | kit | jsonb, null | The installation kit used, as parsed |
-| kit_source | text, null | The kit's link at its exact commit |
+| kit_source | text, null | The kit's link at its exact commit, or `sha256:<digest>` for a kit file given on this machine |
 | images | jsonb | `{ "<ref>": { "digest": "sha256:…" } }` (FR-004) |
 | adaptations | jsonb | `[{ "service", "kind": "changed" \| "left_out" \| "added", "detail" }]` |
 | interface | jsonb, null | `{ "service", "port" }`; null when the app has no interface |
