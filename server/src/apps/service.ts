@@ -552,7 +552,9 @@ export class AppsService {
       interface: row.interface,
       limits: row.limits,
       egress: outbound.map((o) => o.host),
-      publish: row.publish ? { port: row.publish.port, bind: row.publish.bind, frame: row.frame } : null,
+      // The app's Caddy replaces its framing rules only where the pane frames it: at a link, for an
+      // app that can run in a pane, with the owner's setting on.
+      publish: row.publish ? { port: row.publish.port, bind: row.publish.bind, frame: row.frame && row.pane && row.publish.link !== null } : null,
     };
   }
 

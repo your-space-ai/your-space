@@ -26,7 +26,8 @@ Space's own Caddy's image with `deploy/published.caddyfile`. It listens on `bind
 machine, proxies to the interface, and passes the app's responses on unchanged; the app's own
 services publish nothing. Checking or applying a published app while Your Space's Caddy isn't
 running is refused; an apply waits up to two minutes for it first. With `frame: true` (decision
-2026-11-20), the Caddy lets only Your Space's origin frame the app: it gets `YS_FRAME=on` and
+2026-11-20), which the server sends only for an app with a link that its pane frames, the Caddy lets
+only Your Space's origin frame the app: it gets `YS_FRAME=on` and
 `YS_ORIGIN`, the origin Your Space's own Caddy has, removes the app's `X-Frame-Options`, and sets its
 policy's `frame-ancestors`, or a policy of its own, to that origin; it is labelled
 `ai.your-space.frame-origin` with the origin. Without `frame`, or with `false`, it gets

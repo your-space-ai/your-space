@@ -39,7 +39,9 @@ settings a kit derives with `app_origin` and `app_host` take the link's values w
 starts, and the app's `origin` in `GET /api/apps` and `GET /api/apps/{name}` is the link; otherwise it
 is the app's built-in address, `<app>.<Your Space's address>`. The gate, `/open` and the handoff
 always use the built-in address. `frame` (decision 2026-11-20), `true` by default, shows the app at
-its link in Your Space's pane: the app's Caddy lets only Your Space's origin frame it. With `false`,
+its link in Your Space's pane: the app's Caddy lets only Your Space's origin frame it. It does so only
+while the app has a link and its kit lets it run in a pane; otherwise the pane never frames the
+published port, and the Caddy keeps the app's own rules. With `false`,
 the Caddy passes the app's framing headers on unchanged and the web client opens the app at its link
 in its own tab. Like the other fields, it is back to its default when the app is published again
 after publishing stopped; any other value than `true` or `false` is refused with `400 bad_frame`.

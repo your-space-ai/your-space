@@ -29,6 +29,14 @@ derive:
   APP_DOMAIN: app_host
   CORS_ORIGINS: { template: "\${APP_URL},https://extra.example" }
 `;
+// A kit for an app that can't run in a pane.
+const NOPANE_KIT = `kit: 1
+source: { repo: ys-fixtures/nopane, path: compose.yaml }
+name: nopane
+title: No pane
+interface: { service: web, port: 80 }
+pane: false
+`;
 const LINKED = "https://github.com/ys-fixtures/linked/blob/main/compose.yaml";
 const OTHER = "https://github.com/ys-fixtures/other/blob/main/compose.yaml";
 const PLAIN = "https://github.com/ys-fixtures/plain/blob/main/compose.yaml";
@@ -99,6 +107,8 @@ describe("publishing an app", () => {
       "ys-fixtures/plain/compose.yaml": COMPOSE,
       "ys-fixtures/third/compose.yaml": COMPOSE,
       "ys-fixtures/fourth/compose.yaml": COMPOSE,
+      "ys-fixtures/nopane/compose.yaml": COMPOSE,
+      "your-space-ai/your-space-app-kits/apps/ys-fixtures/nopane.yaml": NOPANE_KIT,
     });
     server = await startServer(t.db, { apps: { runtime, fetch } });
     await createOwnerWithPassword(t.db, OWNER, server.publicUrl);
@@ -178,7 +188,9 @@ describe("publishing an app", () => {
     const other = await install(OTHER, { port: 8001 });
     expect(other.status).toBe(202);
     await waitForJob(((await other.json()) as { jobId: string }).jobId);
-    expect(lastApply().publish).toEqual({ port: 8001, bind: "127.0.0.1", frame: true });
+    // Without a link, the pane frames the app at its built-in address, so its Caddy keeps the app's own rules.
+    expect(lastApply().publish).toEqual({ port: 8001, bind: "127.0.0.1", frame: false });
+    expect(((await (await api("/api/apps/other")).json()) as any).publish.frame).toBe(true);
     // Published without a link, the app stays at its built-in address.
     expect(((await (await api("/api/apps/other")).json()) as { origin: string }).origin).toBe(`http://other.${new URL(server.publicUrl).host}`);
     // A port on another single address doesn't collide.
@@ -219,7 +231,7 @@ describe("publishing an app", () => {
       const moved = await send("/api/apps/third/publish", { publish: { port: 8103 } }, "PUT");
       expect(moved.status).toBe(202);
       expect((await waitForJob(((await moved.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
-      expect(lastApply().publish).toEqual({ port: 8103, bind: "127.0.0.1", frame: true });
+      expect(lastApply().publish).toEqual({ port: 8103, bind: "127.0.0.1", frame: false });
     } finally {
       runtime.failPortCheck = undefined;
     }
@@ -270,14 +282,20 @@ describe("publishing an app", () => {
   });
 
   it("installs an app published with the owner's choice not to show it inside Your Space", async () => {
-    const installed = await install("https://github.com/ys-fixtures/fourth/blob/main/compose.yaml", { port: 8104, frame: false });
+    const installed = await install("https://github.com/ys-fixtures/fourth/blob/main/compose.yaml", { port: 8104, link: "https://fourth.example.com", frame: false });
     expect(installed.status).toBe(202);
     expect((await waitForJob(((await installed.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
     expect(lastApply().publish).toEqual({ port: 8104, bind: "127.0.0.1", frame: false });
-    expect(((await (await api("/api/apps/fourth")).json()) as any).publish).toEqual({ port: 8104, bind: "127.0.0.1", link: null, frame: false });
+    expect(((await (await api("/api/apps/fourth")).json()) as any).publish).toEqual({ port: 8104, bind: "127.0.0.1", link: "https://fourth.example.com", frame: false });
     // Installed without publishing, an app is shown inside Your Space once it is published.
     const [plain] = await t.db.select({ frame: app.frame }).from(app).where(eq(app.name, "third"));
     expect(plain!.frame).toBe(true);
+  });
+
+  it("keeps the framing rules of an app whose kit says it can't run in a pane", async () => {
+    const installed = await install("https://github.com/ys-fixtures/nopane/blob/main/compose.yaml", { port: 8106, link: "https://nopane.example.com" });
+    expect((await waitForJob(((await installed.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+    expect(lastApply().publish).toEqual({ port: 8106, bind: "127.0.0.1", frame: false });
   });
 
   it("stops publishing, and the app is back at its built-in address", async () => {
@@ -298,10 +316,10 @@ describe("publishing an app", () => {
       expect(response.status).toBe(202);
       expect((await waitForJob(((await response.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
     };
-    await put({ port: 8105, frame: false });
+    await put({ port: 8105, link: "https://tasks.example.com", frame: false });
     expect(lastApply().publish).toEqual({ port: 8105, bind: "127.0.0.1", frame: false });
     await put(null);
-    await put({ port: 8105 });
+    await put({ port: 8105, link: "https://tasks.example.com" });
     expect(lastApply().publish).toEqual({ port: 8105, bind: "127.0.0.1", frame: true });
     await put(null);
   });
@@ -314,7 +332,7 @@ describe("publishing an app", () => {
     const published = await send("/api/apps/plain/publish", { publish: {} }, "PUT");
     expect(published.status).toBe(202);
     await waitForJob(((await published.json()) as { jobId: string }).jobId);
-    expect(lastApply().publish).toEqual({ port: 8000, bind: "127.0.0.1", frame: true });
+    expect(lastApply().publish).toEqual({ port: 8000, bind: "127.0.0.1", frame: false });
   });
 
   it("renews a published app's outdated Caddy once, as after Your Space is updated, and only that app", async () => {
@@ -328,7 +346,7 @@ describe("publishing an app", () => {
     await server.apps!.reconcile();
     await waitForIdle();
     expect(applies()).toBe(before + 1);
-    expect(lastApply()).toMatchObject({ project: "ys-plain", publish: { port: 8000, bind: "127.0.0.1", frame: true } });
+    expect(lastApply()).toMatchObject({ project: "ys-plain", publish: { port: 8000, bind: "127.0.0.1", frame: false } });
     expect(((await (await api("/api/apps/plain")).json()) as { state: string }).state).toBe("running");
 
     // A renewal that didn't help isn't repeated while this server runs.

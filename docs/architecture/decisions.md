@@ -820,14 +820,15 @@ inside Your Space's pane, at its link, rather than in a tab of its own. Many app
 framed; Plane, for one, sends `X-Frame-Options: DENY`. Each published app therefore has a setting,
 "Show inside Your Space", on by default, for new and already published apps alike:
 
-- On, the app's `ys-publish` applies the rule Your Space's own Caddy applies at an app's built-in
-  address: it removes `X-Frame-Options`, and sets the `frame-ancestors` of the app's
+- On, for an app with a link whose kit lets it run in a pane, the app's `ys-publish` applies the
+  rule Your Space's own Caddy applies at an app's built-in address: it removes `X-Frame-Options`, and sets the `frame-ancestors` of the app's
   `Content-Security-Policy`, or of a policy of its own when the app sends none, to Your Space's
   origin alone, as Your Space's Caddy has it (`YS_ORIGIN`). Not `'self'`, and not `*`: no other
   site, and not the app itself, can frame it. Everything else passes through unchanged: the rest of
   the app's policy, its cookies, its other headers and its bodies.
 - Off, `ys-publish` passes the app's responses on untouched, and the pane offers the app at its link,
-  in its own tab, as before.
+  in its own tab, as before. So it does for an app without a link, which the pane shows at its
+  built-in address, and for one whose kit says it can't run in a pane.
 - The pane frames the link only when the setting is on, the app's kit doesn't say it can't run in a
   pane, and the browser can show the link inside Your Space's page: a plain-HTTP link inside an HTTPS
   Your Space opens in its own tab, apart from one on this machine.

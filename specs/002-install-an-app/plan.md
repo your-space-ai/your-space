@@ -187,12 +187,13 @@ service: a Caddy that runs the image of Your Space's own Caddy container with
 root (Caddy's files in a `/tmp` tmpfs), no capabilities, no new privileges, 128 MiB and 0.5 CPU, on
 the app network and a `publish` network of its own, and publishes only its port on `bind:port`. It
 passes `Host` on, streams both ways, and passes the app's responses on unchanged, framing headers
-included, unless the app is shown in Your Space's pane: then `YS_FRAME=on` and `YS_ORIGIN`, the
-origin Your Space's own Caddy container has, make it import the framing rule Your Space's own Caddy
-applies at an app's built-in address (remove `X-Frame-Options`; `frame-ancestors` names only that
-origin), and nothing else changes. It trusts forwarded headers only from loopback, private and Tailscale addresses
-(`127.0.0.0/8`, `::1`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`,
-`100.64.0.0/10`), and sets them itself for anyone else. The app's services stay on the sealed
+included, unless the pane shows the app at its link (`frame` on, a link, and a kit that allows a
+pane): then `YS_FRAME=on` and `YS_ORIGIN`, the origin Your Space's own Caddy container has, make it
+import the framing rule Your Space's own Caddy applies at an app's built-in address (remove
+`X-Frame-Options`; `frame-ancestors` names only that origin), and nothing else changes. It trusts
+forwarded headers only from loopback, private and Tailscale addresses (`127.0.0.0/8`, `::1`,
+`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`, `100.64.0.0/10`), and sets them itself
+for anyone else. The app's services stay on the sealed
 network, where Docker publishes nothing.
 Before saving the owner's choice, the server refuses a port another published app uses, then asks
 the runtime manager, which has no network of its own and can't see the machine's ports: it names a
