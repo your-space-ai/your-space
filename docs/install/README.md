@@ -428,8 +428,9 @@ address to. Choose it when installing the app, or later on the app's page, under
   another site than Your Space's, a browser that blocks other sites' cookies may not keep you signed
   in to the app in the pane: open it in its own tab, or turn this off.
 
-Saving recreates only the app's Caddy, and restarts the app only if its address settings use a link
-you changed. Its data is kept. The pane shows the app once the change is applied.
+Saving restarts the app only if its address settings use a link you changed; any other change
+recreates at most the app's Caddy. Its data is kept. The pane shows the app once the change is
+applied.
 
 A Caddy of Your Space's answers on the port and passes each request to the app with its `Host`
 header, so the app sees the address you reached it at. The `X-Forwarded-*` headers your proxy sends

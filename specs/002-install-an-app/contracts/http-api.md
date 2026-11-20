@@ -89,8 +89,9 @@ from, since a file on this machine has no repository to compare. With `--json`, 
 the link as given, or the digest.
 
 `publish-app` publishes an installed app, changes how (an option left out keeps its value),
-or stops publishing it with `--off`, and waits until the change is applied: it changes the app's
-Caddy, and restarts the app's services only when their address settings follow a link that changed.
+or stops publishing it with `--off`, and waits until the change is applied: it restarts the app's
+services only when their address settings follow a link that changed, and otherwise recreates at most
+the app's Caddy.
 `--no-frame` sets
 `frame` to `false`, so Your Space opens the app at its link in its own tab, and `--frame` sets it to
 `true` again; `install-app --publish --no-frame` installs an app published that way. The `publish`

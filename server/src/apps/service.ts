@@ -950,8 +950,9 @@ export class AppsService {
 
   /**
    * Publishes the app on a port of this machine, changes how, or stops (null). Applying the app again
-   * changes only its Caddy, apart from restarting the services whose address settings follow a link
-   * that changed. Stopping drops the owner's choices, so publishing again starts from the defaults.
+   * restarts only the services whose address settings follow a link that changed, and otherwise
+   * recreates at most its Caddy. Stopping drops the owner's choices, so publishing again starts from
+   * the defaults.
    */
   async updatePublish(name: string, publishWith: unknown, actorId: string): Promise<{ jobId: string }> {
     const row = await this.liveRow(name);
