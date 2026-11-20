@@ -79,7 +79,7 @@ service:
 | `networks`, `network_mode: bridge`, `links` | Replaced by the app network (reported) |
 | `dns`, `dns_search`, `extra_hosts`, `container_name`, `logging`, `mem_limit`, `cpus`, `deploy.resources` | Removed or replaced by Your Space's values (reported) |
 | `build` with an `image` | Build removed, image used (reported) |
-| `volumes` of type `volume` (named) or `tmpfs` | Allowed; anonymous volumes allowed |
+| `volumes` of type `volume` (named) or `tmpfs` | Allowed; anonymous volumes allowed, and removed with the app |
 | Bind mounts, `devices`, `privileged`, `cap_add`, `security_opt`, `pid`/`ipc`/`uts`/`userns_mode`/`cgroup` other than private, `network_mode: host` or `service:`/`container:`, `volumes_from`, `sysctls`, `env_file` left after resolution, `secrets`/`configs` from files, `group_add`, `runtime`, `isolation`, `gpus`, `build` without `image`, `external` volumes or networks, volume `driver`/`driver_opts` | Refused with the reason |
 | Any other key | Refused, so a new Compose feature can't slip through |
 
@@ -92,7 +92,13 @@ so no service starts before it can reach approved hosts. Every service restarts 
 so it comes back after a restart of the machine, except one the file says runs once, such as a
 database migration: `restart: "no"` or `on-failure`, or `deploy.restart_policy` with `none` or
 `on-failure` (kept from the otherwise replaced `deploy`). Such a service that exits 0 shows as
-completed, not as a problem (2026-11-19). Networks: `app` is `internal` with
+completed, not as a problem (2026-11-19). It runs once for each definition: while the app runs, an
+apply, such as one that only changes the app's Caddy, leaves a one-time service that finished with
+exit code 0 as it is, unless Compose would recreate it because its image, command or settings
+changed (its `docker compose config --hash` differs from its container's). Compose starts every
+stopped container on `up`, so the apply names the other services with `--no-deps`. Starting a
+stopped app starts every service, since a service stopped with the app can't be told from one that
+finished (2026-11-20). Networks: `app` is `internal` with
 `com.docker.network.bridge.gateway_mode_ipv4=isolated` (no route to the host or out); `egress` is a
 normal bridge. Apps' raised out-of-memory score makes the kernel stop them before Your Space's own
 services, which keep the default; a negative score would fail on rootless engines (FR-D06).
@@ -222,6 +228,12 @@ and the app's record and settings stay as retained data so a reinstall gets back
 password. Installing the same app again offers to reuse them: one with the same name and
 repository, or with the same name when either came from a Compose file on this machine, which has no
 repository to compare. Deleting retained data removes the volumes, then the record.
+
+The anonymous volumes the app's containers mounted go with them: those the engine creates for a
+path an image or the file names without a volume, such as the egress proxy's Squid folders. They
+aren't the app's data (FR-024), and no new container gets them back, so after a removal and deleting
+its data nothing of the app is left. While the app is removed, the runtime manager doesn't connect
+Your Space's Caddy to its network again, so Compose can remove the network (2026-11-20).
 
 ## Dependencies
 

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { join } from "node:path";
-import { adapt, EGRESS_IMAGE, FRAME_ORIGIN_LABEL, imageRef, PUBLISH_TARGET, type AppSpec, type CheckResult, type OwnCaddy } from "./adapter.ts";
+import { adapt, EGRESS_IMAGE, FRAME_ORIGIN_LABEL, imageRef, PUBLISH_TARGET, runsOnce, type AppSpec, type CheckResult, type OwnCaddy } from "./adapter.ts";
 import {
   connectNetwork,
   disconnectNetwork,
@@ -199,7 +199,7 @@ export async function apply(spec: AppSpec, emit: Emit): Promise<void> {
   if (!adapted) {
     throw new SpecError(answer.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`).join(" "));
   }
-  const services = adapted.services as Record<string, { image: string }>;
+  const services = adapted.services as Record<string, { image: string; restart?: string }>;
   const images = [...new Set(Object.values(services).map((s) => s.image))];
   for (const image of images) {
     if (await imagePresent(image)) continue;
@@ -211,7 +211,12 @@ export async function apply(spec: AppSpec, emit: Emit): Promise<void> {
   const dir = mkdtempSync(`/tmp/ys-${randomUUID().slice(0, 8)}-`);
   try {
     writeFileSync(join(dir, "compose.json"), JSON.stringify(adapted), { mode: 0o600 });
-    const up = await docker(["compose", "-p", spec.project, "--project-directory", dir, "-f", join(dir, "compose.json"), "up", "-d", "--remove-orphans", "--pull", "never"], {}, dir);
+    const compose = ["compose", "-p", spec.project, "--project-directory", dir, "-f", join(dir, "compose.json")];
+    // Compose starts every stopped container, a finished one-time service too, unless the others are
+    // named without it.
+    const done = await finishedServices(spec.project, services, compose, dir);
+    const only = done.length > 0 ? ["--no-deps", ...Object.keys(services).filter((s) => !done.includes(s))] : [];
+    const up = await docker([...compose, "up", "-d", "--remove-orphans", "--pull", "never", ...only], {}, dir);
     if (up.code !== 0) {
       // Checked when the owner saved; something can still have taken the port since.
       if (spec.publish && portTaken(up.stderr)) {
@@ -227,6 +232,52 @@ export async function apply(spec: AppSpec, emit: Emit): Promise<void> {
   }
   await connectProxy(spec.project);
   emit({ step: "started" });
+}
+
+/** A container of an app's service: its state, its exit code once exited, and Compose's hash of its definition. */
+export interface ServiceRun {
+  service: string;
+  state: string;
+  exitCode?: number;
+  hash?: string;
+}
+
+/**
+ * The one-time services an apply leaves as they are (2026-11-20): while the app runs, each that
+ * finished with exit code 0 and that Compose wouldn't recreate, because its image, command and
+ * settings are the same (`hashes`, from `docker compose config --hash`). A stopped app starts every
+ * service, since a service that was stopped with it can't be told from one that finished.
+ */
+export function finishedOnce(restarts: Record<string, string>, runs: ServiceRun[], hashes: Record<string, string>): string[] {
+  const own = (service: string) => Object.hasOwn(restarts, service);
+  const once = (service: string) => own(service) && runsOnce(restarts[service]!);
+  const running = runs.some((r) => own(r.service) && !once(r.service) && (r.state === "running" || r.state === "restarting"));
+  if (!running) return [];
+  const finished = runs.filter((r) => once(r.service) && r.state === "exited" && r.exitCode === 0 && r.hash !== undefined && r.hash === hashes[r.service]);
+  return [...new Set(finished.map((r) => r.service))];
+}
+
+/** The app's one-time services that `finishedOnce` leaves as they are. */
+async function finishedServices(project: string, services: Record<string, { restart?: string }>, compose: string[], dir: string): Promise<string[]> {
+  const restarts = Object.fromEntries(Object.entries(services).map(([name, s]) => [name, s.restart ?? ""]));
+  const once = Object.keys(restarts).filter((name) => runsOnce(restarts[name]!));
+  if (once.length === 0) return [];
+  const runs = await Promise.all(
+    (await projectContainers(project)).map(async (c): Promise<ServiceRun> => {
+      const run: ServiceRun = { service: c.Labels["com.docker.compose.service"] ?? "", state: c.State, hash: c.Labels["com.docker.compose.config-hash"] };
+      if (c.State === "exited" && once.includes(run.service)) {
+        const detail = await engineJson<{ State: { ExitCode: number } }>("GET", `/containers/${c.Id}/json`).catch(() => undefined);
+        run.exitCode = detail?.State.ExitCode;
+      }
+      return run;
+    }),
+  );
+  if (!runs.some((r) => r.exitCode === 0)) return [];
+  const hashed = await docker([...compose, "config", "--hash", once.join(",")], {}, dir);
+  // Without the hashes, every service starts, as Compose would.
+  if (hashed.code !== 0) return [];
+  const hashes = Object.fromEntries(hashed.stdout.split("\n").map((line) => line.trim().split(/\s+/)).filter((parts) => parts.length === 2));
+  return finishedOnce(restarts, runs, hashes);
 }
 
 /**
@@ -311,15 +362,56 @@ export async function stop(project: string): Promise<void> {
   if (result.code !== 0) throw new EngineError(`Stopping the app failed: ${result.stderr.trim().slice(0, 400)}`);
 }
 
+/** Apps being removed, whose networks Your Space's proxy doesn't join again. */
+const removing = new Set<string>();
+/** The proxy's reconnection under way, if one is (`connectProxyToAll`). */
+let reconnecting: Promise<void> | undefined;
+
+/**
+ * Removes the app's containers, networks and anonymous volumes; its named volumes stay (FR-023). An
+ * anonymous volume isn't the app's data (FR-024): no new container gets it back. The proxy leaves the
+ * app's network and doesn't join it again meanwhile, so Compose can remove the network.
+ */
 export async function down(project: string): Promise<void> {
-  const caddy = await installationContainer("caddy");
-  if (caddy) await disconnectNetwork(`${project}_app`, caddy);
-  const result = await docker(["compose", "-p", project, "down", "--remove-orphans"]);
-  if (result.code !== 0) throw new EngineError(`Removing the app failed: ${result.stderr.trim().slice(0, 400)}`);
+  removing.add(project);
+  try {
+    // A reconnection already under way can still join the network, so it finishes first.
+    await reconnecting?.catch(() => undefined);
+    const anonymous = anonymousVolumes(await projectContainers(project), await anonymousVolumeNames());
+    const caddy = await installationContainer("caddy");
+    if (caddy) await disconnectNetwork(`${project}_app`, caddy);
+    const result = await docker(["compose", "-p", project, "down", "--remove-orphans"]);
+    if (result.code !== 0) throw new EngineError(`Removing the app failed: ${result.stderr.trim().slice(0, 400)}`);
+    for (const name of anonymous) {
+      const answer = await engine("DELETE", `/volumes/${encodeURIComponent(name)}`);
+      if (answer.status >= 400 && answer.status !== 404) throw new EngineError(`Deleting ${name} failed: ${answer.body.trim()}`);
+    }
+  } finally {
+    removing.delete(project);
+  }
+}
+
+/**
+ * The anonymous volumes the containers mount: those the engine created for a path the image or the
+ * file names without a volume. A named volume, the app's data, is never one of them.
+ */
+export function anonymousVolumes(containers: ContainerSummary[], anonymous: Set<string>): string[] {
+  const names = new Set<string>();
+  for (const c of containers) {
+    for (const mount of c.Mounts ?? []) if (mount.Type === "volume" && mount.Name && anonymous.has(mount.Name)) names.add(mount.Name);
+  }
+  return [...names];
 }
 
 interface VolumeList {
   Volumes: { Name: string; Labels: Record<string, string> | null }[] | null;
+}
+
+/** The engine labels each volume it creates without a name. */
+async function anonymousVolumeNames(): Promise<Set<string>> {
+  const filters = encodeURIComponent(JSON.stringify({ label: ["com.docker.volume.anonymous"] }));
+  const list = await engineJson<VolumeList>("GET", `/volumes?filters=${filters}`);
+  return new Set((list.Volumes ?? []).map((v) => v.Name));
 }
 
 async function appVolumes(project: string): Promise<string[]> {
@@ -477,8 +569,18 @@ export async function stopAll(): Promise<string[]> {
   return projects;
 }
 
-/** Keeps Your Space's proxy connected to every app's network, for example after Caddy is recreated. */
-export async function connectProxyToAll(): Promise<void> {
+/**
+ * Keeps Your Space's proxy connected to every app's network, for example after Caddy is recreated,
+ * except an app's that is being removed. One reconnection runs at a time.
+ */
+export function connectProxyToAll(): Promise<void> {
+  reconnecting ??= reconnect().finally(() => {
+    reconnecting = undefined;
+  });
+  return reconnecting;
+}
+
+async function reconnect(): Promise<void> {
   const caddy = await installationContainer("caddy");
   if (!caddy) return;
   const detail = await engineJson<{ NetworkSettings: { Networks: Record<string, unknown> } }>("GET", `/containers/${caddy}/json`);
@@ -486,7 +588,10 @@ export async function connectProxyToAll(): Promise<void> {
   const filters = encodeURIComponent(JSON.stringify({ label: [INSTALLATION_LABEL] }));
   const networks = await engineJson<{ Name: string }[]>("GET", `/networks?filters=${filters}`);
   for (const network of networks) {
-    if (network.Name.endsWith("_app") && !joined.has(network.Name)) await connectNetwork(network.Name, caddy);
+    if (!network.Name.endsWith("_app") || joined.has(network.Name)) continue;
+    // Checked just before connecting: a removal can start while this runs.
+    if (removing.has(network.Name.slice(0, -"_app".length))) continue;
+    await connectNetwork(network.Name, caddy);
   }
 }
 

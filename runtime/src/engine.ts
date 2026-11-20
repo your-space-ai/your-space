@@ -224,6 +224,8 @@ export interface ContainerSummary {
   ImageID?: string;
   /** The machine's ports a running container publishes. */
   Ports?: { IP?: string; PrivatePort: number; PublicPort?: number; Type: string }[];
+  /** What the container mounts; a volume's `Name` is set. */
+  Mounts?: { Type: string; Name?: string }[];
 }
 
 export function listContainers(labels: string[]): Promise<ContainerSummary[]> {
