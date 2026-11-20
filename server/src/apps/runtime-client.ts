@@ -53,6 +53,8 @@ export interface ServiceState {
   oomKilled?: boolean;
   /** A service that runs once, such as a migration, and finished. */
   completed?: boolean;
+  /** A published app's Caddy that doesn't run Your Space's own Caddy's current image; the next start renews it. */
+  outdated?: boolean;
 }
 
 export interface EngineInfo {
@@ -86,7 +88,7 @@ export interface Runtime {
   stats(project: string): Promise<{ services: { name: string; memory: number; memoryLimit: number; cpuPercent: number }[] }>;
   denials(project: string): Promise<{ hosts: { host: string; attempts: number; lastSeen: string }[] }>;
   /** Whether the app can be published on bind:port of this machine; `by` names a container that uses it. */
-  checkPort(project: string, publish: { port: number; bind: string }, pins: Record<string, string>): Promise<{ inUse: boolean; by?: string }>;
+  checkPort(project: string, publish: { port: number; bind: string }): Promise<{ inUse: boolean; by?: string }>;
 }
 
 function call(method: string, path: string, body?: unknown, onLine?: (line: string) => void, socketPath = RUNTIME_SOCKET): Promise<{ status: number; text: string }> {
@@ -168,6 +170,6 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
       (await json<{ lines: string[] }>("GET", `${p(project)}/logs?service=${encodeURIComponent(service)}&tail=${tail}`, undefined, socketPath)).lines,
     stats: (project) => json("GET", `${p(project)}/stats`, undefined, socketPath),
     denials: (project) => json("GET", `${p(project)}/denials`, undefined, socketPath),
-    checkPort: (project, publish, pins) => json("POST", `${p(project)}/port`, { publish, pins }, socketPath),
+    checkPort: (project, publish) => json("POST", `${p(project)}/port`, { publish }, socketPath),
   };
 }

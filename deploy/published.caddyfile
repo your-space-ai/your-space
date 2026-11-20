@@ -1,0 +1,34 @@
+# A published app's own Caddy (decision record, "Running Apps and Reaching Them"). The runtime
+# manager runs one for each app the owner publishes on a port, from Your Space's web image, as the
+# app's ys-publish service. It listens on port 8080, which Docker publishes on the port and address
+# the owner chose, and passes every request to the app's interface on the app's sealed network. The
+# runtime manager sets:
+#   YS_UPSTREAM  the app's interface, ys-<app>-ui:<port>
+# There is no access gate here: whoever reaches the port reaches the app, and the app's own sign-in
+# protects it. The app's responses pass through as the app sent them, its framing headers included.
+{
+	# Configured once, from this file: no admin API, nothing saved, no certificates.
+	admin off
+	persist_config off
+	auto_https off
+	servers :8080 {
+		# The owner's proxy or tunnel reports the visitor and the address they used. The app gets those
+		# headers as the proxy sent them when it connects from a private address: this machine (Docker's
+		# bridge shows it as one), the local network, or Tailscale's. X-Forwarded-For then gains the
+		# connecting address, and X-Forwarded-Proto and X-Forwarded-Host are added only when the proxy
+		# sent none. From any other address Caddy sets all three itself, so a visitor can't make them
+		# up. Plain HTTP: the owner's proxy or tunnel provides HTTPS.
+		trusted_proxies static 127.0.0.0/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fc00::/7 100.64.0.0/10
+		protocols h1 h2c
+	}
+}
+
+:8080 {
+	# The original Host header, WebSockets, request bodies of any size and streamed responses pass
+	# through, and responses are sent on as they arrive. Caddy keeps the visitor's connection open
+	# between requests, and opens connections to the app as it needs them.
+	reverse_proxy {$YS_UPSTREAM} {
+		flush_interval -1
+	}
+	# There is no `log` directive, so the access log stays off and request URLs are not recorded.
+}

@@ -1,5 +1,6 @@
 // Journey 002: install apps from their own Compose files and use them in Your Space. A stand-in for
 // GitHub serves the fixture apps (e2e/github); Sure and Twenty run by hand (verification record).
+import { Agent, request } from "node:http";
 import { createServer } from "node:net";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { evidence } from "./helpers/evidence.ts";
@@ -10,6 +11,7 @@ test.describe.configure({ mode: "serial" });
 
 const WHOAMI = "https://github.com/ys-fixtures/whoami/blob/main/compose.yaml";
 const PROBE = "https://github.com/ys-fixtures/probe/blob/main/compose.yaml";
+const NOFRAME = "https://github.com/ys-fixtures/noframe/blob/main/compose.yaml";
 const LINK_LABEL = "Link to the app's Compose file";
 
 // The owner signs in once: sign-in allows three attempts per address in 10 seconds (journey 001).
@@ -36,6 +38,19 @@ async function inspect(container: string, format: string): Promise<string> {
 /** Runs a shell command inside an app's container. */
 async function inApp(container: string, script: string): Promise<string> {
   return (await docker(["exec", container, "sh", "-c", script])).stdout.trim();
+}
+
+/** A GET on a connection of its own, or on one of `agent`'s: the status, and whether it reused a connection. */
+function get(url: string, agent: Agent | false = false): Promise<{ status: number; reused: boolean }> {
+  return new Promise((resolve, reject) => {
+    const req = request(url, { agent, timeout: 30_000 }, (res) => {
+      res.resume();
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, reused: req.reusedSocket }));
+    });
+    req.on("timeout", () => req.destroy(new Error("timed out")));
+    req.on("error", reject);
+    req.end();
+  });
 }
 
 test("the owner installs an app from its link, after a review and a trust warning", async ({ page, browser }, testInfo) => {
@@ -219,7 +234,6 @@ test("the owner publishes an app on a port of this machine, for their own proxy 
   try {
     await publishing.getByLabel(/^Port/).fill("18782");
     await publishing.getByRole("button", { name: "Save publishing" }).click();
-    // The first check also downloads the forwarder's image.
     await expect(publishing.getByRole("alert")).toHaveText("Port 18782 on 127.0.0.1 is already used by another program on this machine. Choose another port.", {
       timeout: 60_000,
     });
@@ -232,15 +246,26 @@ test("the owner publishes an app on a port of this machine, for their own proxy 
   await publishing.getByRole("button", { name: "Save publishing" }).click();
   await waitForJob(page);
 
-  // The port reaches the app as it is, with the proxy's own headers and no gate in between.
-  const answer = await page.request.get("http://127.0.0.1:18781/inbox", { headers: { "X-Forwarded-Proto": "https" }, maxRedirects: 0 });
-  expect(answer.status()).toBe(200);
-  const echoed = await answer.text();
+  // Your Space's Caddy passes each request on to the app with the proxy's own headers, and no gate in
+  // between. It starts with the app, so the first request may come before it listens.
+  let echoed = "";
+  await expect(async () => {
+    const answer = await page.request.get("http://127.0.0.1:18781/inbox", { headers: { "X-Forwarded-Proto": "https" }, maxRedirects: 0, timeout: 5_000 });
+    expect(answer.status()).toBe(200);
+    echoed = await answer.text();
+  }).toPass({ timeout: 30_000 });
   expect(echoed).toContain("GET /inbox");
+  expect(echoed).toContain("Host: 127.0.0.1:18781");
   expect(echoed).toContain("X-Forwarded-Proto: https");
-  // Only Your Space's forwarder publishes the port; the app's own container still publishes none (FR-015).
+  // Only Your Space's Caddy publishes the port; the app's own container still publishes none (FR-015).
   expect(await inspect("ys-whoami-web-1", "{{json .HostConfig.PortBindings}}")).toBe("{}");
   expect(await inspect("ys-whoami-ys-publish-1", "{{json .HostConfig.PortBindings}}")).toContain('"HostIp":"127.0.0.1","HostPort":"18781"');
+
+  // A browser's first visit through the owner's proxy asks for many files at once: every request is
+  // answered.
+  const burst = await Promise.allSettled(Array.from({ length: 200 }, (_, i) => get(`http://127.0.0.1:18781/file-${i}`)));
+  const failed = burst.flatMap((r, i) => (r.status === "fulfilled" && r.value.status === 200 ? [] : [`${i}: ${r.status === "fulfilled" ? r.value.status : String(r.reason)}`]));
+  expect(failed).toEqual([]);
 
   // Your Space opens it at its link.
   await page.goto("/apps");
@@ -257,6 +282,45 @@ test("the owner publishes an app on a port of this machine, for their own proxy 
   const ownTab = pane.getByRole("link", { name: "Open in its own tab" });
   await expect(ownTab).toHaveCount(2);
   for (const link of await ownTab.all()) await expect(link).toHaveAttribute("href", "http://127.0.0.1:18781");
+
+  // An app that refuses to be framed still refuses at its published port: Your Space's Caddy passes
+  // the app's responses on as the app sent them.
+  const installed = await serverCommand("install-app", [NOFRAME, "--publish", "--port", "18783", "--link", "http://127.0.0.1:18783"]);
+  expect(installed.code, installed.stderr).toBe(0);
+  let headers: { name: string; value: string }[] = [];
+  await expect(async () => {
+    const answer = await page.request.get("http://127.0.0.1:18783/", { timeout: 5_000 });
+    expect(answer.status()).toBe(200);
+    headers = answer.headersArray();
+  }).toPass({ timeout: 30_000 });
+  const values = (name: string) => headers.filter((h) => h.name.toLowerCase() === name).map((h) => h.value);
+  expect(values("x-frame-options")).toEqual(["DENY"]);
+  expect(values("content-security-policy")).toEqual(["default-src 'self'; frame-ancestors 'none'"]);
+  await page.goto("/open/noframe");
+  await expect(page.locator('section[data-pane="noframe"]')).toContainText("opens there in its own tab");
+  await expect(page.locator('[data-testid="app-pane"]')).toHaveCount(0);
+
+  // This app closes its connection after each answer. Caddy still keeps the visitor's connection open,
+  // and it works after a pause.
+  const agent = new Agent({ keepAlive: true, maxSockets: 1 });
+  try {
+    expect((await get("http://127.0.0.1:18783/", agent)).status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    expect(await get("http://127.0.0.1:18783/", agent)).toEqual({ status: 200, reused: true });
+  } finally {
+    agent.destroy();
+  }
+
+  // It goes again, with its data, so the journeys after this one find the apps they expect.
+  await page.goto("/apps/noframe");
+  await page.getByRole("button", { name: "Remove app", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remove app", exact: true }).click();
+  await waitForJob(page);
+  await page.goto("/apps");
+  await page.getByRole("button", { name: "Delete data of noframe" }).click();
+  await page.getByRole("alertdialog").getByLabel("Type noframe to confirm").fill("noframe");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete data" }).click();
+  await expect(page.getByRole("heading", { name: "Kept data" })).toHaveCount(0);
 
   // Stopping publishing closes the port, and the app is still at its own address.
   await page.goto("/apps/whoami");

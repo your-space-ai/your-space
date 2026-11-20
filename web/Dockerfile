@@ -15,3 +15,5 @@ RUN npm run build --workspace web
 FROM caddy:2.11
 COPY --from=build /app/web/dist /srv
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
+# The Caddyfile of a published app's own Caddy, which runs this image too.
+COPY deploy/published.caddyfile /etc/caddy/published.caddyfile

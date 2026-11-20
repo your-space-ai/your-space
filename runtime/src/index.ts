@@ -101,8 +101,7 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (method === "GET" && action === "/stats") return send(res, 200, await stats(project));
     if (method === "GET" && action === "/denials") return send(res, 200, await denials(project));
     if (method === "POST" && action === "/port") {
-      const { publish, digest } = validatePortCheck(await readBody(req));
-      return send(res, 200, await checkPort(project, publish, digest));
+      return send(res, 200, await checkPort(project, validatePortCheck(await readBody(req))));
     }
     if (method === "GET" && action === "/logs") {
       const service = url.searchParams.get("service") ?? "";

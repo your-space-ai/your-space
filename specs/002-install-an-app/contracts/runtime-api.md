@@ -21,8 +21,11 @@ An **app spec**, sent with every request that resolves or applies an app:
 }
 ```
 
-`publish` (optional, decision 2026-11-19) adds the `ys-publish` forwarder, which publishes the
-interface on `bind:port` of this machine; the app's own services publish nothing.
+`publish` (optional, decision 2026-11-19) adds `ys-publish`, a Caddy of Your Space's that runs Your
+Space's own Caddy's image with `deploy/published.caddyfile`. It listens on `bind:port` of this
+machine, proxies to the interface, and passes the app's responses on unchanged; the app's own
+services publish nothing. Checking or applying a published app while Your Space's Caddy isn't
+running is refused; an apply waits up to two minutes for it first.
 
 | Method and path | Body | Answer |
 | --- | --- | --- |
@@ -31,11 +34,11 @@ interface on `bind:port` of this machine; the app's own services publish nothing
 | `POST /apply` | app spec | NDJSON stream: `{ "step": "pull", "image" }`, `{ "step": "start" }`, …, then `{ "done": true }` or `{ "error": "…" }`; a published port something else took since it was checked gives an error naming it |
 | `POST /apps/{project}/down` | | Removes containers and networks, keeps volumes |
 | `DELETE /apps/{project}/volumes` | | Removes the app's volumes |
-| `GET /apps` | | `[{ project, app, services: [{ name, role, state, health, exitCode, oomKilled }] }]` for every app this installation manages; `role` is `app`, `egress` or `publish` |
+| `GET /apps` | | `[{ project, app, services: [{ name, role, state, health, exitCode, oomKilled, outdated }] }]` for every app this installation manages; `role` is `app`, `egress` or `publish`; `outdated` marks a `publish` service that doesn't run Your Space's Caddy's current image |
 | `GET /apps/{project}/logs?service=&tail=` | | `{ lines: [...] }` |
 | `GET /apps/{project}/stats` | | `{ services: [{ name, memory, memoryLimit, cpuPercent }] }` |
 | `GET /apps/{project}/denials` | | `{ hosts: [{ host, attempts, lastSeen }] }` from the egress proxy's log |
-| `POST /apps/{project}/port` | `{ publish: { port, bind }, pins: { "busybox:latest": "sha256:…" } }` | `{ inUse, by? }`: whether the app can be published on `bind:port`. `by` names a running container that publishes it (the app's own forwarder doesn't count); otherwise a short-lived container of the pinned forwarder image tries to publish it, and `inUse` without `by` means another program uses it. 502 when the check itself fails |
+| `POST /apps/{project}/port` | `{ publish: { port, bind } }` | `{ inUse, by? }`: whether the app can be published on `bind:port`. `by` names a running container that publishes it (the app's own Caddy doesn't count); otherwise a short-lived container of Your Space's Caddy's image tries to publish it, and `inUse` without `by` means another program uses it. 502 when the check itself fails, 503 when Your Space's Caddy isn't running |
 | `POST /stop-all` | | Stops every managed app and refuses `/apply` until the runtime manager restarts |
 
 Errors: `{ "error": "<code>", "message": "…" }` with status 400 (the spec is refused), 404, 409

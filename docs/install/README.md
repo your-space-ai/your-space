@@ -402,6 +402,11 @@ address to. Choose it when installing the app, or later on the app's page, under
   use it, and Your Space opens the app there, in its own tab. A changed link reaches them when the
   app restarts, which saving does.
 
+A Caddy of Your Space's answers on the port and passes each request to the app with its `Host`
+header, so the app sees the address you reached it at. The `X-Forwarded-*` headers your proxy sends
+reach the app when the proxy connects from this machine, your local network or your tailnet; from
+anywhere else, Caddy sets them itself. The app's answers come back as the app sent them.
+
 A published port isn't behind Your Space's sign-in: anyone who can reach it reaches the app, and only
 the app's own sign-in protects it. The app's own services still publish nothing, and its built-in
 address keeps working.

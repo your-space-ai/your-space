@@ -14,7 +14,7 @@ export class FakeRuntime implements Runtime {
   failApply: string | undefined;
   /** Per port of this machine: what uses it, as the port check names it, or undefined for a program. */
   portsInUse = new Map<number, string | undefined>();
-  /** A port check that can't run, for example without the forwarder's image. */
+  /** A port check that can't run, for example without Your Space's Caddy. */
   failPortCheck: string | undefined;
 
   stopping = false;
@@ -36,7 +36,6 @@ export class FakeRuntime implements Runtime {
       images: [
         { ref: "traefik/whoami:latest", digest: "sha256:aaa", runsHere: true, platforms: ["linux/amd64"] },
         { ref: "ubuntu/squid:latest", digest: "sha256:bbb", runsHere: true, platforms: ["linux/amd64"] },
-        ...(spec.publish ? [{ ref: "busybox:latest", digest: "sha256:ccc", runsHere: true, platforms: ["linux/amd64"] }] : []),
       ],
     };
   }

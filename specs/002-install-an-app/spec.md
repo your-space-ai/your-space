@@ -464,7 +464,7 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
   `Domain` attribute from cookies an app sets, so no app's cookie reaches Your Space or another app.
 - **FR-015**: Apps must be reachable only through Your Space; app containers publish no ports of their
   own. (2026-11-19: the owner can publish an app's interface on a port of this machine, through a
-  forwarder of Your Space's, for their own proxy or tunnel; that port is outside the access gate. See
+  Caddy of Your Space's, for their own proxy or tunnel; that port is outside the access gate. See
   the decision record's "Running Apps and Reaching Them".)
 - **FR-016**: Apps open in panes inside Your Space, with its navigation available, and in their own
   tab when they can't run in a pane. When a browser blocks an app's cookies in a pane, Your Space
@@ -525,7 +525,7 @@ What is specific to the first runtime adapter. The research behind it is
 - **FR-D03**: The adapter checks an app's fully resolved Compose file (after `include`, `extends`,
   anchors and placeholders) against an allowlist of settings, never the raw file.
 - **FR-D04**: Rules that apply to every app: published host ports are replaced by Your Space's
-  routing (and, since 2026-11-19, by Your Space's forwarder when the owner publishes the app), networks are assigned by the adapter, images are pinned by digest, services behind
+  routing (and, since 2026-11-19, by a Caddy of Your Space's when the owner publishes the app), networks are assigned by the adapter, images are pinned by digest, services behind
   profiles are left out, and host folders, devices, privileged mode, host namespaces and engine
   access are refused.
 - **FR-D05**: Each app's network is internal, with no route to the host (Docker 28's isolated gateway

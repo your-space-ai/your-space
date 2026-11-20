@@ -220,6 +220,8 @@ export interface ContainerSummary {
   State: string;
   Status: string;
   Labels: Record<string, string>;
+  /** The ID of the image it runs, `sha256:…`. */
+  ImageID?: string;
   /** The machine's ports a running container publishes. */
   Ports?: { IP?: string; PrivatePort: number; PublicPort?: number; Type: string }[];
 }

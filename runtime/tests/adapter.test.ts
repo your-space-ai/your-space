@@ -119,7 +119,8 @@ describe("Sure's own file", () => {
 });
 
 describe("publishing the interface on a port", () => {
-  const published = adapt({ ...spec, publish: { port: 3000, bind: "127.0.0.1" }, pins: { ...spec.pins, "busybox:latest": "sha256:eee" } }, sure);
+  const caddy = `sha256:${"f".repeat(64)}`;
+  const published = adapt({ ...spec, publish: { port: 3000, bind: "127.0.0.1" } }, sure, [], caddy);
   const services = published.adapted!.services as Record<string, Service>;
   const networks = published.adapted!.networks as Record<string, Record<string, unknown>>;
 
@@ -128,18 +129,36 @@ describe("publishing the interface on a port", () => {
     expect(published.services.find((s) => s.name === "db")!.published).toEqual([]);
   });
 
-  it("publishes only a forwarder of Your Space's, never an app's own service", () => {
+  it("publishes only a Caddy of Your Space's, never an app's own service", () => {
     expect(published.refusals).toEqual([]);
-    const forwarder = services["ys-publish"]!;
-    expect(forwarder.image).toBe("busybox@sha256:eee");
-    expect(forwarder.ports).toEqual([{ target: 8080, published: "3000", host_ip: "127.0.0.1", protocol: "tcp" }]);
-    expect(forwarder.command).toEqual(["nc", "-lk", "-p", "8080", "-e", "nc", "ys-sure-ui", "3000"]);
-    expect(forwarder).toMatchObject({ user: "65534:65534", read_only: true, cap_drop: ["ALL"], security_opt: ["no-new-privileges:true"] });
-    expect((forwarder.labels as Record<string, string>)["ai.your-space.role"]).toBe("publish");
+    const proxy = services["ys-publish"]!;
+    expect(proxy.ports).toEqual([{ target: 8080, published: "3000", host_ip: "127.0.0.1", protocol: "tcp" }]);
+    expect((proxy.labels as Record<string, string>)["ai.your-space.role"]).toBe("publish");
     for (const [name, service] of Object.entries(services)) if (name !== "ys-publish") expect(service.ports).toBeUndefined();
   });
 
-  it("keeps the app's services on the sealed network, and only the forwarder on the network Docker publishes from", () => {
+  it("runs Your Space's own Caddy image with the published Caddyfile, to the interface", () => {
+    const proxy = services["ys-publish"]!;
+    expect(proxy.image).toBe(caddy);
+    expect(proxy.command).toEqual(["caddy", "run", "--config", "/etc/caddy/published.caddyfile", "--adapter", "caddyfile"]);
+    expect(proxy.environment).toEqual({ YS_UPSTREAM: "ys-sure-ui:3000", XDG_DATA_HOME: "/tmp/data", XDG_CONFIG_HOME: "/tmp/config" });
+  });
+
+  it("is hardened: nobody's user, a read-only root with memory for Caddy's files, no capabilities, its own limits", () => {
+    expect(services["ys-publish"]).toMatchObject({
+      user: "65534:65534",
+      read_only: true,
+      tmpfs: ["/tmp"],
+      environment: { XDG_DATA_HOME: "/tmp/data", XDG_CONFIG_HOME: "/tmp/config" },
+      cap_drop: ["ALL"],
+      security_opt: ["no-new-privileges:true"],
+      mem_limit: 128 * 1024 * 1024,
+      cpus: 0.5,
+      restart: "unless-stopped",
+    });
+  });
+
+  it("keeps the app's services on the sealed network, and only Your Space's Caddy on the network Docker publishes from", () => {
     expect(services["ys-publish"]!.networks).toEqual({ app: {}, publish: {} });
     expect(networks.publish).toMatchObject({ driver: "bridge" });
     expect(networks.publish!.internal).toBeUndefined();
@@ -148,13 +167,16 @@ describe("publishing the interface on a port", () => {
   });
 
   it("adds nothing for an app that isn't published", () => {
-    const plain = adapt(spec, sure).adapted!;
+    const plain = adapt(spec, sure, [], caddy).adapted!;
     expect((plain.services as Record<string, Service>)["ys-publish"]).toBeUndefined();
     expect((plain.networks as Record<string, unknown>).publish).toBeUndefined();
   });
 
-  it("refuses to publish an app without an interface, and reserves the forwarder's name", () => {
-    expect(adapt({ ...spec, interface: null, publish: { port: 80, bind: "127.0.0.1" } }, sure).refusals.map((r) => r.setting)).toContain("publish");
+  it("refuses to publish an app without an interface, or without Your Space's Caddy, and reserves its name", () => {
+    expect(adapt({ ...spec, interface: null, publish: { port: 80, bind: "127.0.0.1" } }, sure, [], caddy).refusals.map((r) => r.setting)).toContain("publish");
+    const withoutCaddy = adapt({ ...spec, publish: { port: 3000, bind: "127.0.0.1" } }, sure);
+    expect(withoutCaddy.adapted).toBeNull();
+    expect(withoutCaddy.refusals).toEqual([{ service: "", setting: "publish", reason: "Your Space's Caddy isn't running, so the app can't be published until it is." }]);
     expect(adapt(spec, { services: { "ys-publish": { image: "busybox" } } }).refusals.map((r) => r.setting)).toContain("services");
   });
 
