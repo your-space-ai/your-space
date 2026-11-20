@@ -245,6 +245,18 @@ test("the owner publishes an app on a port of this machine, for their own proxy 
   // Your Space opens it at its link.
   await page.goto("/apps");
   await expect(page.locator('li[data-app="whoami"]').getByRole("link", { name: /^Open/ })).toHaveAttribute("href", "http://127.0.0.1:18781");
+  expect(((await (await page.request.get("/api/apps/whoami")).json()) as { origin: string }).origin).toBe("http://127.0.0.1:18781");
+  await page.goto("/apps/whoami");
+  await expect(page.getByRole("region", { name: "Status" }).getByRole("link", { name: "Open", exact: true })).toHaveAttribute("href", "http://127.0.0.1:18781");
+  // Its pane doesn't frame it: at its link the app is outside the gate and the proxy that lets Your
+  // Space frame an app, so it opens there in its own tab.
+  await page.goto("/open/whoami");
+  const pane = page.locator('section[data-pane="whoami"]');
+  await expect(pane).toContainText("opens there in its own tab");
+  await expect(pane.locator('[data-testid="app-pane"]')).toHaveCount(0);
+  const ownTab = pane.getByRole("link", { name: "Open in its own tab" });
+  await expect(ownTab).toHaveCount(2);
+  for (const link of await ownTab.all()) await expect(link).toHaveAttribute("href", "http://127.0.0.1:18781");
 
   // Stopping publishing closes the port, and the app is still at its own address.
   await page.goto("/apps/whoami");

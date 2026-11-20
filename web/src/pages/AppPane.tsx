@@ -1,6 +1,7 @@
 // An app in a pane (journey 002, US4, US10, FR-016): the app on its own origin inside Your Space's
 // layout, or two apps side by side on a wide screen. An app that can't run in a pane opens in its
-// own tab, behind the same access check.
+// own tab, behind the same access check. An app published with a link opens there, in its own tab
+// (decision 2026-11-19).
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { appsQuery, errorMessage, STATE_LABEL, type AppSummary } from "../apps-api.ts";
@@ -66,6 +67,10 @@ export function AppPane({ name, beside }: { name: string; beside?: string }) {
 }
 
 function Pane({ app, onClose }: { app: AppSummary; onClose?: () => void }) {
+  // At its link, the app is outside the gate and the proxy that let only Your Space frame it, so
+  // its own framing rules and cookies decide; its origin is the link.
+  const linked = Boolean(app.publish?.link);
+  const rel = linked ? "noreferrer" : "noopener";
   return (
     <section className="pane" aria-label={app.title} data-pane={app.name}>
       <header className="pane-bar">
@@ -75,7 +80,7 @@ function Pane({ app, onClose }: { app: AppSummary; onClose?: () => void }) {
         <Link to="/apps/$name" params={{ name: app.name }}>
           Details
         </Link>
-        <a href={app.origin} target="_blank" rel="noopener">
+        <a href={app.origin} target="_blank" rel={rel}>
           Open in its own tab
         </a>
         {onClose ? (
@@ -84,12 +89,16 @@ function Pane({ app, onClose }: { app: AppSummary; onClose?: () => void }) {
           </button>
         ) : null}
       </header>
-      {app.pane ? (
+      {app.pane && !linked ? (
         <iframe data-testid="app-pane" title={app.title} src={`${app.origin}/`} />
       ) : (
         <div className="page">
-          <p>{app.title} can't run inside Your Space, so it opens in its own tab.</p>
-          <a className="button" href={app.origin} target="_blank" rel="noopener">
+          <p>
+            {linked
+              ? `${app.title} is published at its own link, outside Your Space, so it opens there in its own tab.`
+              : `${app.title} can't run inside Your Space, so it opens in its own tab.`}
+          </p>
+          <a className="button" href={app.origin} target="_blank" rel={rel}>
             Open in its own tab
           </a>
         </div>

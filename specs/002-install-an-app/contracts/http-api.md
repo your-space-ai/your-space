@@ -35,7 +35,10 @@ Errors use journey 001's shape `{ "error": "<code>", "message": "…" }`.
 of this machine, for the owner's own proxy or tunnel, outside the gate. `port` defaults to the port
 the app's file publishes for its interface, else the interface's port; `bind` is an IP address,
 `127.0.0.1` by default; `link` is an `http` or `https` origin, or null. With a link, the settings a kit
-derives with `app_origin` and `app_host` take the link's values whenever the app starts.
+derives with `app_origin` and `app_host` take the link's values whenever the app starts, and the
+app's `origin` in `GET /api/apps` and `GET /api/apps/{name}` is the link; otherwise it is the app's
+built-in address, `<app>.<Your Space's address>`. The gate, `/open` and the handoff always use the
+built-in address.
 
 ## Commands
 

@@ -85,6 +85,14 @@ export function appAddress(publicUrl: string, name: string): { origin: string; h
   return { host, origin: `${url.protocol}//${host}${url.port ? `:${url.port}` : ""}` };
 }
 
+/**
+ * Where a person reaches an app: the owner's link when it is published with one (decision
+ * 2026-11-19), else its built-in address.
+ */
+export function appOrigin(publicUrl: string, row: { name: string; publish: Publish | null }): string {
+  return row.publish?.link ?? appAddress(publicUrl, row.name).origin;
+}
+
 /** The app named by a request's host, or undefined when the host isn't an app's. */
 export function appNameFromHost(publicUrl: string, hostHeader: string | undefined): string | undefined {
   if (!hostHeader) return undefined;
@@ -216,6 +224,7 @@ export class AppsService {
     this.config = config;
   }
 
+  /** The app's built-in address, under Your Space's own; the gate and the handoff work there. */
   address(name: string) {
     return appAddress(this.config.publicUrl, name);
   }
@@ -706,7 +715,7 @@ export class AppsService {
           title: r.title,
           state: r.state,
           stateReason: r.stateReason,
-          origin: this.address(r.name).origin,
+          origin: appOrigin(this.config.publicUrl, r),
           pane: r.pane,
           hasInterface: Boolean(r.interface),
           publish: r.publish ?? null,
@@ -732,7 +741,7 @@ export class AppsService {
     return {
       name: row.name,
       title: row.title,
-      origin: this.address(row.name).origin,
+      origin: appOrigin(this.config.publicUrl, row),
       state: row.state,
       stateReason: row.stateReason,
       desired: row.desired,

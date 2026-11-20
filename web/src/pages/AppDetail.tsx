@@ -89,15 +89,6 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
               <code>
                 {d.publish.bind.includes(":") ? `[${d.publish.bind}]` : d.publish.bind}:{d.publish.port}
               </code>
-              {d.publish.link ? (
-                <>
-                  {" "}
-                  for{" "}
-                  <a href={d.publish.link} target="_blank" rel="noreferrer">
-                    {d.publish.link}
-                  </a>
-                </>
-              ) : null}
             </dd>
           </>
         ) : null}
