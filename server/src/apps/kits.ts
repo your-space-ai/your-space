@@ -50,11 +50,12 @@ export function parseKit(text: string): Kit {
   if (!isObject(data)) throw new KitError("it isn't a YAML mapping.");
   for (const key of Object.keys(data)) if (!TOP_KEYS.has(key)) throw new KitError(`it has the unknown field ${key}.`);
   if (data.kit !== 1) throw new KitError("it is for a kit format this Your Space doesn't know (kit: 1).");
+  // A kit for a Compose file given on this machine (install-app --compose) may leave out source.
   const source = data.source;
-  if (!isObject(source) || typeof source.repo !== "string" || typeof source.path !== "string") {
+  if (source !== undefined && (!isObject(source) || typeof source.repo !== "string" || typeof source.path !== "string")) {
     throw new KitError("it must name the source repo and path it fits.");
   }
-  const kit: Kit = { kit: 1, source: { repo: source.repo, path: source.path } };
+  const kit: Kit = { kit: 1, ...(source !== undefined ? { source: { repo: source.repo as string, path: source.path as string } } : {}) };
   if (data.name !== undefined) {
     if (typeof data.name !== "string" || !NAME.test(data.name)) throw new KitError("its name must be lower-case letters, digits and dashes.");
     kit.name = data.name;
@@ -166,12 +167,16 @@ export class KitFileError extends Error {
 /**
  * The text of a kit on this machine, for the app at `link`: `-` reads standard input, a folder is a
  * kits repository with the app's kit at `apps/<owner>/<repo>.yaml`, and anything else is the file.
+ * An app from a Compose file on this machine has no link, so its kit can't come from a folder.
  */
-export function readLocalKit(kit: string, link: string, stdin: number | string = 0): string {
+export function readLocalKit(kit: string, link: string | null, stdin: number | string = 0): string {
   let path = kit;
   try {
     if (kit === "-") return readFileSync(stdin, "utf8");
-    if (statSync(kit).isDirectory()) path = join(kit, "apps", `${parseLink(link).repo.toLowerCase()}.yaml`);
+    if (statSync(kit).isDirectory()) {
+      if (link === null) throw new KitFileError(`${kit} is a folder. With --compose, give the kit file itself.`);
+      path = join(kit, "apps", `${parseLink(link).repo.toLowerCase()}.yaml`);
+    }
     if (statSync(path).size > MAX_FILE_BYTES) throw new KitFileError(`The kit file ${path} is larger than a kit should be.`);
     return readFileSync(path, "utf8");
   } catch (error) {
@@ -180,17 +185,31 @@ export function readLocalKit(kit: string, link: string, stdin: number | string =
   }
 }
 
+/** Whether a kit names this file on GitHub as the one it fits. */
+function fits(kit: Kit, repo: string, path: string): boolean {
+  return kit.source !== undefined && kit.source.repo.toLowerCase() === repo.toLowerCase() && kit.source.path === path;
+}
+
+/** Why a kit doesn't fit an app's file on GitHub. */
+function misfit(kit: Kit, repo: string, path: string): KitError {
+  return new KitError(
+    kit.source
+      ? `it is for ${kit.source.repo}/${kit.source.path}, not ${repo}/${path}.`
+      : "it names no source file, so it is for a Compose file given on this machine with install-app --compose.",
+  );
+}
+
 /**
  * A kit file the owner gives on this machine, such as one from a private kits repository, which Your
- * Space can't read from GitHub. It must fit the app's file, as a kit link must; the record keeps its
- * digest, since a path on the machine identifies nothing.
+ * Space can't read from GitHub. For an app's file on GitHub it must fit that file, as a kit link must.
+ * For a Compose file on this machine (`file` null), giving both in one command is what binds them, so
+ * its source isn't matched and may be left out. The record keeps its digest, since a path on the
+ * machine identifies nothing.
  */
-export function kitFromFile(text: string, repo: string, path: string): FoundKit {
+export function kitFromFile(text: string, file: { repo: string; path: string } | null): FoundKit {
   if (Buffer.byteLength(text) > MAX_FILE_BYTES) throw new KitError("the file is larger than a kit should be.");
   const kit = parseKit(text);
-  if (kit.source.repo.toLowerCase() !== repo.toLowerCase() || kit.source.path !== path) {
-    throw new KitError(`it is for ${kit.source.repo}/${kit.source.path}, not ${repo}/${path}.`);
-  }
+  if (file && !fits(kit, file.repo, file.path)) throw misfit(kit, file.repo, file.path);
   return { kit, source: `sha256:${createHash("sha256").update(text).digest("hex")}` };
 }
 
@@ -215,9 +234,9 @@ export async function findKit(
     throw error;
   }
   const kit = parseKit(file.text);
-  if (kit.source.repo.toLowerCase() !== repo.toLowerCase() || kit.source.path !== path) {
+  if (!fits(kit, repo, path)) {
     if (!kitLink) return null;
-    throw new KitError(`it is for ${kit.source.repo}/${kit.source.path}, not ${repo}/${path}.`);
+    throw misfit(kit, repo, path);
   }
   return { kit, source: file.pinnedLink };
 }

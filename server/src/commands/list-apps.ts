@@ -2,9 +2,10 @@
 // recorded it; the server checks it against the runtime every 15 seconds.
 import { parseArgs } from "node:util";
 import { errorFields, log } from "../log.ts";
+import { isLocalSource } from "../apps/local.ts";
 import { socketRuntime } from "../apps/runtime-client.ts";
 import { AppsService } from "../apps/service.ts";
-import { EXIT, openForCommand, output } from "./output.ts";
+import { EXIT, localFileLine, openForCommand, output } from "./output.ts";
 
 async function main(argv: string[]): Promise<number> {
   const { values } = parseArgs({ args: argv, options: { json: { type: "boolean", default: false } }, strict: true });
@@ -23,6 +24,8 @@ async function main(argv: string[]): Promise<number> {
       repo: d.source.repo,
       path: d.source.path,
       commit: d.source.commit,
+      // A GitHub link, or `sha256:<digest>` for a Compose file given on this machine.
+      source: d.source.link,
       origin: d.origin,
       publish: d.publish,
     }));
@@ -30,7 +33,7 @@ async function main(argv: string[]): Promise<number> {
     const published = (p: (typeof rows)[number]["publish"]) => (p ? `  published on ${p.bind}:${p.port}` : "");
     out.success({ ok: true, apps: rows, retained }, [
       ...(rows.length
-        ? rows.map((r) => `${r.name}  ${r.state}${r.reason ? ` (${r.reason})` : ""}  ${r.repo}/${r.path}@${r.commit.slice(0, 12)}  ${r.origin}${published(r.publish)}`)
+        ? rows.map((r) => `${r.name}  ${r.state}${r.reason ? ` (${r.reason})` : ""}  ${isLocalSource({ link: r.source }) ? localFileLine({ link: r.source, path: r.path }) : `${r.repo}/${r.path}@${r.commit.slice(0, 12)}`}  ${r.origin}${published(r.publish)}`)
         : ["No app is installed."]),
       ...retained.map((r) => `${r.name}  removed, data kept`),
     ]);

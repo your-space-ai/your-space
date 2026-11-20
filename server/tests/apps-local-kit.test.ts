@@ -49,12 +49,12 @@ describe("a kit file on this machine", () => {
   });
 
   it("is checked like a kit from GitHub, and recorded by its digest rather than its path", () => {
-    const found = kitFromFile(KIT, "ys-fixtures/private-app", "compose.yaml");
+    const found = kitFromFile(KIT, { repo: "ys-fixtures/private-app", path: "compose.yaml" });
     expect(found.kit).toMatchObject({ name: "private-app", outbound: ["example.com"] });
     expect(found.source).toMatch(/^sha256:[0-9a-f]{64}$/);
-    expect(() => kitFromFile(KIT, "ys-fixtures/private-app", "other.yaml")).toThrow(/not ys-fixtures\/private-app\/other.yaml/);
-    expect(() => kitFromFile(`${KIT}extra: 1\n`, "ys-fixtures/private-app", "compose.yaml")).toThrow(KitError);
-    expect(() => kitFromFile(`${KIT}#${"x".repeat(256 * 1024)}\n`, "ys-fixtures/private-app", "compose.yaml")).toThrow(/larger/);
+    expect(() => kitFromFile(KIT, { repo: "ys-fixtures/private-app", path: "other.yaml" })).toThrow(/not ys-fixtures\/private-app\/other.yaml/);
+    expect(() => kitFromFile(`${KIT}extra: 1\n`, { repo: "ys-fixtures/private-app", path: "compose.yaml" })).toThrow(KitError);
+    expect(() => kitFromFile(`${KIT}#${"x".repeat(256 * 1024)}\n`, { repo: "ys-fixtures/private-app", path: "compose.yaml" })).toThrow(/larger/);
   });
 });
 

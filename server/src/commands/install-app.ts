@@ -1,26 +1,41 @@
-// install-app <github-link> [--kit <link | file | folder | ->] [--reuse-data] [--publish [--port <n>]
-// [--bind <address>] [--link <url>]] [--json] (FR-009, contracts/http-api.md). Reviews the app,
-// installs it as the operator, and waits until it runs or the install fails.
+// install-app <github-link> [--kit <link | file | folder | ->] | --compose <file | -> [--kit <file | ->]
+// [--name <name>], then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]]
+// [--json] (FR-009, contracts/http-api.md). Reviews the app, installs it as the operator, and waits
+// until it runs or the install fails.
 import { parseArgs } from "node:util";
 import { operatorActorId } from "../actors.ts";
 import { errorFields, log } from "../log.ts";
 import { SourceError } from "../apps/github.ts";
 import { KitFileError, readLocalKit } from "../apps/kits.ts";
+import { ComposeFileError, isLocalSource, readLocalCompose, sourcesProblem } from "../apps/local.ts";
 import { socketRuntime } from "../apps/runtime-client.ts";
 import { AppError, AppsService } from "../apps/service.ts";
-import { EXIT, openForCommand, output, publishedLine } from "./output.ts";
+import { EXIT, localFileLine, openForCommand, output, publishedLine } from "./output.ts";
 
 const USAGE =
-  "Usage: install-app <github-link-to-compose-file> [--kit <link | file | folder | ->] [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]";
+  "Usage: install-app <github-link-to-compose-file> [--kit <link | file | folder | ->] | --compose <file | -> [--kit <file | ->] [--name <name>], then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]";
 
 async function main(argv: string[]): Promise<number> {
-  let values: { kit?: string; json?: boolean; help?: boolean; "reuse-data"?: boolean; publish?: boolean; port?: string; bind?: string; link?: string };
+  let values: {
+    kit?: string;
+    compose?: string;
+    name?: string;
+    json?: boolean;
+    help?: boolean;
+    "reuse-data"?: boolean;
+    publish?: boolean;
+    port?: string;
+    bind?: string;
+    link?: string;
+  };
   let positionals: string[];
   try {
     ({ values, positionals } = parseArgs({
       args: argv,
       options: {
         kit: { type: "string" },
+        compose: { type: "string" },
+        name: { type: "string" },
         "reuse-data": { type: "boolean", default: false },
         publish: { type: "boolean", default: false },
         port: { type: "string" },
@@ -43,10 +58,16 @@ async function main(argv: string[]): Promise<number> {
     out.failure({ ok: false, error: "usage", message: `--port, --bind and --link need --publish. ${USAGE}` }, `--port, --bind and --link need --publish.\n${USAGE}`);
     return EXIT.usage;
   }
-  if (values.help || positionals.length !== 1) {
+  if (values.help || positionals.length > 1) {
     if (values.help) out.success({ ok: true, usage: USAGE }, [USAGE]);
     else out.failure({ ok: false, error: "usage", message: USAGE }, USAGE);
     return values.help ? EXIT.ok : EXIT.usage;
+  }
+  const link = positionals[0];
+  const problem = sourcesProblem({ link, compose: values.compose, kit: values.kit, name: values.name });
+  if (problem) {
+    out.failure({ ok: false, error: "usage", message: `${problem} ${USAGE}` }, `${problem}\n${USAGE}`);
+    return EXIT.usage;
   }
 
   const opened = openForCommand(out);
@@ -56,9 +77,11 @@ async function main(argv: string[]): Promise<number> {
   try {
     // A kit link is read from GitHub; anything else is a kit on this machine.
     const kitLink = values.kit !== undefined && /^https?:\/\//i.test(values.kit) ? values.kit : undefined;
-    // The command runs in the server's container, so standard input (`--kit -`) is how a file on the host reaches it.
-    const kitText = values.kit !== undefined && !kitLink ? readLocalKit(values.kit, positionals[0]!) : undefined;
-    const review = await apps.preview(positionals[0]!, kitLink, kitText);
+    // The command runs in the server's container, so standard input (`--kit -` or `--compose -`) is
+    // how a file on the host reaches it.
+    const kitText = values.kit !== undefined && !kitLink ? readLocalKit(values.kit, link ?? null) : undefined;
+    const from = values.compose !== undefined ? readLocalCompose(values.compose) : link!;
+    const review = await apps.preview(from, kitLink, kitText, values.name);
     if (!review.ok) {
       const reasons = review.refusals.map((r) => `  - ${r.service ? `${r.service}: ` : ""}${r.reason}`);
       out.failure({ ok: false, error: "refused", name: review.name, refusals: review.refusals }, [`Your Space can't run ${review.title} as it is:`, ...reasons].join("\n"));
@@ -67,7 +90,7 @@ async function main(argv: string[]): Promise<number> {
     if (!out.json) {
       process.stderr.write(
         [
-          `${review.title} from ${review.source.repo} at ${review.source.commit.slice(0, 12)}${review.kit ? (kitText !== undefined ? ", with the kit file you gave" : ", with its installation kit") : ""}`,
+          `${review.title} from ${isLocalSource(review.source) ? localFileLine(review.source) : `${review.source.repo} at ${review.source.commit.slice(0, 12)}`}${review.kit ? (kitText !== undefined ? ", with the kit file you gave" : ", with its installation kit") : ""}`,
           ...review.services.map((s) => `  ${s.name}: ${s.image}${s.interface ? " (interface)" : ""}`),
           ...review.adaptations.map((a) => `  ${a.service}: ${a.detail}`),
           review.warning,
@@ -88,7 +111,15 @@ async function main(argv: string[]): Promise<number> {
       return EXIT.notApplicable;
     }
     out.success(
-      { ok: true, name, state: detail.state, origin: detail.origin, publish: detail.publish, commit: review.source.commit },
+      {
+        ok: true,
+        name,
+        state: detail.state,
+        origin: detail.origin,
+        publish: detail.publish,
+        // A Compose file on this machine has no commit; its digest identifies it.
+        ...(isLocalSource(review.source) ? { source: review.source.link } : { commit: review.source.commit }),
+      },
       [
         `Installed ${review.title} (${detail.state}). Open it from Your Space, or at ${detail.origin}`,
         ...(detail.publish ? [publishedLine(review.title, detail.publish)] : []),
@@ -98,6 +129,10 @@ async function main(argv: string[]): Promise<number> {
   } catch (error) {
     if (error instanceof KitFileError || error instanceof SourceError) {
       out.failure({ ok: false, error: "kit_file", message: error.message }, error.message);
+      return EXIT.notApplicable;
+    }
+    if (error instanceof ComposeFileError) {
+      out.failure({ ok: false, error: "compose_file", message: error.message }, error.message);
       return EXIT.notApplicable;
     }
     if (error instanceof AppError) {

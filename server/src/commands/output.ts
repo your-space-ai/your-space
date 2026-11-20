@@ -62,3 +62,8 @@ export function publishedLine(title: string, publish: Publish): string {
     ? `${title} is published on ${port}. Your proxy or tunnel sends ${publish.link} there.`
     : `${title} is published on ${port}. Give it a link with --link once your proxy or tunnel reaches it.`;
 }
+
+/** A Compose file given on this machine, as the commands name it: by its file name, if it had one, and its digest. */
+export function localFileLine(source: { link: string; path: string }): string {
+  return `${source.path || "a Compose file"} on this machine (${source.link.slice(0, 19)})`;
+}
