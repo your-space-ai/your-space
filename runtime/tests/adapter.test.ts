@@ -119,7 +119,7 @@ describe("Sure's own file", () => {
 });
 
 describe("publishing the interface on a port", () => {
-  const caddy = { image: `sha256:${"f".repeat(64)}`, origin: "https://space.example.com" };
+  const caddy = `sha256:${"f".repeat(64)}`;
   const published = adapt({ ...spec, publish: { port: 3000, bind: "127.0.0.1" } }, sure, [], caddy);
   const services = published.adapted!.services as Record<string, Service>;
   const networks = published.adapted!.networks as Record<string, Record<string, unknown>>;
@@ -137,14 +137,11 @@ describe("publishing the interface on a port", () => {
     for (const [name, service] of Object.entries(services)) if (name !== "ys-publish") expect(service.ports).toBeUndefined();
   });
 
-  it("runs Your Space's own Caddy image with the published Caddyfile, to the interface, framed only by Your Space's origin", () => {
+  it("runs Your Space's own Caddy image with the published Caddyfile, to the interface", () => {
     const proxy = services["ys-publish"]!;
-    expect(proxy.image).toBe(caddy.image);
+    expect(proxy.image).toBe(caddy);
     expect(proxy.command).toEqual(["caddy", "run", "--config", "/etc/caddy/published.caddyfile", "--adapter", "caddyfile"]);
-    expect(proxy.environment).toMatchObject({ YS_UPSTREAM: "ys-sure-ui:3000", YS_ORIGIN: "https://space.example.com" });
-    expect((proxy.labels as Record<string, string>)["ai.your-space.frame-origin"]).toBe("https://space.example.com");
-    // Not the app's outbound proxy: it only answers on the machine's port.
-    expect(proxy.environment.HTTP_PROXY).toBeUndefined();
+    expect(proxy.environment).toEqual({ YS_UPSTREAM: "ys-sure-ui:3000", XDG_DATA_HOME: "/tmp/data", XDG_CONFIG_HOME: "/tmp/config" });
   });
 
   it("is hardened: nobody's user, a read-only root with memory for Caddy's files, no capabilities, its own limits", () => {

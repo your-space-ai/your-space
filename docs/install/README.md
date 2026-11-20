@@ -399,18 +399,13 @@ address to. Choose it when installing the app, or later on the app's page, under
   network the machine is on.
 - **Link:** the address you reach the app at through your proxy or tunnel, such as
   `https://sure.example.com`. The app's own address settings, such as the URL it puts in its links,
-  use it, and Your Space opens the app there, in its pane. A changed link reaches them when the app
-  restarts, which saving does.
+  use it, and Your Space opens the app there, in its own tab. A changed link reaches them when the
+  app restarts, which saving does.
 
-Your Space's own Caddy answers on the port and passes each request to the app, with the `Host` and
-`X-Forwarded-*` headers your proxy sends, so the app sees the address you reached it at. It lets
-only Your Space frame the app, even an app that refuses to be framed, and changes nothing else.
-
-In the pane, the app keeps its sign-in only if its link and Your Space's address are the same site:
-two names under one domain (`space.example.com` and `sure.example.com`), or two names on one tailnet
-(`myserver.tail1234.ts.net` and `sure.tail1234.ts.net`). Browsers block an app's cookies in a pane
-from another site, so there, use **Open in its own tab**. A plain `http://` link doesn't show inside
-Your Space over HTTPS, and opens in its own tab.
+A Caddy of Your Space's answers on the port and passes each request to the app with its `Host`
+header, so the app sees the address you reached it at. The `X-Forwarded-*` headers your proxy sends
+reach the app when the proxy connects from this machine, your local network or your tailnet; from
+anywhere else, Caddy sets them itself. The app's answers come back as the app sent them.
 
 A published port isn't behind Your Space's sign-in: anyone who can reach it reaches the app, and only
 the app's own sign-in protects it. The app's own services still publish nothing, and its built-in

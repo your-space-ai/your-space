@@ -15,6 +15,5 @@ RUN npm run build --workspace web
 FROM caddy:2.11
 COPY --from=build /app/web/dist /srv
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
-# The framing rules both Caddyfiles import, and the Caddyfile of a published app's own Caddy, which
-# runs this image too.
-COPY deploy/frame.caddyfile deploy/published.caddyfile /etc/caddy/
+# The Caddyfile of a published app's own Caddy, which runs this image too.
+COPY deploy/published.caddyfile /etc/caddy/published.caddyfile

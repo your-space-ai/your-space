@@ -1,5 +1,6 @@
 // Journey 002: install apps from their own Compose files and use them in Your Space. A stand-in for
 // GitHub serves the fixture apps (e2e/github); Sure and Twenty run by hand (verification record).
+import { Agent, request } from "node:http";
 import { createServer } from "node:net";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { evidence } from "./helpers/evidence.ts";
@@ -37,6 +38,19 @@ async function inspect(container: string, format: string): Promise<string> {
 /** Runs a shell command inside an app's container. */
 async function inApp(container: string, script: string): Promise<string> {
   return (await docker(["exec", container, "sh", "-c", script])).stdout.trim();
+}
+
+/** A GET on a connection of its own, or on one of `agent`'s: the status, and whether it reused a connection. */
+function get(url: string, agent: Agent | false = false): Promise<{ status: number; reused: boolean }> {
+  return new Promise((resolve, reject) => {
+    const req = request(url, { agent, timeout: 30_000 }, (res) => {
+      res.resume();
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, reused: req.reusedSocket }));
+    });
+    req.on("timeout", () => req.destroy(new Error("timed out")));
+    req.on("error", reject);
+    req.end();
+  });
 }
 
 test("the owner installs an app from its link, after a review and a trust warning", async ({ page, browser }, testInfo) => {
@@ -247,20 +261,30 @@ test("the owner publishes an app on a port of this machine, for their own proxy 
   expect(await inspect("ys-whoami-web-1", "{{json .HostConfig.PortBindings}}")).toBe("{}");
   expect(await inspect("ys-whoami-ys-publish-1", "{{json .HostConfig.PortBindings}}")).toContain('"HostIp":"127.0.0.1","HostPort":"18781"');
 
-  // Your Space opens it in its pane, which frames the link.
+  // A browser's first visit through the owner's proxy asks for many files at once: every request is
+  // answered.
+  const burst = await Promise.allSettled(Array.from({ length: 200 }, (_, i) => get(`http://127.0.0.1:18781/file-${i}`)));
+  const failed = burst.flatMap((r, i) => (r.status === "fulfilled" && r.value.status === 200 ? [] : [`${i}: ${r.status === "fulfilled" ? r.value.status : String(r.reason)}`]));
+  expect(failed).toEqual([]);
+
+  // Your Space opens it at its link.
+  await page.goto("/apps");
+  await expect(page.locator('li[data-app="whoami"]').getByRole("link", { name: /^Open/ })).toHaveAttribute("href", "http://127.0.0.1:18781");
   expect(((await (await page.request.get("/api/apps/whoami")).json()) as { origin: string }).origin).toBe("http://127.0.0.1:18781");
   await page.goto("/apps/whoami");
-  await expect(page.getByRole("region", { name: "Status" }).getByRole("link", { name: "Open", exact: true })).toHaveAttribute("href", /\/open\/whoami$/);
-  await page.goto("/apps");
-  await page.locator('li[data-app="whoami"]').getByRole("link", { name: /^Open/ }).click();
-  await expect(page).toHaveURL(/\/open\/whoami$/);
+  await expect(page.getByRole("region", { name: "Status" }).getByRole("link", { name: "Open", exact: true })).toHaveAttribute("href", "http://127.0.0.1:18781");
+  // Its pane doesn't frame it: at its link the app is outside the gate and the proxy that lets Your
+  // Space frame an app, so it opens there in its own tab.
+  await page.goto("/open/whoami");
   const pane = page.locator('section[data-pane="whoami"]');
-  await expect(pane.locator('[data-testid="app-pane"]')).toHaveAttribute("src", "http://127.0.0.1:18781/");
-  await expect(page.frameLocator('[data-testid="app-pane"]').locator("body")).toContainText("Host: 127.0.0.1:18781", { timeout: 30_000 });
-  await expect(pane.getByRole("link", { name: "Open in its own tab" })).toHaveAttribute("href", "http://127.0.0.1:18781");
+  await expect(pane).toContainText("opens there in its own tab");
+  await expect(pane.locator('[data-testid="app-pane"]')).toHaveCount(0);
+  const ownTab = pane.getByRole("link", { name: "Open in its own tab" });
+  await expect(ownTab).toHaveCount(2);
+  for (const link of await ownTab.all()) await expect(link).toHaveAttribute("href", "http://127.0.0.1:18781");
 
-  // An app that refuses to be framed shows in its pane too: its Caddy lets only Your Space's origin,
-  // and the app itself, frame it, and leaves the rest of the app's policy alone.
+  // An app that refuses to be framed still refuses at its published port: Your Space's Caddy passes
+  // the app's responses on as the app sent them.
   const installed = await serverCommand("install-app", [NOFRAME, "--publish", "--port", "18783", "--link", "http://127.0.0.1:18783"]);
   expect(installed.code, installed.stderr).toBe(0);
   let headers: { name: string; value: string }[] = [];
@@ -270,14 +294,22 @@ test("the owner publishes an app on a port of this machine, for their own proxy 
     headers = answer.headersArray();
   }).toPass({ timeout: 30_000 });
   const values = (name: string) => headers.filter((h) => h.name.toLowerCase() === name).map((h) => h.value);
-  expect(values("x-frame-options")).toEqual([]);
-  const policies = values("content-security-policy");
-  const ancestors = policies.flatMap((p) => p.split(";").map((d) => d.trim()).filter((d) => d.startsWith("frame-ancestors")));
-  expect(ancestors.length).toBeGreaterThan(0);
-  for (const directive of ancestors) expect(directive).toBe("frame-ancestors http://space.localhost:* 'self'");
-  expect(policies.some((p) => p.includes("default-src 'self'"))).toBe(true);
+  expect(values("x-frame-options")).toEqual(["DENY"]);
+  expect(values("content-security-policy")).toEqual(["default-src 'self'; frame-ancestors 'none'"]);
   await page.goto("/open/noframe");
-  await expect(page.frameLocator('[data-testid="app-pane"]').getByRole("heading", { name: "Refuses to be framed" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('section[data-pane="noframe"]')).toContainText("opens there in its own tab");
+  await expect(page.locator('[data-testid="app-pane"]')).toHaveCount(0);
+
+  // This app closes its connection after each answer. Caddy still keeps the visitor's connection open,
+  // and it works after a pause.
+  const agent = new Agent({ keepAlive: true, maxSockets: 1 });
+  try {
+    expect((await get("http://127.0.0.1:18783/", agent)).status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    expect(await get("http://127.0.0.1:18783/", agent)).toEqual({ status: 200, reused: true });
+  } finally {
+    agent.destroy();
+  }
 
   // It goes again, with its data, so the journeys after this one find the apps they expect.
   await page.goto("/apps/noframe");

@@ -67,15 +67,6 @@ export const PUBLISH_SERVICE = "ys-publish";
 export const PUBLISH_TARGET = 8080;
 const PUBLISH_MEMORY = 128 * 1024 * 1024;
 const PUBLISH_CPUS = 0.5;
-/** Labels a published app's Caddy with the origin it lets frame the app. */
-export const FRAME_ORIGIN_LABEL = "ai.your-space.frame-origin";
-
-/** Your Space's own Caddy: the image a published app's Caddy runs too, and the origin it lets frame apps. */
-export interface OwnCaddy {
-  /** The image's ID, `sha256:…`. */
-  image: string;
-  origin: string;
-}
 
 /** Kept as the app wrote them. */
 const ALLOWED = new Set([
@@ -355,10 +346,10 @@ export function egressConfig(hosts: string[]): string {
 }
 
 /**
- * Checks the resolved file and, when nothing is refused, builds the file to run. A published app needs
- * Your Space's own Caddy, whose image and origin its own Caddy takes.
+ * Checks the resolved file and, when nothing is refused, builds the file to run. A published app's own
+ * Caddy runs the image of Your Space's Caddy, `caddyImage` (its ID, `sha256:…`).
  */
-export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] = [], caddy?: OwnCaddy): CheckResult {
+export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] = [], caddyImage?: string): CheckResult {
   const refusals: Refusal[] = [];
   const adaptations: Adaptation[] = [];
   const services = isObject(resolved.services) ? resolved.services : {};
@@ -386,7 +377,7 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
   if (spec.publish && !spec.interface) {
     refusals.push({ service: "", setting: "publish", reason: "Only an app with an interface can be published on a port." });
   }
-  if (spec.publish && spec.interface && !caddy) {
+  if (spec.publish && spec.interface && !caddyImage) {
     refusals.push({ service: "", setting: "publish", reason: "Your Space's Caddy isn't running, so the app can't be published until it is." });
   }
 
@@ -474,17 +465,16 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
     },
     egress: { driver: "bridge", labels },
   };
-  if (spec.publish && spec.interface && caddy) {
+  if (spec.publish && spec.interface && caddyImage) {
     // The app's own services stay on the sealed network, where Docker publishes no port. A Caddy of
-    // Your Space's, from its own image and with its framing rules (deploy/published.caddyfile), joins
-    // that network and one of its own, listens on the machine's port, and passes every request to the
-    // interface, so the owner's proxy or tunnel reaches the app there and Your Space can frame it.
+    // Your Space's, from its own image (deploy/published.caddyfile), joins that network and one of its
+    // own, listens on the machine's port, and passes every request to the interface, so the owner's
+    // proxy or tunnel reaches the app there. It passes the app's responses on unchanged.
     outServices[PUBLISH_SERVICE] = {
-      image: caddy.image,
+      image: caddyImage,
       command: ["caddy", "run", "--config", "/etc/caddy/published.caddyfile", "--adapter", "caddyfile"],
       environment: {
         YS_UPSTREAM: `${spec.project}-ui:${spec.interface.port}`,
-        YS_ORIGIN: caddy.origin,
         // Caddy keeps its few files in memory: the root is read-only.
         XDG_DATA_HOME: "/tmp/data",
         XDG_CONFIG_HOME: "/tmp/config",
@@ -496,7 +486,7 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
       cap_drop: ["ALL"],
       networks: { app: {}, publish: {} },
       ports: [{ target: PUBLISH_TARGET, published: String(spec.publish.port), host_ip: spec.publish.bind, protocol: "tcp" }],
-      labels: { ...labels, "ai.your-space.role": "publish", [FRAME_ORIGIN_LABEL]: caddy.origin },
+      labels: { ...labels, "ai.your-space.role": "publish" },
       mem_limit: PUBLISH_MEMORY,
       cpus: PUBLISH_CPUS,
       oom_score_adj: 500,
@@ -506,7 +496,7 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
     adaptations.push({
       service: PUBLISH_SERVICE,
       kind: "added",
-      detail: `Added Your Space's Caddy, which publishes the app's interface on ${spec.publish.bind}:${spec.publish.port} and lets only Your Space frame it.`,
+      detail: `Added Your Space's Caddy, which publishes the app's interface on ${spec.publish.bind}:${spec.publish.port}.`,
     });
   }
 

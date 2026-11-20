@@ -647,9 +647,9 @@ export class AppsService {
         await this.startJob(row.id, "apply").catch(() => undefined);
         continue;
       }
-      // A published app's Caddy follows Your Space's own after an update or a new address. Only it is
-      // recreated; the app's services keep running. Once per app while this server runs, so a start
-      // that fails isn't repeated.
+      // A published app's Caddy follows Your Space's own after an update, and replaces the port
+      // forwarder an earlier Your Space ran. Only it is recreated; the app's services keep running.
+      // Once per app while this server runs, so a start that fails isn't repeated.
       if (row.desired === "running" && running && row.publish && services.some((s) => s.role === "publish" && s.outdated) && !this.renewed.has(row.id)) {
         this.renewed.add(row.id);
         log("info", "apps.renewing_proxy", { app: row.name });

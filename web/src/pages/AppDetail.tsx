@@ -118,7 +118,11 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
         ) : null}
       </dl>
       <div className="actions">
-        {d.interface && d.state !== "removed" ? (
+        {d.interface && d.state !== "removed" && d.publish?.link ? (
+          <a className="button" href={d.publish.link} target="_blank" rel="noreferrer">
+            Open
+          </a>
+        ) : d.interface && d.state !== "removed" ? (
           <Link className="button" to="/open/$name" params={{ name: d.name }} search={{}}>
             Open
           </Link>

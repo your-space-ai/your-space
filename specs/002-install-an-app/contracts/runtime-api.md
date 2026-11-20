@@ -23,10 +23,9 @@ An **app spec**, sent with every request that resolves or applies an app:
 
 `publish` (optional, decision 2026-11-19) adds `ys-publish`, a Caddy of Your Space's that runs Your
 Space's own Caddy's image with `deploy/published.caddyfile`. It listens on `bind:port` of this
-machine and proxies to the interface, and lets only Your Space's origin (as Your Space's own Caddy
-has it) and the app itself frame the app; the app's own services publish nothing. Checking or
-applying a published app while Your Space's Caddy isn't running is refused; an apply waits up to
-two minutes for it first.
+machine, proxies to the interface, and passes the app's responses on unchanged; the app's own
+services publish nothing. Checking or applying a published app while Your Space's Caddy isn't
+running is refused; an apply waits up to two minutes for it first.
 
 | Method and path | Body | Answer |
 | --- | --- | --- |
@@ -35,7 +34,7 @@ two minutes for it first.
 | `POST /apply` | app spec | NDJSON stream: `{ "step": "pull", "image" }`, `{ "step": "start" }`, …, then `{ "done": true }` or `{ "error": "…" }`; a published port something else took since it was checked gives an error naming it |
 | `POST /apps/{project}/down` | | Removes containers and networks, keeps volumes |
 | `DELETE /apps/{project}/volumes` | | Removes the app's volumes |
-| `GET /apps` | | `[{ project, app, services: [{ name, role, state, health, exitCode, oomKilled, outdated }] }]` for every app this installation manages; `role` is `app`, `egress` or `publish`; `outdated` marks a `publish` service that doesn't run Your Space's Caddy's current image or lets another origin frame the app |
+| `GET /apps` | | `[{ project, app, services: [{ name, role, state, health, exitCode, oomKilled, outdated }] }]` for every app this installation manages; `role` is `app`, `egress` or `publish`; `outdated` marks a `publish` service that doesn't run Your Space's Caddy's current image |
 | `GET /apps/{project}/logs?service=&tail=` | | `{ lines: [...] }` |
 | `GET /apps/{project}/stats` | | `{ services: [{ name, memory, memoryLimit, cpuPercent }] }` |
 | `GET /apps/{project}/denials` | | `{ hosts: [{ host, attempts, lastSeen }] }` from the egress proxy's log |

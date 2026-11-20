@@ -25,9 +25,6 @@
 	}
 }
 
-# only_framed_by: the framing rules a published app's Caddy uses too.
-import frame.caddyfile
-
 (app) {
 	encode
 
@@ -73,7 +70,9 @@ import frame.caddyfile
 			header_up -X-YS-Upstream
 			header_up Cookie "^(__Host-)?ys-pass=[^;]*;?\s*" ""
 			header_up Cookie ";\s*(__Host-)?ys-pass=[^;]*" ""
-			import only_framed_by {$YS_ORIGIN}
+			header_down -X-Frame-Options
+			header_down Content-Security-Policy "frame-ancestors[^;]*" "frame-ancestors {$YS_ORIGIN}"
+			header_down +Content-Security-Policy "frame-ancestors {$YS_ORIGIN}"
 			header_down Set-Cookie "(?i);\s*domain=[^;]*" ""
 		}
 	}

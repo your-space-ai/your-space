@@ -53,7 +53,7 @@ export interface ServiceState {
   oomKilled?: boolean;
   /** A service that runs once, such as a migration, and finished. */
   completed?: boolean;
-  /** A published app's Caddy that doesn't run as Your Space's own Caddy now does; the next start renews it. */
+  /** A published app's Caddy that doesn't run Your Space's own Caddy's current image; the next start renews it. */
   outdated?: boolean;
 }
 

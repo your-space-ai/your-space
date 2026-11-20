@@ -81,19 +81,14 @@ describe("a port check's request", () => {
 });
 
 describe("a published app's Caddy", () => {
-  const caddy = { image: IMAGE, origin: "https://space.example.com" };
-  const running = (image: string, origin?: string) => ({
-    ...container("ys-sure-ys-publish-1", [], { ...own, "ai.your-space.role": "publish", ...(origin ? { "ai.your-space.frame-origin": origin } : {}) }),
-    ImageID: image,
+  const running = (image: string) => ({ ...container("ys-sure-ys-publish-1", [], { ...own, "ai.your-space.role": "publish" }), ImageID: image });
+
+  it("is current while it runs Your Space's own Caddy's image", () => {
+    expect(proxyOutdated(running(IMAGE), IMAGE)).toBe(false);
   });
 
-  it("is current while it runs Your Space's own Caddy's image and lets its origin frame the app", () => {
-    expect(proxyOutdated(running(IMAGE, "https://space.example.com"), caddy)).toBe(false);
-  });
-
-  it("is outdated after Your Space is updated or moved, or when it is the port forwarder an earlier Your Space ran", () => {
-    expect(proxyOutdated(running(`sha256:${"a".repeat(64)}`, "https://space.example.com"), caddy)).toBe(true);
-    expect(proxyOutdated(running(IMAGE, "http://space.localhost:*"), caddy)).toBe(true);
-    expect(proxyOutdated(running(`sha256:${"b".repeat(64)}`), caddy)).toBe(true);
+  it("is outdated after Your Space is updated, or when it is the port forwarder an earlier Your Space ran", () => {
+    // Your Space's previous image, or BusyBox's, which the forwarder ran.
+    expect(proxyOutdated(running(`sha256:${"a".repeat(64)}`), IMAGE)).toBe(true);
   });
 });

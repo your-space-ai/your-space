@@ -748,21 +748,17 @@ app:
   never looks for or suggests one.
 - The app's own services stay on its sealed network, where Docker publishes no port. A Caddy of
   Your Space's, `ys-publish`, joins that network and one of its own, listens on the port, and
-  proxies every request to the interface. It passes on the original `Host`, the owner's proxy's
-  `X-Forwarded-*` headers as that proxy sent them (adding the connecting address to
-  `X-Forwarded-For`, and the others only when the proxy sent none), WebSockets, uploads of any size
-  and streamed responses. It trusts those headers from whatever reaches the port, as the app would
-  with nothing in between: who can reach the port is the owner's network setup's choice. On the way
-  back it removes the app's
-  `X-Frame-Options` and sets the policy's `frame-ancestors` to Your Space's origin and the app's
-  own, with the same rules Your Space's own Caddy applies to an app's built-in address; nothing else
-  in the app's responses changes. There is no gate on this port and the app keeps its own sign-in.
+  proxies every request to the interface. It passes on the original `Host`, WebSockets, uploads of
+  any size and streamed responses, and passes the app's responses back as the app sent them, its
+  framing headers included: a published app is proxied, never re-framed. The owner's proxy's
+  `X-Forwarded-*` headers reach the app as that proxy sent them when it connects from this machine,
+  a private network or Tailscale's addresses (Caddy adds the connecting address to
+  `X-Forwarded-For`, and the others only when the proxy sent none); from any other address, Caddy
+  sets them itself.
 - The owner gives the link they reach the app at. The settings a kit derives from the app's address
   (`app_origin`, `app_host`) use the link instead of `<app>.<Your Space's address>`, and follow a
   changed link when the app next starts. The owner can't set those settings by hand, so nothing they
-  set changes. Your Space opens a published app at its link, in its pane, and in its own tab on
-  request. Inside the pane the app keeps its cookies only when its link and Your Space's address are
-  the same site, as two names on one domain or one tailnet are; otherwise it works in its own tab.
+  set changes. Your Space opens a published app at its link, in its own tab.
 - A published port is outside Your Space's access gate: whoever reaches it reaches the app, and only
   the app's own sign-in protects it. That is why it listens on this machine only by default.
 - On Tailscale, each published app needs its own Tailscale Service (`svc:plane` for
@@ -777,17 +773,35 @@ already do it. This supersedes, for apps, the 2026-11-17 statement that apps ove
 unsupported, and narrows journey 002's FR-015: apps still publish no ports of their own, and only
 the owner can publish an app's interface. Constitution 1.5.0 amends principle II to match.
 
-**Decision update (2026-11-19):** A published app shows in its pane. This replaces the first
-choice, a plain TCP forwarder, which can't change the framing headers many apps send. Each
-published app gets a Caddy of its own rather than a port on Your Space's Caddy: Docker can't add a
-port to a running container, so the shared Caddy would be recreated, interrupting Your Space and
-every app, each time an app's publishing changed, and its ports would have to be written into Your
-Space's own Compose setup. The app's Caddy runs Your Space's own web image, hardened (user 65534, a
-read-only root, no capabilities, its own memory and CPU limits), with a Caddyfile that imports the
-same framing rules as Your Space's own; the runtime manager takes the image and the origin from Your
-Space's Caddy, so both always agree. When Your Space is updated or moves to another address, the
-server restarts each published app's Caddy to match, and only that container. The port check, the
-start-time error and the owner's choice of port stay as they were.
+**Decision update (2026-11-20):** A Caddy of Your Space's serves a published app's port, in place of
+the first choice, a plain TCP forwarder. The forwarder's queue held a single waiting connection:
+when a browser's first visit through the owner's proxy asked for a couple of hundred files at once,
+most of the requests failed. And when the app closed an idle kept-alive connection, the visitor's
+next request on it could fail. Caddy accepts every connection, keeps the visitor's open, and opens
+its own to the app as it needs them.
+
+- Each published app gets a Caddy of its own rather than a port on Your Space's Caddy. Docker can't
+  add a port to a running container, so the shared Caddy would be recreated, interrupting Your
+  Space and every app, each time an app's publishing changed, and its ports would have to be written
+  into Your Space's own Compose setup.
+- The app's Caddy runs Your Space's own web image, which the runtime manager takes from Your Space's
+  Caddy, so nothing new is downloaded. It is hardened: user 65534, a read-only root, no
+  capabilities, no new privileges, and its own memory and CPU limits.
+- It changes nothing in the app's responses. Your Space's own Caddy replaces an app's framing
+  headers only at the app's built-in address, behind the access gate. Replacing an app's protection
+  against being framed on a port outside the gate is too much to do for every published app, so a
+  published app still opens at its link, in its own tab. Letting the owner choose, per app, that Your
+  Space frames a published app is possible later work.
+- It trusts forwarded headers only from loopback and private addresses (`127.0.0.0/8`, `::1`,
+  `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) and from Tailscale's
+  (`100.64.0.0/10`, the shared address space). A proxy on this machine reaches the port through
+  Docker's bridge, so from a private address; one on the local network or the tailnet connects from
+  its own. A visitor who reaches the port from anywhere else can't choose the address and scheme
+  the app sees. A proxy that connects from a public address isn't trusted either: the app then sees
+  the proxy's address and `http`.
+- When Your Space is updated, and for an app the forwarder published, the server recreates the
+  app's `ys-publish` once, and only that container. The port check, the start-time error and the
+  owner's choice of port stay as they were.
 
 Embedding and routing are separate decisions from how an app interprets authenticated identity and roles.
 Frontend controls may reflect granted access, but hiding a control is not authorization enforcement.
@@ -989,7 +1003,7 @@ app roles. The [spec map](../spec-map.md) and [roadmap](../roadmap.md) follow it
 | Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
 | Public launch scope | A working core experience before publication is the direction. The pre-public scope was settled in the 2026-11-02 interview, and every pre-public roadmap item has a High, Medium, or Low priority; Windows support and PWA installation are Low. Detailed release criteria remain to be defined. See [public release readiness](../public-release-readiness.md). |
-| App UI execution | Apps open in panes, side by side on larger screens: cross-origin iframes in the web client and PWA, native views in the desktop app. Each app is at `<app>.<Your Space's address>` behind Caddy's `forward_auth` gate, with no port fallback; Caddy replaces framing headers, and apps keep their own sign-in (2026-11-14). The platform session is a `__Host-` cookie over HTTPS and host-only on the plain-HTTP local setup, where WebKit opens apps in their own tab. An app can also be published on a port of this machine for the owner's own proxy or tunnel, and is then opened at the owner's link, outside the gate, in a pane that Caddy lets only Your Space frame (2026-11-19); on Tailscale the owner creates one Tailscale Service per published app. Shell-to-app messages remain open; Safari on macOS is still to check. |
+| App UI execution | Apps open in panes, side by side on larger screens: cross-origin iframes in the web client and PWA, native views in the desktop app. Each app is at `<app>.<Your Space's address>` behind Caddy's `forward_auth` gate, with no port fallback; Caddy replaces framing headers, and apps keep their own sign-in (2026-11-14). The platform session is a `__Host-` cookie over HTTPS and host-only on the plain-HTTP local setup, where WebKit opens apps in their own tab. An app can also be published on a port of this machine for the owner's own proxy or tunnel, and is then opened at the owner's link, outside the gate (2026-11-19); on Tailscale the owner creates one Tailscale Service per published app. Shell-to-app messages remain open; Safari on macOS is still to check. |
 | Project license | AGPL-3.0 for Your Space and Apache-2.0 for the SDKs, with a "Your Space" trademark and a contributor license agreement, all in place and reviewed by a lawyer before publication. Trademark filing details and agreement wording remain open. |
 | Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off, apart from the built-in proxy's certificate requests for an owner-configured domain, which are part of HTTPS setup (2026-11-03). Future reporting must be opt-in; opt-out is prohibited. |
 | External apps | Apps can be managed or hosted elsewhere. An app someone already runs is added through a connector that connects out to Your Space and plugs into the app endpoint (2026-11-14). The connector, and whether such an app must also verify Your Space identity, need definition in a later specification. |
