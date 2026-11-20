@@ -163,11 +163,15 @@ export async function ownCaddy(waitMs = 0): Promise<OwnCaddy | undefined> {
   const until = Date.now() + waitMs;
   for (;;) {
     const id = await installationContainer("caddy");
-    if (id) {
-      const detail = await engineJson<{ Image: string; Config: { Env?: string[] | null } }>("GET", `/containers/${id}/json`);
-      const origin = (detail.Config.Env ?? []).find((e) => e.startsWith("YS_ORIGIN="))?.slice("YS_ORIGIN=".length);
-      if (origin) return { image: detail.Image, origin };
-    }
+    // Compose can remove the container between the list and the inspection while it recreates Caddy.
+    const detail = id
+      ? await engineJson<{ Image: string; Config: { Env?: string[] | null } }>("GET", `/containers/${id}/json`).catch((error: unknown) => {
+          if (error instanceof EngineError && error.status === 404) return undefined;
+          throw error;
+        })
+      : undefined;
+    const origin = (detail?.Config.Env ?? []).find((e) => e.startsWith("YS_ORIGIN="))?.slice("YS_ORIGIN=".length);
+    if (detail && origin) return { image: detail.Image, origin };
     if (Date.now() >= until) return undefined;
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
