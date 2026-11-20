@@ -94,10 +94,19 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
         ) : null}
         <dt>Source</dt>
         <dd>
-          <a href={`https://github.com/${d.source.repo}/blob/${d.source.commit}/${d.source.path}`} target="_blank" rel="noreferrer">
-            {d.source.repo}/{d.source.path}
-          </a>{" "}
-          at <code>{d.source.commit.slice(0, 12)}</code>
+          {d.source.link.startsWith("sha256:") ? (
+            // A Compose file given on this machine is recorded by its digest.
+            <>
+              {d.source.path ? <code>{d.source.path}</code> : "A Compose file"} from this machine, <code title={d.source.link}>{d.source.link.slice(0, 19)}</code>
+            </>
+          ) : (
+            <>
+              <a href={`https://github.com/${d.source.repo}/blob/${d.source.commit}/${d.source.path}`} target="_blank" rel="noreferrer">
+                {d.source.repo}/{d.source.path}
+              </a>{" "}
+              at <code>{d.source.commit.slice(0, 12)}</code>
+            </>
+          )}
         </dd>
         {d.kitSource ? (
           <>

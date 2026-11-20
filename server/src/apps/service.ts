@@ -21,6 +21,7 @@ import {
 import { errorFields, log } from "../log.ts";
 import { fetchSource, githubEndpoints, SourceError, type GithubEndpoints, type SourceFile } from "./github.ts";
 import { findKit, kitFromFile, KitError } from "./kits.ts";
+import { localSource, type LocalCompose } from "./local.ts";
 import { RuntimeError, type AppSpec, type CheckAnswer, type Runtime, type ServiceState } from "./runtime-client.ts";
 import { buildSettings, decrypt, encrypt, publicSetting, resolveTemplates, type Setting } from "./settings.ts";
 
@@ -275,28 +276,42 @@ export class AppsService {
 
   // ----- Preview and install (FR-011) -----
 
-  /** Reviews an app. Its kit is the one the owner linked or gave as a file's text, else the kits repository's. */
-  async preview(link: string, kitLink?: string, kitText?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
+  /**
+   * Reviews an app from its GitHub link, or from a Compose file given on this machine. A linked app's
+   * kit is the one the owner linked or gave as a file's text, else the kits repository's. A local
+   * file's kit is only the one given with it, and nothing is read from GitHub; its name is the one
+   * the owner gives, else its kit's.
+   */
+  async preview(from: string | LocalCompose, kitLink?: string, kitText?: string, appName?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
     for (const [id, p] of this.previews) if (p.expiresAt < Date.now()) this.previews.delete(id);
     const github = this.config.github ?? githubEndpoints();
     const fetcher = this.config.fetch ?? fetch;
     let source: SourceFile;
     let found;
     try {
-      source = await fetchSource(link, github, fetcher);
-      found = kitText !== undefined ? kitFromFile(kitText, source.repo, source.path) : await findKit(source.repo, source.path, kitLink, github, fetcher);
+      if (typeof from === "string") {
+        source = await fetchSource(from, github, fetcher);
+        found = kitText !== undefined ? kitFromFile(kitText, source) : await findKit(source.repo, source.path, kitLink, github, fetcher);
+      } else {
+        source = localSource(from);
+        found = kitText !== undefined ? kitFromFile(kitText, null) : null;
+      }
     } catch (error) {
       if (error instanceof SourceError || error instanceof KitError) throw new AppError(400, "source", error.message);
       throw error;
     }
     const kit = found?.kit ?? null;
-    const name = kit?.name ?? slug(source.repo.split("/")[1]!);
+    const name = source.repo ? (kit?.name ?? slug(source.repo.split("/")[1]!)) : (appName ?? kit?.name);
+    if (!name) throw new AppError(400, "name_required", "Name the app with --name, or give a kit that names it.");
+    if (!/^[a-z][a-z0-9-]{0,29}$/.test(name)) throw new AppError(400, "bad_name", "An app's name is 1 to 30 lower-case letters, digits and dashes, starting with a letter.");
     if (RESERVED_NAMES.has(name)) throw new AppError(400, "name_reserved", `The name ${name} is reserved by Your Space.`);
     const existing = (await this.db.select().from(app).where(eq(app.name, name)))[0];
     if (existing && existing.state !== "removed") {
       throw new AppError(409, "already_installed", `An app called ${name} is already installed. Remove it first to install it again.`);
     }
-    if (existing && existing.repo.toLowerCase() !== source.repo.toLowerCase()) {
+    // A Compose file on this machine has no repository, so data kept under its name can be reused,
+    // in either direction, when the owner chooses to (--reuse-data).
+    if (existing && existing.repo && source.repo && existing.repo.toLowerCase() !== source.repo.toLowerCase()) {
       throw new AppError(409, "name_taken", `Data kept from another app called ${name} uses this name. Delete that data first.`);
     }
     const previous = existing ? await this.storedValues(existing.id) : new Map<string, string | null>();
@@ -320,7 +335,7 @@ export class AppsService {
       kit,
       kitSource: found?.source ?? null,
       name,
-      title: kit?.title ?? source.repo.split("/")[1]!,
+      title: kit?.title ?? (source.repo ? source.repo.split("/")[1]! : name),
       check,
       settings,
       outbound: kit?.outbound ?? [],

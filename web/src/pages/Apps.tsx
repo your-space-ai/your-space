@@ -71,7 +71,7 @@ function AppTable({ list }: { list: AppList }) {
             {list.retained.map((app) => (
               <li key={app.name} data-retained={app.name}>
                 <div>
-                  <strong>{app.title}</strong> <span className="muted small">from {app.repo}</span>
+                  <strong>{app.title}</strong> <span className="muted small">from {app.repo || "this machine"}</span>
                 </div>
                 <DeleteData name={app.name} />
               </li>

@@ -79,7 +79,8 @@ export interface Adaptation {
 
 export interface Kit {
   kit: 1;
-  source: { repo: string; path: string };
+  /** The app's file on GitHub that the kit fits; a kit for a Compose file given on this machine may leave it out. */
+  source?: { repo: string; path: string };
   name?: string;
   title?: string;
   interface?: { service: string; port: number };

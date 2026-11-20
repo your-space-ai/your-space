@@ -537,7 +537,8 @@ What is specific to the first runtime adapter. The research behind it is
 
 - **Installed app**: an app on this installation: its name, source link, commit, the adapted Compose
   file, its services, its state, and who installed it.
-- **Source**: the GitHub link and the exact commit read.
+- **Source**: the GitHub link and the exact commit read, or, from the server command, the digest of
+  a Compose file given on this machine.
 - **Service**: one container of an app, with its pinned image and state.
 - **Adaptation**: a change Your Space made to the app's file, or a part it left out, with the reason.
 - **Setting**: a value the app's file reads; secrets are settings that are never shown.
@@ -571,7 +572,8 @@ What is specific to the first runtime adapter. The research behind it is
 - Your Space's own stack and its apps share one runtime in this journey, wherever it runs. An engine
   on another machine, and apps that someone already runs elsewhere, are later work.
 - The owner is the only person in this journey; members arrive in journey 004.
-- Only public GitHub repositories; private repositories and catalogs come later.
+- Only public GitHub repositories, or a Compose file the operator gives the server command on this
+  machine; private repositories and catalogs come later.
 - Apps run published images only; Your Space doesn't build images.
 - Apps keep their own accounts in this journey; Your Space controls who reaches them.
 
