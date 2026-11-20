@@ -334,6 +334,11 @@ export function restartPolicy(service: Json): string {
   return "unless-stopped";
 }
 
+/** Whether a restart policy from `restartPolicy` is one of a service that runs once. */
+export function runsOnce(restart: string): boolean {
+  return restart === "no" || restart.startsWith("on-failure");
+}
+
 /** The Squid configuration for an app's egress proxy (FR-019). */
 export function egressConfig(hosts: string[]): string {
   const lines = [
