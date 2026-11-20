@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { join } from "node:path";
-import { adapt, EGRESS_IMAGE, imageRef, pinnedImage, PUBLISH_IMAGE, PUBLISH_TARGET, type AppSpec, type CheckResult } from "./adapter.ts";
+import { adapt, EGRESS_IMAGE, FRAME_ORIGIN_LABEL, imageRef, PUBLISH_TARGET, type AppSpec, type CheckResult, type OwnCaddy } from "./adapter.ts";
 import {
   connectNetwork,
   disconnectNetwork,
@@ -56,14 +56,10 @@ function validatePublish(publish: unknown): Publish {
   return { port: port as number, bind };
 }
 
-const DIGEST = /^sha256:[a-f0-9]{64}$/;
-
-/** A port check's request: where the app would be published, and the forwarder's image as pinned. */
-export function validatePortCheck(body: unknown): { publish: Publish; digest: string } {
-  const { publish, pins } = (typeof body === "object" && body !== null ? body : {}) as { publish?: unknown; pins?: unknown };
-  const digest = typeof pins === "object" && pins !== null ? (pins as Record<string, unknown>)[`${PUBLISH_IMAGE}:latest`] : undefined;
-  if (typeof digest !== "string" || !DIGEST.test(digest)) throw new SpecError(`The request needs the digest ${PUBLISH_IMAGE}:latest is pinned to.`);
-  return { publish: validatePublish(publish), digest };
+/** A port check's request: where the app would be published. */
+export function validatePortCheck(body: unknown): Publish {
+  const { publish } = (typeof body === "object" && body !== null ? body : {}) as { publish?: unknown };
+  return validatePublish(publish);
 }
 
 let stopping = false;
@@ -119,13 +115,13 @@ export interface CheckAnswer extends Omit<CheckResult, "adapted"> {
   images: ImageCheck[];
 }
 
-async function checkWithImages(spec: AppSpec): Promise<{ answer: CheckAnswer; adapted: CheckResult["adapted"] }> {
+async function checkWithImages(spec: AppSpec, waitForCaddy = 0): Promise<{ answer: CheckAnswer; adapted: CheckResult["adapted"] }> {
   const { resolved, profiled, variables } = await resolve(spec);
   const info = await engineInfo();
   if (!info.reachable) throw new EngineError("The engine can't be reached.", 503);
+  const caddy = spec.publish ? await ownCaddy(waitForCaddy) : undefined;
   const refs = [...new Set(Object.values((resolved.services as Record<string, { image?: string }>) ?? {}).map((s) => s.image).filter((i): i is string => !!i).map(imageRef))];
   refs.push(`${EGRESS_IMAGE}:latest`);
-  if (spec.publish) refs.push(`${PUBLISH_IMAGE}:latest`);
   const pins: Record<string, string> = { ...(spec.pins ?? {}) };
   const images = await Promise.all(
     refs.map(async (ref) => {
@@ -135,7 +131,7 @@ async function checkWithImages(spec: AppSpec): Promise<{ answer: CheckAnswer; ad
       return image;
     }),
   );
-  const result = adapt({ ...spec, pins }, resolved, profiled);
+  const result = adapt({ ...spec, pins }, resolved, profiled, caddy);
   for (const image of images) {
     if (image.error) result.refusals.push({ service: "", setting: "image", reason: `${image.ref} can't be found in its registry: ${image.error}` });
     else if (!image.runsHere) result.refusals.push({ service: "", setting: "image", reason: `${image.ref} isn't published for this machine's processor (linux/${info.arch}).` });
@@ -156,6 +152,27 @@ async function installationContainer(service: string): Promise<string | undefine
   return found.find((c) => c.State === "running")?.Id ?? found[0]?.Id;
 }
 
+/** How long an app's start waits for Your Space's Caddy, which Compose starts after the server. */
+const CADDY_WAIT_MS = 120_000;
+
+/**
+ * Your Space's own Caddy, whose image and origin a published app's Caddy takes, so both let the same
+ * origin frame apps. Waits up to `waitMs` for it, as when Your Space and its apps start together.
+ */
+export async function ownCaddy(waitMs = 0): Promise<OwnCaddy | undefined> {
+  const until = Date.now() + waitMs;
+  for (;;) {
+    const id = await installationContainer("caddy");
+    if (id) {
+      const detail = await engineJson<{ Image: string; Config: { Env?: string[] | null } }>("GET", `/containers/${id}/json`);
+      const origin = (detail.Config.Env ?? []).find((e) => e.startsWith("YS_ORIGIN="))?.slice("YS_ORIGIN=".length);
+      if (origin) return { image: detail.Image, origin };
+    }
+    if (Date.now() >= until) return undefined;
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+}
+
 async function imagePresent(image: string): Promise<boolean> {
   const answer = await engine("GET", `/images/${encodeURIComponent(image)}/json`);
   return answer.status === 200;
@@ -167,7 +184,7 @@ export type Emit = (event: Record<string, unknown>) => void;
 export async function apply(spec: AppSpec, emit: Emit): Promise<void> {
   if (stopping) throw new EngineError("Your Space is stopping, so no app starts until it starts again.", 409);
   emit({ step: "check" });
-  const { answer, adapted } = await checkWithImages(spec);
+  const { answer, adapted } = await checkWithImages(spec, CADDY_WAIT_MS);
   if (!adapted) {
     throw new SpecError(answer.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`).join(" "));
   }
@@ -217,8 +234,8 @@ function overlaps(a: string, b: string): boolean {
 
 /**
  * The running container that publishes the port, if one does. Another project's is named first; the
- * app's own (its forwarder, before the app restarts with the owner's new choice) means the port is
- * the app's already.
+ * app's own (its Caddy, before the app restarts with the owner's new choice) means the port is the
+ * app's already.
  */
 export function portHolder(containers: ContainerSummary[], project: string, publish: Publish): { container: string; own: boolean } | undefined {
   const holders = containers.filter((c) => (c.Ports ?? []).some((p) => p.Type === "tcp" && p.PublicPort === publish.port && overlaps(p.IP ?? "", publish.bind)));
@@ -228,8 +245,8 @@ export function portHolder(containers: ContainerSummary[], project: string, publ
 }
 
 /**
- * A container of the forwarder's image, hardened like it, that publishes the port the way the forwarder
- * would and exits at once. It has no app's labels, so nothing counts it as part of an app.
+ * A container of a published app's Caddy's image, hardened like it, that publishes the port the way
+ * that Caddy would and exits at once. It has no app's labels, so nothing counts it as part of an app.
  */
 export function portProbe(image: string, publish: Publish): Record<string, unknown> {
   const port = `${PUBLISH_TARGET}/tcp`;
@@ -256,12 +273,12 @@ export function portProbe(image: string, publish: Publish): Record<string, unkno
  * the app's own. Anything else, such as a program on this machine, shows when a short-lived container
  * tries to publish it: the runtime manager has no network of its own, and can't see the machine's.
  */
-export async function checkPort(project: string, publish: Publish, digest: string): Promise<{ inUse: boolean; by?: string }> {
+export async function checkPort(project: string, publish: Publish): Promise<{ inUse: boolean; by?: string }> {
   const holder = portHolder(await engineJson<ContainerSummary[]>("GET", "/containers/json"), project, publish);
   if (holder) return holder.own ? { inUse: false } : { inUse: true, by: `the container ${holder.container}` };
-  const image = pinnedImage(PUBLISH_IMAGE, digest);
-  if (!(await imagePresent(image))) await pullImage(image, () => {});
-  const { Id } = await engineJson<{ Id: string }>("POST", "/containers/create", portProbe(image, publish));
+  const caddy = await ownCaddy();
+  if (!caddy) throw new EngineError("Your Space's Caddy isn't running, so the port can't be checked.", 503);
+  const { Id } = await engineJson<{ Id: string }>("POST", "/containers/create", portProbe(caddy.image, publish));
   try {
     await engineJson("POST", `/containers/${Id}/start`);
     return { inUse: false };
@@ -319,10 +336,21 @@ export interface ServiceState {
   oomKilled?: boolean;
   /** A service that runs once, such as a migration, and finished. */
   completed?: boolean;
+  /**
+   * A published app's Caddy that isn't Your Space's own Caddy's image, or lets another origin frame the
+   * app, as after Your Space is updated or moved to another address; the app's next start renews it.
+   */
+  outdated?: boolean;
+}
+
+/** Whether a published app's Caddy runs as Your Space's own Caddy does now. */
+export function proxyOutdated(container: ContainerSummary, caddy: OwnCaddy): boolean {
+  return container.ImageID !== caddy.image || container.Labels[FRAME_ORIGIN_LABEL] !== caddy.origin;
 }
 
 export async function listApps(): Promise<{ project: string; app: string; services: ServiceState[] }[]> {
   const containers = await listContainers([INSTALLATION_LABEL]);
+  const caddy = containers.some((c) => c.Labels["ai.your-space.role"] === "publish") ? await ownCaddy() : undefined;
   const byProject = new Map<string, { project: string; app: string; services: ServiceState[] }>();
   for (const c of containers) {
     const project = c.Labels["com.docker.compose.project"];
@@ -336,6 +364,7 @@ export async function listApps(): Promise<{ project: string; app: string; servic
     };
     const health = /\((healthy|unhealthy|health: starting)\)/.exec(c.Status)?.[1];
     if (health) service.health = health.replace("health: ", "");
+    if (service.role === "publish" && caddy && proxyOutdated(c, caddy)) service.outdated = true;
     if (c.State === "exited" || c.State === "dead" || c.State === "restarting") {
       const detail = await engineJson<{ State: { ExitCode: number; OOMKilled: boolean }; HostConfig?: { RestartPolicy?: { Name?: string } } }>(
         "GET",

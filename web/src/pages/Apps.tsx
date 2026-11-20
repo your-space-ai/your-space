@@ -45,12 +45,7 @@ function AppTable({ list }: { list: AppList }) {
                 {app.stateReason ? <div className="muted small">{app.stateReason}</div> : null}
               </div>
               <div className="actions">
-                {app.hasInterface && app.publish?.link ? (
-                  // Behind the owner's link, the app's settings point there, so it opens there in its own tab.
-                  <a className="button" href={app.publish.link} target="_blank" rel="noreferrer" aria-label={`Open ${app.title}`}>
-                    Open
-                  </a>
-                ) : app.hasInterface ? (
+                {app.hasInterface ? (
                   <Link className="button" to="/open/$name" params={{ name: app.name }} search={{}} aria-label={`Open ${app.title}`}>
                     Open
                   </Link>

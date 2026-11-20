@@ -32,8 +32,9 @@ Errors use journey 001's shape `{ "error": "<code>", "message": "…" }`.
 | `GET /tls-ask?domain=` | `200` for an installed app's name or Your Space's own, else `404` |
 
 `publish` (decision 2026-11-19) is `{ port, bind, link }` or null: the app's interface on `bind:port`
-of this machine, for the owner's own proxy or tunnel, outside the gate. `port` defaults to the port
-the app's file publishes for its interface, else the interface's port; `bind` is an IP address,
+of this machine, for the owner's own proxy or tunnel, outside the gate, through a Caddy of Your
+Space's that lets only Your Space frame it. `port` defaults to the port the app's file publishes for
+its interface, else the interface's port; `bind` is an IP address,
 `127.0.0.1` by default; `link` is an `http` or `https` origin, or null. With a link, the settings a kit
 derives with `app_origin` and `app_host` take the link's values whenever the app starts, and the
 app's `origin` in `GET /api/apps` and `GET /api/apps/{name}` is the link; otherwise it is the app's

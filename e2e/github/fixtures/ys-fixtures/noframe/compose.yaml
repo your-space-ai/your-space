@@ -1,0 +1,22 @@
+# An app that refuses to be framed, for the browser tests: BusyBox's httpd answers with
+# X-Frame-Options: DENY and a policy whose frame-ancestors is 'none'.
+services:
+  web:
+    image: busybox:1.37
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /www/cgi-bin
+        cat > /www/cgi-bin/index.cgi <<'END'
+        #!/bin/sh
+        echo "Content-Type: text/html"
+        echo "X-Frame-Options: DENY"
+        echo "Content-Security-Policy: default-src 'self'; frame-ancestors 'none'"
+        echo ""
+        echo "<h1>Refuses to be framed</h1>"
+        END
+        chmod +x /www/cgi-bin/index.cgi
+        exec httpd -f -p 8080 -h /www
+    ports:
+      - "8080:8080"

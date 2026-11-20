@@ -1,7 +1,7 @@
 // An app in a pane (journey 002, US4, US10, FR-016): the app on its own origin inside Your Space's
 // layout, or two apps side by side on a wide screen. An app that can't run in a pane opens in its
-// own tab, behind the same access check. An app published with a link opens there, in its own tab
-// (decision 2026-11-19).
+// own tab, behind the same access check. An app published with a link is framed at the link, where
+// Your Space's Caddy lets only Your Space frame it (decision 2026-11-19).
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { appsQuery, errorMessage, STATE_LABEL, type AppSummary } from "../apps-api.ts";
@@ -66,11 +66,22 @@ export function AppPane({ name, beside }: { name: string; beside?: string }) {
   );
 }
 
+/**
+ * Browsers show no plain-HTTP page inside an HTTPS one, apart from one on this machine, so a link like
+ * that opens in its own tab.
+ */
+function blockedInPane(link: string): boolean {
+  const { protocol, hostname } = new URL(link);
+  const local = hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "[::1]" || /^127\./.test(hostname);
+  return window.location.protocol === "https:" && protocol === "http:" && !local;
+}
+
 function Pane({ app, onClose }: { app: AppSummary; onClose?: () => void }) {
-  // At its link, the app is outside the gate and the proxy that let only Your Space frame it, so
-  // its own framing rules and cookies decide; its origin is the link.
+  // At its link, the app is outside the gate: its own sign-in and cookies decide, and its origin is
+  // the link.
   const linked = Boolean(app.publish?.link);
   const rel = linked ? "noreferrer" : "noopener";
+  const mixed = linked && blockedInPane(app.origin);
   return (
     <section className="pane" aria-label={app.title} data-pane={app.name}>
       <header className="pane-bar">
@@ -89,13 +100,13 @@ function Pane({ app, onClose }: { app: AppSummary; onClose?: () => void }) {
           </button>
         ) : null}
       </header>
-      {app.pane && !linked ? (
+      {app.pane && !mixed ? (
         <iframe data-testid="app-pane" title={app.title} src={`${app.origin}/`} />
       ) : (
         <div className="page">
           <p>
-            {linked
-              ? `${app.title} is published at its own link, outside Your Space, so it opens there in its own tab.`
+            {mixed
+              ? `${app.title}'s link is plain HTTP, which browsers don't show inside Your Space's HTTPS page, so it opens in its own tab.`
               : `${app.title} can't run inside Your Space, so it opens in its own tab.`}
           </p>
           <a className="button" href={app.origin} target="_blank" rel={rel}>

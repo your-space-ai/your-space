@@ -3,7 +3,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { AppError, appOrigin, defaultPort, linkOrigin, publishFrom, stateFromServices } from "../src/apps/service.ts";
-import { app, event } from "../src/db/schema.ts";
+import { app, event, installJob } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
 import { fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
@@ -72,7 +72,7 @@ describe("publishing choices", () => {
     const app = { name: "web", role: "app" as const, state: "running" };
     expect(stateFromServices([app, { name: "ys-publish", role: "publish", state: "running" }]).state).toBe("running");
     expect(stateFromServices([app, { name: "ys-publish", role: "publish", state: "created" }])).toMatchObject({ state: "degraded", reason: expect.stringMatching(/published port/) });
-    // A stopped app's forwarder is stopped too.
+    // A stopped app's Caddy is stopped too.
     expect(stateFromServices([{ ...app, state: "exited", exitCode: 143 }, { name: "ys-publish", role: "publish", state: "exited", exitCode: 137 }]).state).toBe("stopped");
   });
 });
@@ -116,6 +116,16 @@ describe("publishing an app", () => {
     throw new Error("The job didn't finish.");
   }
 
+  /** Waits until no job is running. */
+  async function waitForIdle(): Promise<void> {
+    for (let i = 0; i < 200; i++) {
+      const jobs = await t.db.select().from(installJob).where(eq(installJob.state, "running"));
+      if (jobs.length === 0) return;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    throw new Error("A job didn't finish.");
+  }
+
   async function install(link: string, publish?: unknown): Promise<Response> {
     const review = (await (await send("/api/apps/preview", { link })).json()) as { previewId: string; publishPort: number };
     return send("/api/apps", { previewId: review.previewId, ...(publish === undefined ? {} : { publish }) });
@@ -132,8 +142,10 @@ describe("publishing an app", () => {
     const spec = lastApply();
     expect(spec.publish).toEqual({ port: 8000, bind: "127.0.0.1" });
     expect(spec.env).toMatchObject({ APP_URL: "https://linked.tail1234.ts.net", APP_DOMAIN: "linked.tail1234.ts.net", CORS_ORIGINS: "https://linked.tail1234.ts.net,https://extra.example" });
-    // The forwarder's image is pinned with the app's own.
-    expect(spec.pins).toMatchObject({ "busybox:latest": "sha256:ccc", "traefik/whoami:latest": "sha256:aaa" });
+    // Your Space's Caddy, which publishes it, runs Your Space's own image: nothing more to pin.
+    expect(Object.keys(spec.pins!).sort()).toEqual(["traefik/whoami:latest", "ubuntu/squid:latest"]);
+    // The port was checked before the choice was saved.
+    expect(runtime.calls.filter((c) => c.method === "checkPort").at(-1)).toEqual({ method: "checkPort", project: "ys-linked", publish: { port: 8000, bind: "127.0.0.1" } });
 
     const detail = (await (await api("/api/apps/linked")).json()) as any;
     expect(detail.publish).toEqual({ port: 8000, bind: "127.0.0.1", link: "https://linked.tail1234.ts.net" });
@@ -244,6 +256,27 @@ describe("publishing an app", () => {
     const published = await send("/api/apps/plain/publish", { publish: {} }, "PUT");
     expect(published.status).toBe(202);
     await waitForJob(((await published.json()) as { jobId: string }).jobId);
-    expect(lastApply()).toMatchObject({ publish: { port: 8000, bind: "127.0.0.1" }, pins: { "busybox:latest": "sha256:ccc" } });
+    expect(lastApply().publish).toEqual({ port: 8000, bind: "127.0.0.1" });
+  });
+
+  it("renews a published app's outdated Caddy once, as after Your Space is updated, and only that app", async () => {
+    const applies = () => runtime.calls.filter((c) => c.method === "apply").length;
+    const services = runtime.running.get("ys-plain")!;
+    runtime.running.set(
+      "ys-plain",
+      services.map((s) => (s.role === "publish" ? { ...s, outdated: true } : s)),
+    );
+    const before = applies();
+    await server.apps!.reconcile();
+    await waitForIdle();
+    expect(applies()).toBe(before + 1);
+    expect(lastApply()).toMatchObject({ project: "ys-plain", publish: { port: 8000, bind: "127.0.0.1" } });
+    expect(((await (await api("/api/apps/plain")).json()) as { state: string }).state).toBe("running");
+
+    // A renewal that didn't help isn't repeated while this server runs.
+    runtime.running.set("ys-plain", runtime.running.get("ys-plain")!.map((s) => (s.role === "publish" ? { ...s, outdated: true } : s)));
+    await server.apps!.reconcile();
+    await waitForIdle();
+    expect(applies()).toBe(before + 1);
   });
 });

@@ -79,8 +79,8 @@ work from the roadmap.
 │ │  own egress proxy (Squid), also on an egress │ │  managed by Your Space  │ │
 │ │  network: approved hosts only; other hosts   │ │                         │ │
 │ │  become access requests · published (opt-in):│ │                         │ │
-│ │  a forwarder puts the interface on a port    │ │                         │ │
-│ │  for the owner's own proxy or tunnel         │ │                         │ │
+│ │  a Caddy of Your Space's puts the interface  │ │                         │ │
+│ │  on a port for the owner's proxy or tunnel   │ │                         │ │
 │ └──────────────────────────────────────────────┘ └─────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────────────┘
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -148,10 +148,10 @@ work from the roadmap.
    limits, and publishes no ports. Its network is sealed (internal, Docker's isolated gateway mode),
    so it has no route to the host or out; Caddy joins it to reach the app's interface. The app's own
    egress proxy (Squid) sits on that network and an egress network and lets through only approved
-   hosts; other hosts become access requests. When the owner publishes an app, a forwarder of Your
-   Space's (`ys-publish`) joins that network and one of its own and puts the app's interface on a
-   port of this machine, for the owner's own proxy or tunnel; the app's services still publish
-   nothing ([running apps and reaching them](decisions.md#running-apps-and-reaching-them)). Apps someone already runs elsewhere will connect
+   hosts; other hosts become access requests. When the owner publishes an app, a Caddy of Your
+   Space's (`ys-publish`, from Your Space's own web image) joins that network and one of its own and
+   puts the app's interface on a port of this machine, for the owner's own proxy or tunnel, with the
+   same framing rules as Your Space's Caddy; the app's services still publish nothing ([running apps and reaching them](decisions.md#running-apps-and-reaching-them)). Apps someone already runs elsewhere will connect
    through a connector next to them (later work). See
    [platform and independent apps](decisions.md#platform-and-independent-apps) and
    [app deployment](decisions.md#accepted-future-app-deployment-direction).
@@ -169,9 +169,10 @@ work from the roadmap.
   Caddy proxies to the app on its network. The app's own sign-in appears (level 0); verified
   identity and roles come with levels 1 and 2. On the plain-HTTP local setup in WebKit, Your Space
   detects the redirect loop and offers the app in its own tab.
-- **A person reaching a published app:** the owner's proxy or tunnel (such as `tailscale serve`) →
-  the app's port on this machine → its `ys-publish` forwarder → the app's interface on its sealed
-  network. Your Space's gate isn't on this path; the app's own sign-in is.
+- **A person reaching a published app:** the app opens in a pane inside Your Space, loaded from the
+  owner's link → the owner's proxy or tunnel (such as `tailscale serve`) → the app's port on this
+  machine → its `ys-publish` Caddy, which lets only Your Space frame the app → the app's interface on
+  its sealed network. Your Space's gate isn't on this path; the app's own sign-in is.
 - **Installing an app:** the owner pastes a GitHub link → the server reads the file at an exact
   commit and its installation kit → the runtime manager resolves, checks, and pins it → after the
   owner confirms, it starts the app's Compose project.

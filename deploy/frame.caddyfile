@@ -1,0 +1,11 @@
+# How Caddy lets only Your Space frame an app (FR-017), imported inside a reverse_proxy block by both
+# ways a person reaches an app: its built-in address (Caddyfile) and a port the owner publishes it on
+# (published.caddyfile). The app's X-Frame-Options goes, and its policy's frame-ancestors, or a
+# policy of its own when it has none, names only the sources given: Your Space's origin, and on a
+# published port the app's own as well. Nothing else in the app's responses changes.
+#   import only_framed_by <sources>
+(only_framed_by) {
+	header_down -X-Frame-Options
+	header_down Content-Security-Policy "frame-ancestors[^;]*" "frame-ancestors {args[0]}"
+	header_down +Content-Security-Policy "frame-ancestors {args[0]}"
+}

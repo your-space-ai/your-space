@@ -1,0 +1,36 @@
+# A published app's own Caddy (decision record, "Running Apps and Reaching Them"). The runtime
+# manager runs one for each app the owner publishes on a port, from Your Space's web image, as the
+# app's ys-publish service. It listens on port 8080, which Docker publishes on the port and address
+# the owner chose, and passes every request to the app's interface on the app's sealed network. The
+# runtime manager sets:
+#   YS_UPSTREAM  the app's interface, ys-<app>-ui:<port>
+#   YS_ORIGIN    Your Space's origin, as Your Space's own Caddy has it
+# There is no access gate here: whoever reaches the port reaches the app, and the app's own sign-in
+# protects it.
+{
+	# Configured once, from this file: no admin API, nothing saved, no certificates.
+	admin off
+	persist_config off
+	auto_https off
+	servers :8080 {
+		# The owner's proxy or tunnel reports the visitor and the address they used, and the app gets
+		# them as that proxy sent them: X-Forwarded-For gains the address the connection came from,
+		# and X-Forwarded-Proto and X-Forwarded-Host are added only when the proxy sent none. Plain
+		# HTTP: the owner's proxy or tunnel provides HTTPS.
+		trusted_proxies static 0.0.0.0/0 ::/0
+		protocols h1 h2c
+	}
+}
+
+import frame.caddyfile
+
+:8080 {
+	# The original Host header, WebSockets, request bodies of any size and streamed responses pass
+	# through, and responses are sent on as they arrive.
+	reverse_proxy {$YS_UPSTREAM} {
+		flush_interval -1
+		# Only Your Space, and the app itself, can frame it.
+		import only_framed_by "{$YS_ORIGIN} 'self'"
+	}
+	# There is no `log` directive, so the access log stays off and request URLs are not recorded.
+}

@@ -180,7 +180,8 @@ function now(): string {
 export function stateFromServices(services: ServiceState[]): { state: AppState; reason: string | null } {
   // A service that runs once, such as a migration, and finished takes no part in the app's state.
   const app = services.filter((s) => s.role === "app" && !s.completed);
-  const forwarder = services.find((s) => s.role === "publish");
+  // Your Space's Caddy for a published app.
+  const proxy = services.find((s) => s.role === "publish");
   if (app.length === 0) return { state: "stopped", reason: "Not running." };
   const problems: string[] = [];
   let starting = false;
@@ -205,7 +206,7 @@ export function stateFromServices(services: ServiceState[]): { state: AppState; 
   }
   if (problems.length > 0) return { state: "degraded", reason: `${problems.join("; ")}.` };
   // The app runs, but its published port isn't open, for example because something else took it.
-  if (forwarder && forwarder.state !== "running" && app.some((s) => s.state === "running")) {
+  if (proxy && proxy.state !== "running" && app.some((s) => s.state === "running")) {
     return { state: "degraded", reason: "Its published port isn't open. Choose another port if something else uses it." };
   }
   return starting ? { state: "starting", reason: null } : { state: "running", reason: null };
@@ -217,6 +218,8 @@ export class AppsService {
   readonly config: AppsConfig;
   private readonly previews = new Map<string, Preview>();
   private readonly busy = new Set<string>();
+  /** Apps whose outdated Caddy this server process has renewed, or tried to: once each. */
+  private readonly renewed = new Set<string>();
 
   constructor(db: Db, runtime: Runtime, config: AppsConfig) {
     this.db = db;
@@ -245,7 +248,7 @@ export class AppsService {
    * Refuses, before the owner's choice is saved, a port another published app uses or that anything
    * else on this machine uses. Something that takes the port after that shows when the app starts.
    */
-  private async refuseTakenPort(publish: Publish, name: string, images: AppRow["images"]): Promise<void> {
+  private async refuseTakenPort(publish: Publish, name: string): Promise<void> {
     const rows = await this.db.select({ name: app.name, title: app.title, publish: app.publish }).from(app).where(ne(app.state, "removed"));
     const other = rows.find((r) => r.name !== name && r.publish && r.publish.port === publish.port && overlaps(r.publish.bind, publish.bind));
     if (other) {
@@ -257,12 +260,11 @@ export class AppsService {
     }
     let answer: { inUse: boolean; by?: string };
     try {
-      const pins = Object.fromEntries(Object.entries(images).map(([ref, { digest }]) => [ref, digest]));
-      answer = await this.runtime.checkPort(`ys-${name}`, { port: publish.port, bind: publish.bind }, pins);
+      answer = await this.runtime.checkPort(`ys-${name}`, { port: publish.port, bind: publish.bind });
     } catch (error) {
       if (!(error instanceof RuntimeError)) throw error;
-      // The check couldn't run, for example because the forwarder's image can't be downloaded. Saving
-      // goes ahead, and the start names the port if it is taken.
+      // The check couldn't run, for example because Your Space's Caddy isn't running. Saving goes
+      // ahead, and the start names the port if it is taken.
       log("warn", "app.port_check_failed", { app: name, ...errorFields(error) });
       return;
     }
@@ -404,11 +406,7 @@ export class AppsService {
     if (publishWith !== null && publishWith !== undefined) {
       if (!p.interface || p.publishPort === null) throw new AppError(400, "no_interface", `${p.title} has no interface to publish.`);
       publish = publishFrom(publishWith, { port: p.publishPort, bind: DEFAULT_BIND, link: null });
-      // Checked again with the forwarder, which pins its image with the app's own.
-      const pins = Object.fromEntries(Object.entries(images).map(([ref, { digest }]) => [ref, digest]));
-      const checked = await this.check({ project: `ys-${p.name}`, app: p.name, compose: p.source.text, env: this.envOf(settings), interface: p.interface, pins, publish });
-      for (const image of checked.images) if (image.digest && !images[image.ref]) images[image.ref] = { digest: image.digest };
-      await this.refuseTakenPort(publish, p.name, images);
+      await this.refuseTakenPort(publish, p.name);
     }
 
     this.previews.delete(previewId);
@@ -649,6 +647,15 @@ export class AppsService {
         await this.startJob(row.id, "apply").catch(() => undefined);
         continue;
       }
+      // A published app's Caddy follows Your Space's own after an update or a new address. Only it is
+      // recreated; the app's services keep running. Once per app while this server runs, so a start
+      // that fails isn't repeated.
+      if (row.desired === "running" && running && row.publish && services.some((s) => s.role === "publish" && s.outdated) && !this.renewed.has(row.id)) {
+        this.renewed.add(row.id);
+        log("info", "apps.renewing_proxy", { app: row.name });
+        await this.startJob(row.id, "apply").catch(() => undefined);
+        continue;
+      }
       const { state, reason } = row.desired === "stopped" && !running ? { state: "stopped" as const, reason: null } : stateFromServices(services);
       if (row.state === "failed" && !running) continue;
       if (state !== row.state || reason !== row.stateReason) {
@@ -872,19 +879,14 @@ export class AppsService {
     const row = await this.liveRow(name);
     if (this.busy.has(row.id)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
     let publish: Publish | null = null;
-    let images = row.images;
     if (publishWith !== null) {
       if (!row.interface) throw new AppError(400, "no_interface", `${row.title} has no interface to publish.`);
-      // The check gives the port the app's file publishes, and pins the forwarder's image.
-      const spec = await this.specFor(row);
-      const checked = await this.check({ ...spec, publish: { port: row.publish?.port ?? row.interface.port, bind: row.publish?.bind ?? DEFAULT_BIND } });
-      const current = row.publish ?? { port: defaultPort(checked.services, row.interface) ?? row.interface.port, bind: DEFAULT_BIND, link: null };
+      // The first time, the check gives the port the app's file publishes.
+      const current = row.publish ?? { port: defaultPort((await this.check(await this.specFor(row))).services, row.interface) ?? row.interface.port, bind: DEFAULT_BIND, link: null };
       publish = publishFrom(publishWith, current);
-      images = { ...row.images };
-      for (const image of checked.images) if (image.digest && !images[image.ref]) images[image.ref] = { digest: image.digest };
-      await this.refuseTakenPort(publish, row.name, images);
+      await this.refuseTakenPort(publish, row.name);
     }
-    await this.db.update(app).set({ publish, images, updatedAt: new Date() }).where(eq(app.id, row.id));
+    await this.db.update(app).set({ publish, updatedAt: new Date() }).where(eq(app.id, row.id));
     await this.event("app.publish_changed", actorId, row.id);
     return this.queue(row.id, "apply");
   }
