@@ -22,6 +22,7 @@ One row per app on this installation, kept after removal as the record of its re
 | interface | jsonb, null | `{ "service", "port" }`; null when the app has no interface |
 | pane | boolean | Whether it opens in a pane (default) or its own tab |
 | publish | jsonb, null | `{ "port": 8081, "bind": "127.0.0.1", "link": "https://…" or null }` when the owner publishes the app on a port of this machine (decision 2026-11-19); null otherwise |
+| frame | boolean | Whether Your Space shows the app, published with a link, in its pane, its Caddy letting only Your Space's origin frame it (default true, and true again when publishing stops; decision 2026-11-20) |
 | limits | jsonb | `{ "<service>": { "memory": bytes, "cpus": number } }` |
 | desired | text | `running`, `stopped` or `removed` |
 | state | text | `installing`, `starting`, `running`, `degraded`, `stopped`, `failed` or `removed` |

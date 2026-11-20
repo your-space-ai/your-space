@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { join } from "node:path";
-import { adapt, EGRESS_IMAGE, imageRef, PUBLISH_TARGET, type AppSpec, type CheckResult } from "./adapter.ts";
+import { adapt, EGRESS_IMAGE, FRAME_ORIGIN_LABEL, imageRef, PUBLISH_TARGET, type AppSpec, type CheckResult, type OwnCaddy } from "./adapter.ts";
 import {
   connectNetwork,
   disconnectNetwork,
@@ -43,7 +43,11 @@ export function validateSpec(body: unknown): AppSpec {
   if (typeof env !== "object" || Object.entries(env).some(([k, v]) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) || typeof v !== "string")) {
     throw new SpecError("Settings must be names with text values.");
   }
-  if (spec.publish !== undefined && spec.publish !== null) validatePublish(spec.publish);
+  if (spec.publish !== undefined && spec.publish !== null) {
+    validatePublish(spec.publish);
+    const { frame } = spec.publish as { frame?: unknown };
+    if (frame !== undefined && typeof frame !== "boolean") throw new SpecError("Whether Your Space frames the published app must be true or false.");
+  }
   return { ...spec, installation: INSTALLATION, env } as AppSpec;
 }
 
@@ -119,7 +123,7 @@ async function checkWithImages(spec: AppSpec, waitForCaddy = 0): Promise<{ answe
   const { resolved, profiled, variables } = await resolve(spec);
   const info = await engineInfo();
   if (!info.reachable) throw new EngineError("The engine can't be reached.", 503);
-  const caddyImage = spec.publish ? await ownCaddyImage(waitForCaddy) : undefined;
+  const caddy = spec.publish ? await ownCaddy(waitForCaddy) : undefined;
   const refs = [...new Set(Object.values((resolved.services as Record<string, { image?: string }>) ?? {}).map((s) => s.image).filter((i): i is string => !!i).map(imageRef))];
   refs.push(`${EGRESS_IMAGE}:latest`);
   const pins: Record<string, string> = { ...(spec.pins ?? {}) };
@@ -131,7 +135,7 @@ async function checkWithImages(spec: AppSpec, waitForCaddy = 0): Promise<{ answe
       return image;
     }),
   );
-  const result = adapt({ ...spec, pins }, resolved, profiled, caddyImage);
+  const result = adapt({ ...spec, pins }, resolved, profiled, caddy);
   for (const image of images) {
     if (image.error) result.refusals.push({ service: "", setting: "image", reason: `${image.ref} can't be found in its registry: ${image.error}` });
     else if (!image.runsHere) result.refusals.push({ service: "", setting: "image", reason: `${image.ref} isn't published for this machine's processor (linux/${info.arch}).` });
@@ -156,21 +160,25 @@ async function installationContainer(service: string): Promise<string | undefine
 const CADDY_WAIT_MS = 120_000;
 
 /**
- * The image of Your Space's own Caddy, its ID, which a published app's Caddy runs too. Waits up to
- * `waitMs` for the container, as when Your Space and its apps start together.
+ * Your Space's own Caddy: its image's ID, which a published app's Caddy runs too, and its origin, the
+ * only one a published app's Caddy lets frame the app. Waits up to `waitMs` for the container, as when
+ * Your Space and its apps start together.
  */
-export async function ownCaddyImage(waitMs = 0): Promise<string | undefined> {
+export async function ownCaddy(waitMs = 0): Promise<OwnCaddy | undefined> {
   const until = Date.now() + waitMs;
   for (;;) {
     const id = await installationContainer("caddy");
     // Compose can remove the container between the list and the inspection while it recreates Caddy.
     const detail = id
-      ? await engineJson<{ Image: string }>("GET", `/containers/${id}/json`).catch((error: unknown) => {
+      ? await engineJson<{ Image: string; Config: { Env?: string[] | null } }>("GET", `/containers/${id}/json`).catch((error: unknown) => {
           if (error instanceof EngineError && error.status === 404) return undefined;
           throw error;
         })
       : undefined;
-    if (detail?.Image) return detail.Image;
+    if (detail?.Image) {
+      const origin = (detail.Config.Env ?? []).find((e) => e.startsWith("YS_ORIGIN="))?.slice("YS_ORIGIN=".length);
+      return { image: detail.Image, ...(origin ? { origin } : {}) };
+    }
     if (Date.now() >= until) return undefined;
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
@@ -279,9 +287,9 @@ export function portProbe(image: string, publish: Publish): Record<string, unkno
 export async function checkPort(project: string, publish: Publish): Promise<{ inUse: boolean; by?: string }> {
   const holder = portHolder(await engineJson<ContainerSummary[]>("GET", "/containers/json"), project, publish);
   if (holder) return holder.own ? { inUse: false } : { inUse: true, by: `the container ${holder.container}` };
-  const caddyImage = await ownCaddyImage();
-  if (!caddyImage) throw new EngineError("Your Space's Caddy isn't running, so the port can't be checked.", 503);
-  const { Id } = await engineJson<{ Id: string }>("POST", "/containers/create", portProbe(caddyImage, publish));
+  const caddy = await ownCaddy();
+  if (!caddy) throw new EngineError("Your Space's Caddy isn't running, so the port can't be checked.", 503);
+  const { Id } = await engineJson<{ Id: string }>("POST", "/containers/create", portProbe(caddy.image, publish));
   try {
     await engineJson("POST", `/containers/${Id}/start`);
     return { inUse: false };
@@ -341,19 +349,24 @@ export interface ServiceState {
   completed?: boolean;
   /**
    * A published app's Caddy that doesn't run Your Space's own Caddy's image, as after Your Space is
-   * updated, or the port forwarder an earlier Your Space ran; the app's next start renews it.
+   * updated, or the port forwarder an earlier Your Space ran, or that lets another origin than Your
+   * Space's frame the app, as after Your Space moves to another address; the app's next start renews it.
    */
   outdated?: boolean;
 }
 
-/** Whether a published app's Caddy runs another image than Your Space's own Caddy does now. */
-export function proxyOutdated(container: ContainerSummary, caddyImage: string): boolean {
-  return container.ImageID !== caddyImage;
+/**
+ * Whether a published app's Caddy runs another image than Your Space's own Caddy does now, or lets
+ * another origin frame the app. One that lets no origin frame it doesn't depend on the origin.
+ */
+export function proxyOutdated(container: ContainerSummary, caddy: OwnCaddy): boolean {
+  const framedBy = container.Labels[FRAME_ORIGIN_LABEL];
+  return container.ImageID !== caddy.image || (framedBy !== undefined && framedBy !== caddy.origin);
 }
 
 export async function listApps(): Promise<{ project: string; app: string; services: ServiceState[] }[]> {
   const containers = await listContainers([INSTALLATION_LABEL]);
-  const caddyImage = containers.some((c) => c.Labels["ai.your-space.role"] === "publish") ? await ownCaddyImage() : undefined;
+  const caddy = containers.some((c) => c.Labels["ai.your-space.role"] === "publish") ? await ownCaddy() : undefined;
   const byProject = new Map<string, { project: string; app: string; services: ServiceState[] }>();
   for (const c of containers) {
     const project = c.Labels["com.docker.compose.project"];
@@ -367,7 +380,7 @@ export async function listApps(): Promise<{ project: string; app: string; servic
     };
     const health = /\((healthy|unhealthy|health: starting)\)/.exec(c.Status)?.[1];
     if (health) service.health = health.replace("health: ", "");
-    if (service.role === "publish" && caddyImage && proxyOutdated(c, caddyImage)) service.outdated = true;
+    if (service.role === "publish" && caddy && proxyOutdated(c, caddy)) service.outdated = true;
     if (c.State === "exited" || c.State === "dead" || c.State === "restarting") {
       const detail = await engineJson<{ State: { ExitCode: number; OOMKilled: boolean }; HostConfig?: { RestartPolicy?: { Name?: string } } }>(
         "GET",

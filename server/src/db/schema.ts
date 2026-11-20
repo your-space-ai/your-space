@@ -126,6 +126,8 @@ export const app = pgTable(
     interface: jsonb("interface").$type<{ service: string; port: number }>(),
     pane: boolean("pane").notNull().default(true),
     publish: jsonb("publish").$type<Publish>(),
+    /** Whether Your Space shows the app in its pane when it is published with a link (decision 2026-11-20). */
+    frame: boolean("frame").notNull().default(true),
     limits: jsonb("limits").$type<Record<string, { memory: number; cpus: number }>>().notNull(),
     desired: text("desired", { enum: ["running", "stopped", "removed"] }).notNull().default("running"),
     state: text("state", { enum: ["installing", "starting", "running", "degraded", "stopped", "failed", "removed"] })

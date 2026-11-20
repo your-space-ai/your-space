@@ -151,7 +151,8 @@ work from the roadmap.
    hosts; other hosts become access requests. When the owner publishes an app, a Caddy of Your
    Space's (`ys-publish`, from Your Space's own web image) joins that network and one of its own and
    puts the app's interface on a port of this machine, for the owner's own proxy or tunnel, passing
-   the app's responses on unchanged; the app's services still publish nothing ([running apps and reaching them](decisions.md#running-apps-and-reaching-them)). Apps someone already runs elsewhere will connect
+   the app's responses on unchanged, except that it lets only Your Space frame an app the owner shows
+   inside Your Space; the app's services still publish nothing ([running apps and reaching them](decisions.md#running-apps-and-reaching-them)). Apps someone already runs elsewhere will connect
    through a connector next to them (later work). See
    [platform and independent apps](decisions.md#platform-and-independent-apps) and
    [app deployment](decisions.md#accepted-future-app-deployment-direction).
@@ -171,7 +172,9 @@ work from the roadmap.
   detects the redirect loop and offers the app in its own tab.
 - **A person reaching a published app:** the owner's proxy or tunnel (such as `tailscale serve`) →
   the app's port on this machine → its `ys-publish` Caddy → the app's interface on its sealed
-  network. Your Space's gate isn't on this path; the app's own sign-in is.
+  network. Your Space's gate isn't on this path; the app's own sign-in is. Your Space's pane loads
+  the app this way, at the owner's link, unless the owner turned "Show inside Your Space" off; then
+  the app opens there in its own tab.
 - **Installing an app:** the owner pastes a GitHub link → the server reads the file at an exact
   commit and its installation kit → the runtime manager resolves, checks, and pins it → after the
   owner confirms, it starts the app's Compose project.

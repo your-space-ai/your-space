@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import { api, appsQuery, errorMessage, shortDigest, STATE_LABEL, type AppList, type Review } from "../apps-api.ts";
+import { api, appsQuery, errorMessage, ownTabLink, shortDigest, STATE_LABEL, type AppList, type Review } from "../apps-api.ts";
 import { JobProgress } from "../components/JobProgress.tsx";
 import { PUBLISH_NOTE, publishBody, PublishFields, type PublishForm } from "../components/PublishFields.tsx";
 import { DeleteData } from "./AppDetail.tsx";
@@ -33,34 +33,37 @@ function AppTable({ list }: { list: AppList }) {
         <p className="muted">No app is installed yet.</p>
       ) : (
         <ul className="app-list" aria-label="Installed apps">
-          {list.apps.map((app) => (
-            <li key={app.name} data-app={app.name} data-app-state={app.state}>
-              <div>
-                <strong>{app.title}</strong> <span className={`state state-${app.state}`}>{STATE_LABEL[app.state]}</span>
-                {app.pendingRequests > 0 ? (
-                  <span className="badge" title="Access requests waiting">
-                    {app.pendingRequests} access request{app.pendingRequests === 1 ? "" : "s"}
-                  </span>
-                ) : null}
-                {app.stateReason ? <div className="muted small">{app.stateReason}</div> : null}
-              </div>
-              <div className="actions">
-                {app.hasInterface && app.publish?.link ? (
-                  // Behind the owner's link, the app's settings point there, so it opens there in its own tab.
-                  <a className="button" href={app.publish.link} target="_blank" rel="noreferrer" aria-label={`Open ${app.title}`}>
-                    Open
-                  </a>
-                ) : app.hasInterface ? (
-                  <Link className="button" to="/open/$name" params={{ name: app.name }} search={{}} aria-label={`Open ${app.title}`}>
-                    Open
+          {list.apps.map((app) => {
+            const ownTab = ownTabLink(app);
+            return (
+              <li key={app.name} data-app={app.name} data-app-state={app.state}>
+                <div>
+                  <strong>{app.title}</strong> <span className={`state state-${app.state}`}>{STATE_LABEL[app.state]}</span>
+                  {app.pendingRequests > 0 ? (
+                    <span className="badge" title="Access requests waiting">
+                      {app.pendingRequests} access request{app.pendingRequests === 1 ? "" : "s"}
+                    </span>
+                  ) : null}
+                  {app.stateReason ? <div className="muted small">{app.stateReason}</div> : null}
+                </div>
+                <div className="actions">
+                  {app.hasInterface && ownTab ? (
+                    // Not shown inside Your Space, the app opens at the owner's link in its own tab.
+                    <a className="button" href={ownTab} target="_blank" rel="noreferrer" aria-label={`Open ${app.title}`}>
+                      Open
+                    </a>
+                  ) : app.hasInterface ? (
+                    <Link className="button" to="/open/$name" params={{ name: app.name }} search={{}} aria-label={`Open ${app.title}`}>
+                      Open
+                    </Link>
+                  ) : null}
+                  <Link className="button secondary-link" to="/apps/$name" params={{ name: app.name }} aria-label={`Details of ${app.title}`}>
+                    Details
                   </Link>
-                ) : null}
-                <Link className="button secondary-link" to="/apps/$name" params={{ name: app.name }} aria-label={`Details of ${app.title}`}>
-                  Details
-                </Link>
-              </div>
-            </li>
-          ))}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
       {list.retained.length > 0 ? (
@@ -92,7 +95,7 @@ function Install() {
   const [reuse, setReuse] = useState(true);
   const [publishing, setPublishing] = useState(false);
   const [publish, setPublish] = useState<PublishForm>({ port: "", bind: "127.0.0.1", link: "" });
-  const [installing, setInstalling] = useState<{ name: string; title: string; jobId: string; link: string | null } | null>(null);
+  const [installing, setInstalling] = useState<{ name: string; title: string; jobId: string } | null>(null);
   const [finished, setFinished] = useState<boolean | null>(null);
 
   const preview = useMutation({
@@ -115,7 +118,7 @@ function Install() {
         ...(publishing ? { publish: publishBody(publish) } : {}),
       }),
     onSuccess: (data, r) => {
-      setInstalling({ name: data.name, title: r.title, jobId: data.jobId, link: publishing ? publishBody(publish).link : null });
+      setInstalling({ name: data.name, title: r.title, jobId: data.jobId });
       setFinished(null);
       setReview(null);
       setLink("");
@@ -181,15 +184,10 @@ function Install() {
           <JobProgress jobId={installing.jobId} title={`Installing ${installing.title}`} onDone={setFinished} />
           {finished ? (
             <p>
-              {installing.link ? (
-                <a className="button" href={installing.link} target="_blank" rel="noreferrer">
-                  Open {installing.title}
-                </a>
-              ) : (
-                <Link className="button" to="/open/$name" params={{ name: installing.name }} search={{}}>
-                  Open {installing.title}
-                </Link>
-              )}
+              {/* Its pane shows it, or says why it opens in its own tab. */}
+              <Link className="button" to="/open/$name" params={{ name: installing.name }} search={{}}>
+                Open {installing.title}
+              </Link>
             </p>
           ) : null}
         </>

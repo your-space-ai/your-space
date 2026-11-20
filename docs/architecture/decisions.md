@@ -757,7 +757,9 @@ app:
   Your Space's, `ys-publish`, joins that network and one of its own, listens on the port, and
   proxies every request to the interface. It passes on the original `Host`, WebSockets, uploads of
   any size and streamed responses, and passes the app's responses back as the app sent them, its
-  framing headers included: a published app is proxied, never re-framed. The owner's proxy's
+  framing headers included: a published app is proxied, never re-framed. (2026-11-20: unless the
+  owner shows it inside Your Space, the default; then only its framing headers change. See below.)
+  The owner's proxy's
   `X-Forwarded-*` headers reach the app as that proxy sent them when it connects from this machine,
   a private network or Tailscale's addresses (Caddy adds the connecting address to
   `X-Forwarded-For`, and the others only when the proxy sent none); from any other address, Caddy
@@ -765,7 +767,9 @@ app:
 - The owner gives the link they reach the app at. The settings a kit derives from the app's address
   (`app_origin`, `app_host`) use the link instead of `<app>.<Your Space's address>`, and follow a
   changed link when the app next starts. The owner can't set those settings by hand, so nothing they
-  set changes. Your Space opens a published app at its link, in its own tab.
+  set changes. Your Space opens a published app at its link, in its own tab. (Superseded
+  2026-11-20: Your Space shows it at its link in its pane, unless the owner turns that off; see
+  below.)
 - A published port is outside Your Space's access gate: whoever reaches it reaches the app, and only
   the app's own sign-in protects it. That is why it listens on this machine only by default.
 - On Tailscale, each published app needs its own Tailscale Service (`svc:plane` for
@@ -798,7 +802,8 @@ its own to the app as it needs them.
   headers only at the app's built-in address, behind the access gate. Replacing an app's protection
   against being framed on a port outside the gate is too much to do for every published app, so a
   published app still opens at its link, in its own tab. Letting the owner choose, per app, that Your
-  Space frames a published app is possible later work.
+  Space frames a published app is possible later work. (Superseded 2026-11-20: the owner chooses it
+  per app, on by default; see the next update.)
 - It trusts forwarded headers only from loopback and private addresses (`127.0.0.0/8`, `::1`,
   `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) and from Tailscale's
   (`100.64.0.0/10`, the shared address space). A proxy on this machine reaches the port through
@@ -809,6 +814,39 @@ its own to the app as it needs them.
 - When Your Space is updated, and for an app the forwarder published, the server recreates the
   app's `ys-publish` once, and only that container. The port check, the start-time error and the
   owner's choice of port stay as they were.
+
+**Decision update (2026-11-20):** Your Space is the owner's own dashboard, so a published app opens
+inside Your Space's pane, at its link, rather than in a tab of its own. Many apps forbid being
+framed; Plane, for one, sends `X-Frame-Options: DENY`. Each published app therefore has a setting,
+"Show inside Your Space", on by default, for new and already published apps alike:
+
+- On, for an app with a link whose kit lets it run in a pane, the app's `ys-publish` applies the
+  rule Your Space's own Caddy applies at an app's built-in address: it removes `X-Frame-Options`, and sets the `frame-ancestors` of the app's
+  `Content-Security-Policy`, or of a policy of its own when the app sends none, to Your Space's
+  origin alone, as Your Space's Caddy has it (`YS_ORIGIN`). Not `'self'`, and not `*`: no other
+  site, and not the app itself, can frame it. Everything else passes through unchanged: the rest of
+  the app's policy, its cookies, its other headers and its bodies.
+- Off, `ys-publish` passes the app's responses on untouched, and the pane offers the app at its link,
+  in its own tab, as before. So it does for an app without a link, which the pane shows at its
+  built-in address, and for one whose kit says it can't run in a pane.
+- The pane frames the link only when the setting is on, the app's kit doesn't say it can't run in a
+  pane, and the browser can show the link inside Your Space's page: a plain-HTTP link inside an HTTPS
+  Your Space opens in its own tab, apart from one on this machine.
+- Changing the setting applies the app again, which recreates only its `ys-publish`, like any other
+  change to how it is published. When Your Space moves to another address, the server renews every
+  `ys-publish` that lets the old origin frame its app, as it does after an update. Like the port and
+  the link, the setting goes back to its default when publishing stops.
+- The app's cookies are its own: in a pane at a link on another site than Your Space's, a browser
+  that blocks third-party cookies may not keep the owner signed in to the app there. The pane's "Open
+  in its own tab" always works, and turning the setting off makes that the default.
+
+Rationale: this is the trade-off the 2026-11-14 decision already makes for every app at its built-in
+address, now made per published app and in the owner's hands. An app's protection against being
+framed guards against clickjacking: another site showing the app invisibly and steering the owner's
+clicks. Only Your Space's origin can frame the app, so the risk left is a compromised Your Space page,
+which can already control the app through the owner's session. An app the owner doesn't want shown
+inside Your Space keeps its own rules with the setting off. This supersedes, for published apps, the
+2026-11-19 and earlier 2026-11-20 statements that a published app opens at its link in its own tab.
 
 Embedding and routing are separate decisions from how an app interprets authenticated identity and roles.
 Frontend controls may reflect granted access, but hiding a control is not authorization enforcement.
@@ -1010,7 +1048,7 @@ app roles. The [spec map](../spec-map.md) and [roadmap](../roadmap.md) follow it
 | Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
 | Public launch scope | A working core experience before publication is the direction. The pre-public scope was settled in the 2026-11-02 interview, and every pre-public roadmap item has a High, Medium, or Low priority; Windows support and PWA installation are Low. Detailed release criteria remain to be defined. See [public release readiness](../public-release-readiness.md). |
-| App UI execution | Apps open in panes, side by side on larger screens: cross-origin iframes in the web client and PWA, native views in the desktop app. Each app is at `<app>.<Your Space's address>` behind Caddy's `forward_auth` gate, with no port fallback; Caddy replaces framing headers, and apps keep their own sign-in (2026-11-14). The platform session is a `__Host-` cookie over HTTPS and host-only on the plain-HTTP local setup, where WebKit opens apps in their own tab. An app can also be published on a port of this machine for the owner's own proxy or tunnel, and is then opened at the owner's link, outside the gate (2026-11-19); on Tailscale the owner creates one Tailscale Service per published app. Shell-to-app messages remain open; Safari on macOS is still to check. |
+| App UI execution | Apps open in panes, side by side on larger screens: cross-origin iframes in the web client and PWA, native views in the desktop app. Each app is at `<app>.<Your Space's address>` behind Caddy's `forward_auth` gate, with no port fallback; Caddy replaces framing headers, and apps keep their own sign-in (2026-11-14). The platform session is a `__Host-` cookie over HTTPS and host-only on the plain-HTTP local setup, where WebKit opens apps in their own tab. An app can also be published on a port of this machine for the owner's own proxy or tunnel, and is then reached at the owner's link, outside the gate (2026-11-19); Your Space shows it there in its pane, where the app's own Caddy lets only Your Space frame it, unless the owner turns that off for the app (2026-11-20). On Tailscale the owner creates one Tailscale Service per published app. Shell-to-app messages remain open; Safari on macOS is still to check. |
 | Project license | AGPL-3.0 for Your Space and Apache-2.0 for the SDKs, with a "Your Space" trademark and a contributor license agreement, all in place and reviewed by a lawyer before publication. Trademark filing details and agreement wording remain open. |
 | Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off, apart from the built-in proxy's certificate requests for an owner-configured domain, which are part of HTTPS setup (2026-11-03). Future reporting must be opt-in; opt-out is prohibited. |
 | External apps | Apps can be managed or hosted elsewhere. An app someone already runs is added through a connector that connects out to Your Space and plugs into the app endpoint (2026-11-14). The connector, and whether such an app must also verify Your Space identity, need definition in a later specification. |

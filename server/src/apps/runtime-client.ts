@@ -23,7 +23,8 @@ export interface AppSpec {
   interface?: { service: string; port: number } | null;
   limits?: Record<string, { memory?: number; cpus?: number }>;
   egress?: string[];
-  publish?: { port: number; bind: string } | null;
+  /** `frame`: the app's Caddy lets only Your Space's origin frame it (decision 2026-11-20). */
+  publish?: { port: number; bind: string; frame: boolean } | null;
 }
 
 export interface CheckAnswer {
@@ -53,7 +54,10 @@ export interface ServiceState {
   oomKilled?: boolean;
   /** A service that runs once, such as a migration, and finished. */
   completed?: boolean;
-  /** A published app's Caddy that doesn't run Your Space's own Caddy's current image; the next start renews it. */
+  /**
+   * A published app's Caddy that doesn't run Your Space's own Caddy's current image, or lets another
+   * origin than Your Space's current one frame the app; the next start renews it.
+   */
   outdated?: boolean;
 }
 

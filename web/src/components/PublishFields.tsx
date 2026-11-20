@@ -10,6 +10,10 @@ export interface PublishForm {
 export const PUBLISH_NOTE =
   "Your own proxy or tunnel, such as tailscale serve, reaches the app on this port. Your Space's sign-in doesn't guard it: the app's own sign-in does.";
 
+/** What showing a published app inside Your Space does (decision 2026-11-20). */
+export const FRAME_NOTE =
+  "Your Space replaces the app's own framing rules so that only Your Space can show it in a pane; off, it opens in its own tab.";
+
 /** The API's body for the form: an empty port means the one the app's file publishes. */
 export function publishBody(form: PublishForm): { port?: number; bind: string; link: string | null } {
   return {

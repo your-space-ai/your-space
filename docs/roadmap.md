@@ -425,9 +425,11 @@ Your Space: first public release
     **Added (2026-11-14)** with spec 002.
   - [x] [Medium] Open several apps side by side in one layout on larger screens; show one app at a time on phones. (2026-11-17, [PR #30](https://github.com/your-space-ai/your-space/pull/30))
   - [x] [Medium] Open any app in its own browser tab or window when it cannot run in a pane. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
-  - [ ] [Medium] Publish an app's interface on a port of this machine, opt-in per app, for the owner's own proxy or tunnel to reach at the owner's link; the app's address settings follow the link. Tailscale needs this, with one Tailscale Service per app.
+  - [ ] [Medium] Publish an app's interface on a port of this machine, opt-in per app, for the owner's own proxy or tunnel to reach at the owner's link; the app's address settings follow the link, and its pane shows the app at the link unless the owner turns that off for it. Tailscale needs this, with one Tailscale Service per app.
 
     **Added (2026-11-19):** see [running apps and reaching them](architecture/decisions.md#running-apps-and-reaching-them). It replaces journey 002's open task T035, Tailscale Services for apps.
+
+    **Reworded (2026-11-20):** a published app shows at its link in its pane by default, its own Caddy letting only Your Space frame it; see the same decisions.
 
   Spec 002 decides framing (the proxy replaces an app's framing headers), sign-in inside a pane (the
   app's own), and routing. On the plain-HTTP local setup, WebKit can't keep an app's cookies in a

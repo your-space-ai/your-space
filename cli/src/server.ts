@@ -53,8 +53,11 @@ export async function showOwner(compose: Compose): Promise<Owner | null> {
 export interface App {
   name: string;
   state: string;
-  /** Published on a port of this machine for the owner's own proxy or tunnel (decision 2026-11-19). */
-  publish?: { port: number; bind: string; link: string | null } | null;
+  /**
+   * Published on a port of this machine for the owner's own proxy or tunnel (decision 2026-11-19), and
+   * whether Your Space shows it in its pane (decision 2026-11-20).
+   */
+  publish?: { port: number; bind: string; link: string | null; frame: boolean } | null;
 }
 
 export async function listApps(compose: Compose): Promise<App[]> {

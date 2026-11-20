@@ -136,12 +136,23 @@ export function defaultPort(services: CheckAnswer["services"], iface: { service:
   return service?.published?.find((p) => p.target === iface.port)?.host ?? iface.port;
 }
 
+/**
+ * Publishing as the API shows and takes it: where the app is published, and whether Your Space shows
+ * it in its pane, which the app's Caddy then lets only Your Space frame (decision 2026-11-20).
+ */
+export type PublishChoices = Publish & { frame: boolean };
+
+/** The app's publishing, as the API shows it, or null when it isn't published. */
+export function publishOf(row: { publish: Publish | null; frame: boolean }): PublishChoices | null {
+  return row.publish ? { ...row.publish, frame: row.frame } : null;
+}
+
 /** The owner's choices for publishing, checked, over the current or default ones. */
-export function publishFrom(input: unknown, current: Publish): Publish {
+export function publishFrom(input: unknown, current: PublishChoices): PublishChoices {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw new AppError(400, "bad_publish", "Send the port, the address to listen on, and the link, or null to stop publishing.");
+    throw new AppError(400, "bad_publish", "Send the port, the address to listen on, the link, and whether to show the app inside Your Space, or null to stop publishing.");
   }
-  const { port, bind, link } = input as { port?: unknown; bind?: unknown; link?: unknown };
+  const { port, bind, link, frame } = input as { port?: unknown; bind?: unknown; link?: unknown; frame?: unknown };
   const next = { ...current };
   if (port !== undefined) {
     if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) {
@@ -158,6 +169,10 @@ export function publishFrom(input: unknown, current: Publish): Publish {
   if (link !== undefined) {
     if (link !== null && typeof link !== "string") throw new AppError(400, "bad_link", LINK_MESSAGE);
     next.link = link === null || link.trim() === "" ? null : linkOrigin(link);
+  }
+  if (frame !== undefined) {
+    if (typeof frame !== "boolean") throw new AppError(400, "bad_frame", "Whether to show the app inside Your Space must be true or false.");
+    next.frame = frame;
   }
   return next;
 }
@@ -417,10 +432,10 @@ export class AppsService {
     if (missing.length) throw new AppError(400, "settings_required", `These settings need a value: ${missing.join(", ")}.`);
 
     const images = Object.fromEntries(p.check.images.filter((i) => i.digest).map((i) => [i.ref, { digest: i.digest! }]));
-    let publish: Publish | null = null;
+    let publish: PublishChoices | null = null;
     if (publishWith !== null && publishWith !== undefined) {
       if (!p.interface || p.publishPort === null) throw new AppError(400, "no_interface", `${p.title} has no interface to publish.`);
-      publish = publishFrom(publishWith, { port: p.publishPort, bind: DEFAULT_BIND, link: null });
+      publish = publishFrom(publishWith, { port: p.publishPort, bind: DEFAULT_BIND, link: null, frame: true });
       await this.refuseTakenPort(publish, p.name);
     }
 
@@ -440,7 +455,8 @@ export class AppsService {
         adaptations: p.check.adaptations,
         interface: p.interface,
         pane: p.pane,
-        publish,
+        publish: publish && { port: publish.port, bind: publish.bind, link: publish.link },
+        frame: publish?.frame ?? true,
         limits: p.limits,
         desired: "running" as const,
         state: "installing" as const,
@@ -536,7 +552,9 @@ export class AppsService {
       interface: row.interface,
       limits: row.limits,
       egress: outbound.map((o) => o.host),
-      publish: row.publish ? { port: row.publish.port, bind: row.publish.bind } : null,
+      // The app's Caddy replaces its framing rules only where the pane frames it: at a link, for an
+      // app that can run in a pane, with the owner's setting on.
+      publish: row.publish ? { port: row.publish.port, bind: row.publish.bind, frame: row.frame && row.pane && row.publish.link !== null } : null,
     };
   }
 
@@ -740,7 +758,7 @@ export class AppsService {
           origin: appOrigin(this.config.publicUrl, r),
           pane: r.pane,
           hasInterface: Boolean(r.interface),
-          publish: r.publish ?? null,
+          publish: publishOf(r),
           pendingRequests: counts.get(r.id) ?? 0,
         })),
       retained: rows.filter((r) => r.state === "removed").map((r) => ({ name: r.name, title: r.title, repo: r.repo, removedAt: r.removedAt })),
@@ -769,7 +787,7 @@ export class AppsService {
       desired: row.desired,
       pane: row.pane,
       interface: row.interface,
-      publish: row.publish ?? null,
+      publish: publishOf(row),
       source: { link: row.sourceUrl, repo: row.repo, path: row.path, ref: row.ref, commit: row.commit },
       kitSource: row.kitSource,
       images: row.images,
@@ -888,20 +906,24 @@ export class AppsService {
 
   /**
    * Publishes the app on a port of this machine, changes how, or stops (null). The app restarts with
-   * it, and its address settings follow the link.
+   * it, and its address settings follow the link. Stopping drops the owner's choices, so publishing
+   * again starts from the defaults.
    */
   async updatePublish(name: string, publishWith: unknown, actorId: string): Promise<{ jobId: string }> {
     const row = await this.liveRow(name);
     if (this.busy.has(row.id)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
-    let publish: Publish | null = null;
+    let publish: PublishChoices | null = null;
     if (publishWith !== null) {
       if (!row.interface) throw new AppError(400, "no_interface", `${row.title} has no interface to publish.`);
       // The first time, the check gives the port the app's file publishes.
       const current = row.publish ?? { port: defaultPort((await this.check(await this.specFor(row))).services, row.interface) ?? row.interface.port, bind: DEFAULT_BIND, link: null };
-      publish = publishFrom(publishWith, current);
+      publish = publishFrom(publishWith, { ...current, frame: row.frame });
       await this.refuseTakenPort(publish, row.name);
     }
-    await this.db.update(app).set({ publish, updatedAt: new Date() }).where(eq(app.id, row.id));
+    await this.db
+      .update(app)
+      .set({ publish: publish && { port: publish.port, bind: publish.bind, link: publish.link }, frame: publish?.frame ?? true, updatedAt: new Date() })
+      .where(eq(app.id, row.id));
     await this.event("app.publish_changed", actorId, row.id);
     return this.queue(row.id, "apply");
   }

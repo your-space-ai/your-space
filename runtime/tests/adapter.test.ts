@@ -119,7 +119,7 @@ describe("Sure's own file", () => {
 });
 
 describe("publishing the interface on a port", () => {
-  const caddy = `sha256:${"f".repeat(64)}`;
+  const caddy = { image: `sha256:${"f".repeat(64)}`, origin: "https://space.example.com" };
   const published = adapt({ ...spec, publish: { port: 3000, bind: "127.0.0.1" } }, sure, [], caddy);
   const services = published.adapted!.services as Record<string, Service>;
   const networks = published.adapted!.networks as Record<string, Record<string, unknown>>;
@@ -137,11 +137,31 @@ describe("publishing the interface on a port", () => {
     for (const [name, service] of Object.entries(services)) if (name !== "ys-publish") expect(service.ports).toBeUndefined();
   });
 
-  it("runs Your Space's own Caddy image with the published Caddyfile, to the interface", () => {
+  it("runs Your Space's own Caddy image with the published Caddyfile, to the interface, framed by nobody else's rules", () => {
     const proxy = services["ys-publish"]!;
-    expect(proxy.image).toBe(caddy);
+    expect(proxy.image).toBe(caddy.image);
     expect(proxy.command).toEqual(["caddy", "run", "--config", "/etc/caddy/published.caddyfile", "--adapter", "caddyfile"]);
-    expect(proxy.environment).toEqual({ YS_UPSTREAM: "ys-sure-ui:3000", XDG_DATA_HOME: "/tmp/data", XDG_CONFIG_HOME: "/tmp/config" });
+    // Without `frame`, the app's own framing rules stand.
+    expect(proxy.environment).toEqual({ YS_UPSTREAM: "ys-sure-ui:3000", YS_FRAME: "off", XDG_DATA_HOME: "/tmp/data", XDG_CONFIG_HOME: "/tmp/config" });
+    expect((proxy.labels as Record<string, string>)["ai.your-space.frame-origin"]).toBeUndefined();
+  });
+
+  it("lets only Your Space's origin frame an app the owner shows inside Your Space, and labels the Caddy with it", () => {
+    const framed = adapt({ ...spec, publish: { port: 3000, bind: "127.0.0.1", frame: true } }, sure, [], caddy);
+    const proxy = (framed.adapted!.services as Record<string, Service>)["ys-publish"]!;
+    expect(proxy.environment).toEqual({ YS_UPSTREAM: "ys-sure-ui:3000", YS_FRAME: "on", YS_ORIGIN: "https://space.example.com", XDG_DATA_HOME: "/tmp/data", XDG_CONFIG_HOME: "/tmp/config" });
+    expect((proxy.labels as Record<string, string>)["ai.your-space.frame-origin"]).toBe("https://space.example.com");
+    // Not the app's outbound proxy: it only answers on the machine's port.
+    expect(proxy.environment.HTTP_PROXY).toBeUndefined();
+    expect(framed.adaptations.find((a) => a.service === "ys-publish")!.detail).toBe("Added Your Space's Caddy, which publishes the app's interface on 127.0.0.1:3000 and lets only Your Space frame it.");
+    // An app not shown inside Your Space needs no origin.
+    expect(adapt({ ...spec, publish: { port: 3000, bind: "127.0.0.1", frame: false } }, sure, [], { image: caddy.image }).refusals).toEqual([]);
+  });
+
+  it("refuses to show an app inside Your Space when Your Space's Caddy names no origin", () => {
+    const refused = adapt({ ...spec, publish: { port: 3000, bind: "127.0.0.1", frame: true } }, sure, [], { image: caddy.image });
+    expect(refused.adapted).toBeNull();
+    expect(refused.refusals).toEqual([{ service: "", setting: "publish", reason: "Your Space's Caddy has no origin set, so the app can't be shown inside Your Space. Turn that off for it." }]);
   });
 
   it("is hardened: nobody's user, a read-only root with memory for Caddy's files, no capabilities, its own limits", () => {
@@ -180,10 +200,11 @@ describe("publishing the interface on a port", () => {
     expect(adapt(spec, { services: { "ys-publish": { image: "busybox" } } }).refusals.map((r) => r.setting)).toContain("services");
   });
 
-  it("checks the port and address it is sent", () => {
+  it("checks the port, address and framing it is sent", () => {
     const base = { project: "ys-sure", app: "sure", compose: "services: {}" };
     expect(validateSpec({ ...base, publish: { port: 80, bind: "::1" } }).publish).toEqual({ port: 80, bind: "::1" });
-    for (const publish of [{ port: 0, bind: "127.0.0.1" }, { port: 70000, bind: "127.0.0.1" }, { port: 80, bind: "localhost" }, { port: "80", bind: "127.0.0.1" }]) {
+    expect(validateSpec({ ...base, publish: { port: 80, bind: "::1", frame: true } }).publish).toEqual({ port: 80, bind: "::1", frame: true });
+    for (const publish of [{ port: 0, bind: "127.0.0.1" }, { port: 70000, bind: "127.0.0.1" }, { port: 80, bind: "localhost" }, { port: "80", bind: "127.0.0.1" }, { port: 80, bind: "::1", frame: "yes" }]) {
       expect(() => validateSpec({ ...base, publish }), JSON.stringify(publish)).toThrow(SpecError);
     }
   });

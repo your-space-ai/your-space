@@ -1,7 +1,7 @@
 // Shared output and exit codes for the operator commands (contracts/operator-commands.md).
 import { ConfigError, loadConfig, type Config } from "../config.ts";
 import { createDatabase, type Database } from "../db/client.ts";
-import type { Publish } from "../db/schema.ts";
+import type { PublishChoices } from "../apps/service.ts";
 import { setLogStream } from "../log.ts";
 
 export const EXIT = {
@@ -55,12 +55,15 @@ export function openForCommand(out: Output): { config: Config; database: Databas
   }
 }
 
-/** Where a published app listens, and what the owner's own network setup does with it. */
-export function publishedLine(title: string, publish: Publish): string {
+/**
+ * Where a published app listens, what the owner's own network setup does with it, and, with a link,
+ * whether Your Space shows it in its pane.
+ */
+export function publishedLine(title: string, publish: PublishChoices): string {
   const port = `${publish.bind.includes(":") ? `[${publish.bind}]` : publish.bind}:${publish.port}`;
-  return publish.link
-    ? `${title} is published on ${port}. Your proxy or tunnel sends ${publish.link} there.`
-    : `${title} is published on ${port}. Give it a link with --link once your proxy or tunnel reaches it.`;
+  if (!publish.link) return `${title} is published on ${port}. Give it a link with --link once your proxy or tunnel reaches it.`;
+  const shown = publish.frame ? "Your Space shows it in its pane." : "Your Space opens it there in its own tab.";
+  return `${title} is published on ${port}. Your proxy or tunnel sends ${publish.link} there. ${shown}`;
 }
 
 /** A Compose file given on this machine, as the commands name it: by its file name, if it had one, and its digest. */
