@@ -202,8 +202,9 @@ others; the owner can change them in the app's advanced settings. Sure's service
 
 Removing runs `docker compose down` without volumes: containers and networks go, named volumes stay,
 and the app's record and settings stay as retained data so a reinstall gets back the same database
-password. Installing the same app again offers to reuse them. Deleting retained data removes the
-volumes, then the record.
+password. Installing the same app again offers to reuse them: one with the same name and
+repository, or with the same name when either came from a Compose file on this machine, which has no
+repository to compare. Deleting retained data removes the volumes, then the record.
 
 ## Dependencies
 
