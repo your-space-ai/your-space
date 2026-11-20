@@ -1,6 +1,8 @@
-// publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--off] [--json] (decision
-// 2026-11-19, contracts/http-api.md). Publishes an installed app on a port of this machine, changes
-// how, or stops, and waits until the app has restarted with it.
+// publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--frame | --no-frame] [--off]
+// [--json] (decisions 2026-11-19 and 2026-11-20, contracts/http-api.md). Publishes an installed app
+// on a port of this machine, changes how, or stops, and waits until the app has restarted with it.
+// --no-frame opens the app at its link in its own tab instead of in Your Space's pane; --frame shows
+// it in the pane again.
 import { parseArgs } from "node:util";
 import { operatorActorId } from "../actors.ts";
 import { errorFields, log } from "../log.ts";
@@ -8,10 +10,10 @@ import { socketRuntime } from "../apps/runtime-client.ts";
 import { AppError, AppsService } from "../apps/service.ts";
 import { EXIT, openForCommand, output, publishedLine } from "./output.ts";
 
-const USAGE = "Usage: publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--off] [--json]";
+const USAGE = "Usage: publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--frame | --no-frame] [--off] [--json]";
 
 async function main(argv: string[]): Promise<number> {
-  let values: { port?: string; bind?: string; link?: string; off?: boolean; json?: boolean; help?: boolean };
+  let values: { port?: string; bind?: string; link?: string; frame?: boolean; "no-frame"?: boolean; off?: boolean; json?: boolean; help?: boolean };
   let positionals: string[];
   try {
     ({ values, positionals } = parseArgs({
@@ -20,6 +22,8 @@ async function main(argv: string[]): Promise<number> {
         port: { type: "string" },
         bind: { type: "string" },
         link: { type: "string" },
+        frame: { type: "boolean", default: false },
+        "no-frame": { type: "boolean", default: false },
         off: { type: "boolean", default: false },
         json: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
@@ -34,8 +38,8 @@ async function main(argv: string[]): Promise<number> {
     return EXIT.usage;
   }
   const out = output(values.json === true);
-  const choices = values.port !== undefined || values.bind !== undefined || values.link !== undefined;
-  if (values.help || positionals.length !== 1 || (values.off && choices)) {
+  const choices = values.port !== undefined || values.bind !== undefined || values.link !== undefined || values.frame || values["no-frame"];
+  if (values.help || positionals.length !== 1 || (values.off && choices) || (values.frame && values["no-frame"])) {
     if (values.help) out.success({ ok: true, usage: USAGE }, [USAGE]);
     else out.failure({ ok: false, error: "usage", message: USAGE }, USAGE);
     return values.help ? EXIT.ok : EXIT.usage;
@@ -49,7 +53,12 @@ async function main(argv: string[]): Promise<number> {
   try {
     const publish = values.off
       ? null
-      : { ...(values.port !== undefined ? { port: Number(values.port) } : {}), ...(values.bind !== undefined ? { bind: values.bind } : {}), ...(values.link !== undefined ? { link: values.link } : {}) };
+      : {
+          ...(values.port !== undefined ? { port: Number(values.port) } : {}),
+          ...(values.bind !== undefined ? { bind: values.bind } : {}),
+          ...(values.link !== undefined ? { link: values.link } : {}),
+          ...(values.frame || values["no-frame"] ? { frame: values.frame === true } : {}),
+        };
     const actorId = await operatorActorId(database.db);
     const { jobId } = await apps.updatePublish(name, publish, actorId);
     // The job runs in this process, so the command waits for it like install-app does.

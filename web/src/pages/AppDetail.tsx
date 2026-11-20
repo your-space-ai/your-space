@@ -3,9 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import { api, appQuery, errorMessage, STATE_LABEL, type AppDetail as Detail } from "../apps-api.ts";
+import { api, appQuery, errorMessage, ownTabLink, STATE_LABEL, type AppDetail as Detail } from "../apps-api.ts";
 import { JobProgress } from "../components/JobProgress.tsx";
-import { PUBLISH_NOTE, publishBody, PublishFields, type PublishForm } from "../components/PublishFields.tsx";
+import { FRAME_NOTE, PUBLISH_NOTE, publishBody, PublishFields, type PublishForm } from "../components/PublishFields.tsx";
 
 const MIB = 1024 * 1024;
 
@@ -69,6 +69,7 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
       void queryClient.invalidateQueries({ queryKey: ["apps"] });
     },
   });
+  const ownTab = ownTabLink(d);
   return (
     <section className="card" aria-label="Status">
       <p>
@@ -127,8 +128,8 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
         ) : null}
       </dl>
       <div className="actions">
-        {d.interface && d.state !== "removed" && d.publish?.link ? (
-          <a className="button" href={d.publish.link} target="_blank" rel="noreferrer">
+        {d.interface && d.state !== "removed" && ownTab ? (
+          <a className="button" href={ownTab} target="_blank" rel="noreferrer">
             Open
           </a>
         ) : d.interface && d.state !== "removed" ? (
@@ -234,13 +235,17 @@ function Settings({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { j
   );
 }
 
-/** Publishing the app on a port of this machine, for the owner's own proxy or tunnel (decision 2026-11-19). */
+/**
+ * Publishing the app on a port of this machine, for the owner's own proxy or tunnel (decision
+ * 2026-11-19), and whether Your Space shows it in its pane there (decision 2026-11-20).
+ */
 function Publishing({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { jobId: string }) => void }) {
   const queryClient = useQueryClient();
   const [on, setOn] = useState(Boolean(d.publish));
   const [form, setForm] = useState<PublishForm>({ port: d.publish ? String(d.publish.port) : "", bind: d.publish?.bind ?? "127.0.0.1", link: d.publish?.link ?? "" });
+  const [frame, setFrame] = useState(d.publish?.frame ?? true);
   const save = useMutation({
-    mutationFn: () => api<{ jobId: string }>("PUT", `/api/apps/${d.name}/publish`, { publish: on ? publishBody(form) : null }),
+    mutationFn: () => api<{ jobId: string }>("PUT", `/api/apps/${d.name}/publish`, { publish: on ? { ...publishBody(form), frame } : null }),
     onSuccess: (r) => {
       onStarted(r);
       void queryClient.invalidateQueries({ queryKey: ["apps"] });
@@ -260,7 +265,19 @@ function Publishing({ detail: d, onStarted }: { detail: Detail; onStarted: (r: {
           Publish on a port of this machine
           <small>{PUBLISH_NOTE}</small>
         </label>
-        {on ? <PublishFields form={form} onChange={setForm} defaultPort={null} /> : null}
+        {on ? (
+          <>
+            <PublishFields form={form} onChange={setForm} defaultPort={null} />
+            {/* Without a link, the pane shows the app at its built-in address, behind the gate. */}
+            {form.link.trim() ? (
+              <label className="checkbox">
+                <input type="checkbox" checked={frame} onChange={(e) => setFrame(e.target.checked)} />
+                Show inside Your Space
+                <small>{FRAME_NOTE}</small>
+              </label>
+            ) : null}
+          </>
+        ) : null}
         <p className="muted small">Saving restarts the app. Its data is kept.</p>
         {save.isError ? (
           <p className="notice error" role="alert">

@@ -254,6 +254,10 @@ then try to reach Sure's address while signed out of Your Space.
    Space's sign-in cookie, and no cookie Sure sets reaches Your Space or another app.
 7. **Given** an app that sends a header forbidding framing, **When** it opens in a pane, **Then** it
    shows, and no other site can frame it.
+8. **Given** an app published on a port with a link (2026-11-20), **When** the owner opens it, **Then**
+   it shows at its link in its pane, framed only by Your Space even when it sends a header forbidding
+   framing; with "Show inside Your Space" off, its headers reach the browser unchanged and it opens at
+   its link in its own tab.
 
 ### User Story 5 - Change an App's Settings (Priority: P2)
 
@@ -470,11 +474,15 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
   tab when they can't run in a pane. When a browser blocks an app's cookies in a pane, Your Space
   notices and offers the app in its own tab instead of failing silently. WebKit does this on the
   plain-HTTP local setup, where it treats each `*.localhost` name as a separate site (research R3).
+  (2026-11-20: an app published with a link opens at the link in its pane unless the owner turns
+  "Show inside Your Space" off for it; then it opens there in its own tab.)
 - **FR-017**: Your Space must not require apps to change their code, their requests or their sign-in
   to open in a pane. The proxy may change only what every app needs the same way: it replaces an
   app's framing headers so that only Your Space can frame it, and applies FR-014a. It doesn't change
   an app's own cookies otherwise; an app that can't run in a pane opens in its own tab, and its
-  installation kit can say so.
+  installation kit can say so. (2026-11-20: a published app's own Caddy replaces its framing headers
+  the same way, and only them, while "Show inside Your Space" is on, as it is by default; see the
+  decision record's "Running Apps and Reaching Them".)
 
 **Settings, outbound access and isolation (slices 5 to 7)**
 

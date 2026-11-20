@@ -4,8 +4,11 @@
 # the owner chose, and passes every request to the app's interface on the app's sealed network. The
 # runtime manager sets:
 #   YS_UPSTREAM  the app's interface, ys-<app>-ui:<port>
+#   YS_FRAME     on when the owner shows the app inside Your Space (the default), off otherwise
+#   YS_ORIGIN    with YS_FRAME on, Your Space's origin, as Your Space's own Caddy has it
 # There is no access gate here: whoever reaches the port reaches the app, and the app's own sign-in
-# protects it. The app's responses pass through as the app sent them, its framing headers included.
+# protects it. The app's responses pass through as the app sent them, apart from its framing headers
+# when YS_FRAME is on.
 {
 	# Configured once, from this file: no admin API, nothing saved, no certificates.
 	admin off
@@ -23,12 +26,27 @@
 	}
 }
 
+# Shown inside Your Space: only Your Space's origin can frame the app, by the rule Your Space's own
+# Caddy applies at an app's built-in address. The app's X-Frame-Options goes, and its policy's
+# frame-ancestors, or a policy of its own when it has none, names only Your Space's origin. The rest
+# of the app's policy, its cookies and its other headers stay as the app sent them.
+(frame_on) {
+	header_down -X-Frame-Options
+	header_down Content-Security-Policy "frame-ancestors[^;]*" "frame-ancestors {$YS_ORIGIN}"
+	header_down +Content-Security-Policy "frame-ancestors {$YS_ORIGIN}"
+}
+
+# Not shown inside Your Space: the app's framing headers pass through unchanged.
+(frame_off) {
+}
+
 :8080 {
 	# The original Host header, WebSockets, request bodies of any size and streamed responses pass
 	# through, and responses are sent on as they arrive. Caddy keeps the visitor's connection open
 	# between requests, and opens connections to the app as it needs them.
 	reverse_proxy {$YS_UPSTREAM} {
 		flush_interval -1
+		import frame_{$YS_FRAME:off}
 	}
 	# There is no `log` directive, so the access log stays off and request URLs are not recorded.
 }

@@ -416,13 +416,22 @@ address to. Choose it when installing the app, or later on the app's page, under
   network the machine is on.
 - **Link:** the address you reach the app at through your proxy or tunnel, such as
   `https://sure.example.com`. The app's own address settings, such as the URL it puts in its links,
-  use it, and Your Space opens the app there, in its own tab. A changed link reaches them when the
-  app restarts, which saving does.
+  use it, and Your Space shows the app there, in its pane. A changed link reaches them when the app
+  restarts, which saving does.
+- **Show inside Your Space:** on by default, on the app's page once the app has a link. Many apps
+  refuse to be shown inside another site's page, to protect you from a site that shows the app
+  invisibly and tricks you into clicking in it. With this on, the app's Caddy replaces that rule
+  with one that lets only Your Space show the app; every other site is still refused. Turn it off
+  to keep the app's own rule; Your Space then opens the app at its link in its own tab. The app's
+  cookies are its own, so if your link is on another site than Your Space's, a browser that blocks
+  other sites' cookies may not keep you signed in to the app in the pane: open it in its own tab,
+  or turn this off.
 
 A Caddy of Your Space's answers on the port and passes each request to the app with its `Host`
 header, so the app sees the address you reached it at. The `X-Forwarded-*` headers your proxy sends
 reach the app when the proxy connects from this machine, your local network or your tailnet; from
-anywhere else, Caddy sets them itself. The app's answers come back as the app sent them.
+anywhere else, Caddy sets them itself. The app's answers come back as the app sent them, apart from
+its framing headers while the app is shown inside Your Space.
 
 A published port isn't behind Your Space's sign-in: anyone who can reach it reaches the app, and only
 the app's own sign-in protects it. The app's own services still publish nothing, and its built-in
@@ -432,11 +441,13 @@ From the server:
 
 ```sh
 docker compose exec server publish-app sure --port 8081 --link https://sure.example.com
+docker compose exec server publish-app sure --no-frame
 docker compose exec server publish-app sure --off
 ```
 
-`install-app <link> --publish`, with the same `--port`, `--bind` and `--link`, installs an app
-published.
+`--no-frame` opens the app in its own tab instead of inside Your Space, and `--frame` shows it inside
+again. `install-app <link> --publish`, with the same `--port`, `--bind`, `--link` and `--no-frame`,
+installs an app published.
 
 **Settings.** An app's page shows its settings. Saving restarts the app with the new values and
 keeps its data. Replacing a generated secret, such as a database password, can break the app.

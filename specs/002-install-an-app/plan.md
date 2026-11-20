@@ -180,13 +180,17 @@ app on a port and gives its link; see [Publishing an app on a port](#publishing-
 
 Since 2026-11-19 ([decision record](../../docs/architecture/decisions.md#running-apps-and-reaching-them)),
 the owner can publish an app's interface on a port of this machine for their own proxy or tunnel.
-The app record keeps `publish: { port, bind, link }`. The runtime manager adds a `ys-publish`
+The app record keeps `publish: { port, bind, link }`, and `frame`, whether Your Space shows the app
+in its pane (true by default; 2026-11-20). The runtime manager adds a `ys-publish`
 service: a Caddy that runs the image of Your Space's own Caddy container with
 `deploy/published.caddyfile` and `YS_UPSTREAM=ys-<app>-ui:<port>`, as user 65534 with a read-only
 root (Caddy's files in a `/tmp` tmpfs), no capabilities, no new privileges, 128 MiB and 0.5 CPU, on
 the app network and a `publish` network of its own, and publishes only its port on `bind:port`. It
 passes `Host` on, streams both ways, and passes the app's responses on unchanged, framing headers
-included. It trusts forwarded headers only from loopback, private and Tailscale addresses
+included, unless the app is shown in Your Space's pane: then `YS_FRAME=on` and `YS_ORIGIN`, the
+origin Your Space's own Caddy container has, make it import the framing rule Your Space's own Caddy
+applies at an app's built-in address (remove `X-Frame-Options`; `frame-ancestors` names only that
+origin), and nothing else changes. It trusts forwarded headers only from loopback, private and Tailscale addresses
 (`127.0.0.0/8`, `::1`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`,
 `100.64.0.0/10`), and sets them itself for anyone else. The app's services stay on the sealed
 network, where Docker publishes nothing.
@@ -197,9 +201,12 @@ a short-lived container of the same image, hardened like the app's Caddy, that p
 Docker's default bridge and exits at once; Docker's bind error means another program uses it. A
 check that can't run doesn't stop saving, and Docker's bind error at the start names a port taken
 since. With a link, `app_origin` and `app_host` settings are the link's on every start. The runtime
-manager reports a `ys-publish` whose image differs from Your Space's Caddy's as outdated,
-and the server's reconcile applies that app again, once per server start, which recreates only
-`ys-publish`.
+manager reports a `ys-publish` whose image differs from Your Space's Caddy's, or that lets another
+origin frame the app (its `ai.your-space.frame-origin` label), as outdated, and the server's
+reconcile applies that app again, once per server start, which recreates only `ys-publish`. The web
+client frames the link in the app's pane while `frame` is on, unless the kit says the app can't run
+in a pane or the link is plain HTTP inside an HTTPS Your Space; otherwise it opens the link in its
+own tab.
 
 ### Limits and resources (FR-021, FR-021a)
 
@@ -245,13 +252,15 @@ See [data-model.md](data-model.md): `app`, `app_setting`, `app_outbound`, `app_a
   encryption, the pass and handoff, owner-only routes, reconcile against a fake runtime.
 - **Runtime manager (Vitest, no Docker)**: the allowlist and the adapted file, from resolved JSON
   fixtures, including Sure's; that a published app's Caddyfile reads what the runtime manager sets
-  and changes nothing in the app's responses.
+  and, shown in Your Space or not, what it does to apps' framing headers: none, `X-Frame-Options`
+  `DENY` or `SAMEORIGIN`, a policy without `frame-ancestors`, and `frame-ancestors 'none'`.
 - **Browser (Playwright, Compose stack)**: a stand-in for GitHub serves fixture Compose files and
   kits (`YS_E2E_GITHUB_API`, `YS_E2E_GITHUB_RAW`, `YS_E2E_KITS`). Install whoami from the UI, open it
   in a pane (in WebKit, its own tab), sign out and be refused, isolation probes with busybox, egress
   requests and approval, settings, limits, restart and stop, removal and reuse, publishing on a port
-  (whoami, 200 requests at once, and a fixture that refuses to be framed, whose headers arrive
-  unchanged and whose kept-alive connection survives a pause), two apps side by side, the phone
+  (whoami, 200 requests at once, and a fixture that refuses to be framed, which shows in its pane
+  with "Show inside Your Space" on, and whose headers arrive unchanged and which opens in its own tab
+  with it off, and whose kept-alive connection survives a pause), two apps side by side, the phone
   layout. Test machines add the test names to `/etc/hosts`, because Node and so
   Playwright's API requests don't resolve `*.localhost`; browsers resolve them themselves.
 - **Real apps**: Sure and Twenty installed from their real files through the stand-in, run by hand
