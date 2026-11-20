@@ -1,7 +1,7 @@
 // Shared output and exit codes for the operator commands (contracts/operator-commands.md).
 import { ConfigError, loadConfig, type Config } from "../config.ts";
 import { createDatabase, type Database } from "../db/client.ts";
-import type { PublishChoices } from "../apps/service.ts";
+import type { Publish } from "../db/schema.ts";
 import { setLogStream } from "../log.ts";
 
 export const EXIT = {
@@ -57,12 +57,12 @@ export function openForCommand(out: Output): { config: Config; database: Databas
 
 /**
  * Where a published app listens, what the owner's own network setup does with it, and, with a link,
- * whether Your Space shows it in its pane.
+ * whether Your Space shows it in its pane or opens it there in its own tab.
  */
-export function publishedLine(title: string, publish: PublishChoices): string {
+export function publishedLine(title: string, publish: Publish & { inPane: boolean }): string {
   const port = `${publish.bind.includes(":") ? `[${publish.bind}]` : publish.bind}:${publish.port}`;
   if (!publish.link) return `${title} is published on ${port}. Give it a link with --link once your proxy or tunnel reaches it.`;
-  const shown = publish.frame ? "Your Space shows it in its pane." : "Your Space opens it there in its own tab.";
+  const shown = publish.inPane ? "Your Space shows it in its pane." : "Your Space opens it there in its own tab.";
   return `${title} is published on ${port}. Your proxy or tunnel sends ${publish.link} there. ${shown}`;
 }
 

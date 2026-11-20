@@ -26,7 +26,7 @@ Space's own Caddy's image with `deploy/published.caddyfile`. It listens on `bind
 machine, proxies to the interface, and passes the app's responses on unchanged; the app's own
 services publish nothing. Checking or applying a published app while Your Space's Caddy isn't
 running is refused; an apply waits up to two minutes for it first. With `frame: true` (decision
-2026-11-20), which the server sends only for an app with a link that its pane frames, the Caddy lets
+2026-11-20), which the server sends only for an app that its pane shows at its link, the Caddy lets
 only Your Space's origin frame the app: it gets `YS_FRAME=on` and
 `YS_ORIGIN`, the origin Your Space's own Caddy has, removes the app's `X-Frame-Options`, and sets its
 policy's `frame-ancestors`, or a policy of its own, to that origin; it is labelled
@@ -40,7 +40,7 @@ policy's `frame-ancestors`, or a policy of its own, to that origin; it is labell
 | `POST /apply` | app spec | NDJSON stream: `{ "step": "pull", "image" }`, `{ "step": "start" }`, …, then `{ "done": true }` or `{ "error": "…" }`; a published port something else took since it was checked gives an error naming it |
 | `POST /apps/{project}/down` | | Removes containers and networks, keeps volumes |
 | `DELETE /apps/{project}/volumes` | | Removes the app's volumes |
-| `GET /apps` | | `[{ project, app, services: [{ name, role, state, health, exitCode, oomKilled, outdated }] }]` for every app this installation manages; `role` is `app`, `egress` or `publish`; `outdated` marks a `publish` service that doesn't run Your Space's Caddy's current image, or lets another origin than that Caddy's frame the app |
+| `GET /apps` | | `[{ project, app, services: [{ name, role, state, health, exitCode, oomKilled, outdated, framing }] }]` for every app this installation manages; `role` is `app`, `egress` or `publish`; `outdated` marks a `publish` service that doesn't run Your Space's Caddy's current image, or lets another origin than that Caddy's frame the app; `framing`, on a `publish` service that runs and lets that Caddy's origin frame the app, is its container's ID, shortened to 12 characters, which changes whenever the service is recreated |
 | `GET /apps/{project}/logs?service=&tail=` | | `{ lines: [...] }` |
 | `GET /apps/{project}/stats` | | `{ services: [{ name, memory, memoryLimit, cpuPercent }] }` |
 | `GET /apps/{project}/denials` | | `{ hosts: [{ host, attempts, lastSeen }] }` from the egress proxy's log |

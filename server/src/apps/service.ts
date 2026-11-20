@@ -137,14 +137,37 @@ export function defaultPort(services: CheckAnswer["services"], iface: { service:
 }
 
 /**
- * Publishing as the API shows and takes it: where the app is published, and whether Your Space shows
- * it in its pane, which the app's Caddy then lets only Your Space frame (decision 2026-11-20).
+ * Publishing as the API takes it: where the app is published, and whether the owner shows it inside
+ * Your Space, where the app's Caddy then lets only Your Space frame it (decision 2026-11-20).
  */
 export type PublishChoices = Publish & { frame: boolean };
 
-/** The app's publishing, as the API shows it, or null when it isn't published. */
-export function publishOf(row: { publish: Publish | null; frame: boolean }): PublishChoices | null {
-  return row.publish ? { ...row.publish, frame: row.frame } : null;
+/**
+ * Browsers show no plain-HTTP page inside an HTTPS one, apart from one on this machine, so a link like
+ * that can't be framed by an HTTPS Your Space.
+ */
+export function plainInHttps(publicUrl: string, link: string): boolean {
+  const { protocol, hostname } = new URL(link);
+  const local = hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "[::1]" || /^127\./.test(hostname);
+  return new URL(publicUrl).protocol === "https:" && protocol === "http:" && !local;
+}
+
+/**
+ * Whether Your Space shows the app at its link in its pane: the owner's setting is on, the app has a
+ * link, its kit lets it run in a pane, and Your Space's page can frame the link. The one rule for both
+ * the app's Caddy, which lets only Your Space frame it then, and the pane.
+ */
+export function inPane(publicUrl: string, row: { publish: Publish | null; frame: boolean; pane: boolean }): boolean {
+  const link = row.publish?.link ?? null;
+  return row.frame && row.pane && link !== null && !plainInHttps(publicUrl, link);
+}
+
+/**
+ * The app's publishing, as the API shows it, or null when it isn't published: the owner's choices,
+ * and whether Your Space shows the app at its link in its pane.
+ */
+export function publishOf(publicUrl: string, row: { publish: Publish | null; frame: boolean; pane: boolean }): (PublishChoices & { inPane: boolean }) | null {
+  return row.publish ? { ...row.publish, frame: row.frame, inPane: inPane(publicUrl, row) } : null;
 }
 
 /** The owner's choices for publishing, checked, over the current or default ones. */
@@ -552,9 +575,8 @@ export class AppsService {
       interface: row.interface,
       limits: row.limits,
       egress: outbound.map((o) => o.host),
-      // The app's Caddy replaces its framing rules only where the pane frames it: at a link, for an
-      // app that can run in a pane, with the owner's setting on.
-      publish: row.publish ? { port: row.publish.port, bind: row.publish.bind, frame: row.frame && row.pane && row.publish.link !== null } : null,
+      // The app's Caddy replaces its framing rules only where the pane frames it.
+      publish: row.publish ? { port: row.publish.port, bind: row.publish.bind, frame: inPane(this.config.publicUrl, row) } : null,
     };
   }
 
@@ -747,6 +769,7 @@ export class AppsService {
       .where(eq(appAccessRequest.state, "pending"))
       .groupBy(appAccessRequest.appId);
     const counts = new Map(pending.map((p) => [p.appId, p.n]));
+    const framing = await this.framing(rows.filter((r) => r.state !== "removed" && inPane(this.config.publicUrl, r)).map((r) => r.name));
     return {
       apps: rows
         .filter((r) => r.state !== "removed")
@@ -758,11 +781,32 @@ export class AppsService {
           origin: appOrigin(this.config.publicUrl, r),
           pane: r.pane,
           hasInterface: Boolean(r.interface),
-          publish: publishOf(r),
+          publish: publishOf(this.config.publicUrl, r),
+          framing: framing.get(r.name) ?? null,
           pendingRequests: counts.get(r.id) ?? 0,
         })),
       retained: rows.filter((r) => r.state === "removed").map((r) => ({ name: r.name, title: r.title, repo: r.repo, removedAt: r.removedAt })),
     };
+  }
+
+  /**
+   * For apps shown at their link in the pane: the short ID of each one's Caddy while it runs and lets
+   * Your Space frame the app, as the runtime manager reports it. The pane frames the link only then,
+   * with the ID in its address, so that a page the browser cached before, such as the app's refusal to
+   * be framed, is never reused. Missing while a change is applied, or the runtime manager is down.
+   */
+  private async framing(names: string[]): Promise<Map<string, string>> {
+    const framing = new Map<string, string>();
+    if (names.length === 0) return framing;
+    try {
+      for (const report of await this.runtime.apps()) {
+        const id = report.services.find((s) => s.role === "publish" && s.framing)?.framing;
+        if (id && names.includes(report.app)) framing.set(report.app, id);
+      }
+    } catch {
+      // The runtime manager is down: no pane frames a link until it answers again.
+    }
+    return framing;
   }
 
   async detail(name: string) {
@@ -787,7 +831,7 @@ export class AppsService {
       desired: row.desired,
       pane: row.pane,
       interface: row.interface,
-      publish: publishOf(row),
+      publish: publishOf(this.config.publicUrl, row),
       source: { link: row.sourceUrl, repo: row.repo, path: row.path, ref: row.ref, commit: row.commit },
       kitSource: row.kitSource,
       images: row.images,
@@ -905,9 +949,9 @@ export class AppsService {
   }
 
   /**
-   * Publishes the app on a port of this machine, changes how, or stops (null). The app restarts with
-   * it, and its address settings follow the link. Stopping drops the owner's choices, so publishing
-   * again starts from the defaults.
+   * Publishes the app on a port of this machine, changes how, or stops (null). Applying the app again
+   * changes only its Caddy, apart from restarting the services whose address settings follow a link
+   * that changed. Stopping drops the owner's choices, so publishing again starts from the defaults.
    */
   async updatePublish(name: string, publishWith: unknown, actorId: string): Promise<{ jobId: string }> {
     const row = await this.liveRow(name);

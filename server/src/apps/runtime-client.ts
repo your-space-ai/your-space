@@ -59,6 +59,11 @@ export interface ServiceState {
    * origin than Your Space's current one frame the app; the next start renews it.
    */
   outdated?: boolean;
+  /**
+   * A published app's Caddy that runs and lets Your Space's current origin frame the app: its short
+   * container ID, new each time the Caddy is recreated.
+   */
+  framing?: string;
 }
 
 export interface EngineInfo {

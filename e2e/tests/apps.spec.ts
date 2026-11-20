@@ -275,7 +275,8 @@ test("the owner publishes an app on a port of this machine, for their own proxy 
   await expect(page.getByRole("region", { name: "Status" }).getByRole("link", { name: "Open", exact: true })).toHaveAttribute("href", /\/open\/whoami$/);
   await page.goto("/open/whoami");
   const pane = page.locator('section[data-pane="whoami"]');
-  await expect(pane.locator('[data-testid="app-pane"]')).toHaveAttribute("src", "http://127.0.0.1:18781/");
+  // At an address that carries the ID of the app's Caddy, so the browser never shows a page cached before.
+  await expect(pane.locator('[data-testid="app-pane"]')).toHaveAttribute("src", /^http:\/\/127\.0\.0\.1:18781\/\?ys-pane=[0-9a-f]{12}$/);
   await expect(page.frameLocator('[data-testid="app-pane"]').locator("body")).toContainText("Host: 127.0.0.1:18781", { timeout: 30_000 });
   await expect(pane.getByRole("link", { name: "Open in its own tab" })).toHaveAttribute("href", "http://127.0.0.1:18781");
 

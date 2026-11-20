@@ -422,10 +422,14 @@ address to. Choose it when installing the app, or later on the app's page, under
   refuse to be shown inside another site's page, to protect you from a site that shows the app
   invisibly and tricks you into clicking in it. With this on, the app's Caddy replaces that rule
   with one that lets only Your Space show the app; every other site is still refused. Turn it off
-  to keep the app's own rule; Your Space then opens the app at its link in its own tab. The app's
-  cookies are its own, so if your link is on another site than Your Space's, a browser that blocks
-  other sites' cookies may not keep you signed in to the app in the pane: open it in its own tab,
-  or turn this off.
+  to keep the app's own rule; Your Space then opens the app at its link in its own tab, as it does
+  for a plain-HTTP link while you reach Your Space over HTTPS (browsers don't show one inside the
+  other, apart from a link on this machine). The app's cookies are its own, so if your link is on
+  another site than Your Space's, a browser that blocks other sites' cookies may not keep you signed
+  in to the app in the pane: open it in its own tab, or turn this off.
+
+Saving recreates only the app's Caddy, and restarts the app only if its address settings use a link
+you changed. Its data is kept. The pane shows the app once the change is applied.
 
 A Caddy of Your Space's answers on the port and passes each request to the app with its `Host`
 header, so the app sees the address you reached it at. The `X-Forwarded-*` headers your proxy sends

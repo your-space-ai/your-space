@@ -48,7 +48,10 @@ export class FakeRuntime implements Runtime {
     this.running.set(spec.project, [
       { name: "web", role: "app", state: "running" },
       { name: "ys-egress", role: "egress", state: "running" },
-      ...(spec.publish ? [{ name: "ys-publish", role: "publish" as const, state: "running" }] : []),
+      // A Caddy that lets Your Space frame the app reports a new ID each time it is recreated.
+      ...(spec.publish
+        ? [{ name: "ys-publish", role: "publish" as const, state: "running", ...(spec.publish.frame ? { framing: String(this.calls.length).padStart(12, "0") } : {}) }]
+        : []),
     ]);
     onEvent({ step: "started" });
   }

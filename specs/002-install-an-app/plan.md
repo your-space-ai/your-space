@@ -187,8 +187,9 @@ service: a Caddy that runs the image of Your Space's own Caddy container with
 root (Caddy's files in a `/tmp` tmpfs), no capabilities, no new privileges, 128 MiB and 0.5 CPU, on
 the app network and a `publish` network of its own, and publishes only its port on `bind:port`. It
 passes `Host` on, streams both ways, and passes the app's responses on unchanged, framing headers
-included, unless the pane shows the app at its link (`frame` on, a link, and a kit that allows a
-pane): then `YS_FRAME=on` and `YS_ORIGIN`, the origin Your Space's own Caddy container has, make it
+included, unless the pane shows the app at its link (`inPane`: `frame` on, a link, a kit that allows a
+pane, and a link that isn't plain HTTP inside an HTTPS Your Space, by one function of the server's):
+then `YS_FRAME=on` and `YS_ORIGIN`, the origin Your Space's own Caddy container has, make it
 import the framing rule Your Space's own Caddy applies at an app's built-in address (remove
 `X-Frame-Options`; `frame-ancestors` names only that origin), and nothing else changes. It trusts
 forwarded headers only from loopback, private and Tailscale addresses (`127.0.0.0/8`, `::1`,
@@ -205,9 +206,12 @@ since. With a link, `app_origin` and `app_host` settings are the link's on every
 manager reports a `ys-publish` whose image differs from Your Space's Caddy's, or that lets another
 origin frame the app (its `ai.your-space.frame-origin` label), as outdated, and the server's
 reconcile applies that app again, once per server start, which recreates only `ys-publish`. The web
-client frames the link in the app's pane while `frame` is on, unless the kit says the app can't run
-in a pane or the link is plain HTTP inside an HTTPS Your Space; otherwise it opens the link in its
-own tab.
+client takes `inPane` from the server: without it, it opens the link in its own tab. With it, the pane
+frames the link only once the runtime manager reports the app's `ys-publish` running with Your
+Space's origin on its label (`framing`, the container's short ID), and at `<link>/?ys-pane=<ID>`: a
+page the browser cached from the app before, such as its refusal to be framed while the change was
+applied, has another address, and Compose gives a recreated `ys-publish` a new ID. Until then the
+pane says the app shows there once its published port is ready.
 
 ### Limits and resources (FR-021, FR-021a)
 

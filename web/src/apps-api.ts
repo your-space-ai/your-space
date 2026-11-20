@@ -75,29 +75,23 @@ export interface Publish {
   port: number;
   bind: string;
   link: string | null;
-  /** Your Space shows the app at its link in its pane, which the app's Caddy lets only Your Space frame (decision 2026-11-20). */
+  /** The owner's choice to show the app inside Your Space, where the app's Caddy lets only Your Space frame it (decision 2026-11-20). */
   frame: boolean;
+  /**
+   * Whether Your Space shows the app at its link in its pane, as the server decides for both the pane
+   * and the app's Caddy: the owner's choice is on, the kit lets the app run in a pane, and the link
+   * isn't plain HTTP inside an HTTPS Your Space.
+   */
+  inPane: boolean;
 }
 
 /**
- * Browsers show no plain-HTTP page inside an HTTPS one, apart from one on this machine, so a link like
- * that can't be shown in a pane.
+ * The link an app published with one opens at in its own tab, rather than in its pane. Null when the
+ * pane shows it, or it has no link.
  */
-export function plainInHttps(link: string): boolean {
-  const { protocol, hostname } = new URL(link);
-  const local = hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "[::1]" || /^127\./.test(hostname);
-  return window.location.protocol === "https:" && protocol === "http:" && !local;
-}
-
-/**
- * The link an app published with one opens at in its own tab, rather than in its pane: when the owner
- * doesn't show it inside Your Space, it can't run in a pane, or its link can't be framed. Null when
- * the pane shows it, or it has no link.
- */
-export function ownTabLink(app: { pane: boolean; publish: Publish | null }): string | null {
+export function ownTabLink(app: { publish: Publish | null }): string | null {
   const link = app.publish?.link;
-  if (!link) return null;
-  return !app.publish!.frame || !app.pane || plainInHttps(link) ? link : null;
+  return link && !app.publish!.inPane ? link : null;
 }
 
 export interface AppSummary {
@@ -110,6 +104,11 @@ export interface AppSummary {
   hasInterface: boolean;
   pendingRequests: number;
   publish: Publish | null;
+  /**
+   * While the pane shows the app at its link: the short ID of the app's Caddy once it lets Your Space
+   * frame the app, new each time the Caddy is recreated. Null until then, as while a change is applied.
+   */
+  framing: string | null;
 }
 
 export interface RetainedApp {

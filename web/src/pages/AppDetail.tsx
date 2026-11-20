@@ -244,6 +244,9 @@ function Publishing({ detail: d, onStarted }: { detail: Detail; onStarted: (r: {
   const [on, setOn] = useState(Boolean(d.publish));
   const [form, setForm] = useState<PublishForm>({ port: d.publish ? String(d.publish.port) : "", bind: d.publish?.bind ?? "127.0.0.1", link: d.publish?.link ?? "" });
   const [frame, setFrame] = useState(d.publish?.frame ?? true);
+  // Saving applies the app again, and Compose recreates only what changed: the app's Caddy, and the
+  // services whose address settings use the link when the link changes.
+  const linkChanges = (on ? originOf(form.link) : null) !== (d.publish?.link ?? null);
   const save = useMutation({
     mutationFn: () => api<{ jobId: string }>("PUT", `/api/apps/${d.name}/publish`, { publish: on ? { ...publishBody(form), frame } : null }),
     onSuccess: (r) => {
@@ -278,7 +281,11 @@ function Publishing({ detail: d, onStarted }: { detail: Detail; onStarted: (r: {
             ) : null}
           </>
         ) : null}
-        <p className="muted small">Saving restarts the app. Its data is kept.</p>
+        <p className="muted small">
+          {linkChanges
+            ? "Saving changes the Caddy that publishes the app, and restarts the app if its address settings use the link. Its data is kept."
+            : "Saving changes only the Caddy that publishes the app; the app itself doesn't restart."}
+        </p>
         {save.isError ? (
           <p className="notice error" role="alert">
             {errorMessage(save.error)}
@@ -290,6 +297,17 @@ function Publishing({ detail: d, onStarted }: { detail: Detail; onStarted: (r: {
       </form>
     </section>
   );
+}
+
+/** A link as the server keeps it, an origin, or as typed when it isn't one; null when empty. */
+function originOf(link: string): string | null {
+  const typed = link.trim();
+  if (!typed) return null;
+  try {
+    return new URL(typed).origin;
+  } catch {
+    return typed;
+  }
 }
 
 function when(iso: string): string {

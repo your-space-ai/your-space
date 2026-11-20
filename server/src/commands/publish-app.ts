@@ -1,6 +1,6 @@
 // publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--frame | --no-frame] [--off]
 // [--json] (decisions 2026-11-19 and 2026-11-20, contracts/http-api.md). Publishes an installed app
-// on a port of this machine, changes how, or stops, and waits until the app has restarted with it.
+// on a port of this machine, changes how, or stops, and waits until the change is applied.
 // --no-frame opens the app at its link in its own tab instead of in Your Space's pane; --frame shows
 // it in the pane again.
 import { parseArgs } from "node:util";
