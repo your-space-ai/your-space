@@ -4,7 +4,7 @@
 
 **Recorded**: 2026-10-28
 
-**Last updated**: 2026-11-19
+**Last updated**: 2026-11-20
 
 **Scope**: Project-wide direction, independent of any feature specification
 
@@ -525,6 +525,13 @@ written by its authors for people to run, instead of a Your Space-specific deplo
 [app deployment](#accepted-future-app-deployment-direction)). Your Space records the exact commit
 the link resolves to, the commit of the installation kit it applied, if any, and each image's
 digest, which Your Space resolves itself rather than reading from the app's files.
+
+**Decision update (2026-11-20):** When an app's own Compose file doesn't fit Your Space's rules, for
+example because it builds its images, mounts host folders or adds capabilities, the operator can
+install the app from a Compose file they write and give the server command on this machine, with a
+kit given the same way. Your Space checks and adapts it like a file from GitHub, records its digest
+in place of a link and commit, keeps its text, and reads nothing from GitHub for it. The web client
+still installs from a GitHub link only.
 
 Public, community, and private discovery experiences can coexist without redefining installed app ownership or update routing.
 No catalog federation protocol or marketplace implementation is selected here.

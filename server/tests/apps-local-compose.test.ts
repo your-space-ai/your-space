@@ -14,6 +14,7 @@ import { AppError, AppsService } from "../src/apps/service.ts";
 import { app, installJob } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY } from "./helpers/env.ts";
+import { runCommand } from "./helpers/commands.ts";
 import { fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
 
 const COMPOSE = `services:
@@ -49,6 +50,16 @@ describe("install-app's sources", () => {
     expect(sourcesProblem({ compose: "-", kit: "-" })).toMatch(/can't both be -/);
     expect(sourcesProblem({ compose: "-", kit: "https://github.com/o/r/blob/main/kit.yaml" })).toMatch(/kit is on this machine too/);
     expect(sourcesProblem({ link: LINK, name: "notes" })).toMatch(/--name goes with --compose/);
+  });
+
+  it("are checked by the command before it reads anything, and a file it can't read is named", async () => {
+    const options = { databaseUrl: "postgres://nobody:wrong@127.0.0.1:1/none" };
+    const both = await runCommand("install-app", ["--compose", "-", "--kit", "-", "--json"], options);
+    expect(both.code).toBe(1);
+    expect(both.json).toMatchObject({ ok: false, error: "usage", message: expect.stringMatching(/can't both be -/) });
+    const missing = await runCommand("install-app", ["--compose", "/nope/compose.yaml", "--name", "notes", "--json"], options);
+    expect(missing.code).toBe(2);
+    expect(missing.json).toEqual({ ok: false, error: "compose_file", message: "The Compose file /nope/compose.yaml can't be read (ENOENT)." });
   });
 });
 

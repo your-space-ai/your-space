@@ -2,7 +2,9 @@
 
 A kit is a YAML file in the kits repository at `apps/<owner>/<repo>.yaml`, or anywhere on GitHub when
 the owner gives its link, or a file on this machine given to `install-app --kit`, such as one from a
-private kits repository. It refers to the app's own file and never copies it.
+private kits repository. It refers to the app's own file and never copies it. A kit can also go with
+a Compose file given on this machine (`install-app --compose <file> --kit <file>`); giving both in
+one command is what binds them.
 
 ```yaml
 kit: 1                        # format version
@@ -40,6 +42,8 @@ inserted as they are: generated values are hex or base64url and safe in URLs, wh
 owner types is not encoded. Use a template when the app's file reads one setting that contains
 another, such as a database URL with a password the kit generates.
 
-Every field except `kit` and `source` is optional. Unknown fields are refused, so a kit written for a
+Every field except `kit` and `source` is optional. A kit given with a Compose file on this machine
+may leave out `source`, and its `source` isn't matched; a kit without `source` fits no file on
+GitHub. Unknown fields are refused, so a kit written for a
 newer format doesn't half-apply. A kit can't change the Docker adapter's rules: it can only name
 values, hosts, limits and the interface.

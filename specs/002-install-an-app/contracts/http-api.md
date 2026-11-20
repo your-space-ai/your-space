@@ -44,6 +44,7 @@ built-in address.
 
 ```bash
 docker compose exec -T server install-app <github-link> [--kit <link | file | folder | ->] [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]
+docker compose exec -T server install-app --compose <file | -> [--kit <file | ->] [--name <name>] [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]
 docker compose exec server publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--off] [--json]
 docker compose exec server list-apps [--json]
 docker compose exec runtime stop-apps
@@ -55,5 +56,21 @@ from GitHub when its repository is private: `-` reads it from standard input (`-
 a folder is a kits repository with the app's kit at `apps/<owner>/<repo>.yaml`, and any other value
 is the kit file. The command runs in the server's container, so a path is one inside it; standard
 input is how a file on the host gets there. A kit on this machine is checked like one from GitHub
-and recorded as `sha256:<digest>`. `publish-app` publishes an installed app, changes how (an option left out keeps its value),
+and recorded as `sha256:<digest>`.
+
+`--compose` installs from a Compose file on this machine instead of a GitHub link, for an app whose
+own file doesn't fit Your Space's rules: `-` reads it from standard input, and any other value is the
+file, at most 256 KB. It is checked and adapted like a file from GitHub, and recorded as
+`sha256:<digest>` with its file name; Your Space reads nothing from GitHub for it, not even the kits
+repository, and later starts use the stored text. Its kit is only the one `--kit <file | ->` gives:
+giving both in one command is what binds them, so the kit's `source` isn't matched and may be left
+out. The app's name is `--name`, else the kit's `name`; with neither, the command refuses. The two
+share standard input, so only one of `--compose` and `--kit` can be `-`; put the other in the
+server's container first, for example with `docker compose exec -T server sh -c 'cat > /tmp/kit.yaml'
+< kit.yaml`. Data kept under the name can be reused with `--reuse-data` whichever source it came
+from, since a file on this machine has no repository to compare. With `--json`, the result has
+`source: "sha256:<digest>"` in place of `commit`, and `list-apps --json` gives each app's `source`:
+the link as given, or the digest.
+
+`publish-app` publishes an installed app, changes how (an option left out keeps its value),
 or stops publishing it with `--off`, and waits until the app has restarted. With `--json`, one JSON object on stdout and logs on stderr, as `create-owner` does.

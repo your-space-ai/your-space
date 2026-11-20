@@ -374,6 +374,23 @@ background; you can leave the page. From the server, `docker compose exec server
 does the same. A kit Your Space can't read from GitHub, such as one in a private repository, can come
 from this machine instead: `docker compose exec -T server install-app <link> --kit - < kit.yaml`.
 
+When an app's own Compose file doesn't fit Your Space's rules, for example because it builds its
+images or mounts folders of this machine, install it from a Compose file you write instead. Your
+Space checks and adapts it like any other, records its digest, and reads nothing from GitHub for it:
+
+```sh
+docker compose exec -T server install-app --compose - --name notes < compose.yaml
+```
+
+The name comes from `--name`, or from the kit's `name`. A kit for it may leave out `source`, since
+giving both in one command is what binds them. Standard input carries one file, so put the kit in
+the server's container first:
+
+```sh
+docker compose exec -T server sh -c 'cat > /tmp/kit.yaml' < kit.yaml
+docker compose exec -T server install-app --compose - --kit /tmp/kit.yaml < compose.yaml
+```
+
 Installing an app trusts it with everything you put into it. Your Space keeps it away from your
 other apps, Your Space's own data and this machine, and controls who can reach it, but it can't see
 or check what the app does with your data.
