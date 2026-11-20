@@ -54,10 +54,11 @@ export interface App {
   name: string;
   state: string;
   /**
-   * Published on a port of this machine for the owner's own proxy or tunnel (decision 2026-11-19), and
-   * whether Your Space shows it in its pane (decision 2026-11-20).
+   * Published on a port of this machine for the owner's own proxy or tunnel (decision 2026-11-19): the
+   * owner's choice to show it inside Your Space, and whether Your Space shows it in its pane at its
+   * link (decision 2026-11-20).
    */
-  publish?: { port: number; bind: string; link: string | null; frame: boolean } | null;
+  publish?: { port: number; bind: string; link: string | null; frame: boolean; inPane: boolean } | null;
 }
 
 export async function listApps(compose: Compose): Promise<App[]> {

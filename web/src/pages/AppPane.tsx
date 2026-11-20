@@ -1,11 +1,11 @@
 // An app in a pane (journey 002, US4, US10, FR-016): the app on its own origin inside Your Space's
 // layout, or two apps side by side on a wide screen. An app that can't run in a pane opens in its
 // own tab, behind the same access check. An app published with a link is framed at the link, where
-// its Caddy lets only Your Space frame it, unless the owner turned that off; then it opens there, in
-// its own tab (decision 2026-11-20).
+// its Caddy lets only Your Space frame it, when the server says the pane shows it there; otherwise it
+// opens there, in its own tab (decision 2026-11-20).
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { appsQuery, errorMessage, plainInHttps, STATE_LABEL, type AppSummary } from "../apps-api.ts";
+import { appsQuery, errorMessage, STATE_LABEL, type AppSummary } from "../apps-api.ts";
 
 export function AppPane({ name, beside }: { name: string; beside?: string }) {
   const apps = useQuery(appsQuery);
@@ -69,11 +69,14 @@ export function AppPane({ name, beside }: { name: string; beside?: string }) {
 
 function Pane({ app, onClose }: { app: AppSummary; onClose?: () => void }) {
   // At its link, the app is outside the gate: its own sign-in and cookies decide, and its origin is the
-  // link. Its Caddy lets only Your Space frame it unless the owner turned that off.
+  // link. Its Caddy lets only Your Space frame it while the pane shows it there.
   const link = app.publish?.link ?? null;
   const rel = link ? "noreferrer" : "noopener";
-  const mixed = link !== null && plainInHttps(link);
-  const framed = app.pane && !mixed && (link === null || app.publish!.frame);
+  const atLink = link !== null && app.publish!.inPane;
+  // At its link, the pane frames the app only once its Caddy lets Your Space frame it, and at an
+  // address that carries that Caddy's ID. A page the browser cached before, such as the app's refusal
+  // to be framed while a change was applied, has another address, so it is never shown here.
+  const src = !app.pane ? null : link === null ? `${app.origin}/` : atLink && app.framing ? `${link}/?ys-pane=${app.framing}` : null;
   return (
     <section className="pane" aria-label={app.title} data-pane={app.name}>
       <header className="pane-bar">
@@ -92,16 +95,20 @@ function Pane({ app, onClose }: { app: AppSummary; onClose?: () => void }) {
           </button>
         ) : null}
       </header>
-      {framed ? (
-        <iframe data-testid="app-pane" title={app.title} src={`${app.origin}/`} />
+      {src ? (
+        <iframe data-testid="app-pane" title={app.title} src={src} />
+      ) : atLink ? (
+        <div className="page" aria-busy="true">
+          <p className="muted">{`${app.title} shows here as soon as its published port is ready to show it inside Your Space.`}</p>
+        </div>
       ) : (
         <div className="page">
           <p>
             {!app.pane
               ? `${app.title} can't run inside Your Space, so it opens in its own tab.`
-              : mixed
-                ? `${app.title}'s link is plain HTTP, which browsers don't show inside Your Space's HTTPS page, so it opens in its own tab.`
-                : `${app.title} is published at its own link, outside Your Space, so it opens there in its own tab.`}
+              : !app.publish!.frame
+                ? `${app.title} is published at its own link, outside Your Space, so it opens there in its own tab.`
+                : `${app.title}'s link is plain HTTP, which browsers don't show inside Your Space's HTTPS page, so it opens in its own tab.`}
           </p>
           <a className="button" href={app.origin} target="_blank" rel={rel}>
             Open in its own tab

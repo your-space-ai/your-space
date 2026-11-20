@@ -1,6 +1,6 @@
 // Checking a port before the owner's choice to publish an app on it is saved (decision 2026-11-19).
 import { describe, expect, it } from "vitest";
-import { INSTALLATION, portHolder, portProbe, portTaken, proxyOutdated, SpecError, validatePortCheck } from "../src/apps.ts";
+import { framingOf, INSTALLATION, portHolder, portProbe, portTaken, proxyOutdated, SpecError, validatePortCheck } from "../src/apps.ts";
 import type { ContainerSummary } from "../src/engine.ts";
 
 /** Your Space's own Caddy's image, which a published app's Caddy runs too. */
@@ -99,5 +99,16 @@ describe("a published app's Caddy", () => {
     expect(proxyOutdated(running(`sha256:${"a".repeat(64)}`), caddy)).toBe(true);
     expect(proxyOutdated(running(IMAGE, "http://space.localhost:*"), caddy)).toBe(true);
     expect(proxyOutdated(running(IMAGE, "https://space.example.com"), { image: IMAGE })).toBe(true);
+  });
+
+  it("frames the app, by its short ID, only while it runs and lets Your Space's current origin frame it", () => {
+    expect(framingOf(running(IMAGE, "https://space.example.com"), caddy)).toBe("ys-sure-ys-p");
+    // Outdated only by its image, it still frames the app until it is renewed.
+    expect(framingOf(running(`sha256:${"a".repeat(64)}`, "https://space.example.com"), caddy)).toBe("ys-sure-ys-p");
+    // One that keeps the app's own rules, lets another origin frame it, or doesn't run, doesn't.
+    expect(framingOf(running(IMAGE), caddy)).toBeUndefined();
+    expect(framingOf(running(IMAGE, "http://space.localhost:*"), caddy)).toBeUndefined();
+    expect(framingOf(running(IMAGE, "https://space.example.com"), { image: IMAGE })).toBeUndefined();
+    expect(framingOf({ ...running(IMAGE, "https://space.example.com"), State: "restarting" }, caddy)).toBeUndefined();
   });
 });

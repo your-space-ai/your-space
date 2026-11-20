@@ -831,7 +831,13 @@ framed; Plane, for one, sends `X-Frame-Options: DENY`. Each published app theref
   built-in address, and for one whose kit says it can't run in a pane.
 - The pane frames the link only when the setting is on, the app's kit doesn't say it can't run in a
   pane, and the browser can show the link inside Your Space's page: a plain-HTTP link inside an HTTPS
-  Your Space opens in its own tab, apart from one on this machine.
+  Your Space opens in its own tab, apart from one on this machine. The server decides this once, for
+  both the pane and `ys-publish`, so `ys-publish` replaces the framing rules exactly where the pane
+  frames the app.
+- The pane frames the link only once `ys-publish` actually lets Your Space frame the app, and at an
+  address that names that `ys-publish`, so a refusal the browser cached before, as while the change
+  was being applied, is never shown. `ys-publish` keeps passing the app's caching headers on
+  unchanged.
 - Changing the setting applies the app again, which recreates only its `ys-publish`, like any other
   change to how it is published. When Your Space moves to another address, the server renews every
   `ys-publish` that lets the old origin frame its app, as it does after an update. Like the port and

@@ -353,6 +353,11 @@ export interface ServiceState {
    * Space's frame the app, as after Your Space moves to another address; the app's next start renews it.
    */
   outdated?: boolean;
+  /**
+   * A published app's Caddy that runs and lets Your Space's current origin frame the app: its
+   * container's ID, shortened. Compose gives it a new one whenever it recreates the Caddy.
+   */
+  framing?: string;
 }
 
 /**
@@ -362,6 +367,15 @@ export interface ServiceState {
 export function proxyOutdated(container: ContainerSummary, caddy: OwnCaddy): boolean {
   const framedBy = container.Labels[FRAME_ORIGIN_LABEL];
   return container.ImageID !== caddy.image || (framedBy !== undefined && framedBy !== caddy.origin);
+}
+
+/**
+ * The short ID of a published app's Caddy that runs and lets Your Space's current origin frame the
+ * app, or undefined. Its image doesn't matter: an outdated Caddy still frames the app until it is renewed.
+ */
+export function framingOf(container: ContainerSummary, caddy: OwnCaddy): string | undefined {
+  const framedBy = container.Labels[FRAME_ORIGIN_LABEL];
+  return container.State === "running" && framedBy !== undefined && framedBy === caddy.origin ? container.Id.slice(0, 12) : undefined;
 }
 
 export async function listApps(): Promise<{ project: string; app: string; services: ServiceState[] }[]> {
@@ -380,7 +394,11 @@ export async function listApps(): Promise<{ project: string; app: string; servic
     };
     const health = /\((healthy|unhealthy|health: starting)\)/.exec(c.Status)?.[1];
     if (health) service.health = health.replace("health: ", "");
-    if (service.role === "publish" && caddy && proxyOutdated(c, caddy)) service.outdated = true;
+    if (service.role === "publish" && caddy) {
+      if (proxyOutdated(c, caddy)) service.outdated = true;
+      const framing = framingOf(c, caddy);
+      if (framing) service.framing = framing;
+    }
     if (c.State === "exited" || c.State === "dead" || c.State === "restarting") {
       const detail = await engineJson<{ State: { ExitCode: number; OOMKilled: boolean }; HostConfig?: { RestartPolicy?: { Name?: string } } }>(
         "GET",
