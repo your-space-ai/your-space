@@ -31,6 +31,7 @@ export class SpecError extends Error {
   }
 }
 
+const UUID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const PROJECT = /^ys-[a-z][a-z0-9-]{0,29}$/;
 
 export function validateSpec(body: unknown): AppSpec {
@@ -39,6 +40,7 @@ export function validateSpec(body: unknown): AppSpec {
   if (typeof spec.project !== "string" || !PROJECT.test(spec.project)) throw new SpecError("The project name isn't valid.");
   if (typeof spec.app !== "string" || `ys-${spec.app}` !== spec.project) throw new SpecError("The app name doesn't match the project.");
   if (typeof spec.compose !== "string" || spec.compose.length > 512 * 1024) throw new SpecError("The app's file is missing or too large.");
+  if (spec.appId !== undefined && (typeof spec.appId !== "string" || !UUID.test(spec.appId))) throw new SpecError("Invalid app installation ID.");
   const env = spec.env ?? {};
   if (typeof env !== "object" || Object.entries(env).some(([k, v]) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) || typeof v !== "string")) {
     throw new SpecError("Settings must be names with text values.");
@@ -510,6 +512,73 @@ export async function listApps(): Promise<{ project: string; app: string; servic
 
 async function projectContainers(project: string) {
   return listContainers([INSTALLATION_LABEL, `com.docker.compose.project=${project}`]);
+}
+
+interface AppNetwork {
+  Name: string;
+  Driver: string;
+  Internal: boolean;
+  Labels: Record<string, string>;
+  Containers: Record<string, { IPv4Address: string }> | null;
+}
+
+/** Select a single engine-observed interface on this exact app's sealed bridge. */
+export function interfaceAddress(
+  project: string,
+  appId: string,
+  service: string,
+  port: number,
+  containers: ContainerSummary[],
+  network: AppNetwork,
+): string {
+  const app = project.slice(3);
+  const expected = {
+    "ai.your-space.installation": INSTALLATION,
+    "ai.your-space.app": app,
+    "com.docker.compose.project": project,
+  };
+  const matches = (labels: Record<string, string>) =>
+    Object.entries(expected).every(([key, value]) => labels?.[key] === value);
+  const refused = () => new EngineError("The installed app has no verified running interface.", 503);
+  if (
+    !PROJECT.test(project) ||
+    !UUID.test(appId) ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(service) ||
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65535
+  )
+    throw refused();
+  if (
+    network.Name !== project + "_app" ||
+    !network.Internal ||
+    network.Driver !== "bridge" ||
+    !matches(network.Labels) ||
+    network.Labels["com.docker.compose.network"] !== "app"
+  )
+    throw refused();
+  const candidates = containers.filter(
+    (c) =>
+      c.State === "running" &&
+      matches(c.Labels) &&
+      c.Labels["com.docker.compose.service"] === service,
+  );
+  if (candidates.length !== 1) throw refused();
+  const target = candidates[0]!;
+  if (target.Labels["ai.your-space.app-id"] !== appId || target.Labels["ai.your-space.interface-port"] !== String(port)) {
+    throw refused();
+  }
+  const address = network.Containers?.[target.Id]?.IPv4Address?.split("/")[0];
+  if (!address || isIP(address) !== 4) throw refused();
+  return address;
+}
+
+export async function resolveInterface(project: string, appId: string, service: string, port: number) {
+  const [containers, network] = await Promise.all([
+    projectContainers(project),
+    engineJson<AppNetwork>("GET", "/networks/" + encodeURIComponent(project + "_app")),
+  ]);
+  return { address: interfaceAddress(project, appId, service, port, containers, network) };
 }
 
 export async function logs(project: string, service: string, tail: number): Promise<string[]> {
