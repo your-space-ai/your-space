@@ -4,8 +4,9 @@
 
 Please don't report security vulnerabilities through public issues, discussions or pull requests.
 
-Report them privately through GitHub: open the repository's **Security** tab and choose
-**Report a vulnerability**. See
+Send a private report to [security@getyourspace.ai](mailto:security@getyourspace.ai).
+If the repository's **Security** tab offers **Report a vulnerability**, you can also report
+through GitHub. See
 [GitHub's guide to privately reporting a vulnerability](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability).
 
 Include what you can of:

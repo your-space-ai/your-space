@@ -28,14 +28,18 @@ Prepare a quiet developer preview from source, with the local Docker quickstart 
     branches and pull request refs, and the GitHub discussions, revision history and retained Actions
     artifacts available at the start of the review. The only secret scanner matches in Git were
     two verified test fixture values. The owner accepted historical Git email attribution.
-    Review retained CI artifacts, external session links and third-party report access before
-    changing visibility.
+    The historical preview builds and browser reports were removed from Actions. The repository
+    listed zero retained artifacts after cleanup. External session links were removed from the
+    affected pull request descriptions and remain in their edit histories. Review the exposure of
+    those edits and access to third-party reports before changing visibility.
   - [ ] Confirm publication rights for existing material, add the selected project licenses, and meet
     applicable third-party license and notice obligations.
   - [ ] Explain the project's purpose, current state, unimplemented functionality, and participation
     expectations in the README, with links to the roadmap and relevant development instructions.
   - [ ] Review the security and safe-use implications of any runnable code and provide a private
-    security reporting route appropriate to the project state.
+    security reporting route appropriate to the project state. The [security policy](../SECURITY.md)
+    and [Code of Conduct](../CODE_OF_CONDUCT.md) list separate project email aliases for private
+    reports.
   - [ ] Confirm the Compose setup checks run on each layer of a public pull request stack. The
     workflow limits this check to the bottom layer while the repository is private.
   - [ ] On the first public fork, confirm that the CI report includes screenshots without exposing
