@@ -39,7 +39,7 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
-      - name: Build the candidate and launch the packaged entry
+      - name: Build the ZIP preview and exercise the DMG installation
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
@@ -50,37 +50,47 @@ jobs:
           (cd "$RUNNER_TEMP/packages" && shasum -a 256 -c "$name.sha256")
           ditto -x -k "$RUNNER_TEMP/packages/$name" "$RUNNER_TEMP/open"
           app="$RUNNER_TEMP/open/Your Space.app"
-          codesign --verify --deep --strict "$app"
-          node desktop/scripts/seal-macos.mjs verify "$app"
-          (cd "$app/Contents/Resources/release" && shasum -a 256 -c SHA256SUMS)
           test "$("$app/Contents/Resources/bin/your-space" --version)" = "$version"
-          YS_DESKTOP_EXECUTABLE="$app/Contents/MacOS/Your Space" npm run test:native -w desktop
-      - uses: actions/upload-artifact@v4
-        # Public PRs still build and test. Their unnotarized downloads stay off the public repo.
-        if: github.event_name == 'release' || github.event.repository.private
+          mkdir -p "$RUNNER_TEMP/signing-input"
+          dmg="your-space-macos-${{ matrix.arch }}-$version-candidate.dmg"
+          desktop/scripts/create-dmg.sh "$app" "$RUNNER_TEMP/signing-input/$dmg"
+          desktop/scripts/test-dmg-install.sh "$RUNNER_TEMP/signing-input/$dmg" "${{ matrix.arch }}"
+          (cd "$RUNNER_TEMP/signing-input" && shasum -a 256 "$dmg" > "$dmg.sha256")
+      - name: Offer the private ZIP preview
+        if: github.event.repository.private && github.event_name != 'release'
+        uses: actions/upload-artifact@v4
         with:
           name: macos-preview-${{ matrix.arch }}
           path: ${{ runner.temp }}/packages/
           if-no-files-found: error
           compression-level: 0
           retention-days: 5
+      - name: Transfer the tested image to the protected signing job
+        if: github.event_name == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-signing-input-${{ matrix.arch }}
+          path: ${{ runner.temp }}/signing-input/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
 
   notarize:
     if: github.event_name == 'release'
     needs: package
     runs-on: [self-hosted, macOS, your-space-release-signing]
     environment: macos-release
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          pattern: macos-preview-*
+          pattern: macos-signing-input-*
           path: ${{ runner.temp }}/macos-input-${{ github.run_id }}-${{ github.run_attempt }}
           merge-multiple: true
-      - name: Sign, notarize, staple and assess both archives
+      - name: Sign, notarize, staple and assess each app and its disk image
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           MACOS_SIGN_IDENTITY: ${{ vars.MACOS_SIGN_IDENTITY }}
@@ -89,7 +99,7 @@ jobs:
           input="$RUNNER_TEMP/macos-input-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           out="$RUNNER_TEMP/macos-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           for arch in arm64 x64; do
-            name="your-space-macos-$arch-${RELEASE_TAG#v}-preview.zip"
+            name="your-space-macos-$arch-${RELEASE_TAG#v}-candidate.dmg"
             (cd "$input" && shasum -a 256 -c "$name.sha256")
             desktop/scripts/notarize-macos.sh "$input/$name" "$out"
           done
@@ -122,5 +132,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          (cd release && sha256sum -c -- *.sha256)
-          gh release upload "$TAG" release/*.zip release/*.sha256 --repo "$GITHUB_REPOSITORY"
+          cd release
+          assets=()
+          for arch in arm64 x64; do
+            dmg="your-space-macos-$arch-${TAG#v}.dmg"
+            test -s "$dmg"
+            sha256sum -c -- "$dmg.sha256"
+            assets+=("$dmg" "$dmg.sha256")
+          done
+          # Resume an interrupted upload without replacing a published asset.
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[] | [.name, .digest] | @tsv' > published.tsv
+          missing=()
+          for file in "${assets[@]}"; do
+            if awk -F '\t' -v name="$file" '$1 == name {found=1} END {exit !found}' published.tsv; then
+              digest=$(awk -F '\t' -v name="$file" '$1 == name {print $2}' published.tsv)
+              actual=$(sha256sum "$file" | cut -d' ' -f1)
+              [[ $digest == "sha256:$actual" ]] || { echo "$file already exists with different contents."; exit 1; }
+            else
+              missing+=("$file")
+            fi
+          done
+          if ((${#missing[@]})); then gh release upload "$TAG" "${missing[@]}" --repo "$GITHUB_REPOSITORY"; fi

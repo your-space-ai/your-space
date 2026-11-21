@@ -12,7 +12,7 @@ agent acted.
 
 Your Space is in development. There is no tagged release yet.
 
-- On macOS, open the desktop launcher from source or build a private preview. Choose a local Docker engine or connect to an existing server. [Mac setup and preview guide](docs/install/macos-desktop.md)
+- Product releases distribute Apple Silicon and Intel DMGs through [GitHub Releases](https://github.com/your-space-ai/your-space/releases). To try the Mac launcher before publication, run from source or build a private preview ZIP. The launcher can set up a workspace using a local Docker engine or connect to an existing server. [Mac setup and preview guide](docs/install/macos-desktop.md)
 - To try the dashboard, build the Docker Compose test stack from a checkout, create its owner,
   and install a sample app in the browser. [Dashboard quickstart](specs/002-install-an-app/quickstart.md)
 - To try the command-line setup, use Node.js 26 or later and Docker. The CLI walkthrough builds

@@ -7,7 +7,7 @@ One owner can download the macOS app, choose a local Docker workspace or an exis
 ## First Public Product Scope
 
 - [ ] Verify a clean local installation and a server installation from the published candidate artifacts. Record host, CPU, Docker/Compose and browser versions.
-- [ ] Test the versioned [macOS download](../specs/008-desktop-entry/spec.md) on a clean supported Mac. Verify the downloaded build's Apple Developer ID signature and notarization. Record the artifact, macOS version and processor tested.
+- [ ] Test the versioned [Apple Silicon and Intel DMGs](../specs/008-desktop-entry/spec.md) on clean supported Macs. Download each release asset, verify its checksum, Developer ID signature, stapled notarization tickets and Gatekeeper assessment, drag Your Space to Applications in Finder, eject the image and launch the installed copy. Record each asset, processor and macOS version tested.
 - [ ] From local setup, use a detected Docker engine and repeat with an owner-selected engine. Verify guidance and retry for a missing or stopped engine, then start the stack and complete the existing owner setup.
 - [ ] On a Mac without Docker, choose the existing-server path and sign in to a verified HTTPS workspace. From each desktop path, review and confirm an installation kit, then open the app on the chosen workspace.
 - [ ] Verify owner claim, sign-in, restart and recovery. Open the dashboard on localhost, behind an existing proxy, and at a domain with a real certificate.

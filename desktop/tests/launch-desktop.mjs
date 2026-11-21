@@ -19,7 +19,8 @@ export async function launchDesktop(source, userData) {
   try {
     const endpoint = await new Promise((resolve,reject) => {
       let tail = "";
-      const timer = setTimeout(() => reject(new Error("Packaged renderer debugging endpoint timed out")),15000);
+      // First launch can spend tens of seconds translating Electron on a Mac running Rosetta.
+      const timer = setTimeout(() => reject(new Error("Packaged renderer debugging endpoint timed out")),60_000);
       proc.stderr.setEncoding("utf8").on("data", data => {
         tail = (tail + data).slice(-4096);
         const match = /DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[a-z\d-]+)/i.exec(tail);

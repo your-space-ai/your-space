@@ -25,7 +25,7 @@ async function fixture() {
   return {server, origin: 'http://127.0.0.1:' + server.address().port};
 }
 
-test('native launcher opens a workspace, isolates its app and reopens the saved address', {timeout: 90_000}, async () => {
+test('native launcher opens a workspace, isolates its app and reopens the saved address', {timeout: 150_000}, async () => {
   const userData = await mkdtemp(join(tmpdir(), 'your-space-native-'));
   const {server, origin} = await fixture();
   const launch = () => launchDesktop(desktop,userData);
