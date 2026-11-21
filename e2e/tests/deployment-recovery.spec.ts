@@ -43,6 +43,7 @@ test("reloading an interrupted installation restores the reviewed commit for exp
     } else if (pathname === "/api/auth/organization/list") json = [{ id: appId, name: "Fixture", slug: "fixture" }];
     else if (pathname === "/api/appearance/active") json = starterThemes[0]!.theme;
     else if (pathname === "/api/status") json = { owner: true };
+    else if (pathname === "/api/workspace-layout") json = { revision: 1, appOrder: [app.name], views: [] };
     else if (pathname === "/api/apps") json = { apps: [app] };
     else if (pathname === "/api/apps/desk") json = app;
     else if (pathname === "/api/repositories/connection")
