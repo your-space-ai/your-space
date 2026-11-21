@@ -4,6 +4,7 @@ import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import type { Auth } from "./auth.ts";
 import { isStorageError, type Db } from "./db/client.ts";
 import { errorFields, log } from "./log.ts";
+import { workspaceLayoutRoutes } from "./workspace-layout.ts";
 import { appearanceRoutes } from "./appearance.ts";
 import { kitRoutes } from "./repositories/kits.ts";
 import { repoRoutes } from "./repositories/routes.ts";
@@ -68,6 +69,7 @@ export function createApp({ auth, db, apps, dataKey }: AppDeps): express.Express
   // Other settings and request envelopes use the original small limit.
   app.use(express.json({ limit: "64kb" }));
   app.use("/api", ownerRoutes(db));
+  app.use("/api/workspace-layout", workspaceLayoutRoutes(auth, db));
   app.use("/api/appearance", appearanceRoutes(auth, db));
   if (dataKey) {
     app.use("/api", agentRoutes(auth, db, dataKey));

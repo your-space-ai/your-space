@@ -3,12 +3,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet } from "@tanstack/react-router";
 import { useState } from "react";
+import { WorkspaceNav } from "./WorkspaceNav.tsx";
 import { appsQuery } from "../apps-api.ts";
 
 export function Layout() {
   const apps = useQuery(appsQuery);
   const [open, setOpen] = useState(false);
-  const openable = (apps.data?.apps ?? []).filter((a) => a.hasInterface);
   const close = () => setOpen(false);
 
   return (
@@ -42,18 +42,7 @@ export function Layout() {
             <Link to="/agents" onClick={close}><span className="nav-symbol nav-agents" aria-hidden="true" />Agents</Link>
           </li>
         </ul>
-        {openable.length > 0 ? (
-          <ul aria-label="Your apps">
-            {openable.map((app) => (
-              <li key={app.name}>
-                <Link to="/open/$name" params={{ name: app.name }} search={{}} onClick={close}>
-                  {app.title}
-                  {app.pendingRequests > 0 ? <span className="badge" title="Access requests waiting">{app.pendingRequests}</span> : null}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        <WorkspaceNav apps={apps.data?.apps ?? []} close={close} />
         <ul>
           <li><Link to="/repositories" search={{}} onClick={close}><span className="nav-symbol nav-repos" aria-hidden="true" />Repositories</Link></li>
           <li>

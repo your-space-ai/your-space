@@ -1,4 +1,5 @@
 // Your Space's own tables (T011, data-model.md): whether the owner exists, actors, and events.
+import type { SavedView } from "../../../workspace-layout/model.mjs";
 import type { Theme } from "../../../appearance/theme.mjs";
 import type { AgentAccess } from "../apps/agent-kit.ts";
 import { sql } from "drizzle-orm";
@@ -378,3 +379,10 @@ export const repositoryGrant = pgTable("repository_grant", {
   repoIds: text("repo_ids").array().notNull(),
   revision: integer("revision").notNull().default(1),
 },t => [primaryKey({columns:[t.ownerId,t.accountId,t.agentId]})]);
+export const ownerLayout = pgTable("owner_layout", {
+  workspaceId: uuid("workspace_id").notNull().references(() => organization.id, {onDelete:"cascade"}),
+  ownerId: uuid("owner_id").notNull().references(() => actor.id, {onDelete:"cascade"}),
+  revision: integer("revision").notNull(),
+  appOrder: jsonb("app_order").$type<string[]>().notNull(),
+  views: jsonb("views").$type<SavedView[]>().notNull(),
+}, t => [primaryKey({columns:[t.workspaceId,t.ownerId]})]);

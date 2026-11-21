@@ -1,0 +1,139 @@
+.pane-workspace {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.pane-tools,
+.pane-save {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem 0.85rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.85rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.pane-tools label,
+.pane-save label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+}
+.pane-tools select,
+.pane-tools button,
+.pane-save input,
+.pane-save button {
+  padding: 0.32rem 0.55rem;
+  font: inherit;
+}
+.pane-note {
+  margin: 0;
+  padding: 0.35rem 0.85rem;
+  color: var(--muted);
+}
+.pane-stage,
+.pane-grid {
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+}
+.pane-stage {
+  display: flex;
+  overflow: hidden;
+}
+.pane-grid {
+  width: 100%;
+  height: 100%;
+}
+.app-cell {
+  container-type: inline-size;
+  min-width: 0;
+  min-height: 0;
+}
+.pane-workspace .pane {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  border: 0;
+}
+.pane-workspace .pane-bar {
+  gap: 0.4rem;
+  overflow: auto;
+}
+.pane-workspace .pane-bar a {
+  white-space: nowrap;
+}
+.pane-workspace .pane-bar strong {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pane-divider {
+  background: var(--border);
+  touch-action: none;
+  position: relative;
+}
+.pane-divider[aria-orientation="vertical"] {
+  width: 7px;
+}
+.pane-divider[aria-orientation="horizontal"] {
+  height: 7px;
+}
+.pane-divider:hover,
+.pane-divider:focus-visible,
+.pane-divider[data-separator="active"] {
+  background: var(--accent);
+  outline: none;
+}
+.pane-stage[data-resizing] iframe {
+  pointer-events: none;
+}
+.pane-link-short {
+  display: none;
+}
+@container (max-width: 470px) {
+  .pane-link-wide {
+    display: none;
+  }
+  .pane-link-short {
+    display: inline;
+  }
+}
+@container (max-width: 350px) {
+  .pane-workspace .pane-bar {
+    flex-wrap: wrap;
+    padding: 0.32rem 0.45rem;
+    font-size: 0.8rem;
+  }
+  .pane-workspace .pane-bar .spacer {
+    flex: 1 0 5%;
+  }
+}
+@media (max-width: 799px) {
+  .pane-grid {
+    display: block !important;
+  }
+  .pane-grid > [data-cell] {
+    height: 100%;
+    width: 100%;
+    display: none !important;
+  }
+  .pane-grid > .current-cell {
+    display: block !important;
+  }
+  .pane-grid > [data-separator] {
+    display: none;
+  }
+}
+@media (max-width: 719px) {
+  .pane-workspace {
+    height: calc(100dvh - 3rem);
+  }
+  .pane-tools {
+    gap: 0.4rem;
+    padding: 0.4rem;
+  }
+}

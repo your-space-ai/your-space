@@ -22,6 +22,8 @@ The first release serves one owner. They can download the macOS app to set up a 
 - Build and customize a personal workspace with an agent (011)
   - Provision the workspace, scaffold an app and choose its Home read roles.
   - Manage GitHub sources, install from a kit URL or directory, and confirm an in-place deployment.
+- Arrange installed apps (012)
+  - Resize app panes, open named views and reorder app shortcuts in the sidebar.
 - Prepare the public release (gate)
   - Run the complete owner journey from a clean download on the supported hosts.
   - Close the security, privacy, licensing, documentation, and publication checks in the [release checklist](public-release-readiness.md).
@@ -93,6 +95,8 @@ The [previous detailed delivery checklist](https://github.com/your-space-ai/your
 - [ ] **Build and customize a personal workspace with an agent (011)**
   - [ ] Verify unattended, resumable provisioning and an agent-built Home with reads from owner-selected apps and roles. [Creator journey](../specs/011-agent-workspace/spec.md)
   - [ ] Verify managed public and private repos, agent edits, a direct kit URL and the kit directory. Confirm a pinned deployment preserving installation identity and named volumes.
+- [ ] **Arrange installed apps (012)**
+  - [ ] Verify four resizable layouts, composition links, saved views and sidebar app order across a large screen and a phone-sized display. [Layout journey](../specs/012-multi-app-layouts/spec.md)
 - [ ] **Prepare the public release (gate)**
   - [ ] Run the complete owner journey from a clean download on the supported hosts. Record the release candidate, verified configurations, and limitations.
   - [ ] Close the security, privacy, licensing, documentation, and publication checks in the [release checklist](public-release-readiness.md). Obtain the owner’s publication decision.

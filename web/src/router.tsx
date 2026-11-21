@@ -1,3 +1,4 @@
+import { paneSearch } from "./pane-layout.ts";
 // Routes (T032, T038): /sign-in, / (home), and /reset-password. "No owner yet" and failures are
 // states of the root route, not routes of their own (research R12). Journey 002 adds the signed-in
 // layout around home, /apps, /apps/$name, /open/$name (an app's pane) and /engine.
@@ -6,6 +7,7 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   Navigate,
   Outlet,
   redirect,
@@ -17,7 +19,6 @@ import { ErrorState } from "./components/ErrorState.tsx";
 import { Layout } from "./components/Layout.tsx";
 import { Appearance } from "./pages/Appearance.tsx";
 import { AppDetail } from "./pages/AppDetail.tsx";
-import { AppPane } from "./pages/AppPane.tsx";
 import { Agents } from "./pages/Agents.tsx";
 import { Apps } from "./pages/Apps.tsx";
 import { Engine } from "./pages/Engine.tsx";
@@ -119,15 +120,16 @@ const appDetailRoute = createRoute({
   },
 });
 
+const AppPane = lazyRouteComponent(() => import("./pages/AppPane.tsx"), "AppPane");
+
 const openRoute = createRoute({
   getParentRoute: () => signedInRoute,
   path: "/open/$name",
-  validateSearch: (search: Record<string, unknown>): { with?: string } =>
-    typeof search.with === "string" && /^[a-z][a-z0-9-]{0,29}$/.test(search.with) ? { with: search.with } : {},
+  validateSearch: paneSearch,
   component: function OpenPage() {
     const { name } = openRoute.useParams();
     const search = openRoute.useSearch();
-    return <AppPane name={name} beside={search.with} />;
+    return <AppPane name={name} search={search} />;
   },
 });
 
