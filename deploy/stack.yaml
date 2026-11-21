@@ -58,6 +58,7 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
       YS_DATA_KEY: ${YS_DATA_KEY:-}
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
       DATABASE_URL: postgres://yourspace@postgres:5432/yourspace
     volumes:
       - ys-secrets:/run/ys-secrets:ro

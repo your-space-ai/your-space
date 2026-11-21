@@ -49,6 +49,7 @@ export function AppDetail({ name }: { name: string }) {
         </section>
       ) : (
         <>
+          <p><Link className="button secondary-link" to="/repositories" search={{ app: d.name }}>Customize app</Link></p>
           <Settings detail={d} onStarted={started("Applying settings")} />
           {d.interface ? <Publishing detail={d} onStarted={started("Applying publishing")} /> : null}
           <Outbound detail={d} onStarted={started("Updating internet access")} />

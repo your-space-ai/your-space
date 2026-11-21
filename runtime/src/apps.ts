@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { join } from "node:path";
-import { adapt, EGRESS_IMAGE, FRAME_ORIGIN_LABEL, imageRef, PUBLISH_TARGET, runsOnce, type AppSpec, type CheckResult, type OwnCaddy } from "./adapter.ts";
+import { adapt, EGRESS_IMAGE, FRAME_ORIGIN_LABEL, imageRef, pinnedImage, PUBLISH_TARGET, runsOnce, type AppSpec, type CheckResult, type OwnCaddy } from "./adapter.ts";
 import {
   connectNetwork,
   disconnectNetwork,
@@ -44,6 +44,10 @@ export function validateSpec(body: unknown): AppSpec {
   const env = spec.env ?? {};
   if (typeof env !== "object" || Object.entries(env).some(([k, v]) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) || typeof v !== "string")) {
     throw new SpecError("Settings must be names with text values.");
+  }
+  if (spec.verifyPins !== undefined && (!Array.isArray(spec.verifyPins) || spec.verifyPins.length > 128 ||
+      spec.verifyPins.some(ref => typeof ref !== "string" || !/^sha256:[a-f0-9]{64}$/.test(spec.pins?.[ref] ?? "")))) {
+    throw new SpecError("The requested image pins are invalid.");
   }
   if (spec.publish !== undefined && spec.publish !== null) {
     validatePublish(spec.publish);
@@ -131,7 +135,15 @@ async function checkWithImages(spec: AppSpec, waitForCaddy = 0): Promise<{ answe
   const pins: Record<string, string> = { ...(spec.pins ?? {}) };
   const images = await Promise.all(
     refs.map(async (ref) => {
-      if (pins[ref]) return { ref, digest: pins[ref], platforms: [], runsHere: true } satisfies ImageCheck;
+      if (pins[ref]) {
+        if (!spec.verifyPins?.includes(ref)) return { ref, digest: pins[ref], platforms: [], runsHere: true } satisfies ImageCheck;
+        const expected = pins[ref]!;
+        const inspected = await inspectImage(pinnedImage(ref, expected), info.arch ?? "amd64");
+        if (inspected.digest !== expected) {
+          return { ...inspected, ref, error: "The requested immutable image could not be verified on this engine." };
+        }
+        return { ...inspected, ref };
+      }
       const image = await inspectImage(ref, info.arch ?? "amd64");
       if (image.digest) pins[ref] = image.digest;
       return image;

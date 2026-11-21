@@ -95,6 +95,7 @@ export function ownTabLink(app: { publish: Publish | null }): string | null {
 }
 
 export interface AppSummary {
+  id: string;
   name: string;
   title: string;
   state: AppState;
@@ -192,6 +193,7 @@ export interface ServiceState {
 }
 
 export interface AppDetail {
+  id: string;
   name: string;
   title: string;
   origin: string;

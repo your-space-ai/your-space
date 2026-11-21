@@ -11,7 +11,9 @@ import type { Ui } from "../ui.ts";
 import { VERSION } from "../version.ts";
 import { engineFor, rememberSocket } from "./shared.ts";
 
-export async function init(ui: Ui, workdir: string, flags: SetupFlags & { releaseDir?: string; requireProjectCheck?: boolean }): Promise<void> {
+type InitFlags = SetupFlags & { releaseDir?: string; requireProjectCheck?: boolean };
+
+export async function prepareInstallation(ui: Ui, workdir: string, flags: InitFlags) {
   const { releaseDir } = flags;
   const folder = resolve(workdir);
   ui.intro("Your Space");
@@ -39,7 +41,13 @@ export async function init(ui: Ui, workdir: string, flags: SetupFlags & { releas
   const env = installation.writeEnv(setupLines(setup));
   rememberSocket(ui, installation, engine);
 
-  ui.result({ folder, version: VERSION, setup: { kind: setup.kind }, env }, () => {
+  return { folder, version: VERSION, setup: { kind: setup.kind }, env };
+}
+
+export async function init(ui: Ui, workdir: string, flags: InitFlags): Promise<void> {
+  const result = await prepareInstallation(ui, workdir, flags);
+  const {folder, env} = result;
+  ui.result(result, () => {
     ui.note(env.length ? env.join("\n") : "Nothing: this machine is the default.", "Settings written to .env");
     ui.outro(`Ready. Start it with: ${workdir === "." ? "" : `cd ${workdir} && `}your-space start`);
   });

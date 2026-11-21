@@ -60,3 +60,5 @@ Copyright (c) 2026 Chen Stanilovsky and contributors.
 Your Space (server, runtime, web client, CLI and desktop app) is licensed under the
 [GNU Affero General Public License v3.0 only](LICENSE). The SDKs, once published from this
 repository, are licensed under the MIT License, so apps that use them can choose any license.
+
+For an agent-led workspace, see [set up with an agent](docs/agent-setup.md), [build a Home app](docs/build-an-app.md), and [manage repositories and kits](docs/managed-repositories.md).

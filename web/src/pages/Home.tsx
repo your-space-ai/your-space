@@ -1,7 +1,10 @@
 // The owner's home (T037): the workspace, the account, and sign out. Nothing else (FR-027).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { HomeFrame } from "../components/HomeFrame.tsx";
+import { appsQuery } from "../apps-api.ts";
+import { homeQuery } from "../home-api.ts";
 import { authClient } from "../auth-client.ts";
 import { ErrorState } from "../components/ErrorState.tsx";
 import { AppError, failureForStatus, failureKind } from "../errors.ts";
@@ -14,10 +17,22 @@ function hasOwnEmail(email: string): boolean {
 }
 
 export function Home() {
+  const session = useQuery(sessionQuery);
+  const state = useQuery(homeQuery(session.data?.user.id ?? ""));
+  if (session.data && state.isPending) return <main className="panel" aria-busy="true"><p>Opening Home…</p></main>;
+  if (state.data?.activeHome && !state.isError) {
+    const active = state.data.activeHome;
+    return <HomeFrame key={active.generation + ":" + state.data.revision} home={active} revision={state.data.revision} />;
+  }
+  return <BuiltInHome unavailable={state.isError || !!state.data?.selectedId} />;
+}
+
+export function BuiltInHome({ unavailable = false }: { unavailable?: boolean }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const session = useQuery(sessionQuery);
   const workspace = useQuery(workspaceQuery);
+  const apps = useQuery(appsQuery);
 
   // A session that ends while the page is open (sign-out elsewhere, a password reset, expiry)
   // returns to sign-in rather than showing stale data (FR-016).
@@ -77,7 +92,9 @@ export function Home() {
   return (
     <main className="panel" data-state="home">
       <h1>{workspace.data?.name}</h1>
-      <p className="muted">Nothing is in this workspace yet.</p>
+      {unavailable ? <p className="notice">Your selected Home is unavailable. You can keep using the built-in dashboard.</p> : null}
+      {apps.data ? (apps.data.apps.length ? <p><Link to="/apps">Browse installed apps</Link></p> : <p className="muted">Nothing is in this workspace yet.</p>) : null}
+      <p><Link to="/home/settings">Home settings</Link></p>
       <dl>
         <dt>Name</dt>
         <dd data-field="name">{user.name}</dd>

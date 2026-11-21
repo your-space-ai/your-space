@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // your-space: install and run Your Space (journey 003). Every command acts on the installation in the
 // current folder, or the one --workdir names (contracts/cli-commands.md).
+import { newApp, packApp, installLocalApp } from "./commands/scaffold.ts";
 import { Command, CommanderError, Option } from "commander";
 import { registerAgentCommands } from "./commands/agent.ts";
 import { upgradeAgentKit, type UpgradeFlags } from "./commands/app-kit.ts";
@@ -10,6 +11,7 @@ import { logs } from "./commands/logs.ts";
 import { ownerCreate, ownerResetLink } from "./commands/owner.ts";
 import { secretsReplace, secretsShow } from "./commands/secrets.ts";
 import { start } from "./commands/start.ts";
+import { setupWorkspace, type WorkspaceSetupFlags } from "./commands/setup.ts";
 import { status } from "./commands/status.ts";
 import { stop } from "./commands/stop.ts";
 import { CliError, EXIT } from "./errors.ts";
@@ -83,6 +85,14 @@ setupOptions(program.command("init").description("make this folder a Your Space 
     await init(ui, g.workdir, { thisMachine: o.thisMachine, domain: o.domain, proxyUrl: o.proxyUrl, port: o.port, releaseDir: o.releaseDir, requireProjectCheck: o.requireProjectCheck });
   }),
 );
+
+program.command("setup")
+  .description("install or resume a local workspace and leave its first owner a private password-setup link")
+  .option("--port <n>", "initial localhost port (default 80)")
+  .option("--release-dir <folder>", "use version-matched release files and SHA256SUMS from this folder")
+  .option("--owner-name <name>", "first owner's display name (default Owner)")
+  .option("--owner-username <username>", "first owner's username (default owner)")
+  .action(action(async (ui, g, flags: WorkspaceSetupFlags) => setupWorkspace(ui, g.workdir, flags)));
 
 program.command("engine").description("check the local Docker engine")
   .command("check").description("check engine and Compose compatibility without starting an installation")
@@ -161,6 +171,12 @@ owner
   .action(action(async (ui, g) => ownerResetLink(ui, g.workdir)));
 
 const app = program.command("app").description("manage an installed app");
+app.command("new <folder>").description("create an editable dashboard app and installation kit")
+  .action(action(async (ui, _g, folder: string) => newApp(ui, folder)));
+app.command("pack <folder>").description("update the starter app’s Compose file from index.html")
+  .action(action(async (ui, _g, folder: string) => packApp(ui, folder)));
+app.command("install-local <folder>").description("install a local compose.yaml and kit.yaml in this workspace")
+  .action(action(async (ui, g, folder: string) => installLocalApp(ui, g.workdir, folder)));
 app
   .command("upgrade-agent-kit <name>")
   .description("inspect the installed kit or add agent access declarations from a version 2 kit")
