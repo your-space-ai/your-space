@@ -1,4 +1,5 @@
 // Your Space's own tables (T011, data-model.md): whether the owner exists, actors, and events.
+import type { AgentAccess } from "../apps/agent-kit.ts";
 import { sql } from "drizzle-orm";
 import { boolean, check, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organization, user } from "./auth-schema.ts";
@@ -78,7 +79,10 @@ export interface Adaptation {
 }
 
 export interface Kit {
-  kit: 1;
+  kit: 1 | 2;
+  agentAccess?: AgentAccess;
+  /** Verified independently by the registry lookup; never accepted in kit YAML. */
+  agentReview?: { source: string };
   /** The app's file on GitHub that the kit fits; a kit for a Compose file given on this machine may leave it out. */
   source?: { repo: string; path: string };
   name?: string;
