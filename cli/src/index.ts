@@ -2,6 +2,7 @@
 // your-space: install and run Your Space (journey 003). Every command acts on the installation in the
 // current folder, or the one --workdir names (contracts/cli-commands.md).
 import { Command, CommanderError, Option } from "commander";
+import { registerAgentCommands } from "./commands/agent.ts";
 import { configure } from "./commands/configure.ts";
 import { init } from "./commands/init.ts";
 import { logs } from "./commands/logs.ts";
@@ -162,6 +163,8 @@ setupOptions(program.command("configure").description("change how Your Space is 
       await configure(ui, g.workdir, { thisMachine: o.thisMachine, domain: o.domain, proxyUrl: o.proxyUrl, port: o.port, ignoreChecks: o.ignoreChecks });
     }),
   );
+
+registerAgentCommands(program, () => new Ui({ json: wantsJson, verbose: false, yes: false }));
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   if (error instanceof CommanderError) {
