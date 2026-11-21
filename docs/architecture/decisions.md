@@ -22,7 +22,7 @@ One useful action in a real connected app, with attribution, denial, and revocat
 
 ### Kit-defined roles, server-held credentials and approvals
 
-**Owner decision, 2026-11-21.** Extend installation kits to define app roles as sets of allowed HTTP method/route pairs. An agent may hold any number of roles per installation. Your Space checks the union of current grants and injects the bound app credential server-side. The agent uses only its Your Space key. Owners choose when to approve requests, with route-level controls, an all-writes setting and recommended defaults from vetted community kits. This settles the gateway’s route-level responsibility left open below. Native app authorization still applies. [Journey 005](../../specs/005-owner-agent/spec.md) proposes the policy precedence and exact-request approval flow.
+**Owner decision, 2026-11-21.** Extend installation kits to define app roles as sets of allowed HTTP method/route pairs. An agent may hold any number of roles per installation. The delegable subset is drawn from kit roles the owner enables in Your Space for that installation. The bound credential’s native app scope is an independent ceiling. Your Space checks the union of current grants and injects the bound app credential server-side. The agent uses only its Your Space key. Owners choose when to approve requests, with route-level controls, an all-writes setting and recommended defaults from vetted community kits. This settles the gateway’s route-level responsibility left open below. Native app authorization still applies. [Journey 005](../../specs/005-owner-agent/spec.md) proposes the policy precedence and exact-request approval flow.
 
 ## Purpose and Scope
 

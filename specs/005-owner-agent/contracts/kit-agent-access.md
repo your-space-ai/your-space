@@ -19,6 +19,7 @@ agentAccess:
       path: /items
       effect: read
       approval: allow
+      queryFields: {limit: integer}
       outputFields: [id, title]
     update-item:
       method: PATCH
@@ -27,9 +28,13 @@ agentAccess:
       approval: ask
       pathParams: {id: uuid}
       bodyFields: {title: string}
+      operationId: {in: header, name: Idempotency-Key}
+      expectedRevision: {in: header, name: If-Match}
       outputFields: [id, title, revision]
 ```
 
 The credential entry is a binding name and injection recipe. The owner supplies or authorizes the credential through the platform. Resolve it only for this installation and registered service. Accept reviewed authentication header names/schemes; reject routing, cookie and hop-by-hop headers, arbitrary hosts, redirects, raw paths and caller-supplied headers. Match one canonical method and relative path template; validate and encode each parameter, allowlisted query and body field. Reject ambiguous routes, unknown role references and unsupported fields. Filter provider results and errors to prevent disclosure of credentials or data outside the declared response.
 
 Present kit origin and review status separately from owner authorization. Vetted status requires evidence tied to the exact revision from a trusted review source, never a self-asserted kit flag. Use the recorded kit recommendations as initial preferences; expose effective policy and overrides in ordinary language. An owner must review permission expansions and weaker defaults on upgrade. Previously issued grants stay bound to their accepted route set pending that decision.
+
+A write route declares where its supported upstream operation ID goes. An edit route also declares where its expected revision goes. Allow a dedicated validated header or typed body field for each; reserve those names against agent input and authentication/routing headers. The server inserts the stored values after approval. A declaration alone proves no semantics: qualify conflict handling, receipt lookup and safe retry against the pinned API or an independent app-side handler before enabling writes.
