@@ -13,6 +13,7 @@ import { start } from "./commands/start.ts";
 import { status } from "./commands/status.ts";
 import { stop } from "./commands/stop.ts";
 import { CliError, EXIT } from "./errors.ts";
+import { checkEngine } from "./engine.ts";
 import { isMissingProgram } from "./process.ts";
 import { Ui } from "./ui.ts";
 import { VERSION } from "./version.ts";
@@ -73,12 +74,22 @@ const program = new Command()
     },
   });
 
-setupOptions(program.command("init").description("make this folder a Your Space installation: download the release and write .env")).action(
+setupOptions(program.command("init").description("make this folder a Your Space installation: download the release and write .env"))
+  .option("--require-project-check", "fail if Docker cannot list existing installation folders")
+  .option("--release-dir <folder>", "use packaged release files and SHA256SUMS from this folder")
+  .action(
   action(async (ui, g) => {
     const o = program.commands.find((c) => c.name() === "init")!.opts();
-    await init(ui, g.workdir, { thisMachine: o.thisMachine, domain: o.domain, proxyUrl: o.proxyUrl, port: o.port });
+    await init(ui, g.workdir, { thisMachine: o.thisMachine, domain: o.domain, proxyUrl: o.proxyUrl, port: o.port, releaseDir: o.releaseDir, requireProjectCheck: o.requireProjectCheck });
   }),
 );
+
+program.command("engine").description("check the local Docker engine")
+  .command("check").description("check engine and Compose compatibility without starting an installation")
+  .action(action(async (ui) => {
+    const engine = await checkEngine();
+    ui.result({ engine }, () => ui.note(`Docker ${engine.version}, Compose ${engine.compose}`, "Local engine"));
+  }));
 
 program
   .command("start")
@@ -86,8 +97,10 @@ program
   .option("--owner-name <name>", "the owner's name, when there is no owner yet")
   .option("--owner-username <username>", "the owner's username")
   .option("--owner-email <email>", "the owner's email address (optional)")
+  .addOption(new Option("--defer-owner", "start the server and create the first owner separately").conflicts(["ownerName", "ownerUsername", "ownerEmail"]))
   .option("--no-open", "don't open the set-password link in the browser")
   .option("--ignore-checks", "start even when the domain's names don't resolve")
+  .option("--require-project-check", "fail if Docker cannot list existing installation folders")
   .option("--new-secrets", "start with new secrets when they were lost (signs everyone out)")
   .action(
     action(async (ui, g) => {
@@ -99,6 +112,8 @@ program
         open: o.open,
         ignoreChecks: o.ignoreChecks,
         newSecrets: o.newSecrets,
+        deferOwner: o.deferOwner,
+        requireProjectCheck: o.requireProjectCheck,
       });
     }),
   );
@@ -111,7 +126,8 @@ program
 program
   .command("status")
   .description("show what is running and how to reach it")
-  .action(action(async (ui, g) => status(ui, g.workdir)));
+  .option("--require-running", "require a running workspace managed from this exact installation folder")
+  .action(action(async (ui, g, flags: { requireRunning?: boolean }) => status(ui, g.workdir, flags.requireRunning)));
 
 program
   .command("logs")

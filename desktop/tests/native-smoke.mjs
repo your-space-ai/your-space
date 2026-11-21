@@ -1,0 +1,62 @@
+// Runs the actual Electron windows, either from source or from an extracted Mac candidate.
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import test from 'node:test';
+import { expect } from '@playwright/test';
+import { launchDesktop } from './launch-desktop.mjs';
+
+const desktop = fileURLToPath(new URL('..', import.meta.url));
+
+async function fixture() {
+  const server = createServer((req, res) => {
+    if (req.url === '/api/status') {
+      res.writeHead(200, {'Content-Type':'application/json'});
+      res.end(JSON.stringify({owner:true}));
+    } else {
+      res.writeHead(200, {'Content-Type':'text/html; charset=utf-8'});
+      res.end('<h1>Test workspace</h1><a href="/app" target="_blank" rel="noopener">Open test app</a>');
+    }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  return {server, origin: 'http://127.0.0.1:' + server.address().port};
+}
+
+test('native launcher opens a workspace, isolates its app and reopens the saved address', {timeout: 150_000}, async () => {
+  const userData = await mkdtemp(join(tmpdir(), 'your-space-native-'));
+  const {server, origin} = await fixture();
+  const launch = () => launchDesktop(desktop,userData);
+  let client;
+  try {
+    client = await launch();
+    const launcher = await client.firstWindow();
+    await launcher.getByRole('button', {name: /Connect to a server/i}).click();
+    await launcher.getByLabel('Server address').fill(origin);
+
+    const opened = client.waitForEvent('window');
+    await launcher.getByRole('button', {name:'Connect', exact:true}).click();
+    const workspace = await opened;
+    await expect(workspace.getByRole('heading', {name:'Test workspace'})).toBeVisible();
+    assert.equal(await workspace.evaluate(() => typeof window.yourSpace), 'undefined');
+    assert.equal(await workspace.evaluate(() => typeof window.require), 'undefined');
+    const newTab = client.waitForEvent('window');
+    await workspace.getByRole('link', {name:'Open test app'}).click();
+    const child = await newTab;
+    await expect(child).toHaveURL(origin + '/app');
+    assert.equal(await child.evaluate(() => typeof window.yourSpace), 'undefined');
+    assert.deepEqual(JSON.parse(await readFile(join(userData, 'connection.json'), 'utf8')), {origin, local:false});
+    await client.close();
+    client = await launch();
+    const reopened = await client.firstWindow();
+    await expect(reopened.getByRole('heading', {name:'Test workspace'})).toBeVisible();
+    await expect(reopened).toHaveURL(origin + '/');
+  } finally {
+    if (client) await client.close().catch(() => {});
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    await rm(userData, {recursive:true, force:true});
+  }
+});

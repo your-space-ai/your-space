@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { engineProblem, engineSocket, versionAtLeast } from "../src/engine.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as processRunner from "../src/process.ts";
+import { otherInstallation } from "../src/compose.ts";
+import { checkEngine, engineProblem, engineSocket, versionAtLeast } from "../src/engine.ts";
 import { CliError } from "../src/errors.ts";
 
 describe("the engine connection", () => {
@@ -34,5 +36,37 @@ describe("the engine connection", () => {
     expect(missing.code).toBe("engine_missing");
     expect(missing.message).toMatch(/OrbStack, Colima or Docker Desktop/);
     expect(missing.status).toBe(2);
+  });
+});
+
+
+describe("the desktop engine preflight", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it("inspects an explicit context before any engine contact, even with a local DOCKER_HOST", async () => {
+    vi.stubEnv("DOCKER_CONTEXT", "configured");
+    vi.stubEnv("DOCKER_HOST", "unix:///var/run/docker.sock");
+    const run = vi.spyOn(processRunner, "run")
+      .mockResolvedValueOnce({ code: 0, stdout: "ssh://other.example", stderr: "" })
+      .mockResolvedValueOnce({ code: 1, stdout: "", stderr: "context is unavailable" });
+    await expect(checkEngine()).rejects.toMatchObject({ code: "engine_unsupported" });
+    await expect(checkEngine()).rejects.toMatchObject({ code: "engine_unsupported" });
+    expect(run.mock.calls.map(call => call[1][0])).toEqual(["context", "context"]);
+  });
+
+  it("makes the listing optional for ordinary commands and mandatory for desktop setup", async () => {
+    const run = vi.spyOn(processRunner, "run").mockResolvedValue({ code: 1, stdout: "", stderr: "unavailable" });
+    await expect(otherInstallation("your-space", process.cwd())).resolves.toBeNull();
+    for (const policy of ["require-list", "require-match"] as const) {
+      await expect(otherInstallation("your-space", process.cwd(), policy)).rejects.toMatchObject({ code: "engine_missing" });
+    }
+    run.mockResolvedValue({ code: 0, stdout: "[]", stderr: "" });
+    await expect(otherInstallation("your-space", process.cwd(), "require-list")).resolves.toBeNull();
+    await expect(otherInstallation("your-space", process.cwd(), "require-match")).rejects.toMatchObject({ code: "not_running" });
+    run.mockResolvedValue({ code: 0, stdout: JSON.stringify([{ Name: "your-space", ConfigFiles: "/other/compose.yaml" }]), stderr: "" });
+    await expect(otherInstallation("your-space", process.cwd(), "require-list")).resolves.toBe("/other");
   });
 });

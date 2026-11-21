@@ -1,7 +1,7 @@
 // Downloads a release's files, checks them against the release's SHA256SUMS, and unpacks them with
 // the system `tar` (research R4).
 import { createHash, randomBytes } from "node:crypto";
-import { rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CliError } from "./errors.ts";
 import { run } from "./process.ts";
@@ -55,9 +55,17 @@ export function safeEntries(listing: string): boolean {
 }
 
 /** Downloads and checks the release of `version`, then unpacks it into `folder`. */
-export async function fetchRelease(version: string, folder: string): Promise<void> {
-  const sums = parseSums((await download(releaseUrl(version, "SHA256SUMS"))).toString("utf8"));
-  const tarball = await download(releaseUrl(version, TARBALL));
+export async function fetchRelease(version: string, folder: string, releaseDir?: string): Promise<void> {
+  const asset = async (name: string): Promise<Buffer> => {
+    if (!releaseDir) return download(releaseUrl(version, name));
+    try {
+      return readFileSync(join(releaseDir, name));
+    } catch {
+      throw new CliError("download_failed", "The bundled installation files are missing or unreadable.");
+    }
+  };
+  const sums = parseSums((await asset("SHA256SUMS")).toString("utf8"));
+  const tarball = await asset(TARBALL);
   checkSum(TARBALL, tarball, sums);
   const path = join(folder, `.${TARBALL}.${randomBytes(4).toString("hex")}`);
   writeFileSync(path, tarball);
@@ -65,6 +73,13 @@ export async function fetchRelease(version: string, folder: string): Promise<voi
     const listed = await run("tar", ["-tzf", path]);
     if (listed.code !== 0 || !safeEntries(listed.stdout)) {
       throw new CliError("checksum_mismatch", `${TARBALL} isn't a Your Space release. Nothing was unpacked.`, {}, listed.stderr);
+    }
+    if (releaseDir) {
+      const stack = await run("tar", ["-xzOf", path, "stack.yaml"]);
+      const pins = Array.from(stack.stdout.matchAll(/\$\{YS_VERSION:-([^}]+)\}/g), (match) => match[1]);
+      if (stack.code !== 0 || !pins.length || pins.some((pin) => pin !== version)) {
+        throw new CliError("checksum_mismatch", "The bundled installation files belong to a different CLI version.");
+      }
     }
     const unpacked = await run("tar", ["-xzf", path, "-C", folder]);
     if (unpacked.code !== 0) throw new CliError("unexpected", `Couldn't unpack ${TARBALL}.`, {}, unpacked.stderr);

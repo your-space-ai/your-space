@@ -17,9 +17,9 @@ export interface Opened {
 }
 
 /** The engine, checked, and refused when it already runs Your Space from another folder. */
-export async function engineFor(ui: Ui, installation: Installation): Promise<Engine> {
+export async function engineFor(ui: Ui, installation: Installation, requireProjectCheck = false): Promise<Engine> {
   const engine = await ui.step("Checking Docker", "Docker is ready", () => checkEngine());
-  const other = await otherInstallation(installation.project(), installation.folder);
+  const other = await otherInstallation(installation.project(), installation.folder, requireProjectCheck ? "require-list" : "best-effort");
   if (other) {
     throw new CliError(
       "another_installation",
@@ -40,9 +40,9 @@ export function rememberSocket(ui: Ui, installation: Installation, engine: Engin
   }
 }
 
-export async function open(ui: Ui, workdir: string): Promise<Opened> {
+export async function open(ui: Ui, workdir: string, requireProjectCheck = false): Promise<Opened> {
   const installation = Installation.open(workdir);
-  const engine = await engineFor(ui, installation);
+  const engine = await engineFor(ui, installation, requireProjectCheck);
   rememberSocket(ui, installation, engine);
   return { installation, compose: new Compose(installation.folder), engine };
 }
@@ -192,15 +192,16 @@ export async function gather(
   installation: Installation,
   compose: Compose,
   engine: Engine | null,
-  extra: { link?: Link; certificate?: Certificate | null } = {},
+  extra: { link?: Link; certificate?: Certificate | null; requireRunning?: boolean } = {},
 ): Promise<Summary> {
   const setup = installation.setup();
   const services = await compose.ps();
   const running = services.some((s) => s.name === "server" && s.state === "running");
+  if (extra.requireRunning && !running) throw new CliError("not_running", "This installation is not running.");
   let owner: Owner | null = null;
   let apps: App[] | null = null;
   if (running) {
-    owner = await showOwner(compose).catch(() => null);
+    owner = extra.requireRunning ? await showOwner(compose) : await showOwner(compose).catch(() => null);
     apps = await listApps(compose).catch(() => null);
   }
   let certificate = extra.certificate ?? null;

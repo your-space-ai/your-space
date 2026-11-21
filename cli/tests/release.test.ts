@@ -1,6 +1,10 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { checkSum, parseSums, releaseUrl, safeEntries } from "../src/release.ts";
+import { checkSum, fetchRelease, parseSums, releaseUrl, safeEntries } from "../src/release.ts";
 
 describe("release files", () => {
   it("are downloaded from the release of the CLI's version", () => {
@@ -19,6 +23,28 @@ describe("release files", () => {
     expect(() => checkSum("your-space.tar.gz", data, sums)).not.toThrow();
     expect(() => checkSum("your-space.tar.gz", Buffer.from("changed"), sums)).toThrow(/doesn't match/);
     expect(() => checkSum("other.tar.gz", data, sums)).toThrow(/don't list/);
+  });
+
+  it("checks a packaged archive and its pinned version before extracting any files", async () => {
+    const root = mkdtempSync(join(tmpdir(), "your-space-release-"));
+    try {
+      const assets = join(root, "release"), install = join(root, "install");
+      mkdirSync(assets);
+      mkdirSync(install);
+      writeFileSync(join(root, "stack.yaml"), "image: example:${YS_VERSION:-0.1.0}\n");
+      const archive = join(assets, "your-space.tar.gz");
+      execFileSync("tar", ["-czf", archive, "-C", root, "stack.yaml"]);
+      const digest = createHash("sha256").update(readFileSync(archive)).digest("hex");
+      writeFileSync(join(assets, "SHA256SUMS"), digest + "  your-space.tar.gz\n");
+      await expect(fetchRelease("0.2.0", install, assets)).rejects.toMatchObject({ code: "checksum_mismatch" });
+      expect(readdirSync(install)).toEqual([]);
+      await fetchRelease("0.1.0", install, assets);
+      expect(readFileSync(join(install, "stack.yaml"), "utf8")).toBe(readFileSync(join(root, "stack.yaml"), "utf8"));
+      writeFileSync(archive, "different");
+      await expect(fetchRelease("0.1.0", install, assets)).rejects.toMatchObject({ code: "checksum_mismatch" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("never write outside the folder", () => {

@@ -6,11 +6,12 @@ The desktop app (journey 008) and people's scripts drive these commands, so thei
 output and exit statuses are a contract. Human output may change; JSON fields are only added.
 
 ```text
-your-space init       [--this-machine | --domain <name> | --proxy-url <url>] [--port <n>] [--yes]
+your-space engine check
+your-space init       [--require-project-check] [--release-dir <folder>] [--this-machine | --domain <name> | --proxy-url <url>] [--port <n>] [--yes]
 your-space start      [--owner-name <name>] [--owner-username <username>] [--owner-email <email>]
-                      [--no-open] [--ignore-checks] [--new-secrets] [--yes]
+                      [--require-project-check] [--defer-owner] [--no-open] [--ignore-checks] [--new-secrets] [--yes]
 your-space stop       [--yes]
-your-space status
+your-space status     [--require-running]
 your-space logs       [<service>] [--follow] [--tail <n>]
 your-space owner create      --name <name> --username <username> [--email <email>]
 your-space owner reset-link
@@ -72,8 +73,8 @@ Compose or the engine gave in `detail` when there was any.
 | `no_owner` | 2 | `owner reset-link` without an owner |
 | `owner_exists` | 2 | `owner create` with an owner |
 | `secret_in_env` | 2 | `secrets replace` for a secret set in `.env` |
-| `download_failed` | 3 | A release file couldn't be downloaded |
-| `checksum_mismatch` | 2 | A downloaded file doesn't match the release's checksum; nothing was unpacked |
+| `download_failed` | 3 | A release file could not be downloaded or read from the selected release folder |
+| `checksum_mismatch` | 2 | The archive failed checksum verification or its packaged image version differs from the CLI version |
 | `engine_unreachable` | 3 | The engine stopped answering |
 | `storage_unavailable` | 3 | The server couldn't read its database |
 | `unexpected` | 4 | Anything else |
@@ -107,10 +108,23 @@ Compose or the engine gave in `detail` when there was any.
   An app with its own link isn't in `names`: the proxy or tunnel sends its link to its published port.
 - `certificate` (domain setup): `{ "state": "valid" | "waiting" | "failed", "issuer": "...", "message": "..." }`.
 
+### Noninteractive desktop setup
+
+`engine check` works before an installation exists. It checks the selected local engine and Compose versions without starting containers. The desktop resolves a local context to a Unix socket and selects it with `DOCKER_HOST` in the child process.
+
+`init --release-dir <folder>` reads `your-space.tar.gz` and `SHA256SUMS` from the supplied folder. It checks the archive hash and the version pins in `stack.yaml` before unpacking. Without this option, the CLI downloads the matching release.
+
+`start --defer-owner` starts the stack and reports its owner state. An unclaimed installation stays available for `owner create`. This flag conflicts with the `--owner-name`, `--owner-username` and `--owner-email` options.
+
+`init --require-project-check` and `start --require-project-check` require a successful Compose project listing before changing the installation or starting containers. The desktop uses this check to find an installation managed from another folder. Ordinary CLI calls continue with the requested operation if the optional listing is unavailable.
+
+`status --require-running` verifies that the Compose project belongs to the installation folder, that its server is running, and that the server can read its owner state. A stopped server, mismatched project or unreadable owner state produces an error. In this mode a successful `owner: null` means the workspace is unclaimed.
+
 ### Other results
 
 | Command | Result |
 | --- | --- |
+| `engine check` | `{ ok, engine: { version, os, arch, endpoint, compose } }` |
 | `init` | `{ ok, folder, version, setup, env: ["YS_DOMAIN=space.example.com"] }`: the lines written |
 | `stop` | `{ ok, stopped: ["sure"] }`: the apps stopped; `null` when Your Space couldn't list its apps, after `--yes` or a yes to the question |
 | `owner create`, `owner reset-link` | The server command's own JSON (`username`, `url`, `token`, `expiresAt`) |
@@ -122,8 +136,9 @@ Compose or the engine gave in `detail` when there was any.
 
 | Command | Compose and server commands, in the installation's folder |
 | --- | --- |
+| `engine check` | Reads the local Docker endpoint, `docker version --format json` and `docker compose version --short` |
 | `init` | Downloads `your-space.tar.gz` and `SHA256SUMS` from the release of the CLI's version, checks the hash, `tar -xzf`, copies `env.example` to `.env`, sets the setup's lines |
-| `start` | `docker compose up -d --wait`; then `show-owner --json`, and `create-owner --json` when there is none; `list-apps --json` |
+| `start` | `docker compose up -d --wait`; then `show-owner --json`, and `create-owner --json` when there is none and owner creation is enabled; `list-apps --json` |
 | `stop` | `docker compose exec -T runtime stop-apps`, then `docker compose stop` |
 | `status` | `docker compose ps --format json`, `show-owner --json`, `list-apps --json` |
 | `logs` | `docker compose logs [--follow] [--tail n] [service]` |

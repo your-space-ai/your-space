@@ -1,5 +1,7 @@
 # Install Your Space
 
+For the downloadable native app and both Mac setup choices, see [Run Your Space on a Mac](macos-desktop.md).
+
 This guide installs Your Space with the `your-space` command, creates its owner, and keeps it
 running. You need access to the machine's command line: that access, not a web page, is what makes
 you the owner. Installing by hand with Docker Compose is still possible; see

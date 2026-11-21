@@ -2,11 +2,14 @@
 
 ## Release Scope and Promise
 
-One owner downloads Your Space, runs it with Docker locally or on a server, opens the dashboard in a browser, and manages what an AI agent can do in a connected app. The [roadmap](roadmap.md) tracks product scope and the [spec map](spec-map.md) assigns the work.
+One owner can download the macOS app, choose a local Docker workspace or an existing server, and apply an installation kit in the selected dashboard. A headless Docker installation and browser access also remain supported. The owner decides what an AI agent can do in a connected app. The [roadmap](roadmap.md) tracks product scope and the [spec map](spec-map.md) assigns the work.
 
 ## First Public Product Scope
 
 - [ ] Verify a clean local installation and a server installation from the published candidate artifacts. Record host, CPU, Docker/Compose and browser versions.
+- [ ] Test the versioned [Apple Silicon and Intel DMGs](../specs/008-desktop-entry/spec.md) on clean supported Macs. Download each release asset, verify its checksum, Developer ID signature, stapled notarization tickets and Gatekeeper assessment, drag Your Space to Applications in Finder, eject the image and launch the installed copy. Record each asset, processor and macOS version tested.
+- [ ] From local setup, use a detected Docker engine and repeat with an owner-selected engine. Verify guidance and retry for a missing or stopped engine, then start the stack and complete the existing owner setup.
+- [ ] On a Mac without Docker, choose the existing-server path and sign in to a verified HTTPS workspace. From each desktop path, review and confirm an installation kit, then open the app on the chosen workspace.
 - [ ] Verify owner claim, sign-in, restart and recovery. Open the dashboard on localhost, behind an existing proxy, and at a domain with a real certificate.
 - [ ] Install and open an independent app. Use the web UI to create an agent and grant access to a supported app action.
 - [ ] Repeat the [002 installation and isolation checks](../specs/002-install-an-app/tasks.md) on the release candidate. Verify digest pins and source provenance, owner confirmation and secrets, resource limits, network boundaries and persistent app storage.
@@ -153,7 +156,7 @@ is chosen instead, explicitly decide which items apply and describe what is not 
   - [ ] Run automated build, lint, type and meaningful behavior checks in CI for the release candidate.
   - [ ] Test security-sensitive behavior, data integrity, recovery, startup and restart failures, and
     the owner journey against the documented environment matrix; record versions and results.
-  - [ ] Check the web experience for keyboard access, labels, focus, readable errors, and usable
+  - [ ] Check desktop setup and the web experience for keyboard access, labels, focus, readable errors, and usable
     layouts on supported screen sizes; track and resolve release-blocking accessibility problems.
   - [ ] Check setup, loading, empty, disconnected, and error states for understandable guidance and
     truthful representation of the system's state.

@@ -1,0 +1,156 @@
+name: macOS desktop
+
+on:
+  pull_request:
+    paths:
+      - desktop/**
+      - cli/**
+      - deploy/**
+      - package-lock.json
+      - package.json
+      - .github/workflows/macos-desktop.yml
+      - .github/workflows/images.yml
+  workflow_dispatch:
+  # Called by Images only after that release's server images and files are available.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package and open (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - name: Build the ZIP preview and exercise the DMG installation
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=${RELEASE_TAG#v}
+          if [[ -z $version ]]; then version=$(node -p 'require("./desktop/package.json").version'); fi
+          desktop/scripts/package-macos.sh "$version" "$RUNNER_TEMP/packages"
+          name="your-space-macos-${{ matrix.arch }}-$version-preview.zip"
+          (cd "$RUNNER_TEMP/packages" && shasum -a 256 -c "$name.sha256")
+          ditto -x -k "$RUNNER_TEMP/packages/$name" "$RUNNER_TEMP/open"
+          app="$RUNNER_TEMP/open/Your Space.app"
+          test "$("$app/Contents/Resources/bin/your-space" --version)" = "$version"
+          mkdir -p "$RUNNER_TEMP/signing-input"
+          dmg="your-space-macos-${{ matrix.arch }}-$version-candidate.dmg"
+          desktop/scripts/create-dmg.sh "$app" "$RUNNER_TEMP/signing-input/$dmg"
+          desktop/scripts/test-dmg-install.sh "$RUNNER_TEMP/signing-input/$dmg" "${{ matrix.arch }}"
+          (cd "$RUNNER_TEMP/signing-input" && shasum -a 256 "$dmg" > "$dmg.sha256")
+      - name: Offer the private ZIP preview
+        if: github.event.repository.private && github.event_name != 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-preview-${{ matrix.arch }}
+          path: ${{ runner.temp }}/packages/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 5
+      - name: Transfer the tested image to the protected signing job
+        if: github.event_name == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-signing-input-${{ matrix.arch }}
+          path: ${{ runner.temp }}/signing-input/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  notarize:
+    if: github.event_name == 'release'
+    needs: package
+    runs-on: [self-hosted, macOS, your-space-release-signing]
+    environment: macos-release
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: macos-signing-input-*
+          path: ${{ runner.temp }}/macos-input-${{ github.run_id }}-${{ github.run_attempt }}
+          merge-multiple: true
+      - name: Sign, notarize, staple and assess each app and its disk image
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          MACOS_SIGN_IDENTITY: ${{ vars.MACOS_SIGN_IDENTITY }}
+          MACOS_NOTARY_PROFILE: ${{ vars.MACOS_NOTARY_PROFILE }}
+        run: |
+          input="$RUNNER_TEMP/macos-input-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          out="$RUNNER_TEMP/macos-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          for arch in arm64 x64; do
+            name="your-space-macos-$arch-${RELEASE_TAG#v}-candidate.dmg"
+            (cd "$input" && shasum -a 256 -c "$name.sha256")
+            desktop/scripts/notarize-macos.sh "$input/$name" "$out"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notarized-macos
+          path: ${{ runner.temp }}/macos-release-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 5
+      - name: Clean the protected runner's artifact copies
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/macos-input-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+                 "$RUNNER_TEMP/macos-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+
+  attach:
+    if: github.event_name == 'release'
+    needs: notarize
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: notarized-macos
+          path: release
+      - name: Attach the assessed downloads to the existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          cd release
+          assets=()
+          for arch in arm64 x64; do
+            dmg="your-space-macos-$arch-${TAG#v}.dmg"
+            test -s "$dmg"
+            sha256sum -c -- "$dmg.sha256"
+            assets+=("$dmg" "$dmg.sha256")
+          done
+          # Resume an interrupted upload without replacing a published asset.
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[] | [.name, .digest] | @tsv' > published.tsv
+          missing=()
+          for file in "${assets[@]}"; do
+            if awk -F '\t' -v name="$file" '$1 == name {found=1} END {exit !found}' published.tsv; then
+              digest=$(awk -F '\t' -v name="$file" '$1 == name {print $2}' published.tsv)
+              actual=$(sha256sum "$file" | cut -d' ' -f1)
+              [[ $digest == "sha256:$actual" ]] || { echo "$file already exists with different contents."; exit 1; }
+            else
+              missing+=("$file")
+            fi
+          done
+          if ((${#missing[@]})); then gh release upload "$TAG" "${missing[@]}" --repo "$GITHUB_REPOSITORY"; fi

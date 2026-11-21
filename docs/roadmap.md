@@ -1,6 +1,6 @@
 # Your Space roadmap
 
-The first release is a personal web dashboard. One person runs Your Space on Docker, opens their apps in a browser, and gives an AI agent permission to do useful work in a connected app.
+The first release serves one owner. They can download the macOS app to set up a local Docker workspace or connect to an existing server. They can also run a headless Docker server and use a browser. In the selected workspace they install apps using kits and decide what their AI agent can do.
 
 ## Pre-public: Core Experience and First Working Version
 
@@ -15,6 +15,8 @@ The first release is a personal web dashboard. One person runs Your Space on Doc
   - In the web UI, create a named agent, issue its own credential, and grant specific roles for one connected app.
   - Use an external AI agent through the CLI and gateway to complete one useful action in that app, with kit-defined roles, server-held app credentials and owner-configurable approvals.
   - Remove the grant and retry with the existing session.
+- Open a workspace from the macOS desktop (008)
+  - Install the appropriate DMG by dragging the app into Applications, then choose local setup or connection to an existing server. Use the selected workspace's dashboard to review and apply a kit.
 - Prepare the public release (gate)
   - Run the complete owner journey from a clean download on the supported hosts.
   - Close the security, privacy, licensing, documentation, and publication checks in the [release checklist](public-release-readiness.md).
@@ -77,11 +79,15 @@ The [previous detailed delivery checklist](https://github.com/your-space-ai/your
   - [ ] In the web UI, create a named agent, issue its own credential, and grant specific roles for one connected app. Installation kits define stable roles and their allowed HTTP methods and routes. The gateway enforces the granted role union and the app enforces native permissions. The owner can delegate any subset of the kit roles they have enabled for that installation, inspect and change grants, rotate credentials independently of roles, and revoke the agent.
   - [ ] Use an external AI agent through the CLI and gateway to complete one useful action in that app, with kit-defined roles, server-held app credentials and owner-configurable approvals. Let the owner review agent requests in the activity log, with the result, agent identity and delegating owner. Verify a disallowed action and access to an ungranted app are denied.
   - [ ] Remove the grant and retry with the existing session. Verify denial, then verify rotated and revoked credentials lose access. Document the supported app and action so another owner can repeat the example.
+- [ ] **Open a workspace from the macOS desktop (008)**
+  - [ ] Download the Apple Silicon and Intel DMGs from GitHub Releases and verify Developer ID and notarization. Drag the app into Applications, eject the image and test the installed app and its CLI on the supported Macs.
+  - [ ] Choose local setup. Detect Docker, let the owner override the detected engine, guide them through installing or starting it when needed, then set up and start the workspace through the existing CLI. Use its normal owner setup. Document local availability while the Mac is asleep or off and license terms for owners who choose Docker Desktop.
+  - [ ] Choose an existing server, enter its URL and sign in on a Mac without local Docker. From either path, review and confirm an independent app's installation kit on the selected workspace and open the app.
 - [ ] **Prepare the public release (gate)**
   - [ ] Run the complete owner journey from a clean download on the supported hosts. Record the release candidate, verified configurations, and limitations.
   - [ ] Close the security, privacy, licensing, documentation, and publication checks in the [release checklist](public-release-readiness.md). Obtain the owner’s publication decision.
 
-**Next implementation work:** Qualify kit-defined route grants and owner approvals with a real external agent and an independent app, as specified in [journey 005](../specs/005-owner-agent/spec.md). Verify the existing install and browser paths alongside that work.
+Qualify the outstanding real-app writes in [005](../specs/005-owner-agent/spec.md) and deliver [macOS desktop entry in 008](../specs/008-desktop-entry/spec.md). Both need release-candidate evidence alongside the existing headless install and browser paths.
 
 ## Post-public: Later Direction and Enhancements
 
@@ -125,28 +131,23 @@ These journeys keep their original numbers. Their order after publication is ope
   - [ ] Let the owner add an app someone already runs elsewhere through a connector that runs next to it and connects out to Your Space, instead of deploying it.
   - [ ] Verify the broader app-installation example with Sure and Twenty side by side. The personal release verifies one real app installation and one permission-aware integration.
 
-- [ ] **008 · Use a desktop client**
-  - [ ] Provide web and desktop clients with the same core workspace and installed-app experience when connected to the server.
+- [ ] **008 · Extend desktop support beyond the first Mac release**
+  - [ ] Bring the full desktop workspace and installed-app experience to the additional supported operating systems.
   - [ ] Provide an installable PWA client with the same experience.
   - [ ] Define which desktop app, CLI, and server versions work together, and show a clear "update the app" or "update the server" message on a mismatch.
-  - [ ] Ship an Electron desktop app for macOS.
   - [ ] Ship the desktop app for Linux.
   - [ ] On Windows, support the desktop app and a local workspace in an engine Your Space provides; Windows is not a supported server host.
-  - [ ] Sign and notarize macOS builds with an Apple Developer ID in CI.
   - [ ] Sign Windows builds through SignPath, with Microsoft Artifact Signing as fallback, in CI.
-  - [ ] On setup, let the user connect to an existing server by URL or run Your Space locally.
   - [ ] Show installed apps in native views, one per app, instead of iframes.
   - [ ] Update the desktop app itself, checking GitHub for new releases.
-  - [ ] In local mode, drive the Your Space CLI to set up and run the Docker Compose stack on the same machine, then connect to it.
   - [ ] Provide a Docker-compatible engine: Your Space's own virtual machine by default on macOS (and later Windows), or an engine the owner already runs as an advanced option.
-  - [ ] In local mode, create the owner through the CLI and set the password on the user's behalf, using the same owner command as every other installation.
-  - [ ] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
+  - [ ] Streamline local owner setup with one desktop form that drives the existing owner command and sets the password on the user's behalf.
+  - [ ] Update a local Your Space installation when the owner chooses.
   - [ ] Back up and restore the local workspace through the CLI.
   - [ ] Uninstall the local workspace through the CLI's uninstall command.
-  - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off, and state Docker Desktop's license terms for owners who choose it as their engine.
-  - [ ] Run the CLI on macOS and Linux so the desktop app can drive it for local workspaces.
+  - [ ] Qualify the CLI with the Linux desktop for local workspaces.
   - [ ] Run the CLI on Windows so the desktop app can drive it for local workspaces there.
-  - [ ] Distribute macOS executables and the Homebrew formula, and test the packaged CLI on a real Mac.
+  - [ ] Distribute and verify standalone macOS CLI executables and a Homebrew formula.
 
 ### Other later directions
 
