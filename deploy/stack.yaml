@@ -34,6 +34,7 @@ services:
     restart: unless-stopped
     volumes:
       - ys-caddy-data:/data
+      - ys-agent-edge:/run/ys-agent
     depends_on:
       # Caddy opens its ports only once the server has accepted the settings, so a wrong value
       # never publishes anything or asks Let's Encrypt for a certificate.
@@ -60,6 +61,7 @@ services:
       DATABASE_URL: postgres://yourspace@postgres:5432/yourspace
     volumes:
       - ys-secrets:/run/ys-secrets:ro
+      - ys-agent-edge:/run/ys-agent:ro
       # The runtime manager's socket: the only way the server reaches apps' containers.
       - ys-runtime:/run/ys-runtime
     depends_on:
@@ -139,6 +141,7 @@ services:
 volumes:
   ys-postgres:
   ys-caddy-data:
+  ys-agent-edge:
   # The runtime manager's socket. Holds nothing durable.
   ys-runtime:
   # The generated auth secret and database password. Keep it with ys-postgres.
