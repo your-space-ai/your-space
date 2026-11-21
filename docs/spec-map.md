@@ -10,7 +10,7 @@ The [roadmap](roadmap.md) follows one owner from a download to a useful action b
 | [005 · Let my agent work for me](../specs/005-owner-agent/spec.md) | Proposed for review. Web management of identities, server-held app credentials, kit-defined route roles and owner approval policy, with an external AI agent completing one authorized action through the gateway. Include denial, attribution and revocation. |
 | Release gate | Repeat the combined journey against release artifacts and complete the [publication review](public-release-readiness.md). |
 
-001–003 supply the foundation for 005. One app must implement the role and action contract needed for 005. The proposed acceptance case uses a Buzz agent to manage recurring tasks in DoneTick; the app integration still needs qualification. An app that only offers a browser sign-in can still appear on the dashboard.
+001–003 supply the foundation for 005. One app must implement the role and action contract needed for 005. Acceptance covers listing, creating and editing a synthetic record in an independent app through kit-defined routes. An app that only offers a browser sign-in can still appear on the dashboard.
 
 004 (teams), 006 (lifecycle tooling), 007 (developer ecosystem), and 008 (desktop) move to the [post-public roadmap](roadmap.md#post-public-later-direction-and-enhancements). The existing specifications and their historical task records keep their original scope.
 
