@@ -29,7 +29,11 @@ export function run(program: string, args: string[], options: RunOptions = {}): 
     child.stderr?.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
     child.on("error", reject);
     child.on("close", (code, signal) => resolve({ code: code ?? (signal ? 128 : 1), stdout, stderr }));
-    if (!options.inherit) child.stdin?.end(options.input ?? "");
+    // Docker may exit before it reads the whole input (for example, when the server is stopped).
+    child.stdin?.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.code !== "EPIPE") reject(error);
+    });
+    child.stdin?.end(options.input ?? "");
   });
 }
 
