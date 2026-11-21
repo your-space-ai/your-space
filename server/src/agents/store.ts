@@ -89,6 +89,18 @@ export async function owned(client: pg.PoolClient, id: string, owner: string, ac
   if (!row || (active && row.disabled)) forbidden();
   return row;
 }
+export async function identity(client: pg.PoolClient, verifier: string) {
+  const row = (
+    await client.query(
+      `select a.id as agent,a.owner_id as owner,k.id as key from agent_key k
+    join external_agent a on a.id=k.agent_id join installation i on i.workspace_id=a.workspace_id
+    where not k.revoked and not a.disabled and k.verifier=$1`,
+      [verifier],
+    )
+  ).rows[0];
+  if (!row) throw new AgencyError(401, "invalid_credential", "A current agent key is required.");
+  return { agent: String(row.agent), key: String(row.key), owner: String(row.owner) };
+}
 export async function activity(client: pg.PoolClient, owner: string, before?: string) {
   const rows = (
     await client.query(
