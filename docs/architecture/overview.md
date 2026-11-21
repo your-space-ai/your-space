@@ -6,7 +6,7 @@
     Owner's CLI → Docker Compose → server, runtime, installed apps
     External AI agent → CLI → gateway → permitted action in one connected app
 
-The owner manages agent identities and app grants in the web UI. The gateway and the integrated app enforce the supported action path. This is the target for 005. Later journeys add teams (004), lifecycle tooling (006), SDKs (007), and desktop clients (008). The [roadmap](../roadmap.md) gives their delivery stage.
+The owner manages agent identities, kit-defined app roles and request approval settings in the web UI. Before forwarding, the gateway checks the kit route and HTTP method, obtains any required owner approval, then injects the server-held app credential. The gateway and the integrated app enforce the supported action path. This is the target for 005. Later journeys add teams (004), lifecycle tooling (006), SDKs (007), and desktop clients (008). The [roadmap](../roadmap.md) gives their delivery stage.
 
 ## Layers
 

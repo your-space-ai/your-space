@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
+import { parseAgentAccess, AgentKitError } from "./agent-kit.ts";
 import type { Kit } from "../db/schema.ts";
 import { fetchSource, githubEndpoints, MAX_FILE_BYTES, parseLink, SourceError, type GithubEndpoints } from "./github.ts";
 import { TEMPLATE_REFERENCE, templateNames } from "./settings.ts";
@@ -48,14 +49,22 @@ export function parseKit(text: string): Kit {
     throw new KitError("it isn't valid YAML.");
   }
   if (!isObject(data)) throw new KitError("it isn't a YAML mapping.");
-  for (const key of Object.keys(data)) if (!TOP_KEYS.has(key)) throw new KitError(`it has the unknown field ${key}.`);
-  if (data.kit !== 1) throw new KitError("it is for a kit format this Your Space doesn't know (kit: 1).");
+  for (const key of Object.keys(data)) if (!TOP_KEYS.has(key) && !(data.kit === 2 && key === "agentAccess")) throw new KitError(`it has the unknown field ${key}.`);
+  if (data.kit !== 1 && data.kit !== 2) throw new KitError("it is for a kit format this Your Space doesn't know (use kit: 1 or kit: 2).");
   // A kit for a Compose file given on this machine (install-app --compose) may leave out source.
   const source = data.source;
   if (source !== undefined && (!isObject(source) || typeof source.repo !== "string" || typeof source.path !== "string")) {
     throw new KitError("it must name the source repo and path it fits.");
   }
-  const kit: Kit = { kit: 1, ...(source !== undefined ? { source: { repo: source.repo as string, path: source.path as string } } : {}) };
+  const kit: Kit = { kit: data.kit, ...(source !== undefined ? { source: { repo: source.repo as string, path: source.path as string } } : {}) };
+  if (data.kit === 2) {
+    try {
+      kit.agentAccess = parseAgentAccess(data.agentAccess);
+    } catch (error) {
+      if (error instanceof AgentKitError) throw new KitError(error.message);
+      throw error;
+    }
+  }
   if (data.name !== undefined) {
     if (typeof data.name !== "string" || !NAME.test(data.name)) throw new KitError("its name must be lower-case letters, digits and dashes.");
     kit.name = data.name;
@@ -237,6 +246,21 @@ export async function findKit(
   if (!fits(kit, repo, path)) {
     if (!kitLink) return null;
     throw misfit(kit, repo, path);
+  }
+  if (kit.agentAccess) {
+    const digest = createHash("sha256").update(file.text).digest("hex");
+    // Only the maintained registry on its default review branch can attest to this exact file.
+    const reviewLink = `https://github.com/${kitsRepo()}/blob/main/reviews/sha256/${digest}.json`;
+    try {
+      const review = await fetchSource(reviewLink, endpoints, fetcher);
+      const record: unknown = JSON.parse(review.text);
+      if (isObject(record) && record.kit === file.pinnedLink && record.sha256 === digest && record.status === "reviewed") {
+        kit.agentReview = { source: review.pinnedLink };
+      }
+    } catch (error) {
+      // Missing, unreadable and malformed evidence all leave the kit unreviewed.
+      if (!(error instanceof SourceError || error instanceof SyntaxError)) throw error;
+    }
   }
   return { kit, source: file.pinnedLink };
 }

@@ -180,7 +180,7 @@ describe("installing from a Compose file on this machine", () => {
     await expect(apps.preview({ text: COMPOSE, name: "" }, undefined, undefined, "admin")).rejects.toMatchObject({ code: "name_reserved" });
     await expect(apps.preview({ text: COMPOSE, name: "" }, undefined, undefined, "notes")).rejects.toMatchObject({ code: "already_installed" });
     await expect(apps.preview({ text: "", name: "" }, undefined, undefined, "empty")).rejects.toThrow(AppError);
-    await expect(apps.preview({ text: COMPOSE, name: "" }, undefined, "kit: 2\n", "x")).rejects.toThrow(/kit format/);
+    await expect(apps.preview({ text: COMPOSE, name: "" }, undefined, "kit: 3\n", "x")).rejects.toThrow(/kit format/);
     expect(fetches).toBe(0);
   });
 
