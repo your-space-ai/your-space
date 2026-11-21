@@ -13,7 +13,7 @@ The first release is a personal web dashboard. One person runs Your Space on Doc
   - Install and open an independent app from the web dashboard.
 - Put one AI agent to work (005)
   - In the web UI, create a named agent, issue its own credential, and grant specific roles for one connected app.
-  - Use an external AI agent through the CLI and gateway to complete one useful action in that app.
+  - Use an external AI agent through the CLI and gateway to complete one useful action in that app, with kit-defined roles, server-held app credentials and owner-configurable approvals.
   - Remove the grant and retry with the existing session.
 - Prepare the public release (gate)
   - Run the complete owner journey from a clean download on the supported hosts.
@@ -74,8 +74,8 @@ The [previous detailed delivery checklist](https://github.com/your-space-ai/your
 - [ ] **Connect an app (002)**
   - [ ] Install and open an independent app from the web dashboard. Verify the documented real-source install and the browsers claimed for release. Identify which connected apps support agent actions. Keep app publishing opt-in for owners using their own proxy.
 - [ ] **Put one AI agent to work (005)**
-  - [ ] In the web UI, create a named agent, issue its own credential, and grant specific roles for one connected app. Apps define stable role IDs and enforce them at their authorization boundary for both UI and programmatic access. The owner can delegate an exact subset of their roles per app installation, inspect and change grants, rotate credentials independently of roles, and revoke the agent.
-  - [ ] Use an external AI agent through the CLI and gateway to complete one useful action in that app. Let the owner review agent requests in the activity log, with the result, agent identity and delegating owner. Verify a disallowed action and access to an ungranted app are denied.
+  - [ ] In the web UI, create a named agent, issue its own credential, and grant specific roles for one connected app. Installation kits define stable roles and their allowed HTTP methods and routes. The gateway enforces the granted role union and the app enforces native permissions. The owner can delegate an exact subset of their roles per app installation, inspect and change grants, rotate credentials independently of roles, and revoke the agent.
+  - [ ] Use an external AI agent through the CLI and gateway to complete one useful action in that app, with kit-defined roles, server-held app credentials and owner-configurable approvals. Let the owner review agent requests in the activity log, with the result, agent identity and delegating owner. Verify a disallowed action and access to an ungranted app are denied.
   - [ ] Remove the grant and retry with the existing session. Verify denial, then verify rotated and revoked credentials lose access. Document the supported app and action so another owner can repeat the example.
 - [ ] **Prepare the public release (gate)**
   - [ ] Run the complete owner journey from a clean download on the supported hosts. Record the release candidate, verified configurations, and limitations.

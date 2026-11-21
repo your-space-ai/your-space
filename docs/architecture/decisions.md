@@ -20,6 +20,10 @@
 
 One useful action in a real connected app, with attribution, denial, and revocation, is the finish for journey 005. That requires a small working app integration. Team administration, general-purpose SDKs, desktop distribution and automated lifecycle management can each ship independently after this personal workflow works. Preserve their journey numbers and the detailed decisions below as future direction. This boundary supersedes earlier release timing and the eight-journey pre-public sequence throughout this record. The [roadmap](../roadmap.md) defines current sequencing.
 
+### Kit-defined roles, server-held credentials and approvals
+
+**Owner decision, 2026-11-21.** Extend installation kits to define app roles as sets of allowed HTTP method/route pairs. An agent may hold any number of roles per installation. Your Space checks the union of current grants and injects the bound app credential server-side. The agent uses only its Your Space key. Owners choose when to approve requests, with route-level controls, an all-writes setting and recommended defaults from vetted community kits. This settles the gateway’s route-level responsibility left open below. Native app authorization still applies. [Journey 005](../../specs/005-owner-agent/spec.md) proposes the policy precedence and exact-request approval flow.
+
 ## Purpose and Scope
 
 This is the canonical project-wide record of accepted architecture and product direction, including decisions for future work.
@@ -1093,7 +1097,7 @@ app roles. The [spec map](../spec-map.md) and [roadmap](../roadmap.md) follow it
 | App settings, egress, and limits | Settled in the [002 plan](../../specs/002-install-an-app/plan.md) (2026-11-14): settings encrypted in the server's database; outbound access through a Squid proxy per app, with kits' starter hosts and owner-approved access requests; fixed default limits a kit or the owner can change. What the owner sees and sets for generated secrets in the review, limits that scale with the space's resources, and an "all internet" option remain open. |
 | Activity log | Records installs, role and member changes, delegations, and agent requests. Retention, detail, and viewers need definition. |
 | Version compatibility | Supported desktop app, CLI, and server version combinations and the mismatch message need definition. |
-| Agent access | Agents reach apps only through the Your Space gateway, using the CLI in the first release; a workspace MCP endpoint is post-open-source. Gateway request format, how apps declare actions for the CLI, and whether the gateway enforces per-action roles need definition. |
+| Agent access | Agents reach apps only through the Your Space gateway, using the CLI in the first release; a workspace MCP endpoint is post-open-source. Gateway request format, how apps declare actions for the CLI, and protocol details for kit-defined method/route enforcement need definition. |
 | App identity protocol | Apps keep their own sign-in in journey 002 (level 0). Level 1 is OpenID Connect with Your Space as the provider, likely through Better Auth's OAuth provider plugin; the protocol for level 2 and where each level lands are settled with journeys 004, 005 and 007. |
 | App integration | TypeScript and Python SDKs are planned for post-public journey 007, for apps that opt into level 2; other languages are post-open-source. Neither is part of journey 002 (2026-11-14). Role registration, authorization compatibility, and revocation mechanics need a later specification. |
 | App deployment file | The app's own Compose file, with an optional installation kit from a separate repository, replaces a Your Space-specific file with an `x-your-space` section (2026-11-14). The owner installs by pasting the file's GitHub URL. The approved settings list and the kit format are set in the [002 plan](../../specs/002-install-an-app/plan.md) and its contracts. Source builds and alternative formats are post-open-source. |
