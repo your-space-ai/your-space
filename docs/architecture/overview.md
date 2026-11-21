@@ -101,3 +101,16 @@ The dashboard reads presentation tokens from its workspace server. The Mac launc
 Update this overview in the same change whenever a decision adds, removes, or moves a component,
 layer, or request path, or when a `(spec)` item is resolved. Keep the diagram 80 columns wide with
 aligned box borders. Rationale belongs in the decision record, not here.
+
+
+## Creator workflows
+
+```text
+Authorized agent on host → setup CLI → Docker workspace → private owner claim
+Home app frame → exact-origin message → dashboard → Home read policy → installed app
+Owner or scoped agent → repository API → server-held OAuth connection → GitHub
+Kit URL or directory → pinned kit and Compose → standard install preview
+Owner → confirmed replacement preview → runtime → same installation and volumes
+```
+
+[Author a Home app](../build-an-app.md) · [Manage repositories](../managed-repositories.md)

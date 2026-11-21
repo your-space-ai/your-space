@@ -7,6 +7,7 @@ import { createAppRouter } from "./router.tsx";
 import { WorkspaceAppearance } from "./appearance.ts";
 import "./styles.css";
 import "./appearance.css";
+import "./creator.css";
 
 // "always": requests run even when the browser thinks it's offline, so a lost connection shows the
 // "can't reach" state instead of waiting silently for the network to return.

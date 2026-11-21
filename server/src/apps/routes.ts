@@ -6,6 +6,7 @@ import { ensureHumanActor } from "../actors.ts";
 import type { Auth } from "../auth.ts";
 import type { Db } from "../db/client.ts";
 import { member } from "../db/auth-schema.ts";
+import { installation } from "../db/schema.ts";
 import { safeReturn, type Handoffs } from "./gate.ts";
 import { AppError, type AppsService } from "./service.ts";
 
@@ -20,7 +21,8 @@ export async function ownerFor(auth: Auth, db: Db, req: Request): Promise<Owner 
   const rows = await db
     .select({ id: member.id })
     .from(member)
-    .where(and(eq(member.userId, current.user.id), eq(member.role, "owner")))
+    .innerJoin(installation, eq(member.organizationId, installation.workspaceId))
+    .where(and(eq(installation.state,"claimed"), eq(member.userId, current.user.id), eq(member.role, "owner")))
     .limit(1);
   if (!rows[0]) return "forbidden";
   return { sessionId: current.session.id, actorId: await ensureHumanActor(db, current.user.id) };

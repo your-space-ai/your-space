@@ -161,7 +161,8 @@ export async function inspectImage(ref: string, arch: string): Promise<ImageChec
 async function localImage(ref: string, arch: string): Promise<ImageCheck | undefined> {
   try {
     const image = await engineJson<{ RepoDigests?: string[]; Os: string; Architecture: string }>("GET", `/images/${encodeURIComponent(ref)}/json`);
-    const name = ref.slice(0, ref.lastIndexOf(":"));
+    const base = ref.split("@")[0]!;
+    const name = base.slice(base.lastIndexOf("/") + 1).includes(":") ? base.slice(0, base.lastIndexOf(":")) : base;
     const digest = image.RepoDigests?.map((d) => d.split("@")).find(([n]) => n === name || n === `docker.io/library/${name}` || n === `docker.io/${name}`)?.[1];
     if (!digest) return undefined;
     const platform = `${image.Os}/${image.Architecture}`;

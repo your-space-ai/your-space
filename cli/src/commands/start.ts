@@ -23,7 +23,7 @@ export interface StartFlags {
 /** How long `start` waits for a domain's certificate, in seconds. Caddy keeps trying afterwards. */
 const CERTIFICATE_WAIT = 180;
 
-export async function start(ui: Ui, workdir: string, flags: StartFlags): Promise<void> {
+export async function startInstallation(ui: Ui, workdir: string, flags: StartFlags) {
   ui.intro("Your Space");
   const { installation, compose, engine } = await open(ui, workdir, flags.requireProjectCheck);
   let setup = installation.setup();
@@ -36,7 +36,12 @@ export async function start(ui: Ui, workdir: string, flags: StartFlags): Promise
   if ((await showOwner(compose)) === null && !flags.deferOwner) link = await createOwner(ui, compose, flags);
   const certificate = await waitForCertificate(ui, compose, setup, CERTIFICATE_WAIT);
 
-  const summary = await gather(installation, compose, engine, { link, certificate });
+  return gather(installation, compose, engine, { link, certificate });
+}
+
+export async function start(ui: Ui, workdir: string, flags: StartFlags): Promise<void> {
+  const summary = await startInstallation(ui, workdir, flags);
+  const {link} = summary;
   showSummary(ui, summary);
   if (link && flags.open && !ui.json) {
     if (await openLink(link.url)) ui.info("Opened the link in your browser.");
@@ -69,7 +74,7 @@ async function startOrRecover(ui: Ui, compose: Compose, newSecretsWanted: boolea
   }
 }
 
-async function createOwner(ui: Ui, compose: Parameters<typeof serverCommand>[0], flags: StartFlags): Promise<Link> {
+export async function createOwner(ui: Ui, compose: Parameters<typeof serverCommand>[0], flags: StartFlags): Promise<Link> {
   ui.info("Your Space has no owner yet. The owner is you: the one account that runs this space.");
   const name =
     flags.ownerName ??

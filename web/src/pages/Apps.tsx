@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { api, appsQuery, errorMessage, ownTabLink, shortDigest, STATE_LABEL, type AppList, type Review } from "../apps-api.ts";
+import { KitDirectory } from "../components/KitDirectory.tsx";
 import { JobProgress } from "../components/JobProgress.tsx";
 import { PUBLISH_NOTE, publishBody, PublishFields, type PublishForm } from "../components/PublishFields.tsx";
 import { DeleteData } from "./AppDetail.tsx";
@@ -86,9 +87,10 @@ function AppTable({ list }: { list: AppList }) {
   );
 }
 
-function Install() {
+export function Install({ repository }: { repository?: { id: string; fullName: string; defaultBranch: string } }) {
   const queryClient = useQueryClient();
-  const [link, setLink] = useState("");
+  const [link, setLink] = useState(repository ? "compose.yaml" : "");
+  const [ref, setRef] = useState(repository?.defaultBranch ?? "");
   const [kit, setKit] = useState("");
   const [review, setReview] = useState<Review | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -99,7 +101,10 @@ function Install() {
   const [finished, setFinished] = useState<boolean | null>(null);
 
   const preview = useMutation({
-    mutationFn: () => api<Review>("POST", "/api/apps/preview", { link, ...(kit.trim() ? { kit } : {}) }),
+    mutationFn: (kitUrl: string | undefined) => kitUrl
+      ? api<Review>("POST", "/api/kits/preview", { kitUrl })
+      : repository ? api<Review>("POST", `/api/repositories/${repository.id}/install/preview`, { ref: ref.trim(), composePath: link.trim(), ...(kit.trim() ? { kitPath: kit.trim() } : {}) })
+      : api<Review>("POST", "/api/apps/preview", { link, ...(kit.trim() ? { kit } : {}) }),
     onSuccess: (data) => {
       setReview(data);
       setValues({});
@@ -131,14 +136,16 @@ function Install() {
     event.preventDefault();
     setReview(null);
     install.reset();
-    preview.mutate();
+    preview.mutate(undefined);
   };
 
   return (
     <section aria-labelledby="install-heading" className="card">
-      <h2 id="install-heading">Install an app</h2>
+      <h2 id="install-heading">{repository ? "Install from this repository" : "Install an app"}</h2>
       <form onSubmit={onReview}>
-        <label>
+        {repository ? <><label>Branch, tag, or commit<input required value={ref} onChange={(event) => setRef(event.target.value)} /></label>
+          <label>Compose file path<input required value={link} onChange={(event) => setLink(event.target.value)} /></label>
+          <label>Kit file path (optional)<input value={kit} onChange={(event) => setKit(event.target.value)} /></label></> : <><label>
           Link to the app's Compose file
           <small>The file on GitHub, in a public repository, like https://github.com/owner/repo/blob/main/compose.yaml</small>
           <input type="url" required value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://github.com/…" />
@@ -150,13 +157,18 @@ function Install() {
             <small>Only if you want a kit other than the one Your Space finds for this app.</small>
             <input type="url" value={kit} onChange={(e) => setKit(e.target.value)} placeholder="https://github.com/…" />
           </label>
-        </details>
+        </details></>}
         <div>
-          <button type="submit" disabled={preview.isPending}>
+          <button type="submit" disabled={preview.isPending || install.isPending}>
             {preview.isPending ? "Reading the file…" : "Review"}
           </button>
         </div>
       </form>
+      {!repository ? <KitDirectory busy={preview.isPending || install.isPending} onPreview={(kitUrl) => {
+        setReview(null);
+        install.reset();
+        preview.mutate(kitUrl);
+      }} /> : null}
       {preview.isError ? (
         <p className="notice error" role="alert">
           {errorMessage(preview.error)}

@@ -64,6 +64,27 @@
       "when": 1795301071209,
       "tag": "0008_workspace_appearance",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795301350086,
+      "tag": "0009_custom_home",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795301435788,
+      "tag": "0010_app_replacement",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795301607110,
+      "tag": "0011_managed_repositories",
+      "breakpoints": true
     }
   ]
 }

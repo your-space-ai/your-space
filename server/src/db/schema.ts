@@ -308,3 +308,73 @@ export const workspaceAppearance = pgTable("workspace_appearance", {
   activeId: text("active_id").notNull(),
   themes: jsonb("themes").$type<{ id: string; theme: Theme }[]>().notNull(),
 });
+
+/** An absent selection always opens the built-in Home. Grants are bound to the installed target's revision. */
+export const workspaceHome = pgTable("workspace_home", {
+  workspaceId: uuid("workspace_id").primaryKey().references(() => organization.id, { onDelete: "cascade" }),
+  selectedId: uuid("selected_id").references(() => app.id, { onDelete: "set null" }),
+  generation: text("generation"),
+  revision: integer("revision").notNull(),
+  grants: jsonb("grants").$type<{ installationId: string; bindingRevision: number; roles: string[] }[]>().notNull(),
+});
+
+/** Last successful read per delegated route, without copies of request data, results, or credentials. */
+export const homeReadActivity = pgTable("home_read_activity", {
+  homeId: uuid("home_id").notNull().references(() => app.id, { onDelete: "cascade" }),
+  targetId: uuid("target_id").notNull().references(() => app.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  ownerId: uuid("owner_id").notNull().references(() => actor.id),
+  lastRead: timestamp("last_read", { withTimezone: true }).notNull().defaultNow(),
+}, t => [primaryKey({ columns: [t.homeId, t.targetId, t.action] })]);
+
+/** A replacement preview pins an exact artifact and the installed source it may replace. Keep only source files
+ * and image pins here. Runtime settings, credentials, volume contents and results stay with the installation. */
+export const appReplacement = pgTable("app_replacement", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  appId: uuid("app_id").notNull().references(() => app.id, { onDelete: "cascade" }),
+  ownerId: uuid("owner_id").notNull().references(() => actor.id),
+  repoId: text("repo_id").notNull(),
+  baseFingerprint: text("base_fingerprint").notNull(),
+  original: jsonb("original").notNull(),
+  candidate: jsonb("candidate").notNull(),
+  state: text("state", {enum:["preview","applying","applied","failed"]}).notNull().default("preview"),
+  createdAt: timestamp("created_at", {withTimezone:true}).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", {withTimezone:true}).notNull(),
+  updatedAt: timestamp("updated_at", {withTimezone:true}).notNull().defaultNow(),
+}, t => [index("app_replacement_installation").on(t.appId, t.createdAt)]);
+
+export const githubConnection = pgTable("github_connection", {
+  ownerId: uuid("owner_id").primaryKey().references(() => actor.id, {onDelete:"cascade"}),
+  githubUserId: text("github_user_id").notNull(),
+  login: text("login").notNull(),
+  credential: text("credential").notNull(),
+  scope: text("scope").notNull(),
+});
+export const githubDevice = pgTable("github_device", {
+  ownerId: uuid("owner_id").primaryKey().references(() => actor.id,{onDelete:"cascade"}),
+  sessionId: text("session_id").notNull(),
+  attemptId: uuid("attempt_id").notNull(),
+  deviceCode: text("device_code").notNull(),
+  expiresAt: timestamp("expires_at",{withTimezone:true}).notNull(),
+  nextPollAt: timestamp("next_poll_at",{withTimezone:true}).notNull(),
+  intervalSeconds: integer("interval_seconds").notNull(),
+  scope: text("scope").notNull(),
+});
+export const managedRepository = pgTable("managed_repository", {
+  ownerId: uuid("owner_id").notNull().references(() => actor.id,{onDelete:"cascade"}),
+  accountId: text("account_id").notNull(),
+  repoId: text("repo_id").notNull(),
+  fullName: text("full_name").notNull(),
+  origin: text("origin",{enum:["created","forked","imported"]}).notNull(),
+  defaultBranch: text("default_branch").notNull(),
+  private: boolean("private").notNull(),
+}, t => [primaryKey({columns:[t.ownerId,t.accountId,t.repoId]})]);
+export const repositoryGrant = pgTable("repository_grant", {
+  ownerId: uuid("owner_id").notNull().references(() => githubConnection.ownerId,{onDelete:"cascade"}),
+  accountId: text("account_id").notNull(),
+  agentId: uuid("agent_id").notNull().references(() => externalAgent.id,{onDelete:"cascade"}),
+  canCreate: boolean("can_create").notNull(),
+  canFork: boolean("can_fork").notNull(),
+  repoIds: text("repo_ids").array().notNull(),
+  revision: integer("revision").notNull().default(1),
+},t => [primaryKey({columns:[t.ownerId,t.accountId,t.agentId]})]);

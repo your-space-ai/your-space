@@ -74,7 +74,7 @@ export async function transaction<T>(db: Db, work: (client: pg.PoolClient) => Pr
 export async function catalog(client: pg.PoolClient, id: string) {
   const row = (
     await client.query(
-      `select a.id,a.name,a.title,a.kit,a.kit_source,a.commit,a.interface,a.state,b.credential,b.enabled_roles,b.revision,b.kit_digest,b.credential_revision
+      `select a.id,a.name,a.title,a.kit,a.kit_source,a.commit,a.interface,a.state,a.desired,b.credential,b.enabled_roles,b.revision,b.kit_digest,b.credential_revision
     from app a left join agent_binding b on b.app_id=a.id where a.id=$1 and a.desired<>'removed' for share of a`,
       [id],
     )

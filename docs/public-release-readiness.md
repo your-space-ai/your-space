@@ -177,3 +177,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     assets, and public-facing metadata for the intended public state.
   - [ ] Record the launch decision and release reference. If the source is still private, complete
     the separate early-publication checks and obtain authorization before changing visibility.
+
+## Personal app creation
+
+- [ ] Run a clean agent-led setup on a supported host and install an agent-built Home with a working authorized read.
+- [ ] Connect a disposable GitHub account, install an authorized private repo and a kit URL, then fork, commit and confirm a compatible replacement using the release artifacts. Verify retained data and denied access after revocation.

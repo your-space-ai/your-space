@@ -19,6 +19,9 @@ The first release serves one owner. They can download the macOS app to set up a 
   - Install the appropriate DMG by dragging the app into Applications, then choose local setup or connection to an existing server. Use the selected workspace's dashboard to review and apply a kit.
 - Personalize the dashboard (010)
   - Pick one of three starter themes, edit colors and fonts, and share a custom theme file.
+- Build and customize a personal workspace with an agent (011)
+  - Provision the workspace, scaffold an app and choose its Home read roles.
+  - Manage GitHub sources, install from a kit URL or directory, and confirm an in-place deployment.
 - Prepare the public release (gate)
   - Run the complete owner journey from a clean download on the supported hosts.
   - Close the security, privacy, licensing, documentation, and publication checks in the [release checklist](public-release-readiness.md).
@@ -87,6 +90,9 @@ The [previous detailed delivery checklist](https://github.com/your-space-ai/your
   - [ ] Choose an existing server, enter its URL and sign in on a Mac without local Docker. From either path, review and confirm an independent app's installation kit on the selected workspace and open the app.
 - [ ] **Personalize the dashboard (010)**
   - [ ] Verify all three starters and a custom theme across the dashboard and isolated Mac launcher. Edit colors and fonts, export a theme and apply it in another workspace. [Appearance journey](../specs/010-personal-themes/spec.md)
+- [ ] **Build and customize a personal workspace with an agent (011)**
+  - [ ] Verify unattended, resumable provisioning and an agent-built Home with reads from owner-selected apps and roles. [Creator journey](../specs/011-agent-workspace/spec.md)
+  - [ ] Verify managed public and private repos, agent edits, a direct kit URL and the kit directory. Confirm a pinned deployment preserving installation identity and named volumes.
 - [ ] **Prepare the public release (gate)**
   - [ ] Run the complete owner journey from a clean download on the supported hosts. Record the release candidate, verified configurations, and limitations.
   - [ ] Close the security, privacy, licensing, documentation, and publication checks in the [release checklist](public-release-readiness.md). Obtain the owner’s publication decision.
@@ -123,7 +129,7 @@ These journeys keep their original numbers. Their order after publication is ope
   - [ ] Before updating Your Space, record versions and snapshot its data; if the update fails, roll back automatically.
   - [ ] Uninstall Your Space and every app container it manages; keep data by default, and require explicit confirmation and offer a backup before deleting it.
   - [ ] Preserve app identity, exact source version, provenance, and approved update source or policy; do not silently expand granted access on update.
-  - [ ] Let the owner trigger updates of installed apps, preserving app data and requiring explicit approval for any additional access.
+  - [ ] Extend 011’s owner-confirmed compatible replacements to general upstream updates with reviewed data migrations.
   - [ ] Back up app data and record image versions before each update; if the update fails, automatically roll back to the previous versions and restore the backup.
 
 - [ ] **007 · Build and connect more apps**
@@ -131,7 +137,7 @@ These journeys keep their original numbers. Their order after publication is ope
   - [ ] Design the contract so it works the same whether Your Space runs the app or the app is hosted elsewhere.
   - [ ] Publish TypeScript and Python SDKs from this repository for apps in their own repositories, including first-party apps.
   - [ ] Verify each SDK with a working app.
-  - [ ] Enable developers to create or adapt apps and install them without rebuilding Your Space or including app source in the platform build.
+  - [ ] Build on journey 011’s portable Compose apps with the full SDK for deeper integrations.
   - [ ] Let the owner add an app someone already runs elsewhere through a connector that runs next to it and connects out to Your Space, instead of deploying it.
   - [ ] Verify the broader app-installation example with Sure and Twenty side by side. The personal release verifies one real app installation and one permission-aware integration.
 
@@ -179,7 +185,7 @@ These journeys keep their original numbers. Their order after publication is ope
 
   - [ ] Support automatic app updates under the owner's approved update policy.
 
-  Journey 006 introduces owner-triggered updates.
+  Journey 011 covers owner-confirmed compatible replacements. Journey 006 adds broader upstream updates.
 
 - [ ] **App backup history and manual rollback**
 
@@ -216,22 +222,9 @@ These journeys keep their original numbers. Their order after publication is ope
   The first release requires developers to publish the exact images and versions declared by their
   app's integration files. Build execution and its operational requirements belong to this later work.
 
-- [ ] **Private GitHub app installation**
+- [ ] **Additional discovery sources**
 
-  **Source:** [App distribution](architecture/decisions.md#accepted-future-app-distribution-direction).
-
-  - [ ] Connect a GitHub account to install private repositories the user is authorized to access.
-
-- [ ] **Optional app discovery**
-
-  **Source:** [App distribution](architecture/decisions.md#accepted-future-app-distribution-direction).
-
-  - [ ] Discover apps through curated listings using the same installation contract as direct GitHub installation.
-  - [ ] Allow official, community, and private discovery experiences to coexist.
-  - [ ] Preserve update routing when users change or disconnect discovery sources.
-  - [ ] Keep direct installation available without using an official curated listing.
-
-  Catalog implementation remains open.
+  Private GitHub installation, direct kit URLs and the maintained kit directory moved to pre-public journey 011 on 2026-11-21. Later discovery work includes custom and private directories and preserving update routing when a directory changes.
 
 - [ ] **Workspace MCP endpoint**
 

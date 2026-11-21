@@ -3,7 +3,7 @@
 import { CliError, type ErrorCode } from "./errors.ts";
 import type { Compose } from "./compose.ts";
 
-export type ServerCommand = "create-owner" | "reset-link" | "show-secrets" | "show-owner" | "list-apps" | "upgrade-agent-kit";
+export type ServerCommand = "create-owner" | "reset-link" | "show-secrets" | "show-owner" | "list-apps" | "upgrade-agent-kit" | "install-app";
 
 export interface ServerResult {
   status: number;

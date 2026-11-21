@@ -9,6 +9,7 @@ import type { Db } from "../db/client.ts";
 import {
   app,
   appAccessRequest,
+  appReplacement,
   appOutbound,
   appSetting,
   installJob,
@@ -20,7 +21,7 @@ import {
 } from "../db/schema.ts";
 import { errorFields, log } from "../log.ts";
 import { fetchSource, githubEndpoints, SourceError, type GithubEndpoints, type SourceFile } from "./github.ts";
-import { findKit, kitFromFile, KitError } from "./kits.ts";
+import { findKit, kitFromFile, KitError, type FoundKit } from "./kits.ts";
 import { localSource, type LocalCompose } from "./local.ts";
 import { RuntimeError, type AppSpec, type CheckAnswer, type Runtime, type ServiceState } from "./runtime-client.ts";
 import { buildSettings, decrypt, encrypt, publicSetting, resolveTemplates, type Setting } from "./settings.ts";
@@ -321,7 +322,6 @@ export class AppsService {
    * the owner gives, else its kit's.
    */
   async preview(from: string | LocalCompose, kitLink?: string, kitText?: string, appName?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
-    for (const [id, p] of this.previews) if (p.expiresAt < Date.now()) this.previews.delete(id);
     const github = this.config.github ?? githubEndpoints();
     const fetcher = this.config.fetch ?? fetch;
     let source: SourceFile;
@@ -338,6 +338,13 @@ export class AppsService {
       if (error instanceof SourceError || error instanceof KitError) throw new AppError(400, "source", error.message);
       throw error;
     }
+    return this.previewResolved(source, found, appName);
+  }
+
+  /** Internal handoff from the owner-authorized GitHub source reader. HTTP callers
+   * never supply trusted source, commit, or review metadata. */
+  async previewResolved(source: SourceFile, found: FoundKit | null, appName?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
+    for (const [id, p] of this.previews) if (p.expiresAt < Date.now()) this.previews.delete(id);
     const kit = found?.kit ?? null;
     const name = source.repo ? (kit?.name ?? slug(source.repo.split("/")[1]!)) : (appName ?? kit?.name);
     if (!name) throw new AppError(400, "name_required", "Name the app with --name, or give a kit that names it.");
@@ -595,16 +602,36 @@ export class AppsService {
     return { jobId };
   }
 
+  /** Hold the same per-app lifecycle lock for the entire managed replacement or install job. */
+  async withAppChange<T>(appId: string, change: () => Promise<T>): Promise<T> {
+    if (this.busy.has(appId)) throw new AppError(409, "busy", "The app is busy with another change.");
+    this.busy.add(appId);
+    try {
+      return await change();
+    } finally {
+      this.busy.delete(appId);
+    }
+  }
+
+  private async checkReplacement(appId: string) {
+    const [pending] = await this.db.select({ id: appReplacement.id }).from(appReplacement)
+      .where(and(eq(appReplacement.appId, appId), eq(appReplacement.state, "applying"))).limit(1);
+    if (pending) throw new AppError(409, "replacement_pending", "Finish the pending managed deployment first.");
+  }
+
   /** Starts a job that applies the app; one job per app at a time. */
   async startJob(appId: string, kind: "install" | "apply" | "remove"): Promise<{ jobId: string; done: Promise<void> }> {
     if (this.busy.has(appId)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
     this.busy.add(appId);
-    const inserted = await this.db.insert(installJob).values({ appId, kind }).returning({ id: installJob.id });
-    const jobId = inserted[0]!.id;
-    const done = this.runJob(jobId, appId, kind).finally(() => {
+    try {
+      await this.checkReplacement(appId);
+      const inserted = await this.db.insert(installJob).values({ appId, kind }).returning({ id: installJob.id });
+      const jobId = inserted[0]!.id;
+      return { jobId, done: this.runJob(jobId, appId, kind).finally(() => this.busy.delete(appId)) };
+    } catch (error) {
       this.busy.delete(appId);
-    });
-    return { jobId, done };
+      throw error;
+    }
   }
 
   private async runJob(jobId: string, appId: string, kind: "install" | "apply" | "remove"): Promise<void> {
@@ -694,8 +721,10 @@ export class AppsService {
       return;
     }
     const rows = await this.db.select().from(app).where(ne(app.state, "removed"));
+    const interrupted = new Set((await this.db.select({ id: appReplacement.appId }).from(appReplacement)
+      .where(eq(appReplacement.state, "applying"))).map(row => row.id));
     for (const row of rows) {
-      if (this.busy.has(row.id)) continue;
+      if (this.busy.has(row.id) || interrupted.has(row.id)) continue;
       const services = reports.find((r) => r.app === row.name)?.services ?? [];
       const running = services.some((s) => s.role === "app" && (s.state === "running" || s.state === "restarting"));
       if (row.desired === "running" && !running && row.state !== "failed" && row.state !== "installing") {
@@ -775,6 +804,7 @@ export class AppsService {
       apps: rows
         .filter((r) => r.state !== "removed")
         .map((r) => ({
+          id: r.id,
           name: r.name,
           title: r.title,
           state: r.state,
@@ -796,7 +826,7 @@ export class AppsService {
    * with the ID in its address, so that a page the browser cached before, such as the app's refusal to
    * be framed, is never reused. Missing while a change is applied, or the runtime manager is down.
    */
-  private async framing(names: string[]): Promise<Map<string, string>> {
+  async framing(names: string[]): Promise<Map<string, string>> {
     const framing = new Map<string, string>();
     if (names.length === 0) return framing;
     try {
@@ -824,6 +854,7 @@ export class AppsService {
     }
     const fromLink = this.linkValues(row);
     return {
+      id: row.id,
       name: row.name,
       title: row.title,
       origin: appOrigin(this.config.publicUrl, row),
@@ -898,6 +929,8 @@ export class AppsService {
 
   private async liveRow(name: string): Promise<AppRow> {
     const row = await this.rowByName(name);
+    if (this.busy.has(row.id)) throw new AppError(409, "busy", "The app is busy with another change.");
+    await this.checkReplacement(row.id);
     if (row.state === "removed") throw new AppError(409, "removed", "The app has been removed. Install it again to use it.");
     return row;
   }
