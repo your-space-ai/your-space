@@ -27,13 +27,52 @@ The first release is a personal web dashboard. One person runs Your Space on Doc
 
 The [previous detailed delivery checklist](https://github.com/your-space-ai/your-space/blob/eb352241/docs/roadmap.md) preserves dated completions and their implementation PRs. Below, a check means the whole release outcome has been demonstrated.
 
+<details>
+<summary>Previously verified features and their implementation PRs</summary>
+
+- [x] Retain account and workspace identity across restarts and service recreation with durable storage retained. (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
+- [x] Create the owner with a server command that prints a single-use set-password link; the network alone can never create an account or the owner. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
+- [x] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
+- [x] Prevent duplicate owners and keep sign-up closed; new people join only by invitation. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
+- [x] Reach an accurate empty workspace and distinguish unavailable services from empty or unclaimed state. (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
+- [x] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation. (2026-11-08, [PR #13](https://github.com/your-space-ai/your-space/pull/13))
+- [x] Keep the platform session in host-only cookies so it is never sent to app origins. (2026-11-08, [PR #13](https://github.com/your-space-ai/your-space/pull/13))
+- [x] Recover the existing owner account through an operator command without requiring email delivery or a standalone CLI. (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
+- [x] Preserve identity and revoke existing sessions after successful password recovery. (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
+- [x] Let the owner install an app by pasting the GitHub link to its own Compose file in a public repository into the UI. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
+- [x] Read the file at the exact commit the link resolves to and record it, with the commit of any installation kit applied; updates re-read the file from the same link. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
+- [x] Pin every image, including database services, to an exact version by digest, and validate and retain the installed image identity. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
+- [x] Check the app's fully resolved Compose file against an allowlist of settings; adapt it only by rules that hold for every app, reporting each change, and refuse anything else with reasons, including settings that would break app isolation. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
+- [x] Apply an installation kit, kept in a separate repository, for what a particular app needs (its interface, generated values, starter hosts, limits), with no app-specific logic in Your Space; an app without a kit installs if its own files are enough. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
+- [x] Let the owner provide app settings and secrets at installation and change them later; generate secrets instead of using published defaults, keep them out of output and logs, and store them encrypted in Your Space's database. (2026-11-17, [PR #28](https://github.com/your-space-ai/your-space/pull/28))
+- [x] Install an app if its images run on the engine's processor type (ARM or Intel/AMD); fail installation with a clear message if no image matches. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
+- [x] Restrict app installation and removal to the owner for the first public release. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
+- [x] Warn the owner when installing an app that it is trusted with its own data, and state in the documentation that Your Space protects itself and other apps but is not a sandbox for hostile code. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
+- [x] Run each app's containers through a runtime manager, the only part of Your Space that holds the engine connection, on any Docker-compatible engine shared with Your Space; apps keep running through Your Space restarts and updates, and come back when it starts. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
+- [x] Run an app-declared database service alongside the app when needed. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
+- [x] Provide app-specific durable storage that survives restarts and remains after uninstall. (2026-11-17, [PR #30](https://github.com/your-space-ai/your-space/pull/30))
+- [x] Let the owner explicitly delete retained app data from the administration UI. (2026-11-17, [PR #30](https://github.com/your-space-ai/your-space/pull/30))
+- [x] Isolate apps from host filesystem access, devices, and Docker controls, and protect platform services and other apps: each app on its own sealed network with its own volumes. (2026-11-17, [PR #29](https://github.com/your-space-ai/your-space/pull/29))
+- [x] Let apps reach only approved internet hosts: the installation kit's starter hosts, approved with the install, and hosts the owner approves when an app's attempt shows up as an access request. (2026-11-17, [PR #28](https://github.com/your-space-ai/your-space/pull/28))
+- [x] Run each managed app with memory and CPU limits so one app cannot take down the host. (2026-11-17, [PR #29](https://github.com/your-space-ai/your-space/pull/29))
+- [x] Show the owner each app's status and logs. (2026-11-17, [PR #29](https://github.com/your-space-ai/your-space/pull/29))
+- [x] Show the owner an Engine page with the engine connection, its version, and the space's resources and each app's use. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
+- [x] Open installed apps within the Your Space interface while platform navigation remains available. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
+- [x] Preserve normal frontend requests to the app backend without requiring each request to be rewritten for Your Space. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
+- [x] Run each app's interface on its own origin, isolated from Your Space and other apps, at `<app>.<Your Space's address>` in every setup (`space.localhost` on this machine), in a cross-origin iframe in the web client. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
+- [x] Let only people signed in to Your Space reach an app's origin, through an access gate at the built-in proxy; Your Space's cookies never reach apps, and apps' cookies never reach Your Space or each other. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
+- [x] Open several apps side by side in one layout on larger screens; show one app at a time on phones. (2026-11-17, [PR #30](https://github.com/your-space-ai/your-space/pull/30))
+- [x] Open any app in its own browser tab or window when it cannot run in a pane. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
+
+</details>
+
 - [ ] **Install and open the dashboard (001, 003)**
   - [ ] Download a versioned release and follow one guide on a personal machine with Docker and Compose already installed. Create the owner, sign in from localhost, restart, and recover access.
   - [ ] Repeat on a Docker server. Open the web UI over HTTPS from a second device, once behind an owner-managed proxy or tunnel and once at a domain using the built-in proxy and a real certificate.
 - [ ] **Connect an app (002)**
-  - [ ] Install and open an independent app from the web dashboard. Verify the documented real-source install and the browsers claimed for release. Identify which connected apps support agent actions.
+  - [ ] Install and open an independent app from the web dashboard. Verify the documented real-source install and the browsers claimed for release. Identify which connected apps support agent actions. Keep app publishing opt-in for owners using their own proxy.
 - [ ] **Put one AI agent to work (005)**
-  - [ ] In the web UI, create a named agent, issue its own credential, and grant specific roles for one connected app. The owner can inspect and change grants, rotate credentials, and revoke the agent.
+  - [ ] In the web UI, create a named agent, issue its own credential, and grant specific roles for one connected app. Apps define stable role IDs and enforce them at their authorization boundary for both UI and programmatic access. The owner can delegate an exact subset of their roles per app installation, inspect and change grants, rotate credentials independently of roles, and revoke the agent.
   - [ ] Use an external AI agent through the CLI and gateway to complete one useful action in that app. Show the result and actual actor to the owner. Verify a disallowed action and access to an ungranted app are denied.
   - [ ] Remove the grant and retry with the existing session. Verify denial, then verify rotated and revoked credentials lose access. Document the supported app and action so another owner can repeat the example.
 - [ ] **Prepare the public release (gate)**
@@ -48,12 +87,62 @@ These capabilities are not required for the first public release. Their order an
 
 ### Deferred from the first release
 
-These journeys keep their numbers. Timing and order after publication are open.
+These journeys keep their original numbers. Their order after publication is open.
 
-- [ ] **004 · Invite a team.** Invitations, additional human accounts, member recovery and removal, and shared workspace administration.
-- [ ] **006 · Maintain and move a workspace.** Guided backup, restore, migration, updates with rollback, and lifecycle automation. The first release still documents durable storage and how to protect data on supported installations.
-- [ ] **007 · Build and connect more apps.** Public TypeScript and Python SDKs, developer tooling, and connectors for apps running elsewhere. The first agent-enabled app and its role enforcement belong to 005.
-- [ ] **008 · Use a desktop client.** Native clients, bundled engine, signed installers and updates, and installable PWA. Additional packaging such as Homebrew and Windows distribution can follow demonstrated demand.
+- [ ] **004 · Invite a team**
+  - [ ] Let the owner create an invitation link and share it directly with a prospective member.
+  - [ ] Let the recipient sign up and join the workspace through the invitation.
+  - [ ] Retain existing account, workspace, membership, and ownership identities when adding members.
+  - [ ] Give each member a recovery code at signup that lets them reset their own password.
+  - [ ] Let the owner reset a member's password with a temporary password the member must replace at next sign-in.
+  - [ ] Let the owner remove a member: sign them out everywhere and revoke their app roles and their agents' access.
+  - [ ] Keep past app activity traceable to former members and deleted agents.
+  - [ ] Let the owner assign app roles to human members.
+  - [ ] Assign multiple roles per member and app. When a member loses a role, remove that delegation from their agents and active sessions.
+  - [ ] Disable a removed member's agents rather than deleting them, and let the owner delete them later.
+  - [ ] Extend owner-visible activity history to membership changes, installs, removals, updates and delegated-role changes.
+
+- [ ] **006 · Maintain and move a workspace**
+  - [ ] Back up any installation through the CLI: the Your Space server produces the backup and returns it through its API, wherever the server runs.
+  - [ ] Restore a backup into an installation.
+  - [ ] Make backup and restore easy to script, so a person or their agent can move a workspace between installations themselves.
+  - [ ] Before updating Your Space, record versions and snapshot its data; if the update fails, roll back automatically.
+  - [ ] Uninstall Your Space and every app container it manages; keep data by default, and require explicit confirmation and offer a backup before deleting it.
+  - [ ] Preserve app identity, exact source version, provenance, and approved update source or policy; do not silently expand granted access on update.
+  - [ ] Let the owner trigger updates of installed apps, preserving app data and requiring explicit approval for any additional access.
+  - [ ] Back up app data and record image versions before each update; if the update fails, automatically roll back to the previous versions and restore the backup.
+
+- [ ] **007 · Build and connect more apps**
+  - [ ] Document versioned public integration contracts for independently built and running apps.
+  - [ ] Design the contract so it works the same whether Your Space runs the app or the app is hosted elsewhere.
+  - [ ] Publish TypeScript and Python SDKs from this repository for apps in their own repositories, including first-party apps.
+  - [ ] Verify each SDK with a working app.
+  - [ ] Enable developers to create or adapt apps and install them without rebuilding Your Space or including app source in the platform build.
+  - [ ] Let the owner add an app someone already runs elsewhere through a connector that runs next to it and connects out to Your Space, instead of deploying it.
+  - [ ] Verify the broader app-installation example with Sure and Twenty side by side. The personal release verifies one real app installation and one permission-aware integration.
+
+- [ ] **008 · Use a desktop client**
+  - [ ] Provide web and desktop clients with the same core workspace and installed-app experience when connected to the server.
+  - [ ] Provide an installable PWA client with the same experience.
+  - [ ] Define which desktop app, CLI, and server versions work together, and show a clear "update the app" or "update the server" message on a mismatch.
+  - [ ] Ship an Electron desktop app for macOS.
+  - [ ] Ship the desktop app for Linux.
+  - [ ] On Windows, support the desktop app and a local workspace in an engine Your Space provides; Windows is not a supported server host.
+  - [ ] Sign and notarize macOS builds with an Apple Developer ID in CI.
+  - [ ] Sign Windows builds through SignPath, with Microsoft Artifact Signing as fallback, in CI.
+  - [ ] On setup, let the user connect to an existing server by URL or run Your Space locally.
+  - [ ] Show installed apps in native views, one per app, instead of iframes.
+  - [ ] Update the desktop app itself, checking GitHub for new releases.
+  - [ ] In local mode, drive the Your Space CLI to set up and run the Docker Compose stack on the same machine, then connect to it.
+  - [ ] Provide a Docker-compatible engine: Your Space's own virtual machine by default on macOS (and later Windows), or an engine the owner already runs as an advanced option.
+  - [ ] In local mode, create the owner through the CLI and set the password on the user's behalf, using the same owner command as every other installation.
+  - [ ] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
+  - [ ] Back up and restore the local workspace through the CLI.
+  - [ ] Uninstall the local workspace through the CLI's uninstall command.
+  - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off, and state Docker Desktop's license terms for owners who choose it as their engine.
+  - [ ] Run the CLI on macOS and Linux so the desktop app can drive it for local workspaces.
+  - [ ] Run the CLI on Windows so the desktop app can drive it for local workspaces there.
+  - [ ] Distribute macOS executables and the Homebrew formula, and test the packaged CLI on a real Mac.
 
 ### Other later directions
 
@@ -65,7 +154,7 @@ These journeys keep their numbers. Timing and order after publication are open.
   - [ ] Verify owner and member email addresses when email is configured.
   - [ ] Send password-reset links to verified addresses through the existing recovery mechanism.
 
-  No installation requires email. The first public release needs a member recovery path that works without it.
+  Member recovery in 004 must work without configuring email.
 
 - [ ] **Optional open sign-up**
 
@@ -73,7 +162,7 @@ These journeys keep their numbers. Timing and order after publication are open.
 
   - [ ] Let the owner choose to allow people to sign up without an invitation.
 
-  Until then, new people join only when the owner invites them.
+  The personal release has one owner. Journey 004 adds invitation-only membership.
 
 - [ ] **Automatic app updates**
 
@@ -81,7 +170,7 @@ These journeys keep their numbers. Timing and order after publication are open.
 
   - [ ] Support automatic app updates under the owner's approved update policy.
 
-  The first public release supports updates explicitly triggered by the owner.
+  Journey 006 introduces owner-triggered updates.
 
 - [ ] **App backup history and manual rollback**
 
@@ -89,7 +178,7 @@ These journeys keep their numbers. Timing and order after publication are open.
 
   - [ ] Keep more than one app backup and let the owner roll back an update that succeeded.
 
-  The first public release rolls back failed updates automatically from a single pre-update backup.
+  Journey 006 restores the pre-update backup when an update fails.
 
 - [ ] **Alternative deployment-file formats**
 
@@ -107,7 +196,7 @@ These journeys keep their numbers. Timing and order after publication are open.
 
   - [ ] Publish SDKs for languages beyond TypeScript and Python, such as Go.
 
-  The first public release publishes TypeScript and Python SDKs.
+  Journey 007 delivers the TypeScript and Python SDKs first.
 
 - [ ] **Build apps from source during installation**
 
