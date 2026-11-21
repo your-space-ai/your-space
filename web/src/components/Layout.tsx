@@ -30,16 +30,16 @@ export function Layout() {
         <ul>
           <li>
             <Link to="/" onClick={close} activeOptions={{ exact: true }}>
-              Home
+              <span className="nav-symbol nav-home" aria-hidden="true" />Home
             </Link>
           </li>
           <li>
             <Link to="/apps" onClick={close} activeOptions={{ exact: true }}>
-              Apps
+              <span className="nav-symbol nav-apps" aria-hidden="true" />Apps
             </Link>
           </li>
           <li>
-            <Link to="/agents" onClick={close}>Agents</Link>
+            <Link to="/agents" onClick={close}><span className="nav-symbol nav-agents" aria-hidden="true" />Agents</Link>
           </li>
         </ul>
         {openable.length > 0 ? (
@@ -56,8 +56,11 @@ export function Layout() {
         ) : null}
         <ul>
           <li>
+            <Link to="/appearance" onClick={close}><span className="nav-symbol nav-appearance" aria-hidden="true" />Appearance</Link>
+          </li>
+          <li>
             <Link to="/engine" onClick={close}>
-              Engine
+              <span className="nav-symbol nav-engine" aria-hidden="true" />Engine
             </Link>
           </li>
         </ul>

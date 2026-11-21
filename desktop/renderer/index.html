@@ -3,16 +3,20 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
     <title>Your Space</title>
     <link rel="stylesheet" href="./styles.css">
     <script src="./launcher.js" defer></script>
+    <script src="./appearance.js" defer></script>
   </head>
   <body>
-    <header><span class="brand-mark" aria-hidden="true"></span>Your Space</header>
+    <header><span class="brand-mark" aria-hidden="true"></span>Your Space
+      <button type="button" id="open-appearance" disabled>Appearance</button>
+    </header>
     <main>
       <button type="button" id="back" class="back" hidden><span aria-hidden="true">‹</span> Back</button>
       <section id="welcome" aria-labelledby="welcome-title">
+        <img id="workspace-art" src="../../web/public/themes/canopy.webp" alt="">
         <h1 id="welcome-title" tabindex="-1">Open your workspace</h1>
         <p class="intro">Choose where to run your personal dashboard.</p>
         <div class="choices">
@@ -82,5 +86,22 @@
         <p id="problem" role="alert"></p>
       </div>
     </main>
+    <dialog id="appearance" aria-labelledby="appearance-title">
+      <form id="theme-form">
+        <h2 id="appearance-title">Launcher appearance</h2>
+        <p class="intro">Choose the theme for this Mac. Each workspace keeps its own theme.</p>
+        <fieldset id="theme-controls">
+          <legend>Theme</legend>
+          <div id="theme-cards"></div>
+          <label for="theme-file">Import a theme</label>
+          <input type="file" id="theme-file" accept=".json,application/json">
+          <p id="theme-error" role="alert"></p>
+          <div class="actions">
+            <button id="apply-theme" class="primary" type="submit">Use theme</button>
+            <button id="theme-cancel" class="secondary" type="button">Cancel</button>
+          </div>
+        </fieldset>
+      </form>
+    </dialog>
   </body>
 </html>

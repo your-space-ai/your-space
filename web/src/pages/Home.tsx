@@ -28,6 +28,7 @@ export function Home() {
   useEffect(() => {
     if (ended) {
       queryClient.removeQueries({ queryKey: ["workspace"] });
+      queryClient.removeQueries({ queryKey: ["appearance", "library"] });
       void navigate({ to: "/sign-in", search: { notice: "expired" } });
     }
   }, [ended, navigate, queryClient]);
@@ -40,6 +41,7 @@ export function Home() {
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: ["session"] });
       queryClient.removeQueries({ queryKey: ["workspace"] });
+      queryClient.removeQueries({ queryKey: ["appearance", "library"] });
       await navigate({ to: "/sign-in", search: { notice: "signed_out" } });
     },
   });

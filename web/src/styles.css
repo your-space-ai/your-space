@@ -1,4 +1,4 @@
-/* Deliberately plain and functional; a later spec designs the interface. */
+/* Base colors follow the OS until the workspace's validated palette is available. */
 :root {
   color-scheme: light dark;
   --fg: #1d1d1f;
@@ -6,9 +6,14 @@
   --bg: #f6f6f4;
   --panel: #ffffff;
   --border: #d5d5d0;
+  --control-border: color-mix(in srgb, var(--border), var(--fg) 42%);
   --accent: #2f5bd3;
   --danger: #b3261e;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --success: #276238;
+  --accent-ink: #ffffff;
+  --font-body: system-ui, -apple-system, sans-serif;
+  --font-heading: Georgia, serif;
+  font-family: var(--font-body);
   line-height: 1.5;
 }
 
@@ -21,6 +26,8 @@
     --border: #3a3a3a;
     --accent: #8ab0ff;
     --danger: #ff8a80;
+    --success: #9cdaa3;
+    --accent-ink: #161616;
   }
 }
 
@@ -89,7 +96,7 @@ button,
   border: 0;
   border-radius: 6px;
   background: var(--accent);
-  color: var(--panel);
+  color: var(--accent-ink);
   cursor: pointer;
   text-decoration: none;
   text-align: center;
@@ -251,7 +258,7 @@ summary {
   padding: 0 0.4em;
   border-radius: 999px;
   background: var(--accent);
-  color: var(--panel);
+  color: var(--accent-ink);
   font-size: 0.8em;
   text-align: center;
   margin-left: 0.4em;
@@ -265,8 +272,8 @@ summary {
 }
 
 .state-running {
-  border-color: #2e7d32;
-  color: #2e7d32;
+  border-color: var(--success);
+  color: var(--success);
 }
 
 .state-failed,
@@ -312,6 +319,8 @@ button.danger-outline {
 }
 
 button.danger {
+  color: var(--panel);
+  color: contrast-color(var(--danger));
   background: var(--danger);
 }
 
@@ -322,7 +331,7 @@ button.danger {
 }
 
 .warning {
-  border-color: #b26a00;
+  border-color: var(--danger);
 }
 
 table {

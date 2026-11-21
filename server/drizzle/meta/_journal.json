@@ -57,6 +57,13 @@
       "when": 1795287131265,
       "tag": "0007_binding_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795301071209,
+      "tag": "0008_workspace_appearance",
+      "breakpoints": true
     }
   ]
 }

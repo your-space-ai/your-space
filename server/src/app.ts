@@ -4,6 +4,7 @@ import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import type { Auth } from "./auth.ts";
 import { isStorageError, type Db } from "./db/client.ts";
 import { errorFields, log } from "./log.ts";
+import { appearanceRoutes } from "./appearance.ts";
 import { ownerRoutes } from "./owner/routes.ts";
 import { appRoutes } from "./apps/routes.ts";
 import type { Handoffs } from "./apps/gate.ts";
@@ -61,6 +62,7 @@ export function createApp({ auth, db, apps, dataKey }: AppDeps): express.Express
   // The largest body is an app's settings.
   app.use(express.json({ limit: "64kb" }));
   app.use("/api", ownerRoutes(db));
+  app.use("/api/appearance", appearanceRoutes(auth, db));
   if (dataKey) app.use("/api", agentRoutes(auth, db, dataKey));
   if (apps) app.use("/api", appRoutes(auth, db, apps.service, apps.handoffs));
 

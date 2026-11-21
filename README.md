@@ -3,6 +3,8 @@
 Your Space is a personal dashboard you run with Docker on your own computer or server.
 Open the dashboard in a browser or the Mac app to install self-hosted apps and use them side by side.
 
+Choose a starter theme or design your own with local fonts and colors. [Customize and share a theme](docs/appearance.md)
+
 You can give an AI agent its own identity and key. Each app's installation kit defines the
 roles you can grant, such as read access. You choose the roles for each agent and decide which
 actions need your approval. Your Space keeps the app credential on the server and records which

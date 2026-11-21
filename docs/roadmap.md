@@ -17,6 +17,8 @@ The first release serves one owner. They can download the macOS app to set up a 
   - Remove the grant and retry with the existing session.
 - Open a workspace from the macOS desktop (008)
   - Install the appropriate DMG by dragging the app into Applications, then choose local setup or connection to an existing server. Use the selected workspace's dashboard to review and apply a kit.
+- Personalize the dashboard (010)
+  - Pick one of three starter themes, edit colors and fonts, and share a custom theme file.
 - Prepare the public release (gate)
   - Run the complete owner journey from a clean download on the supported hosts.
   - Close the security, privacy, licensing, documentation, and publication checks in the [release checklist](public-release-readiness.md).
@@ -83,6 +85,8 @@ The [previous detailed delivery checklist](https://github.com/your-space-ai/your
   - [ ] Download the Apple Silicon and Intel DMGs from GitHub Releases and verify Developer ID and notarization. Drag the app into Applications, eject the image and test the installed app and its CLI on the supported Macs.
   - [ ] Choose local setup. Detect Docker, let the owner override the detected engine, guide them through installing or starting it when needed, then set up and start the workspace through the existing CLI. Use its normal owner setup. Document local availability while the Mac is asleep or off and license terms for owners who choose Docker Desktop.
   - [ ] Choose an existing server, enter its URL and sign in on a Mac without local Docker. From either path, review and confirm an independent app's installation kit on the selected workspace and open the app.
+- [ ] **Personalize the dashboard (010)**
+  - [ ] Verify all three starters and a custom theme across the dashboard and isolated Mac launcher. Edit colors and fonts, export a theme and apply it in another workspace. [Appearance journey](../specs/010-personal-themes/spec.md)
 - [ ] **Prepare the public release (gate)**
   - [ ] Run the complete owner journey from a clean download on the supported hosts. Record the release candidate, verified configurations, and limitations.
   - [ ] Close the security, privacy, licensing, documentation, and publication checks in the [release checklist](public-release-readiness.md). Obtain the owner’s publication decision.

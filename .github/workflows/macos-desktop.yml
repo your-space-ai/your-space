@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - desktop/**
+      - appearance/**
+      - web/public/themes/**
       - cli/**
       - deploy/**
       - package-lock.json

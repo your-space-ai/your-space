@@ -8,6 +8,7 @@ COPY e2e/package.json e2e/
 COPY runtime/package.json runtime/
 COPY cli/package.json cli/
 RUN npm ci --workspace web --no-audit --no-fund
+COPY appearance/theme.mjs appearance/theme.mjs
 COPY web web
 RUN npm run build --workspace web
 

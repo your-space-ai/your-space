@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import { ErrorState } from "./components/ErrorState.tsx";
 import { Layout } from "./components/Layout.tsx";
+import { Appearance } from "./pages/Appearance.tsx";
 import { AppDetail } from "./pages/AppDetail.tsx";
 import { AppPane } from "./pages/AppPane.tsx";
 import { Agents } from "./pages/Agents.tsx";
@@ -80,6 +81,12 @@ const homeRoute = createRoute({
   component: Home,
 });
 
+const appearanceRoute = createRoute({
+  getParentRoute: () => signedInRoute,
+  path: "/appearance",
+  component: Appearance,
+});
+
 const agentsRoute = createRoute({
   getParentRoute: () => signedInRoute,
   path: "/agents",
@@ -141,7 +148,7 @@ const resetPasswordRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  signedInRoute.addChildren([homeRoute, agentsRoute, appsRoute, appDetailRoute, openRoute, engineRoute]),
+  signedInRoute.addChildren([homeRoute, agentsRoute, appsRoute, appDetailRoute, openRoute, engineRoute, appearanceRoute]),
   signInRoute,
   resetPasswordRoute,
 ]);
