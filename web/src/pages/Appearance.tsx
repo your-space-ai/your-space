@@ -60,7 +60,7 @@ export function Appearance() {
       ]);
       client.setQueryData(options.queryKey, updated);
       const active = selectedTheme(updated);
-      if (active) client.setQueryData(activePaletteQuery.queryKey, active);
+      if (active) client.setQueryData(activePaletteQuery.queryKey, { scheme: active.scheme, tokens: active.tokens });
       setNotice(success);
       return true;
     } catch (cause) {
@@ -105,7 +105,7 @@ export function Appearance() {
 
   const library = data;
   const current = selectedTheme(library) ?? starterThemes.find((item) => item.id === defaultThemeId)!.theme;
-  const use = (entry: ThemeEntry) => change({ method: "PUT", path: "/api/appearance/selection", body: { id: entry.id, revision: library.revision } }, `${entry.theme.name} is now your workspace theme.`);
+  const applyTheme = (entry: ThemeEntry) => change({ method: "PUT", path: "/api/appearance/selection", body: { id: entry.id, revision: library.revision } }, `${entry.theme.name} is now your workspace theme.`);
   const duplicate = (theme: Theme) => edit({ ...theme, name: `${theme.name.slice(0, 55).trimEnd()} copy` });
 
   if (draft) return (
@@ -141,7 +141,7 @@ export function Appearance() {
             </div>
             <div className="starter-meta"><Swatches theme={entry.theme} /><span>{entry.theme.scheme === "dark" ? "Dark" : "Light"} · {entry.theme.tokens.fontHeading}</span></div>
             <div className="starter-actions">
-              <button type="button" className="secondary apply-theme" disabled={busy || active} aria-label={active ? `${entry.theme.name} is current` : `Use ${entry.theme.name}`} onClick={() => void use(entry)}>{active ? "✓ Current" : "Use theme"}</button>
+              <button type="button" className="secondary apply-theme" disabled={busy || active} aria-label={active ? `${entry.theme.name} is current` : `Use ${entry.theme.name}`} onClick={() => void applyTheme(entry)}>{active ? "✓ Current" : "Use theme"}</button>
               <button type="button" className="text-button" disabled={busy} aria-label={`Customize ${entry.theme.name}`} onClick={() => duplicate(entry.theme)}>Customize</button>
               <button type="button" className="export-button" aria-label={`Export ${entry.theme.name} as JSON`} title="Export JSON" onClick={() => download(entry.theme)}><span aria-hidden="true">↓</span></button>
             </div>
@@ -157,7 +157,7 @@ export function Appearance() {
               <div className="custom-row"><span className="custom-tile" style={themeStyle(entry.theme)} aria-hidden="true">Aa</span>
                 <div className="custom-name"><strong>{entry.theme.name}</strong><Swatches theme={entry.theme} /></div>
                 <div className="actions">
-                  <button type="button" className="secondary apply-theme" disabled={busy || active} onClick={() => void use(entry)} aria-label={active ? `${entry.theme.name} is current` : `Use ${entry.theme.name}`}>{active ? "✓ Current" : "Use theme"}</button>
+                  <button type="button" className="secondary apply-theme" disabled={busy || active} onClick={() => void applyTheme(entry)} aria-label={active ? `${entry.theme.name} is current` : `Use ${entry.theme.name}`}>{active ? "✓ Current" : "Use theme"}</button>
                   <button type="button" className="secondary" disabled={busy} onClick={() => edit(entry.theme, entry.id)}>Edit</button>
                 </div>
               </div>

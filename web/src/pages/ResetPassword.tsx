@@ -2,9 +2,10 @@
 // The token is in the URL fragment, which browsers never send to a server. It is read once and
 // then cleared from the address bar, and posted in the request body. A new link opened in the same
 // tab changes only the fragment, so the page reads the token again when the fragment changes.
-import { useQueryClient } from "@tanstack/react-query";
+import { hashKey, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
+import { activePaletteQuery } from "../appearance.ts";
 import { authClient } from "../auth-client.ts";
 import { renderCode } from "../components/ErrorState.tsx";
 import { WRONG_ADDRESS_FIX } from "../errors.ts";
@@ -89,7 +90,8 @@ export function ResetPassword() {
         return;
       }
       // Setting a password signs out every session.
-      queryClient.removeQueries();
+      // Clear session data while keeping the mounted public palette subscribed.
+      queryClient.removeQueries({ predicate: (query) => query.queryHash !== hashKey(activePaletteQuery.queryKey) });
       await navigate({ to: "/sign-in", search: { notice: "password_set" } });
     } catch {
       setError(

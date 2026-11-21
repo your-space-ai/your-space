@@ -11,7 +11,8 @@ export const activePaletteQuery = queryOptions({
   queryKey: ["appearance", "palette"],
   queryFn: async () => {
     const palette = await api<Palette>("GET", "/api/appearance/active");
-    return validateTheme({ version: 1, name: "Workspace", scheme: palette.scheme, tokens: palette.tokens });
+    const { scheme, tokens } = validateTheme({ version: 1, name: "Workspace", scheme: palette.scheme, tokens: palette.tokens });
+    return { scheme, tokens };
   },
   retry: false,
 });
