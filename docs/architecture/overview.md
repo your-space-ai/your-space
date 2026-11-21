@@ -64,6 +64,8 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
 
 The dashboard reads presentation tokens from its workspace server. The Mac launcher uses the same portable theme format with a local device preference before connection. [Appearance](../appearance.md)
 
+The signed-in dashboard arranges installed app panes in a resizable grid. A named view stores app names, arrangement and divider percentages on the selected workspace server. Shortcut order is a separate owner preference. Each app continues through its own existing pane or published link. [Multi-app layouts](../../specs/012-multi-app-layouts/spec.md)
+
 ## Request Paths
 
 - **Starting on a Mac (008).** For local setup the app detects Docker, lets the owner select a different engine and guides them through installing or starting it if needed. The existing CLI sets up the stack and starts the owner flow. For a remote workspace the owner enters its URL and signs in without starting Docker on the Mac. In either case, kit review, confirmation and installation run against the selected workspace.

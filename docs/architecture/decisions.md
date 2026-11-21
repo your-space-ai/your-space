@@ -1114,3 +1114,10 @@ app roles. The [spec map](../spec-map.md) and [roadmap](../roadmap.md) follow it
 
 These open choices do not erase the accepted requirements above.
 Resolve implementation-critical choices in the relevant technical plan and future app-contract decisions in their own specifications.
+
+
+## Named multi-app views and sidebar order
+
+On November 21, 2026 the owner selected columns, rows, a grid and a main app with companions. The dashboard accepts pointer, touch and keyboard input on the interior dividers. Resizing preserves the embedded app documents. Narrow screens show one member of the open composition at a time.
+
+The workspace server owns named views and the owner's app shortcut order. A saved view identifies its apps in order and includes the arrangement and the proportions along both axes. Updating its contents is an explicit action. A composition URL may carry those same values directly. The dashboard resolves app names against the selected server's installed apps and uses their current pane or link rules. [Layout journey](../../specs/012-multi-app-layouts/spec.md)

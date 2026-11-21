@@ -14,6 +14,7 @@ COPY cli/package.json cli/
 RUN npm ci --omit=dev --workspace server --no-audit --no-fund && npm cache clean --force
 
 COPY appearance/theme.mjs appearance/theme.mjs
+COPY workspace-layout/model.mjs workspace-layout/model.mjs
 COPY server/src server/src
 COPY server/drizzle server/drizzle
 COPY server/bin server/bin

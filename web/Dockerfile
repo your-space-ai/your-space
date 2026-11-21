@@ -9,6 +9,7 @@ COPY runtime/package.json runtime/
 COPY cli/package.json cli/
 RUN npm ci --workspace web --no-audit --no-fund
 COPY appearance/theme.mjs appearance/theme.mjs
+COPY workspace-layout/model.mjs workspace-layout/model.mjs
 COPY web web
 RUN npm run build --workspace web
 
