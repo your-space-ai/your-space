@@ -25,3 +25,5 @@ Open **Apps → Kit directory**, choose a listing or paste a GitHub link to its 
 ## Apply an in-place change
 
 Select an existing installation and review the candidate commit, services, image digests and storage impact. A custom image must be available to the runtime and named by digest. The HTML starter can update through `app pack`. Changes that require different mounts, service topology or settings require a separate migration. Compatible deployments keep the installation ID, settings and attached named volumes. The owner reviews agent access again after the source changes. If startup fails, Your Space attempts to reapply the previous Compose and recorded image versions. Application-level data written by the new version needs the app's own recovery plan.
+
+If deployment is interrupted, reconnect the same GitHub account, reopen the repository and select the installation under **Update an installed app**. Your Space retrieves the reviewed commit, image digests and volumes. Choose **Resume reviewed deployment** to confirm and continue.

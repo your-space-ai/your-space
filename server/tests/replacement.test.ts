@@ -2,12 +2,18 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { app, appReplacement, appSetting } from "../src/db/schema.ts";
 import { AppsService } from "../src/apps/service.ts";
-import { applyReplacement, previewReplacement, type ReplacementSnapshot } from "../src/apps/replacement.ts";
+import {
+  applyReplacement,
+  pendingReplacement,
+  previewReplacement,
+  type ReplacementSnapshot,
+} from "../src/apps/replacement.ts";
 import type { AppSpec } from "../src/apps/runtime-client.ts";
 import { encrypt } from "../src/apps/settings.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
-import { createOwnerWithPassword } from "./helpers/owner.ts";
-import { FakeRuntime } from "./helpers/runtime.ts";
+import { cookieHeader, startServer } from "./helpers/server.ts";
+import { OWNER, createOwnerWithPassword } from "./helpers/owner.ts";
+import { FakeRuntime, fakeGithub } from "./helpers/runtime.ts";
 import { TEST_DATA_KEY } from "./helpers/env.ts";
 
 const beforePin = "sha256:" + "a".repeat(64);
@@ -85,7 +91,7 @@ beforeEach(async () => {
 afterEach(async () => t.destroy());
 
 it("pins packed app changes, keeps the install and storage, and retires old authority before dispatch", async () => {
-  const p = await previewReplacement(service, id, owner, source(next));
+  const p = await previewReplacement(service, id, owner, source(next), "456");
   expect(p).toMatchObject({
     appId: id,
     repoId: "123",
@@ -117,12 +123,12 @@ it("pins packed app changes, keeps the install and storage, and retires old auth
     });
     await run(spec, step);
   });
-  await expect(applyReplacement(service, id, owner, p.previewId, "999")).rejects.toMatchObject({
+  await expect(applyReplacement(service, id, owner, p.previewId, "999", "456")).rejects.toMatchObject({
     code: "replacement_changed",
   });
-  const result = await applyReplacement(service, id, owner, p.previewId, "123");
+  const result = await applyReplacement(service, id, owner, p.previewId, "123", "456");
   expect(result).toMatchObject({ appId: id, commit: source(next).commit, status: "applied" });
-  expect(await applyReplacement(service, id, owner, p.previewId, "123")).toEqual(result);
+  expect(await applyReplacement(service, id, owner, p.previewId, "123", "456")).toEqual(result);
   expect(engine.apply).toHaveBeenCalledTimes(1);
   expect((await t.db.select().from(app))[0]).toMatchObject({
     id,
@@ -135,7 +141,7 @@ it("pins packed app changes, keeps the install and storage, and retires old auth
 });
 
 it("detects a stale preview, unchanged code, new mutable tags and incompatible volumes or service layout", async () => {
-  await expect(previewReplacement(service, id, owner, source(base + "\n"))).rejects.toMatchObject({
+  await expect(previewReplacement(service, id, owner, source(base + "\n"), "456")).rejects.toMatchObject({
     code: "unchanged_artifact",
   });
   for (const invalid of [
@@ -143,27 +149,27 @@ it("detects a stale preview, unchanged code, new mutable tags and incompatible v
     next.replace('"web":', '"other":'),
     compose("new", "sample/ui:latest"),
   ]) {
-    await expect(previewReplacement(service, id, owner, source(invalid))).rejects.toMatchObject({
+    await expect(previewReplacement(service, id, owner, source(invalid), "456")).rejects.toMatchObject({
       code: "incompatible_replacement",
     });
   }
   const fixed = compose("new", "sample/ui:1@" + afterPin);
-  const p = await previewReplacement(service, id, owner, source(fixed));
+  const p = await previewReplacement(service, id, owner, source(fixed), "456");
   expect(engine.calls.at(-1)?.spec).toMatchObject({ pins: { "sample/ui:1": afterPin }, verifyPins: ["sample/ui:1"] });
   await t.pool.query("update app_setting set value=$1", [encrypt(TEST_DATA_KEY, "updated")]);
-  await expect(applyReplacement(service, id, owner, p.previewId, "123")).rejects.toMatchObject({
+  await expect(applyReplacement(service, id, owner, p.previewId, "123", "456")).rejects.toMatchObject({
     code: "replacement_changed",
   });
   expect(engine.calls.filter((c) => c.method === "apply")).toHaveLength(0);
   await expect(
-    previewReplacement(service, id, "00000000-0000-4000-8000-000000000001", source(fixed)),
+    previewReplacement(service, id, "00000000-0000-4000-8000-000000000001", source(fixed), "456"),
   ).rejects.toMatchObject({ status: 403 });
 });
 
 it("recovers previous pinned artifacts on failure and serializes retries without deleting app data", async () => {
-  const p = await previewReplacement(service, id, owner, source(next));
+  const p = await previewReplacement(service, id, owner, source(next), "456");
   vi.spyOn(engine, "apply").mockRejectedValueOnce(new Error("synthetic runtime failure"));
-  await expect(applyReplacement(service, id, owner, p.previewId, "123")).rejects.toMatchObject({
+  await expect(applyReplacement(service, id, owner, p.previewId, "123", "456")).rejects.toMatchObject({
     code: "previous_artifacts_restored",
   });
   expect((await t.db.select().from(app))[0]).toMatchObject({
@@ -174,17 +180,17 @@ it("recovers previous pinned artifacts on failure and serializes retries without
   expect((await t.db.select().from(appReplacement))[0]).toMatchObject({ state: "failed" });
   await service.reconcile();
   const results = await Promise.allSettled([
-    applyReplacement(service, id, owner, p.previewId, "123"),
-    applyReplacement(service, id, owner, p.previewId, "123"),
+    applyReplacement(service, id, owner, p.previewId, "123", "456"),
+    applyReplacement(service, id, owner, p.previewId, "123", "456"),
   ]);
   expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
   expect(engine.calls.filter((c) => c.method === "apply").map((c) => c.spec?.compose)).toEqual([base, next]);
 });
 
 it("keeps ambiguous deployment interrupted across restart and resumes the exact persisted candidate", async () => {
-  const p = await previewReplacement(service, id, owner, source(next));
+  const p = await previewReplacement(service, id, owner, source(next), "456");
   engine.failApply = "fixture";
-  await expect(applyReplacement(service, id, owner, p.previewId, "123")).rejects.toMatchObject({
+  await expect(applyReplacement(service, id, owner, p.previewId, "123", "456")).rejects.toMatchObject({
     code: "deployment_interrupted",
   });
   const restarted = new AppsService(t.db, engine, service.config);
@@ -196,6 +202,55 @@ it("keeps ambiguous deployment interrupted across restart and resumes the exact 
     .update(appReplacement)
     .set({ expiresAt: new Date(0) })
     .where(eq(appReplacement.id, p.previewId));
+  expect(await pendingReplacement(restarted, id, owner, "123", "other-account")).toEqual({ pending: null });
+  expect(await pendingReplacement(restarted, id, owner, "999", "456")).toEqual({ pending: null });
+  const { pending } = await pendingReplacement(restarted, id, owner, "123", "456");
+  expect(pending).toEqual(p);
+  expect(engine.calls.filter((c) => c.method === "apply")).toHaveLength(prevCount);
+  await expect(
+    applyReplacement(restarted, id, owner, pending!.previewId, "123", "other-account"),
+  ).rejects.toMatchObject({ code: "replacement_changed" });
+  await expect(
+    applyReplacement(restarted, id, owner, pending!.previewId, "123", "456", "a".repeat(40)),
+  ).rejects.toMatchObject({ code: "replacement_changed" });
   engine.failApply = undefined;
-  expect(await applyReplacement(restarted, id, owner, p.previewId, "123")).toMatchObject({ status: "applied" });
+  expect(await applyReplacement(restarted, id, owner, pending!.previewId, "123", "456", pending!.commit)).toMatchObject(
+    { status: "applied" },
+  );
+  expect(await pendingReplacement(restarted, id, owner, "123", "456")).toEqual({ pending: null });
+});
+
+it("recovers only the connected owner's managed repository through a fresh HTTP session", async () => {
+  const preview = await previewReplacement(service, id, owner, source(next), "456");
+  engine.failApply = "fixture";
+  await expect(applyReplacement(service, id, owner, preview.previewId, "123", "456")).rejects.toMatchObject({
+    code: "deployment_interrupted",
+  });
+  await t.pool.query(
+    "insert into github_connection(owner_id,github_user_id,login,credential,scope) values($1,'456','owner',$2,'repo')",
+    [owner, encrypt(TEST_DATA_KEY, "fixture-private")],
+  );
+  await t.pool.query(
+    "insert into managed_repository values ($1,'456','123','sample/mine','created','main',true), ($1,'789','123','sample/mine','imported','main',true)",
+    [owner],
+  );
+  const server = await startServer(t.db, { apps: { runtime: engine, fetch: fakeGithub({}) } });
+  try {
+    const path = "/api/repositories/123/deploy/pending?appId=" + id;
+    const cookie = cookieHeader(
+      await server.request("/api/auth/sign-in/username", {
+        method: "POST",
+        body: JSON.stringify({ username: OWNER.username, password: OWNER.password }),
+      }),
+    );
+    expect((await server.request(path)).status).toBe(401);
+    const response = await server.request(path, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ pending: preview });
+    await t.pool.query("update github_connection set github_user_id='789' where owner_id=$1", [owner]);
+    expect(await (await server.request(path, { headers: { cookie } })).json()).toEqual({ pending: null });
+    expect((await server.request(path.replace("/123/", "/999/"), { headers: { cookie } })).status).toBe(403);
+  } finally {
+    await server.close();
+  }
 });

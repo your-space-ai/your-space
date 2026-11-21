@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { root } from "./helpers/cli.ts";
 import { expect, test, type Frame } from "@playwright/test";
-import { composeWithInput, createOwner, resetStack, serverCommand } from "./helpers/stack.ts";
+import { composeWithInput, createOwner, docker, resetStack, serverCommand } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
 
 // Runs through the real owner UI, database, Docker runtime, edge and managed GitHub routes.
@@ -166,22 +167,23 @@ test("a synthetic GitHub account can manage, commit, preview a private install, 
   await expect(page.getByRole("heading", { name: "fixture-owner/fixtures-private" })).toBeVisible();
   await page.getByLabel("File path", { exact: true }).fill("compose.yaml");
   await page.getByRole("button", { name: "New file" }).click();
-  const composeV1 = JSON.stringify({
-    services: {
-      web: {
-        image: "node:26-slim",
-        ports: ["8080:8080"],
-        volumes: ["app-data:/data"],
-        command: [
-          "node",
-          "-e",
-          "require('node:http').createServer((_request,response)=>response.end('Release one')).listen(8080)",
-        ],
+  const release = (response: string) =>
+    JSON.stringify({
+      services: {
+        web: {
+          image: "node:26-slim",
+          ports: ["8080:8080"],
+          volumes: ["app-data:/data"],
+          command: [
+            "node",
+            "-e",
+            `require('node:http').createServer((_request,res)=>res.end(${response})).listen(8080)`,
+          ],
+        },
       },
-    },
-    volumes: { "app-data": {} },
-  });
-  await page.getByLabel("File contents").fill(composeV1);
+      volumes: { "app-data": {} },
+    });
+  await page.getByLabel("File contents").fill(release("'Release one'"));
   await page.getByLabel("Commit message").fill("Add the fixture service");
   await page.getByRole("button", { name: "Commit changes" }).click();
   await expect(page.getByRole("status").filter({ hasText: /Committed/ })).toBeVisible();
@@ -193,10 +195,25 @@ test("a synthetic GitHub account can manage, commit, preview a private install, 
   await expect(page.getByRole("link", { name: "fixture-owner/fixtures-private/compose.yaml" })).toBeVisible();
   await page.getByRole("button", { name: "Install", exact: true }).click();
   await expect(page.locator("section.job")).toHaveAttribute("data-job-state", "succeeded", { timeout: 120000 });
+  // Write once in the running first release. The next commit contains only the reader.
+  const marker = randomUUID();
+  await docker(
+    [
+      "exec",
+      "ys-fixtures-private-web-1",
+      "node",
+      "-e",
+      "require('node:fs').writeFileSync('/data/owner-marker', process.argv[1], {flag:'wx'})",
+      marker,
+    ],
+    false,
+  );
   await page.getByRole("button", { name: "Edit files" }).click();
   await page.getByLabel("File path", { exact: true }).fill("compose.yaml");
   await page.getByRole("button", { name: "Open file", exact: true }).click();
-  await page.getByLabel("File contents").fill(composeV1.replace("Release one", "Release two"));
+  await page
+    .getByLabel("File contents")
+    .fill(release("'Release two ' + require('node:fs').readFileSync('/data/owner-marker','utf8')"));
   await page.getByLabel("Commit message").fill("Serve release two");
   await page.getByRole("button", { name: "Commit changes" }).click();
   await expect(page.getByRole("status").filter({ hasText: /Committed/ })).toBeVisible();
@@ -217,16 +234,17 @@ test("a synthetic GitHub account can manage, commit, preview a private install, 
   expect((await detail.json()).id).toBe(originalId);
   await page.getByRole("link", { name: "fixtures-private", exact: true }).click();
   const appPane = page.frameLocator('[data-testid="app-pane"]');
+  const persisted = "Release two " + marker;
   if (browserName === "webkit") {
     await expect(appPane.locator("body")).toContainText(/Release two|This browser won't run/);
     if (await appPane.locator("[data-ys-own-tab]").isVisible()) {
       const newPage = page.context().waitForEvent("page");
       await appPane.getByRole("link", { name: "Open in its own tab" }).click();
       const tab = await newPage;
-      await expect(tab.locator("body")).toContainText("Release two");
+      await expect(tab.locator("body")).toHaveText(persisted);
       await tab.close();
-    }
-  } else await expect(appPane.locator("body")).toContainText("Release two", { timeout: 25000 });
+    } else await expect(appPane.locator("body")).toHaveText(persisted);
+  } else await expect(appPane.locator("body")).toHaveText(persisted, { timeout: 25000 });
   await page.getByRole("link", { name: "Details", exact: true }).click();
   await page.getByRole("link", { name: "Customize app" }).click();
   await expect(page.getByRole("heading", { name: "Repositories", exact: true })).toBeVisible();

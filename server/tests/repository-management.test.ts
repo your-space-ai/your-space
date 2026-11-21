@@ -92,6 +92,7 @@ it("limits repository files and forks to owner-granted IDs, with owner-only conf
     sha: commit,
   };
   expect((await call(agentApi + "/file", "PUT", edit, true)).status).toBe(200);
+  expect((await call(agentApi + "/32/deploy/pending?appId=" + actor, "GET", undefined, true)).status).toBe(404);
   expect((await call(agentApi + "/32/deploy/apply", "POST", {}, true)).status).toBe(404);
   expect((await call(repoApi + "/32/deploy/apply", "POST", {}, true)).status).toBe(401);
   const list = (await (await call(repoApi)).json()) as { grants: { repoIds: string[]; revision: number }[] };

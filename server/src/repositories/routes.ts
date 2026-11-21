@@ -3,7 +3,7 @@ import type { Auth } from "../auth.ts";
 import type { Db } from "../db/client.ts";
 import { ownerFor } from "../apps/routes.ts";
 import { AppsService, AppError } from "../apps/service.ts";
-import { applyReplacement, previewReplacement } from "../apps/replacement.ts";
+import { applyReplacement, pendingReplacement, previewReplacement } from "../apps/replacement.ts";
 import { AgencyError, hash, identity, object, transaction, uuid } from "../agents/store.ts";
 import { getGithubClient } from "./connection.ts";
 import type { GithubClient, GithubRepo } from "./github.ts";
@@ -243,7 +243,21 @@ export function repoRoutes(
       route(async (p, r, g) => {
         const id = repoId(r.params.id);
         await managed(db, p, g, id);
-        return previewReplacement(apps, uuid(r.body?.appId), p.owner, await loadSnapshot(g, id, object(r.body)));
+        return previewReplacement(
+          apps,
+          uuid(r.body?.appId),
+          p.owner,
+          await loadSnapshot(g, id, object(r.body)),
+          g.accountId,
+        );
+      }),
+    );
+    router.get(
+      "/:id/deploy/pending",
+      route(async (p, r, g) => {
+        const id = repoId(r.params.id);
+        await managed(db, p, g, id);
+        return pendingReplacement(apps, uuid(r.query.appId), p.owner, id, g.accountId);
       }),
     );
     router.post(
@@ -251,7 +265,15 @@ export function repoRoutes(
       route(async (p, r, g) => {
         const id = repoId(r.params.id);
         await managed(db, p, g, id);
-        return applyReplacement(apps, uuid(r.body?.appId), p.owner, uuid(r.body?.previewId), id);
+        return applyReplacement(
+          apps,
+          uuid(r.body?.appId),
+          p.owner,
+          uuid(r.body?.previewId),
+          id,
+          g.accountId,
+          r.body?.commit,
+        );
       }),
     );
   }

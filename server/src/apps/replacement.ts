@@ -261,7 +261,11 @@ async function candidateSource(service: AppsService, row: AppRow, input: Replace
     images,
     adaptations: check.adaptations,
   };
-  return { source, services: Object.keys(next.artifacts).sort(), volumes: [...new Set(check.services.flatMap(service => service.volumes))].sort() };
+  return {
+    source,
+    services: Object.keys(next.artifacts).sort(),
+    volumes: [...new Set(check.services.flatMap((service) => service.volumes))].sort(),
+  };
 }
 
 export async function previewReplacement(
@@ -269,6 +273,7 @@ export async function previewReplacement(
   appId: string,
   ownerActorId: string,
   snapshot: ReplacementSnapshot,
+  accountId: string,
 ) {
   const { row, base } = await service.db.transaction(async (tx) => {
     const row = await ownerAndApp(tx, appId, ownerActorId);
@@ -289,7 +294,7 @@ export async function previewReplacement(
         ownerId: ownerActorId,
         repoId: snapshot.repoId,
         baseFingerprint: base,
-        original: sourceOf(row),
+        original: { ...sourceOf(row), review: { accountId, services, volumes } },
         candidate: source,
         expiresAt: new Date(Date.now() + 30 * 60_000),
       })
@@ -308,6 +313,77 @@ export async function previewReplacement(
   });
 }
 
+type StoredPreview = typeof appReplacement.$inferSelect;
+type Review = { accountId: string; services: string[]; volumes: string[] };
+
+async function readReview(tx: Tx, record: StoredPreview, accountId: string) {
+  const { review, ...original } = record.original as Source & { review?: Review };
+  const candidate = record.candidate as Source;
+  if (review) {
+    if (review.accountId !== accountId) return null;
+  } else {
+    // Older previews predate the recorded account ID. Restore one only when the
+    // owner's managed catalog identifies the repository under a single account.
+    const accounts = await tx.execute(sql`select account_id from managed_repository
+      where owner_id=${record.ownerId} and repo_id=${record.repoId} limit 2`);
+    if (accounts.rows.length !== 1 || accounts.rows[0]?.account_id !== accountId) return null;
+  }
+  return {
+    original,
+    candidate,
+    plan: {
+      previewId: record.id,
+      appId: record.appId,
+      repoId: record.repoId,
+      repo: candidate.repo,
+      commit: candidate.commit,
+      previousCommit: original.commit || original.sourceUrl,
+      images: candidate.images,
+      services: review?.services ?? Object.keys(describe(candidate.compose).artifacts).sort(),
+      volumes: review?.volumes,
+    },
+  };
+}
+
+export async function pendingReplacement(
+  service: AppsService,
+  appId: string,
+  owner: string,
+  repoId: string,
+  accountId: string,
+) {
+  return service.db.transaction(async (tx) => {
+    const [record] = await tx
+      .select()
+      .from(appReplacement)
+      .where(
+        and(
+          eq(appReplacement.appId, appId),
+          eq(appReplacement.ownerId, owner),
+          eq(appReplacement.repoId, repoId),
+          eq(appReplacement.state, "applying"),
+        ),
+      )
+      .limit(1);
+    if (!record) return { pending: null };
+    const row = await ownerAndApp(tx, appId, owner);
+    // A running apply may have completed while the lookup waited for the app lock.
+    const [latest] = await tx
+      .select({ state: appReplacement.state })
+      .from(appReplacement)
+      .where(eq(appReplacement.id, record.id));
+    if (latest?.state !== "applying") return { pending: null };
+    const review = await readReview(tx, record, accountId);
+    if (!review) return { pending: null };
+    if (
+      canonical(sourceOf(row)) !== canonical(review.candidate) ||
+      (await fingerprint(tx, row, review.original)) !== record.baseFingerprint
+    )
+      stale();
+    return { pending: review.plan };
+  });
+}
+
 /** Commit the credential/grant retirement before switching any containers. If the server stops between
  * stages, only the same durable preview can resume. The ordinary reconciler leaves that project alone. */
 export async function applyReplacement(
@@ -316,6 +392,8 @@ export async function applyReplacement(
   ownerActorId: string,
   previewId: string,
   expectedRepoId: string,
+  accountId: string,
+  expectedCommit?: string,
 ) {
   return service.withAppChange(appId, async () => {
     async function inspect(tx: Tx) {
@@ -333,8 +411,9 @@ export async function applyReplacement(
         )
         .for("update");
       if (!p) stale();
-      const original = p.original as Source;
-      const candidate = p.candidate as Source;
+      const review = await readReview(tx, p, accountId);
+      if (!review || (expectedCommit !== undefined && expectedCommit !== review.candidate.commit)) stale();
+      const { original, candidate } = review;
       const appliedSource = p.state === "applying" || p.state === "applied" ? candidate : original;
       if (
         canonical(sourceOf(row)) !== canonical(appliedSource) ||

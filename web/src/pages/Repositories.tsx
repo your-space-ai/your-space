@@ -95,7 +95,8 @@ export function Repositories({ appName }: { appName?: string }) {
           </section>
           {selected && connection.data?.connected ? (
             <RepoWork
-              key={(app.data?.id ?? "") + selected.id}
+              key={JSON.stringify([owner, connection.data.login, app.data?.id, selected.id])}
+              accountScope={JSON.stringify([owner, connection.data.login])}
               repo={selected}
               appId={app.data?.id}
               composePath={app.data?.source.path}
@@ -214,7 +215,17 @@ function RepoRegistration({
   );
 }
 
-function RepoWork({ repo, appId, composePath }: { repo: Repository; appId?: string; composePath?: string }) {
+function RepoWork({
+  repo,
+  appId,
+  composePath,
+  accountScope,
+}: {
+  repo: Repository;
+  appId?: string;
+  composePath?: string;
+  accountScope: string;
+}) {
   const [mode, setMode] = useState<"files" | "install" | "deploy">(appId ? "deploy" : "files");
   return (
     <section>
@@ -237,7 +248,7 @@ function RepoWork({ repo, appId, composePath }: { repo: Repository; appId?: stri
       ) : mode === "install" ? (
         <Install repository={repo} />
       ) : (
-        <RepositoryDeployment repo={repo} initialAppId={appId} initialPath={composePath} />
+        <RepositoryDeployment accountScope={accountScope} repo={repo} initialAppId={appId} initialPath={composePath} />
       )}
     </section>
   );
@@ -319,8 +330,7 @@ function GrantForm({
       <fieldset disabled={save.isPending}>
         <legend>{agent.name}</legend>
         <label className="checkbox">
-          <input type="checkbox" checked={create} onChange={(e) => setCreate(e.target.checked)} /> Create
-          repositories
+          <input type="checkbox" checked={create} onChange={(e) => setCreate(e.target.checked)} /> Create repositories
         </label>
         <label className="checkbox">
           <input type="checkbox" checked={fork} onChange={(e) => setFork(e.target.checked)} /> Fork repositories

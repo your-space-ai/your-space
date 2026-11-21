@@ -17,10 +17,12 @@ type Plan = {
 };
 export function RepositoryDeployment({
   repo,
+  accountScope,
   initialAppId,
   initialPath,
 }: {
   repo: Repository;
+  accountScope: string;
   initialAppId?: string;
   initialPath?: string;
 }) {
@@ -33,6 +35,16 @@ export function RepositoryDeployment({
   const [plan, setPlan] = useState<Plan | null>(null);
   const [receipt, setReceipt] = useState<{ status: string; commit: string } | null>(null);
   const selected = apps.data?.apps.find((app) => app.id === appId);
+  const pendingKey = ["repository-deployment", accountScope, repo.id, appId];
+  const pending = useQuery({
+    queryKey: pendingKey,
+    enabled: !!appId,
+    queryFn: () =>
+      api<{ pending: Plan | null }>("GET", `${reposPath}/${repo.id}/deploy/pending?appId=${encodeURIComponent(appId)}`),
+    retry: false,
+  });
+  const interrupted = pending.data?.pending;
+  const reviewed = interrupted ?? plan;
   const preview = useMutation({
     mutationFn: () =>
       api<Plan>("POST", `${reposPath}/${repo.id}/deploy/preview`, {
@@ -48,11 +60,16 @@ export function RepositoryDeployment({
       api<{ status: string; commit: string }>("POST", `${reposPath}/${repo.id}/deploy/apply`, {
         appId: authorized.appId,
         previewId: authorized.previewId,
+        commit: authorized.commit,
       }),
     onSuccess: async (done) => {
       setReceipt(done);
       setPlan(null);
+      client.setQueryData(pendingKey, { pending: null });
       await client.invalidateQueries({ queryKey: ["apps"] });
+    },
+    onError: () => {
+      void pending.refetch();
     },
   });
   const busy = preview.isPending || apply.isPending;
@@ -136,58 +153,72 @@ export function RepositoryDeployment({
         <button
           type="submit"
           className="secondary"
-          disabled={busy || !selected || !ref.trim() || !composePath.trim()}
+          disabled={busy || !selected || !pending.isSuccess || !!interrupted || !ref.trim() || !composePath.trim()}
         >
           Review deployment
         </button>
       </form>
+      {pending.isError ? (
+        <p role="alert">
+          Couldn’t check this installation for an interrupted deployment.{" "}
+          <button type="button" onClick={() => void pending.refetch()}>
+            Retry check
+          </button>
+        </p>
+      ) : null}
       {preview.error || apply.error ? (
         <p className="notice error" role="alert">
           {errorMessage(preview.error ?? apply.error)}
         </p>
       ) : null}
-      {plan && selected && plan.appId === selected.id && plan.repoId === repo.id ? (
+      {reviewed && selected && reviewed.appId === selected.id && reviewed.repoId === repo.id ? (
         <section className="deploy-review">
-          <h3>Deploy to {selected.title}</h3>
+          <h3>
+            {interrupted ? "Resume deployment to " : "Deploy to "}
+            {selected.title}
+          </h3>
+          {interrupted ? <p>The previous attempt was interrupted. Confirm the pinned commit below to resume.</p> : null}
           <dl>
             <dt>Source</dt>
-            <dd>{plan.repo}</dd>
+            <dd>{reviewed.repo}</dd>
             <dt>Installed revision</dt>
             <dd>
-              <code>{plan.previousCommit}</code>
+              <code>{reviewed.previousCommit}</code>
             </dd>
             <dt>New commit</dt>
             <dd>
-              <code>{plan.commit}</code>
+              <code>{reviewed.commit}</code>
             </dd>
             <dt>Services</dt>
-            <dd>{plan.services.join(", ")}</dd>
+            <dd>{reviewed.services.join(", ")}</dd>
           </dl>
-          {Object.entries(plan.images).length ? (
+          {Object.entries(reviewed.images).length ? (
             <ul>
-              {Object.entries(plan.images).map(([name, image]) => (
+              {Object.entries(reviewed.images).map(([name, image]) => (
                 <li key={name}>
                   {name} <code>{image.digest}</code>
                 </li>
               ))}
             </ul>
           ) : null}
-          {plan.volumes?.length ? (
+          {reviewed.volumes?.length ? (
             <p>
-              Existing volumes <code>{plan.volumes.join(", ")}</code>
+              Existing volumes <code>{reviewed.volumes.join(", ")}</code>
             </p>
           ) : null}
           <p>
-            The reviewed version keeps the existing volume layout. A source change may clear app credentials and
-            role grants. Reconnect and regrant access after applying if needed.
+            The reviewed version keeps the existing volume layout. A source change may clear app credentials and role
+            grants. Reconnect and regrant access after applying if needed.
           </p>
           <div className="actions">
-            <button type="button" disabled={busy} onClick={() => apply.mutate(plan)}>
-              {apply.isPending ? "Applying…" : "Apply reviewed deployment"}
+            <button type="button" disabled={busy} onClick={() => apply.mutate(reviewed)}>
+              {apply.isPending ? "Applying…" : interrupted ? "Resume reviewed deployment" : "Apply reviewed deployment"}
             </button>
-            <button type="button" className="secondary" disabled={busy} onClick={clear}>
-              Cancel review
-            </button>
+            {!interrupted ? (
+              <button type="button" className="secondary" disabled={busy} onClick={clear}>
+                Cancel review
+              </button>
+            ) : null}
           </div>
         </section>
       ) : null}
