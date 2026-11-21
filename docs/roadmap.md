@@ -30,6 +30,8 @@ The [previous detailed delivery checklist](https://github.com/your-space-ai/your
 <details>
 <summary>Previously verified features and their implementation PRs</summary>
 
+- [x] **Owner setup and sessions** (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
+
 - [x] Retain account and workspace identity across restarts and service recreation with durable storage retained. (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
 - [x] Create the owner with a server command that prints a single-use set-password link; the network alone can never create an account or the owner. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
 - [x] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
@@ -68,12 +70,12 @@ The [previous detailed delivery checklist](https://github.com/your-space-ai/your
 
 - [ ] **Install and open the dashboard (001, 003)**
   - [ ] Download a versioned release and follow one guide on a personal machine with Docker and Compose already installed. Create the owner, sign in from localhost, restart, and recover access.
-  - [ ] Repeat on a Docker server. Open the web UI over HTTPS from a second device, once behind an owner-managed proxy or tunnel and once at a domain using the built-in proxy and a real certificate.
+  - [ ] Repeat on a Docker server. Keep the manual Compose guide as an advanced installation path. Open the web UI over HTTPS from a second device, once behind an owner-managed proxy or tunnel and once at a domain using the built-in proxy and a real certificate.
 - [ ] **Connect an app (002)**
   - [ ] Install and open an independent app from the web dashboard. Verify the documented real-source install and the browsers claimed for release. Identify which connected apps support agent actions. Keep app publishing opt-in for owners using their own proxy.
 - [ ] **Put one AI agent to work (005)**
   - [ ] In the web UI, create a named agent, issue its own credential, and grant specific roles for one connected app. Apps define stable role IDs and enforce them at their authorization boundary for both UI and programmatic access. The owner can delegate an exact subset of their roles per app installation, inspect and change grants, rotate credentials independently of roles, and revoke the agent.
-  - [ ] Use an external AI agent through the CLI and gateway to complete one useful action in that app. Show the result and actual actor to the owner. Verify a disallowed action and access to an ungranted app are denied.
+  - [ ] Use an external AI agent through the CLI and gateway to complete one useful action in that app. Let the owner review agent requests in the activity log, with the result, agent identity and delegating owner. Verify a disallowed action and access to an ungranted app are denied.
   - [ ] Remove the grant and retry with the existing session. Verify denial, then verify rotated and revoked credentials lose access. Document the supported app and action so another owner can repeat the example.
 - [ ] **Prepare the public release (gate)**
   - [ ] Run the complete owner journey from a clean download on the supported hosts. Record the release candidate, verified configurations, and limitations.
@@ -90,6 +92,7 @@ These capabilities are not required for the first public release. Their order an
 These journeys keep their original numbers. Their order after publication is open.
 
 - [ ] **004 · Invite a team**
+  - [ ] Support app single sign-on through OpenID Connect with Your Space as the identity provider (level 1 integration).
   - [ ] Let the owner create an invitation link and share it directly with a prospective member.
   - [ ] Let the recipient sign up and join the workspace through the invitation.
   - [ ] Retain existing account, workspace, membership, and ownership identities when adding members.
@@ -100,9 +103,10 @@ These journeys keep their original numbers. Their order after publication is ope
   - [ ] Let the owner assign app roles to human members.
   - [ ] Assign multiple roles per member and app. When a member loses a role, remove that delegation from their agents and active sessions.
   - [ ] Disable a removed member's agents rather than deleting them, and let the owner delete them later.
-  - [ ] Extend owner-visible activity history to membership changes, installs, removals, updates and delegated-role changes.
+  - [ ] Extend the owner’s agent activity log to team invitations, membership changes and member-role delegations.
 
 - [ ] **006 · Maintain and move a workspace**
+  - [ ] Include app installation, removal and update events in the broader workspace activity history.
   - [ ] Back up any installation through the CLI: the Your Space server produces the backup and returns it through its API, wherever the server runs.
   - [ ] Restore a backup into an installation.
   - [ ] Make backup and restore easy to script, so a person or their agent can move a workspace between installations themselves.

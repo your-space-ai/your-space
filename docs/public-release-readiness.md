@@ -9,6 +9,7 @@ One owner downloads Your Space, runs it with Docker locally or on a server, open
 - [ ] Verify a clean local installation and a server installation from the published candidate artifacts. Record host, CPU, Docker/Compose and browser versions.
 - [ ] Verify owner claim, sign-in, restart and recovery. Open the dashboard on localhost, behind an existing proxy, and at a domain with a real certificate.
 - [ ] Install and open an independent app. Use the web UI to create an agent and grant access to a supported app action.
+- [ ] Repeat the [002 installation and isolation checks](../specs/002-install-an-app/tasks.md) on the release candidate. Verify digest pins and source provenance, owner confirmation and secrets, resource limits, network boundaries and persistent app storage.
 - [ ] Run a real external AI agent through the gateway. Capture the app result and attribution. Verify denial outside the grant, loss of access after a role change, rotation, and revocation.
 - [ ] Link the public roadmap and document supported integrations, storage, recovery and release limitations.
 
@@ -97,8 +98,7 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     by the DCO GitHub App.
     **Replaced (2026-11-16):** "Set up a contributor license agreement…". See the
     [2026-11-16 decision update](architecture/decisions.md#project-license-and-business-model).
-  - [ ] Verify every shipped dependency's license is compatible with AGPL-3.0 distribution, and the SDKs'
-    dependencies with MIT.
+  - [ ] Verify the licenses and notices of dependencies shipped in the AGPL-3.0-only release.
   - [ ] Keep managed-service code in a separate private repository that integrates through the core's APIs.
   - [ ] Review ownership and permission to publish project code, documentation, assets, and generated
     material, including contributions and any imported material.

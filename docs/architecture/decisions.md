@@ -4,7 +4,7 @@
 
 **Recorded**: 2026-10-28
 
-**Last updated**: 2026-11-20
+**Last updated**: 2026-11-21
 
 **Scope**: Project-wide direction, independent of any feature specification
 
@@ -47,6 +47,8 @@ The repository README and agent guidance link here so future planning can find t
 ## Accepted Foundation Decisions
 
 ### Installation and Hosting
+
+**Current scope (2026-11-21).** Existing Docker on a personal machine or server is the launch path. Providing an engine and distributing desktop clients belong to 008. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
 
 - Begin with a documented, manual Docker Compose installation. The owner is created with a server command and sets their password in the browser.
 - Initially support macOS and Linux server hosts. Users on other operating systems can access a supported server through the web client.
@@ -129,6 +131,8 @@ Chromium and Firefox, and every `*.localhost` name reaches the machine itself wi
 [research R2](../../specs/002-install-an-app/research.md#r2-apps-in-panes-framing-cookies-and-app-addresses).
 
 ### CLI Delivery Sequence
+
+**Current scope (2026-11-21).** The install and operator commands in 003 serve the personal release. Guided updates, backup, restore and uninstall move to 006. Desktop-specific packaging follows in 008. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
 
 **Decision update (2026-10-29)**: Establish and verify the Compose deployment with the owner-access feature first.
 A separate specification and implementation PR will add a Your Space CLI for installation and management of that deployment (sequence updated 2026-11-02 below: the app UI and sign-in specification comes first, and is now part of journey 002; the CLI is journey 003, and since 2026-11-08 it is delivered, like every journey, as a stack of pull requests; see [journey-based specifications](#journey-based-specifications)).
@@ -223,6 +227,8 @@ Exact runtime and database versions, migration execution and recovery strategy, 
 
 ### Owner and Workspace Model
 
+**Current scope (2026-11-21).** The personal release has one owner. Invitations, additional human members and their roles follow in 004. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
+
 - Support one human owner and one workspace in the first feature.
 - Keep account identity, workspace identity, membership, and ownership as distinct concepts.
 - Establish those relationships explicitly so later membership support does not require replacing existing identities.
@@ -282,6 +288,8 @@ Invited members recover their passwords without email in the first release:
 **Decision update (2026-11-02):** Optional owner-configured email is post-open-source work. The owner can add their own email (SMTP) settings to enable verified email addresses and email password resets through the existing recovery mechanism. No installation requires email, so the first release still needs a recovery path that works without it.
 
 ### Your Space Updates, Backup, and Restore
+
+**Current scope (2026-11-21).** Guided updates, rollback, backup, restore and migration move to 006. The personal release documents storage and the recovery paths it verifies. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
 
 - Updating Your Space has the same safety net as app updates. Before an update, Your Space records its current versions and takes a snapshot of its data. If the update fails, it rolls back automatically to those versions and restores the snapshot.
 - Releases are not expected to break on update; automatic rollback is protection, not a substitute for release testing.
@@ -353,6 +361,8 @@ first adapters are the Compose importer and the Docker adapter, which is the run
 
 ### Platform and Independent Apps
 
+**Current scope (2026-11-21).** One app must support the owner’s agent in 005. Public SDKs and the general developer contract move to 007. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
+
 - The platform is self-hostable first, with a managed offering planned later.
 - Guided installation remains part of the product direction.
 - This repository contains the platform server, web client, CLI, desktop app, SDKs, and public integration contracts.
@@ -406,6 +416,8 @@ An app should remain independently runnable rather than requiring a replacement 
 Existing app authorization should be reusable where it has a suitable integration boundary.
 
 ### First Public-Release Audience and Clients
+
+**Current scope (2026-11-21).** The launch client is the web dashboard for one owner. Electron, bundled engines, signing and the installable PWA move to 008. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
 
 - The first public release targets two groups: people who can install Docker Desktop and the Your Space desktop app to run a local workspace, and people who can install Docker and follow a guided CLI to deploy a server or a local workspace, both without one-on-one assistance. (Docker Desktop superseded 2026-11-14: the local group installs the desktop app, and Your Space provides the engine; see below.)
 - The web, desktop, and PWA clients provide the same core workspace and installed-app experience while connected to a Your Space server; a local network connection is sufficient.
@@ -508,6 +520,8 @@ of technical parts. The [glossary](../glossary.md) records the terms.
 **Decision update (2026-11-03):** Certificate requests the built-in proxy makes for an owner-configured domain are part of HTTPS setup, not reporting. This qualifies the bullet above on automatic outbound requests: with a domain configured, these certificate requests are the only automatic outbound requests besides update checks.
 
 ## Accepted Future App Distribution Direction
+
+**Current scope (2026-11-21).** Owner-triggered updates, rollback and backup belong to 006 after publication. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
 
 - For the first public release, an owner installs a compatible app by pasting the GitHub URL of the app's deployment file in a public repository into Your Space. (Since 2026-11-14 that file is the app's own Compose file; see below.)
 - Connected GitHub account access for installing authorized private repositories is future work after the first public release.
@@ -673,6 +687,8 @@ separate, confirmed step.
 ## Accepted Future App UI and Authorization Direction
 
 ### UI Integration
+
+**Current scope (2026-11-21).** Web panes serve the personal release. Native views and installable PWA support follow in 008. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
 
 - Users open installed apps inside the Your Space interface while platform navigation remains available.
 - Existing app frontends should continue calling their normal app backend operations.
@@ -865,6 +881,8 @@ Frontend controls may reflect granted access, but hiding a control is not author
 
 ### Identity and App-Owned Roles
 
+**Current scope (2026-11-21).** 005 delivers verified identity and agent grants for one owner and an integrated app. Human member assignment and team single sign-on move to 004. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
+
 - Your Space manages identities and app role assignments.
 - Apps expose a supported role catalog with stable role identifiers and retain their existing role semantics and domain-specific authorization rules.
 - In the first public release, the owner assigns app roles to human members. Workspace roles, such as an administrator, may be added later.
@@ -911,6 +929,8 @@ The app remains authoritative for resource-level rules, including workspace owne
 
 ### Member and Agent Removal
 
+**Current scope (2026-11-21).** Agent revocation is part of 005. Member removal and its effects on their agents are deferred to 004 under the [personal dashboard decision](#personal-dashboard-release-boundary).
+
 - Removing a member signs them out everywhere and revokes their app roles, including existing app sessions and credentials.
 - Removing a member also revokes access for agents that act on their behalf.
 - The member's agents are disabled, not deleted. The owner can delete them later.
@@ -948,6 +968,8 @@ Platform isolation must protect platform services and other apps; SDK checks alo
 
 ### Activity Log
 
+**Current scope (2026-11-21).** The owner can review agent requests and attribution in 005. Team and lifecycle events follow with the corresponding journeys. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
+
 - Your Space records workspace activity: app installs, removals, and updates; role changes and delegations; member changes; and every agent request through the gateway, with the actual actor.
 - The owner can review the log. It stays available but out of the way, following the [simple-by-default principle](#product-experience-principles).
 
@@ -979,6 +1001,8 @@ No hosted workflow engine or model-provider integration is selected here.
 
 ## First Public-Release Direction
 
+**Current scope (2026-11-21).** One Docker installation, the browser dashboard and an external agent completing one authorized app action define the release. The older audience and scope below are historical. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
+
 **Decision update (2026-10-29)**: Plan the roadmap in pre-public and post-public sections. The pre-public section covers the core experience and a working first version; post-public covers capabilities that are not crucial to that release. The owner prefers an installable, usable product before making the repository public rather than publishing only plans.
 
 The intended pre-public experience includes owner setup; additional members signing up through invitation links created and shared by the owner; the installation CLI for servers and local workspaces; a desktop app that can also run a local workspace; web, desktop, and PWA workspace clients; at least one installed independent app; a way for developers to create, integrate, and install more apps; and access for external agents through the Your Space gateway and CLI. It also includes built-in backup, restore, and moving a workspace between installations (since 2026-11-14 a backup and restore the person does themselves); owner-triggered Your Space and app updates that roll back automatically if they fail; app roles; member removal; an activity log; built-in HTTPS; uninstall; and signed desktop releases. Only the owner installs or removes apps in the first public release. The first release targets users who can install Docker Desktop and the Your Space desktop app for a local workspace, or install Docker and follow a guided CLI for a server or a local workspace. (Since 2026-11-14 the local group needs no Docker Desktop; see [installation and hosting](#installation-and-hosting).)
@@ -986,6 +1010,8 @@ The intended pre-public experience includes owner setup; additional members sign
 This is a developing release roadmap, not a complete acceptance specification or a claim of implementation. Additional requirements may emerge during specification. These future capabilities do not expand the owner-only first feature. The agreed sequence is manual Compose and owner access (spec 001) first, then the app UI and sign-in specification, then the CLI specification and implementation; the remaining pre-public items have no set order beyond their priorities.
 
 ### Journey-Based Specifications
+
+**Current scope (2026-11-21).** The foundation is 001–003, followed by 005 and release verification. 004, 006, 007 and 008 are post-public. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
 
 **Decision update (2026-11-02):** Pre-public work is specified as eight user journeys rather than one specification per roadmap capability. Each journey follows a person from where they start to a result they can see, so one specification covers many roadmap items and is tested the way people will use it. The [spec map](../spec-map.md) lists the journeys, what each covers, and the build order.
 
@@ -1055,13 +1081,13 @@ app roles. The [spec map](../spec-map.md) and [roadmap](../roadmap.md) follow it
 | Authentication configuration | Better Auth with its organization plugin; password rules, lifetimes, attempt limits, and adapter configuration are settled in the [001 plan](../../specs/001-workspace-owner-access/plan.md). |
 | Initial deployment details | macOS and Linux with manual Docker Compose are selected. HTTPS comes from a Caddy reverse proxy in the Compose stack, delivered in the owner-access feature, with automatic certificates for an owner-provided domain, a bring-your-own-proxy option, and documented tunnel guidance; plain HTTP is supported only on this machine, at `space.localhost` since 2026-11-14. Host versions (Docker Engine 28.3.3 and Compose 2.26.0 or newer), the one-line setups, and generated platform secrets are settled in the [001 plan](../../specs/001-workspace-owner-access/plan.md); support claims wait for verification on real hosts. |
 | Desktop app | Electron is selected for macOS, Windows, and Linux; Windows supports the desktop app and local workspaces, not server hosting. Local mode drives the Your Space CLI and covers providing the engine (Your Space's own VM by default, since 2026-11-14; settled into journey 008 on 2026-11-17), stack setup and startup, owner setup with the app running the owner command and setting the password for the user, and owner-triggered Your Space updates, backup, restore, and uninstall, all through the CLI; moving to a server is a backup and restore the person does (2026-11-14). Windows support is low priority. Releases are signed before publication: Apple Developer ID with notarization on macOS, SignPath's open-source program on Windows with Microsoft Artifact Signing as the fallback, all in CI. Self-update is required; packaging and self-update mechanics need a specification. |
-| CLI delivery | Specified in [spec 003](../../specs/003-install-with-the-cli/spec.md) (2026-11-17): the `your-space` command, `init` then `start` in a folder, from npm, Linux packages and standalone executables; Linux first, macOS in the pass before release, Windows with journey 008. Update, backup, restore and uninstall come with journey 006; uninstall removes managed app containers and keeps data unless the owner confirms deletion. Agent commands come with journey 005. |
-| Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup and restore are required before publication, and moving between installations is a backup and restore the person does (2026-11-14); whether a remote backup goes through the client or a credential issued there (2026-11-17), restore into a broken or fresh installation, and backup format and protection remain open. |
+| CLI delivery | Specified in [spec 003](../../specs/003-install-with-the-cli/spec.md) (2026-11-17): the `your-space` command, `init` then `start` in a folder, from npm, Linux packages and standalone executables; Linux first, macOS packaging in the post-public packaging pass, Windows with journey 008. Update, backup, restore and uninstall come with journey 006; uninstall removes managed app containers and keeps data unless the owner confirms deletion. Agent commands come with journey 005. |
+| Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup and restore are scheduled after publication, and moving between installations is a backup and restore the person does (2026-11-14); whether a remote backup goes through the client or a credential issued there (2026-11-17), restore into a broken or fresh installation, and backup format and protection remain open. |
 | Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
-| Public launch scope | A working core experience before publication is the direction. The pre-public scope was settled in the 2026-11-02 interview, and every pre-public roadmap item has a High, Medium, or Low priority; Windows support and PWA installation are Low. Detailed release criteria remain to be defined. See [public release readiness](../public-release-readiness.md). |
+| Public launch scope | The [personal dashboard decision](#personal-dashboard-release-boundary) sets the scope. The [release checklist](../public-release-readiness.md) records the evidence required. |
 | App UI execution | Apps open in panes, side by side on larger screens: cross-origin iframes in the web client and PWA, native views in the desktop app. Each app is at `<app>.<Your Space's address>` behind Caddy's `forward_auth` gate, with no port fallback; Caddy replaces framing headers, and apps keep their own sign-in (2026-11-14). The platform session is a `__Host-` cookie over HTTPS and host-only on the plain-HTTP local setup, where WebKit opens apps in their own tab. An app can also be published on a port of this machine for the owner's own proxy or tunnel, and is then reached at the owner's link, outside the gate (2026-11-19); Your Space shows it there in its pane, where the app's own Caddy lets only Your Space frame it, unless the owner turns that off for the app (2026-11-20). On Tailscale the owner creates one Tailscale Service per published app. Shell-to-app messages remain open; Safari on macOS is still to check. |
-| Project license | AGPL-3.0 for Your Space and Apache-2.0 for the SDKs, with a "Your Space" trademark and a contributor license agreement, all in place and reviewed by a lawyer before publication. Trademark filing details and agreement wording remain open. |
+| Project license | AGPL-3.0-only for the platform and MIT for future SDKs. Trademark and DCO review remain publication checks. |
 | Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off, apart from the built-in proxy's certificate requests for an owner-configured domain, which are part of HTTPS setup (2026-11-03). Future reporting must be opt-in; opt-out is prohibited. |
 | External apps | Apps can be managed or hosted elsewhere. An app someone already runs is added through a connector that connects out to Your Space and plugs into the app endpoint (2026-11-14). The connector, and whether such an app must also verify Your Space identity, need definition in a later specification. |
 | App settings, egress, and limits | Settled in the [002 plan](../../specs/002-install-an-app/plan.md) (2026-11-14): settings encrypted in the server's database; outbound access through a Squid proxy per app, with kits' starter hosts and owner-approved access requests; fixed default limits a kit or the owner can change. What the owner sees and sets for generated secrets in the review, limits that scale with the space's resources, and an "all internet" option remain open. |
@@ -1069,10 +1095,10 @@ app roles. The [spec map](../spec-map.md) and [roadmap](../roadmap.md) follow it
 | Version compatibility | Supported desktop app, CLI, and server version combinations and the mismatch message need definition. |
 | Agent access | Agents reach apps only through the Your Space gateway, using the CLI in the first release; a workspace MCP endpoint is post-open-source. Gateway request format, how apps declare actions for the CLI, and whether the gateway enforces per-action roles need definition. |
 | App identity protocol | Apps keep their own sign-in in journey 002 (level 0). Level 1 is OpenID Connect with Your Space as the provider, likely through Better Auth's OAuth provider plugin; the protocol for level 2 and where each level lands are settled with journeys 004, 005 and 007. |
-| App integration | TypeScript and Python SDKs are selected for the first release, for apps that opt into level 2; other languages are post-open-source. Neither is part of journey 002 (2026-11-14). Role registration, authorization compatibility, and revocation mechanics need a later specification. |
+| App integration | TypeScript and Python SDKs are planned for post-public journey 007, for apps that opt into level 2; other languages are post-open-source. Neither is part of journey 002 (2026-11-14). Role registration, authorization compatibility, and revocation mechanics need a later specification. |
 | App deployment file | The app's own Compose file, with an optional installation kit from a separate repository, replaces a Your Space-specific file with an `x-your-space` section (2026-11-14). The owner installs by pasting the file's GitHub URL. The approved settings list and the kit format are set in the [002 plan](../../specs/002-install-an-app/plan.md) and its contracts. Source builds and alternative formats are post-open-source. |
 | App runtime and data | Designed in the [002 plan](../../specs/002-install-an-app/plan.md) (2026-11-14): a runtime manager with no network alone holds the engine socket; each app is a Compose project on a sealed network with its own egress proxy and named volumes; removal keeps data until the owner deletes it. Verification is journey 002's delivery. Engines on other machines, apps someone already runs, and server hardening (Sysbox, rootless Docker) are later work. Found in journey 003 (2026-11-17), and settled by [spec 009](../../specs/009-encrypt-stored-data/spec.md): apps' settings are encrypted with a data key of their own, a third generated secret, so replacing the auth secret only signs people out. Encrypting the whole database or its disk stays the owner's responsibility for now; the guide recommends disk encryption on the host. |
-| App distribution | Installation from the app's own Compose file's GitHub URL, exact commit recording (with the kit's commit), and images pinned by digest are accepted for initial installation. Owner-triggered updates are pre-public; automatic updates are post-public. Failed updates roll back automatically to the previous image versions and pre-update data backup. Image identity validation and retention, artifact trust, catalog implementation, update selection and mechanics, and failed-update detection remain open. |
+| App distribution | Installation from the app's own Compose file's GitHub URL, exact commit recording (with the kit's commit), and images pinned by digest are accepted for initial installation. Owner-triggered updates are post-public; automatic updates are post-public. Failed updates roll back automatically to the previous image versions and pre-update data backup. Image identity validation and retention, artifact trust, catalog implementation, update selection and mechanics, and failed-update detection remain open. |
 
 These open choices do not erase the accepted requirements above.
 Resolve implementation-critical choices in the relevant technical plan and future app-contract decisions in their own specifications.
