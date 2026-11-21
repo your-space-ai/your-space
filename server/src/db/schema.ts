@@ -223,47 +223,73 @@ export const installJob = pgTable("install_job", {
 
 // External agents are actors; ownership remains a separate human identity.
 export const externalAgent = pgTable("external_agent", {
-  id: uuid("id").primaryKey().references(() => actor.id),
-  ownerId: uuid("owner_id").notNull().references(() => actor.id),
-  workspaceId: uuid("workspace_id").notNull().references(() => organization.id),
+  id: uuid("id")
+    .primaryKey()
+    .references(() => actor.id),
+  ownerId: uuid("owner_id")
+    .notNull()
+    .references(() => actor.id),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => organization.id),
   name: text("name").notNull(),
   disabled: boolean("disabled").notNull().default(false),
 });
 export const agentKey = pgTable("agent_key", {
   id: uuid("id").primaryKey().defaultRandom(),
-  agentId: uuid("agent_id").notNull().references(() => externalAgent.id),
+  agentId: uuid("agent_id")
+    .notNull()
+    .references(() => externalAgent.id),
   verifier: text("verifier").unique().notNull(),
   revoked: boolean("revoked").notNull().default(false),
 });
 export const agentBinding = pgTable("agent_binding", {
-  appId: uuid("app_id").primaryKey().references(() => app.id, {onDelete:"cascade"}),
+  appId: uuid("app_id")
+    .primaryKey()
+    .references(() => app.id, { onDelete: "cascade" }),
   credential: text("credential"),
   enabledRoles: text("enabled_roles").array().notNull(),
   kitDigest: text("kit_digest").notNull(),
   revision: integer("revision").notNull(),
 });
-export const agentGrant = pgTable("agent_grant", {
-  appId: uuid("app_id").notNull().references(() => agentBinding.appId, {onDelete:"cascade"}),
-  agentId: uuid("agent_id").notNull().references(() => externalAgent.id),
-  roles: text("roles").array().notNull(),
-  askAllWrites: boolean("ask_all_writes").notNull(),
-  overrides: jsonb("overrides").notNull(),
-  revision: integer("revision").notNull(),
-}, t => [primaryKey({columns:[t.appId,t.agentId]})]);
-export const agentRequest = pgTable("agent_request", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  agentId: uuid("agent_id").notNull().references(() => externalAgent.id),
-  keyId: uuid("key_id").notNull().references(() => agentKey.id),
-  appId: uuid("app_id").notNull(),
-  route: text("route").notNull(),
-  operationId: text("operation_id"),
-  fingerprint: text("fingerprint"),
-  input: text("input"),
-  result: text("result"),
-  status: text("status").notNull(),
-  bindingRevision: integer("binding_revision").notNull(),
-  grantRevision: integer("grant_revision").notNull(),
-  createdAt: timestamp("created_at",{withTimezone:true}).notNull().defaultNow(),
-  expiresAt: timestamp("expires_at",{withTimezone:true}).notNull(),
-  revision: integer("revision").notNull().default(1),
-}, t => [unique("agent_operation").on(t.agentId,t.appId,t.route,t.operationId)]);
+export const agentGrant = pgTable(
+  "agent_grant",
+  {
+    appId: uuid("app_id")
+      .notNull()
+      .references(() => agentBinding.appId, { onDelete: "cascade" }),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => externalAgent.id),
+    roles: text("roles").array().notNull(),
+    askAllWrites: boolean("ask_all_writes").notNull(),
+    overrides: jsonb("overrides").notNull(),
+    revision: integer("revision").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.appId, t.agentId] })],
+);
+export const agentRequest = pgTable(
+  "agent_request",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => externalAgent.id),
+    keyId: uuid("key_id")
+      .notNull()
+      .references(() => agentKey.id),
+    appId: uuid("app_id").notNull(),
+    route: text("route").notNull(),
+    operationId: text("operation_id"),
+    fingerprint: text("fingerprint"),
+    input: text("input"),
+    result: text("result"),
+    status: text("status").notNull(),
+    bindingRevision: integer("binding_revision").notNull(),
+    grantRevision: integer("grant_revision").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revision: integer("revision").notNull().default(1),
+  },
+  (t) => [unique("agent_operation").on(t.agentId, t.appId, t.route, t.operationId)],
+);

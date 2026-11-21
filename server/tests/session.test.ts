@@ -249,6 +249,7 @@ describe("sign-in limit in production", () => {
       env: {
         PATH: process.env.PATH ?? "",
         NODE_ENV: "production",
+        YS_E2E_EPHEMERAL_GATE: "1",
         PORT: String(port),
         DATABASE_URL: t.url,
         YS_PORT: String(port),

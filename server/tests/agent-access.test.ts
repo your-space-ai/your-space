@@ -203,7 +203,7 @@ it("keeps owner cookies and agent credentials on separate authority paths", asyn
     ).toBe(403);
     const issue = await server.request(keyPath, { method: "POST", headers: { cookie }, body: "{}" });
     expect(issue.status).toBe(200);
-    const token = ((await issue.json()) as {key:string}).key;
+    const token = ((await issue.json()) as { key: string }).key;
     expect((await server.request("/api/agent/actions", { headers: { cookie } })).status).toBe(401);
     expect((await server.request("/api/agent/actions", { headers: { authorization: "Bearer " + token } })).status).toBe(
       200,
@@ -218,4 +218,34 @@ it("keeps owner cookies and agent credentials on separate authority paths", asyn
   } finally {
     await server.close();
   }
+});
+
+it("cannot retrieve a previous receipt after removing and reinstalling an app with the same retained ID", async () => {
+  await setGrant(0);
+  const pending = await invoke(t.db, key, verifier, write());
+  await decide(t.db, key, owner, pending.id, { approve: true, revision: 1 });
+  await t.pool.query("update app set desired='removed' where id=$1", [installation]);
+  await t.pool.query("update app set desired='running' where id=$1", [installation]);
+  await transaction(t.db, async (c) => {
+    const fresh = await bind(c, installation, { revision: 2, credential: secret, enabledRoles: ["manager"] }, key);
+    await expect(
+      grant(c, owner, agent, installation, {
+        revision: 0,
+        bindingRevision: 1,
+        roles: ["manager"],
+        askAllWrites: true,
+        overrides: {},
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    await grant(c, owner, agent, installation, {
+      revision: 0,
+      bindingRevision: fresh.revision,
+      roles: ["manager"],
+      askAllWrites: true,
+      overrides: {},
+    });
+  });
+  await expect(receipt(t.db, verifier, pending.id, key)).rejects.toMatchObject({ status: 403 });
+  await expect(invoke(t.db, key, verifier, write())).rejects.toMatchObject({ status: 409 });
+  expect(dispatchAppAction).toHaveBeenCalledTimes(1);
 });

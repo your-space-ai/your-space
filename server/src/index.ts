@@ -15,7 +15,8 @@ import { AppsService } from "./apps/service.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 /** The gate's listener: only Caddy reaches it (deploy/Caddyfile). */
-const GATE_PORT = 3001;
+// Process-level tests launch independent servers concurrently and do not use Caddy.
+const GATE_PORT = process.env.YS_E2E_EPHEMERAL_GATE === "1" ? 0 : 3001;
 const RECONCILE_INTERVAL_MS = 15_000;
 const MIGRATE_ATTEMPTS = 30;
 

@@ -28,7 +28,7 @@ export interface CliResult {
 export interface Cli {
   folder: string;
   env: Record<string, string>;
-  run(args: string[], options?: { env?: Record<string, string>; folder?: string }): Promise<CliResult>;
+  run(args: string[], options?: { env?: Record<string, string>; folder?: string; input?: string }): Promise<CliResult>;
   compose(args: string[], options?: { input?: string }): Promise<CliResult>;
 }
 
@@ -101,7 +101,7 @@ export function cliIn(folder: string, env: Record<string, string>): Cli {
     env,
     run(args, options = {}) {
       const [program, prefix] = command();
-      return spawnResult(program, [...prefix, ...args], options.folder ?? folder, { ...base(), ...options.env });
+      return spawnResult(program, [...prefix, ...args], options.folder ?? folder, { ...base(), ...options.env }, options.input);
     },
     compose(args, options = {}) {
       return spawnResult("docker", ["compose", ...args], folder, base(), options.input);

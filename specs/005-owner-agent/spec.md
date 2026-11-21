@@ -1,6 +1,6 @@
 # Journey 005 · Give my agent scoped access to an app
 
-**Draft for owner review · 2026-11-21.** This is an implementation specification. All slices and verification remain open. [Plan](plan.md) · [Tasks](tasks.md) · [Integration findings](research.md) · [Acceptance walkthrough](quickstart.md)
+**Implementation candidate · 2026-11-21.** See the [delivery checklist](tasks.md) for tested behavior and outstanding acceptance. [Plan](plan.md) · [Tasks](tasks.md) · [Integration findings](research.md) · [Acceptance walkthrough](quickstart.md)
 
 ## Owner review
 

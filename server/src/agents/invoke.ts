@@ -279,11 +279,11 @@ async function run(db: Db, dataKey: string, admission: Admission): Promise<Outco
   let result: unknown;
   try {
     const response = await dispatchAppAction(dispatch.args);
-    if (response.status >= 200 && response.status < 300) {
+    if (response.status >= 200 && response.status < 300 && response.status !== 202) {
       result = filterAgentResult(dispatch.route, response.body, dispatch.redact);
       status = "succeeded";
     } else if (response.status === 409 || response.status === 412) status = "conflict";
-    else if (response.status >= 400 && response.status < 500) status = "refused";
+    else if (response.status >= 400 && response.status < 500 && response.status !== 408) status = "refused";
   } catch {
     // Upstream may have committed. Never send another write on an uncertain outcome.
   }

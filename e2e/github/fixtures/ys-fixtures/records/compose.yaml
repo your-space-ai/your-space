@@ -1,0 +1,37 @@
+# Synthetic app used to verify credential injection, receipts and filtered results through the edge.
+services:
+  app:
+    image: node:26-slim
+    ports: ["8080:8080"]
+    command:
+      - node
+      - -e
+      - |
+        const http = require("node:http");
+        const records = new Map(), receipts = new Map();
+        http.createServer(async (req, res) => {
+          const send = (status, data) => {
+            res.writeHead(status, {"content-type":"application/json"});
+            res.end(JSON.stringify(data));
+          };
+          if (req.headers["x-api-key"] !== "local-fixture-key") return send(401, {});
+          if (req.method === "GET" && req.url === "/items") return send(200, [...records.values()]);
+          const op = req.headers["idempotency-key"];
+          if (!op) return send(400, {});
+          if (receipts.has(op)) return send(200, receipts.get(op));
+          let raw = "";
+          for await (const part of req) raw += part;
+          const { title } = JSON.parse(raw);
+          let row;
+          if (req.method === "POST" && req.url === "/items") {
+            row = { id: require("node:crypto").randomUUID(), revision: 1, title, privateField: "excluded" };
+          } else if (req.method === "PATCH") {
+            const prev = records.get(req.url.split("/").pop());
+            if (!prev) return send(404, {});
+            if (JSON.stringify(String(prev.revision)) !== req.headers["if-match"]) return send(409, {});
+            row = { ...prev, title, revision: prev.revision + 1 };
+          } else return send(404, {});
+          records.set(row.id, row);
+          receipts.set(op, row);
+          return send(200, row);
+        }).listen(8080);

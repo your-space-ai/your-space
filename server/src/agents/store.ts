@@ -47,6 +47,9 @@ export async function expireRequests(executor: pg.Pool | pg.PoolClient) {
   await executor.query(
     "update agent_request set status='expired', input=null, revision=revision+1 where status='pending' and expires_at <= now()",
   );
+  // Keep the durable outcome for audit and idempotency. The separately encrypted
+  // response is available to the agent for a bounded receipt-retrieval window.
+  await executor.query("update agent_request set result=null where result is not null and created_at < now() - interval '1 day'");
   // The edge transport times out after 15 seconds. A stale claim can follow a crashed server.
   await executor.query(
     "update agent_request set status='unknown',revision=revision+1 where status='dispatching' and expires_at <= now()",
