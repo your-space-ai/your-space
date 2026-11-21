@@ -7,10 +7,10 @@ The [roadmap](roadmap.md) follows one owner from a download to a useful action b
 | [001 · Set up my space](../specs/001-workspace-owner-access/spec.md) | Owner claim, sign-in, durable identity and recovery. |
 | [002 · Install and use an app](../specs/002-install-an-app/spec.md) | Install and open an independent app in the browser. Verify the supported real-source path. |
 | [003 · Run with the CLI](../specs/003-install-with-the-cli/spec.md) | Download and run on existing Docker locally or on a server. Verify localhost, an existing proxy, and a real domain. |
-| 005 · Let my agent work for me | Next specification. Web management of identities, credentials and per-app roles, with an external AI agent completing one authorized action through the gateway. Include denial, attribution and revocation. |
+| [005 · Let my agent work for me](../specs/005-owner-agent/spec.md) | Proposed for review. Web management of identities, credentials and per-app roles, with an external AI agent completing one authorized action through the gateway. Include denial, attribution and revocation. |
 | Release gate | Repeat the combined journey against release artifacts and complete the [publication review](public-release-readiness.md). |
 
-001–003 supply the foundation for 005. One app must implement the role and action contract needed for 005. Its selection is an open specification decision. An app that only offers a browser sign-in can still appear on the dashboard.
+001–003 supply the foundation for 005. One app must implement the role and action contract needed for 005. The proposed acceptance case uses a Buzz agent to manage recurring tasks in DoneTick; the app integration still needs qualification. An app that only offers a browser sign-in can still appear on the dashboard.
 
 004 (teams), 006 (lifecycle tooling), 007 (developer ecosystem), and 008 (desktop) move to the [post-public roadmap](roadmap.md#post-public-later-direction-and-enhancements). The existing specifications and their historical task records keep their original scope.
 

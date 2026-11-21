@@ -81,7 +81,7 @@ The [previous detailed delivery checklist](https://github.com/your-space-ai/your
   - [ ] Run the complete owner journey from a clean download on the supported hosts. Record the release candidate, verified configurations, and limitations.
   - [ ] Close the security, privacy, licensing, documentation, and publication checks in the [release checklist](public-release-readiness.md). Obtain the owner’s publication decision.
 
-**Next implementation work:** Shape journey 005 around the first app and useful action. Verify the existing install and browser paths alongside that work.
+**Next implementation work:** Qualify the independent app integration proposed in [journey 005](../specs/005-owner-agent/spec.md): a Buzz agent creates and edits a recurring task in DoneTick through the general gateway. Verify the existing install and browser paths alongside that work.
 
 ## Post-public: Later Direction and Enhancements
 

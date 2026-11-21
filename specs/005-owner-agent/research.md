@@ -1,0 +1,13 @@
+# Integration findings and first implementation decision
+
+The platform at `1dca473` already has human/operator actors and events, owner sessions, installation IDs, isolated app networks and a browser access gate. The gate checks a browser pass and strips it before forwarding. It does not establish an agent principal inside an app. The current [kit registry](https://github.com/your-space-ai/your-space-app-kits/tree/main/apps) had Sure and Twenty at planning time. An integration for DoneTick still needs qualification.
+
+## DoneTick evidence
+
+Reviewed upstream release **v0.1.86** at `ebfb340d7bd4e2e009d6f2f9ad073868acaf6412`. This is source inspection. No compatibility or deployment result is claimed.
+
+- The external handler creates a one-off chore. Its partial update changes name, description or next due date and can reactivate a chore. It does not edit recurrence. Some routes use Plus middleware; verify supported self-hosted access for the exact installation. [External handlers](https://github.com/donetick/donetick/blob/ebfb340d7bd4e2e009d6f2f9ad073868acaf6412/internal/chore/api.go)
+- The full chore handlers accept recurrence fields. That establishes application functionality; it leaves a supported noninteractive integration, distinct agent attribution, revision protection and duplicate prevention to prove. Investigate an opt-in app-owned handler sharing DoneTick’s application rules. Never substitute an owner browser session, direct database writes, or an unrestricted owner token. [Chore handlers](https://github.com/donetick/donetick/blob/ebfb340d7bd4e2e009d6f2f9ad073868acaf6412/internal/chore/handler.go)
+- Upstream labels its repository Compose file for hosted use. The README supplies separate self-host instructions. Qualify pinned images, storage, generated secrets and a compatible install recipe in the independent app or kit repository. The upstream license is AGPLv3; review notices, image provenance, extension distribution and applicable source obligations before adoption. [Compose](https://github.com/donetick/donetick/blob/ebfb340d7bd4e2e009d6f2f9ad073868acaf6412/docker-compose.yaml) · [Self-host instructions](https://github.com/donetick/donetick/blob/ebfb340d7bd4e2e009d6f2f9ad073868acaf6412/README.md) · [License](https://github.com/donetick/donetick/blob/ebfb340d7bd4e2e009d6f2f9ad073868acaf6412/LICENSE.md)
+
+Proceed to implementation slices using this integration only if the proof supports the required behavior. If upstream support or an independently maintained extension is needed, bring its ownership, effort and terms back for a decision. Keep the same generic conformance tests regardless of that decision.

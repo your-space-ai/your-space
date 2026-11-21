@@ -1,0 +1,23 @@
+# Implementation plan
+
+**Baseline:** [personal dashboard decision](../../docs/architecture/decisions.md#personal-dashboard-release-boundary), [constitution](../../.specify/memory/constitution.md), [005 requirements](spec.md). Reuse the server’s owner authorization, PostgreSQL/Drizzle, actors/events, app installation registry, Caddy boundary, existing web client, CLI and test tooling. No new platform dependencies proposed. No changes to Buzz’s product or an installation’s default permissions.
+
+## Delivery order
+
+1. **Prove the app boundary first.** In a disposable installation, identify the exact DoneTick image, installation recipe and supported app extension. Prove owner binding, delegable roles, attribution, conditional edits, replay-safe writes, and create/edit of a weekly rule observed in the UI. Confirm required license terms, entitlements and distribution fit. Keep provider-specific code and manifests outside this repository. Output a pinned evidence record or the precise missing capability and costed alternatives for owner review. A successful HTTP response alone is insufficient.
+2. **Create and revoke an identity.** Extend the existing actor and audit model with agent identity/status and credential verifiers. Build owner HTTP operations and the web Agents view in the same slice. Verify zero-grant defaults, owner isolation, lost-key recovery and atomic rotation.
+3. **Delegate and read.** Support installation-bound action catalogs, owner linking, grant revisions and a current-authority check. Add discovery and read invocation through the CLI. Expose the narrow contract to the independent integration; exercise it with neutral conformance fixtures and an agent reading recurring tasks from the app.
+4. **Manage a weekly task.** Deliver generic write invocation and activity outcomes alongside the independent app’s create/edit handlers. Exercise stale revisions, duplicate creates and ambiguous responses. Reuse the same IDs and result envelope for all app actions.
+5. **Finish in Buzz.** Run the owner walkthrough from a clean install using an actual Buzz agent, document installation and credential injection, and verify denial and revocation against the same agent process. Gather evidence on supported local and remote paths.
+
+## Data and request path
+
+Extend the actor/event schema additively. An agent identity references the owner, workspace and durable actor; credentials reference an agent, verifier, public ID and status. Role grants reference immutable installation and owner-role assignment generations. Enforce uniqueness and transactional version checks. An invocation records request ID, actor, credential ID, installation, action, admission and outcome. Scope operation IDs to installation, actor and action and bind them to a request fingerprint. The app owns task IDs, data revisions and write receipts.
+
+Separate the human app gate from agent admission. The CLI calls the server. The server authenticates the agent, resolves the pinned installation catalog, checks current authority and sends a constrained request to an app-owned action handler over an authenticated installation-scoped channel. The server has no general network path to app containers today. Use the existing per-installation edge routing boundary with a dedicated internal gateway route; the runtime continues to own Docker access. Never resolve action targets from agent input or use the owner-published port. Authenticate gateway-to-app requests with installation-specific material, bounded validity, audience and request binding. Verify direct or replayed calls cannot convey fresh authority. Qualify that path before accepting real data.
+
+If the integration cannot supply revocable role assignment generations, a trusted principal binding, or durable conditional/idempotent writes, do not expose the affected actions. A durable “dispatched/outcome unknown” record survives a crash and is reconciled against the app receipt. Include distinct request IDs for repeated attempts while retaining one operation ID for their common write. Reads and status lookups also require current authority.
+
+## Verification
+
+Unit and integration tests cover additive migration from 003, boundary checks, concurrent revocation/admission, app uninstall/reinstall, independent credentials, idempotency conflicts, and audit redaction. Browser tests exercise the owner controls and reread the changed task from the app. Use a second fixture with unrelated roles and actions to prove the same platform binary works. Only a real Buzz run counts for external-agent acceptance. All delivery tasks start unchecked.

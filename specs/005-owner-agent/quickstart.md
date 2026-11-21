@@ -1,0 +1,10 @@
+# Candidate acceptance walkthrough
+
+Use a disposable workspace, a real independent DoneTick installation and synthetic chores. Record exact platform commit, integration build, DoneTick image and Buzz environment version. Keep credentials and personal task content out of evidence.
+
+1. Open the web dashboard, install the pinned app, complete app-side owner linking, and inspect the roles it confirms. Create an agent named “Weekly planner” and issue its own key.
+2. The owner injects the key into the selected Buzz agent’s private environment as `YOUR_SPACE_AGENT_KEY` and sets `YOUR_SPACE_URL`. Give the agent the CLI and a reachable workspace address. Supply no personal login, app token, model secret from another system, or operator access. Redact the secret from tool traces, command echo and diagnostics. Keep each agent’s key independent.
+3. Try discovery with zero grants. Grant read access for one installation. Ask the real agent to list recurring tasks and attempt a write. Record the permitted read, denied write and unchanged app state.
+4. Grant the management role. Ask the agent to create a weekly Monday 09:00 chore in a specified time zone, then edit its weekday to Wednesday. Inspect DoneTick: one stable task ID, the correct recurrence and next due time, and unchanged history. Check the owner-visible activity records match the agent and app. Simulate a lost response and repeat with the same operation ID; verify exactly one task.
+5. Make a competing edit in the human UI and verify the stale agent edit conflicts. Confirm another installation and another agent cannot access the task. Reduce the grant while the original agent is running and repeat. Rotate its key, then disable the agent; verify the old key, then all keys, lose access as expected.
+6. Repeat gateway access on localhost and over remote HTTPS. Exercise browser-published app access separately: it must confer no agent authority. Recheck grants after restart and uninstall/reinstall. Revoke the test credentials and remove them from Buzz’s environment. Record observed outcomes and unsupported paths alongside synthetic CI results.
