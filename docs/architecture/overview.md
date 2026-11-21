@@ -1,12 +1,12 @@
 # Your Space Architecture Overview
 
-**Last updated**: 2026-11-19
+**Current release view · 2026-11-21**
 
-This is a picture of Your Space as a running system for the first public release, layer by layer.
-It is a view of the [architecture and product decisions](decisions.md), not a separate source of
-truth. Decisions hold the rationale; the [roadmap](../roadmap.md) tracks delivery. Items marked
-`(spec)` are decided, but their mechanism is set in a later specification. `(L)` marks low-priority
-work from the roadmap.
+    Owner's browser → localhost / HTTPS proxy or domain → web dashboard and server
+    Owner's CLI → Docker Compose → server, runtime, installed apps
+    External AI agent → CLI → gateway → permitted action in one connected app
+
+The owner manages agent identities and app grants in the web UI. The gateway and the integrated app enforce the supported action path. This is the target for 005. The detailed diagram below includes later architecture for teams, desktop and the SDKs. The [roadmap](../roadmap.md) gives their delivery stage.
 
 ## Layers
 

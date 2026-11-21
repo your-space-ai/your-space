@@ -14,6 +14,12 @@
 
 **Governing document**: [Your Space Constitution](../../.specify/memory/constitution.md)
 
+## Personal dashboard release boundary
+
+**2026-11-21.** The first public release serves one owner with Docker already available locally or on a server. The browser is the dashboard. It works on localhost, through the owner's proxy, or at a domain with HTTPS. Its AI capability is an external agent acting through the gateway with a separate identity and explicit app-scoped roles the owner manages in the web UI.
+
+One useful action in a real connected app, with attribution, denial, and revocation, is the finish for journey 005. That requires a small working app integration. Team administration, general-purpose SDKs, desktop distribution and automated lifecycle management can each ship independently after this personal workflow works. Preserve their journey numbers and the detailed decisions below as future direction. This boundary supersedes earlier release timing and the eight-journey pre-public sequence throughout this record. The [roadmap](../roadmap.md) defines current sequencing.
+
 ## Purpose and Scope
 
 This is the canonical project-wide record of accepted architecture and product direction, including decisions for future work.

@@ -1,562 +1,61 @@
-# Your Space Roadmap
+# Your Space roadmap
 
-**Last updated**: 2026-11-19
-
-This roadmap tracks the functionality we want to build for Your Space: a self-hostable platform
-for independent apps, human users, and agents, with a managed offering planned later.
-
-It is derived from the [architecture and product decisions](architecture/decisions.md). The
-[architecture overview](architecture/overview.md) shows the resulting system layer by layer.
-That record preserves decisions and rationale; the [constitution](../.specify/memory/constitution.md)
-sets governing principles; feature specifications define scope and acceptance.
-
-The pre-public checklist describes the intended core experience and work needed before publishing
-the repository. The post-public checklist captures later direction and possible enhancements.
-Release scope and details may evolve as the remaining questions are resolved. See the
-[public release readiness checklist](public-release-readiness.md) for the publication review.
-
-**Current direction:** Pre-public work is delivered through eight journey specifications, listed with
-their build order in the [spec map](spec-map.md). Owner access with a manual Compose install comes
-first ([spec 001](../specs/001-workspace-owner-access/spec.md)), then installing and using an app
-(which includes app UI and sign-in), then the CLI. The [overview tree](#overview) summarizes the
-full pre-public scope by layer, and the [architecture overview](architecture/overview.md) shows the
-resulting system. Automatic app updates, building apps from source, alternative deployment-file
-formats, and a workspace MCP endpoint are post-open-source work.
-
-**Next step:** Deliver [spec 003](../specs/003-install-with-the-cli/spec.md), "install and run
-with the CLI", as a stack of pull requests, one per slice. Journey 002 was delivered on 2026-11-17
-(your-space-ai/your-space#24 to your-space-ai/your-space#30), except installing Sure from the real
-GitHub (its task T034) and Safari on macOS (T022). Journey 001's remaining tasks (T052, T055, and
-T056) close after the first release; macOS and Windows checks are gathered into one pass before
-release (spec 003, Change 6). Every pre-public item below has a priority; Low items
-move to post-open-source work first if the timeline slips.
-
-The pre-public section is grouped into layers. Within each layer, each parent checkbox represents a
-capability and its nested checkboxes track specific functionality.
-Checked items mean delivered and verified work, not completed planning. Keep completed items in
-place with their completion date and implementation PR or release link so this remains a record.
-Items delivered by the owner-access feature ([spec 001](../specs/001-workspace-owner-access/spec.md))
-are checked here as each part is delivered and verified; its install, other-device, image, and HTTPS
-items are checked only after verification on real hosts. Everything else below is unchecked.
+The first release is a personal web dashboard. One person runs Your Space on Docker, opens their apps in a browser, and gives an AI agent permission to do useful work in a connected app.
 
 ## Pre-public: Core Experience and First Working Version
 
-The first release targets people who can install the Your Space desktop app for a local workspace,
-or install Docker and follow a guided CLI for a server or local workspace. Since 2026-11-14 the local
-group needs no Docker Desktop: Your Space provides the engine (see
-[installation and hosting](architecture/decisions.md#installation-and-hosting)). The
-[owner-access feature](../specs/001-workspace-owner-access/spec.md) is first. Spec 002,
-"install an app and use it", follows and includes app UI and sign-in, because app origins decide
-what the CLI sets up for HTTPS and clients, apps, SDKs, and agents build on it. The CLI follows in
-spec 003. The [spec map](spec-map.md) assigns every item below to a journey specification and sets
-the build order; the order of items here is not a delivery sequence.
-
-Each item has a priority:
-
-- **[High]** The core story (install, invite, install an app, let an agent use it) or the safety and
-  trust it depends on. Publication waits for these.
-- **[Medium]** Required for publication, but built after the High items it depends on.
-- **[Low]** Wanted for the first release and built last. These are the first items to move to
-  post-open-source work if the timeline slips. Windows support and PWA installation are Low.
-
 ### Overview
 
-This tree summarizes everything below by layer. Unmarked leaves are High priority; `(M)` is Medium
-and `(L)` is Low. The number in brackets is the [journey specification](spec-map.md) that delivers
-the item; `[all]` applies to every spec, and `[gate]` is the release gate. It is a view of the checklist, not a separate source of scope: when you add,
-remove, move, re-prioritize, or reword a pre-public item, update the tree in the same change. See
-[Maintaining the checklist](#maintaining-the-checklist).
-
-```text
-Your Space: first public release
-│
-├── 1. Install and operate
-│   ├── Server stack
-│   │   ├── [001] Manual Docker Compose install on macOS and Linux
-│   │   ├── [001] Identity and data survive restarts and recreation
-│   │   ├── [001] Encrypted access from another device
-│   │   ├── [001] Images for ARM (Apple Silicon) and Intel/AMD
-│   │   └── [003] Manual Compose guide kept as an advanced option (L)
-│   ├── HTTPS
-│   │   ├── [001] Built-in proxy with automatic certificates; plain HTTP on localhost only
-│   │   └── [001] Bring your own proxy or tunnel (M)
-│   ├── CLI (drives Compose for you)
-│   │   ├── [003] Guided local and server install
-│   │   ├── [003 006] init · start · stop · status · logs · update · owner recovery
-│   │   ├── [006] Automatic rollback of failed Your Space updates (M)
-│   │   ├── [006] Uninstall: removes app containers, keeps data by default (M)
-│   │   ├── [003] Linux · macOS (in the macOS and Windows pass)
-│   │   └── [008] Windows (L)
-│   └── Backup, restore, and migration
-│       ├── [006] Backup and restore, produced by the server, driven by the CLI
-│       └── [006] Backup and restore easy to script, for people and their agents (M)
-│
-├── 2. Identity and access
-│   ├── Owner setup and sessions
-│   │   ├── [001] Owner by server command; one owner, no duplicates; sign-up closed
-│   │   ├── [001] Accurate empty workspace and service states
-│   │   ├── [001] Sign in/out, expiry and revocation, host-only session cookie
-│   │   └── [001] Owner recovery by server command, sessions revoked
-│   ├── Workspace members
-│   │   ├── [004] Invite link → sign up → join, identities preserved
-│   │   ├── [004] Recovery code at signup · temporary password from the owner
-│   │   ├── [004] Remove a member: sign out everywhere, revoke roles and agents
-│   │   └── [004] Former members and deleted agents stay traceable (M)
-│   ├── App roles
-│   │   ├── [004 005 007] Verified identity supplied to apps
-│   │   ├── [004 005 007] Apps publish role IDs; owner assigns them; multiple per person
-│   │   └── [004 005 007] Integrated at the app's own auth boundary
-│   ├── Agent identities and delegation
-│   │   ├── [005] Own identity and credentials, linked to their human
-│   │   ├── [005] Delegate an exact subset of your roles
-│   │   ├── [005] Removing a role removes it from agents, including live sessions
-│   │   ├── [005] Actions credited to the actual actor
-│   │   ├── [005] A removed member's agents are disabled, not deleted (M)
-│   │   └── [005] Create, view, revoke, and rotate agent credentials in the app
-│   └── Activity log (M)
-│       ├── [005] Installs, role and member changes, delegations, agent requests
-│       └── [005] Owner can review it; out of the way by default
-│
-├── 3. Apps
-│   ├── Installation
-│   │   ├── [002] Owner pastes the GitHub link to the app's own Compose file; commit recorded
-│   │   ├── [002] Images pinned by digest; resolved file checked against an allowlist
-│   │   ├── [002] Installation kits from a separate repository; no app-specific logic
-│   │   ├── [002] Owner-only install and removal, with a trust warning
-│   │   ├── [002] App settings and secrets: generated, encrypted, changeable
-│   │   ├── [002] Images for the engine's processor type; clear error if none match
-│   │   ├── [002] Sure as the first app, Twenty beside it
-│   │   └── [007] Add an app someone already runs, through a connector (M)
-│   ├── Runtime and isolation
-│   │   ├── [002] Runtime manager alone holds the engine; apps back after restarts
-│   │   ├── [002] App database if declared
-│   │   ├── [002] Durable app storage, kept after removal
-│   │   ├── [002] Owner can delete retained app data (M)
-│   │   ├── [002] Sealed network; no reach to host, Docker, Your Space, or other apps
-│   │   ├── [002] Outbound only to approved hosts: kit's starter hosts, then requests
-│   │   ├── [002] Memory and CPU limits; app status and logs for the owner (M)
-│   │   └── [002] Engine page: connection, version, and resources (M)
-│   ├── Updates (M)
-│   │   ├── [006] Owner-triggered; new access needs approval; provenance kept
-│   │   └── [006] Backup first, automatic rollback on failure
-│   ├── Apps inside Your Space
-│   │   ├── [002] Apps open in the UI with navigation; normal frontend requests work
-│   │   ├── [005] Same backend checks for UI and programmatic access
-│   │   ├── [002] Each app at <app>.<Your Space's address>, in an iframe on the web
-│   │   ├── [002] Access gate: only people signed in to Your Space reach an app
-│   │   ├── [002] Several apps side by side on larger screens (M)
-│   │   ├── [002] Open any app in its own tab or window (M)
-│   │   └── [002] Publish an app on a port for the owner's own proxy or tunnel (M)
-│   └── Developer kit
-│       ├── [005 007] Versioned public contracts, same for managed and external apps
-│       ├── [005 007] TypeScript + Python SDKs, each verified with a working app
-│       └── [007] Build and install apps without rebuilding Your Space
-│
-├── 4. Agents
-│   └── Agent access through Your Space
-│       ├── [005] Your Space is the gateway; apps expose no ports of their own
-│       ├── [005] Agents use apps through the Your Space CLI, locally or remotely
-│       └── [005] Permitted, denied, attributed, and revoked actions verified
-│
-├── 5. Clients
-│   ├── Workspace clients
-│   │   ├── [001 008] Web and desktop with the same experience
-│   │   ├── [008] Installable PWA (L)
-│   │   ├── [all] Simple by default; advanced controls for power users
-│   │   └── [008] Clear message when app, CLI, and server versions don't match (M)
-│   ├── Desktop app
-│   │   ├── [008] macOS · Linux (M) · Windows with a local workspace (L)
-│   │   ├── [008] Signed: macOS Developer ID + notarization · Windows (L)
-│   │   ├── [008] Connect to a server by URL, or run locally
-│   │   ├── [008] Apps in native views instead of iframes
-│   │   └── [008] Updates itself from GitHub releases (M)
-│   └── Desktop local mode (wraps the CLI)
-│       ├── [008] Provide the engine, set up, create the owner, start with the app, update
-│       ├── [008] Backup, restore, uninstall (M)
-│       └── [008] Sleep/off availability documented; Docker Desktop terms if chosen (M)
-│
-└── 6. Trust and release
-    ├── [gate] Security: review, safe defaults, vulnerability reporting, hardening pass
-    ├── [gate] Privacy: no telemetry; only GitHub update checks, which can be turned off,
-    │          and certificate requests for an owner-configured domain
-    ├── [gate] Legal: rights and notices; AGPL core, MIT SDKs, trademark, DCO,
-    │          lawyer review
-    └── [gate] Release: secrets review, docs, core journeys verified, release evidence
-```
-
-### 1. Install and Operate
-
-- [ ] **Server stack**
-
-  **Source:** [Installation and hosting](architecture/decisions.md#installation-and-hosting).
-
-  - [ ] [High] Install manually with documented Docker Compose procedures on supported macOS and Linux server hosts.
-  - [x] [High] Retain account and workspace identity across restarts and service recreation with durable storage retained. (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
-  - [ ] [High] Access the same server and workspace from another device through a documented encrypted connection.
-  - [ ] [Low] Keep the manual Compose procedure documented as an advanced alternative to the CLI.
-  - [ ] [High] Publish Your Space images for both ARM (including Apple Silicon) and Intel/AMD machines.
-
-  The manual install is part of the owner-access feature
-  ([spec 001](../specs/001-workspace-owner-access/spec.md)). Its guide and images are written, but
-  installing, other-device access, and the published ARM and Intel/AMD images stay unchecked until
-  they are verified on real hosts (task T055 in the
-  [001 task list](../specs/001-workspace-owner-access/tasks.md)).
-
-- [ ] **HTTPS**
-
-  **Source:** [Installation and hosting](architecture/decisions.md#installation-and-hosting). Moved from the CLI spec to the owner-access feature 2026-11-03. Reworded 2026-11-08: the built-in proxy stays behind the owner's proxy.
-
-  Part of the owner-access feature ([spec 001](../specs/001-workspace-owner-access/spec.md)); the CLI
-  later asks for the domain during installation.
-
-  - [ ] [High] Set up HTTPS during installation: a reverse proxy in the Compose stack obtains and renews a certificate when the owner gives a domain. Plain HTTP is supported only on localhost.
-  - [ ] [Medium] Let owners with their own reverse proxy or tunnel turn off the built-in proxy's certificate handling, and document a private tunnel such as Tailscale for owners without a domain.
-
-- [ ] **CLI installation and management**
-
-  **Source:** [CLI delivery sequence](architecture/decisions.md#cli-delivery-sequence).
-
-  - [ ] [High] Guide local and server installation through the Your Space CLI, which drives Docker Compose so users don't run Compose themselves.
-  - [ ] [High] Provide at least install, start, stop, status, logs, update Your Space, and owner password recovery, plus the backup, restore, and uninstall commands covered by their own items.
-
-    **Reworded (2026-11-17):** installing is `init` then `start` (spec 003, Change 1); update stays with journey 006.
-  - [ ] [Medium] Before updating Your Space, record versions and snapshot its data; if the update fails, roll back automatically.
-  - [ ] [Medium] Uninstall Your Space and every app container it manages; keep data by default, and require explicit confirmation and offer a backup before deleting it.
-  - [ ] [High] Run the CLI on macOS and Linux so the desktop app can drive it for local workspaces.
-
-    **Changed (2026-11-17):** Linux in spec 003; macOS's executables, Homebrew formula and checks on a real Mac come in the macOS and Windows pass before release ([spec 003](../specs/003-install-with-the-cli/spec.md#changes-to-shared-direction), Change 6). macOS runs the npm package until then.
-  - [ ] [Low] Run the CLI on Windows so the desktop app can drive it for local workspaces there.
-
-    **Moved (2026-11-17):** to journey 008, with the local workspace; Windows is not a server host.
-
-  The CLI is specified in [spec 003](../specs/003-install-with-the-cli/spec.md) (2026-11-17): the
-  `your-space` command, shaped like the Supabase CLI (`init` then `start` in a folder, with a
-  summary), from npm, Linux packages and standalone executables. It runs the installation on its
-  own machine with the authority of access to it; people sign in only through the client. Update,
-  backup, restore and uninstall come with journey 006. The update rollback uses the same snapshot
-  mechanism as app updates, and backup and restore build on it.
-
-- [ ] **Backup, restore, and migration**
-
-  **Source:** [Your Space updates, backup, and restore](architecture/decisions.md#your-space-updates-backup-and-restore). Moved before publication 2026-11-02.
-
-  - [ ] [High] Back up any installation through the CLI: the Your Space server produces the backup and returns it through its API, wherever the server runs.
-  - [ ] [High] Restore a backup into an installation.
-  - [ ] [Medium] Make backup and restore easy to script, so a person or their agent can move a workspace between installations themselves.
-
-    **Replaced (2026-11-14):** "Move a workspace between installations, such as from a local machine to a server, through backup and restore." Your Space doesn't perform or verify moves; see [Your Space updates, backup, and restore](architecture/decisions.md#your-space-updates-backup-and-restore).
-
-  One owner-only implementation serves every installation and builds on the pre-update snapshot
-  mechanism; the desktop app uses the same operation (see Desktop local mode). Design the data model
-  and storage so the whole workspace can be captured consistently. Remote CLI authentication, restore
-  into a broken or fresh installation, and backup format and protection need a specification.
-
-### 2. Identity and Access
-
-- [x] **Owner setup and sessions** (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
-
-  **Source:** [Authentication and initial claim](architecture/decisions.md#authentication-and-initial-claim) and [sessions, persistence, and recovery](architecture/decisions.md#sessions-persistence-and-recovery). The setup code and browser claim were replaced by a server command 2026-11-03.
-
-  - [x] [High] Create the owner with a server command that prints a single-use set-password link; the network alone can never create an account or the owner. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
-  - [x] [High] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
-  - [x] [High] Prevent duplicate owners and keep sign-up closed; new people join only by invitation. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
-  - [x] [High] Reach an accurate empty workspace and distinguish unavailable services from empty or unclaimed state. (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
-  - [x] [High] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation. (2026-11-08, [PR #13](https://github.com/your-space-ai/your-space/pull/13))
-  - [x] [High] Keep the platform session in host-only cookies so it is never sent to app origins. (2026-11-08, [PR #13](https://github.com/your-space-ai/your-space/pull/13))
-  - [x] [High] Recover the existing owner account through an operator command without requiring email delivery or a standalone CLI. (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
-  - [x] [High] Preserve identity and revoke existing sessions after successful password recovery. (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
-
-  The owner-access feature ([spec 001](../specs/001-workspace-owner-access/spec.md)) is owner-only and
-  web-only. Password rules, session and credential lifetimes, and failed-attempt behavior are settled
-  in the [001 plan](../specs/001-workspace-owner-access/plan.md#settled-values) and documented in the
-  [installation guide](install/README.md#sign-in-and-sessions).
-
-- [ ] **Workspace members**
-
-  **Source:** [Owner and workspace model](architecture/decisions.md#owner-and-workspace-model) and [member and agent removal](architecture/decisions.md#member-and-agent-removal).
-
-  - [ ] [High] Let the owner create an invitation link and share it directly with a prospective member.
-  - [ ] [High] Let the recipient sign up and join the workspace through the invitation.
-  - [ ] [High] Retain existing account, workspace, membership, and ownership identities when adding members.
-  - [ ] [High] Give each member a recovery code at signup that lets them reset their own password.
-  - [ ] [High] Let the owner reset a member's password with a temporary password the member must replace at next sign-in.
-  - [ ] [High] Let the owner remove a member: sign them out everywhere and revoke their app roles and their agents' access.
-  - [ ] [Medium] Keep past app activity traceable to former members and deleted agents.
-
-  Invitation, membership, removal, and recovery-code details require their own specification.
-  Workspace roles, such as an administrator, may come later.
-
-- [ ] **App roles**
-
-  **Source:** [Identity and app-owned roles](architecture/decisions.md#identity-and-app-owned-roles).
-
-  - [ ] [High] Supply verified human or agent identity to installed apps.
-  - [ ] [High] Let apps publish stable role identifiers while retaining their own role semantics and resource rules.
-  - [ ] [High] Let the owner assign app roles to human members.
-  - [ ] [High] Assign multiple app roles to humans and agents within an app installation and workspace.
-  - [ ] [High] Integrate identity and role assignments at the app's authentication and authorization boundary, reusing existing boundaries where suitable.
-
-  **Moved (2026-11-14):** out of journey 002, which delivers level 0 (apps keep their own sign-in).
-  Verified identity and roles reach apps that opt into level 1 (OpenID Connect) or level 2 (an SDK),
-  placed with journeys 004, 005 and 007 and settled there; see
-  [identity and app-owned roles](architecture/decisions.md#identity-and-app-owned-roles).
-
-  The identity protocol, role catalog, and compatibility with app authorization semantics remain
-  open. Your Space supplies identity and assignments; each app enforces its protected operations.
-
-- [ ] **Agent identities and delegation**
-
-  **Source:** [Delegation by exact role subsets](architecture/decisions.md#delegation-by-exact-role-subsets) and [member and agent removal](architecture/decisions.md#member-and-agent-removal).
-
-  - [ ] [High] Give external agents distinct identities and non-interactive credentials linked to their delegating human.
-  - [ ] [High] Let a user delegate any exact subset of their assigned role IDs for the same app installation and workspace.
-  - [ ] [High] Remove the corresponding delegated role from affected agents when the human loses that role.
-  - [ ] [High] Apply access removal to existing app sessions and credentials.
-  - [ ] [High] Attribute app actions to the actual actor and retain the delegating-user relationship.
-  - [ ] [Medium] Disable a removed member's agents rather than deleting them, and let the owner delete them later.
-  - [ ] [High] Let people create, view, revoke, and rotate their agents' credentials in the app; revoking one credential does not change the agent's roles.
-
-  **Source for credentials:** [Agent access through Your Space](architecture/decisions.md#agent-access-through-your-space).
-
-  Credential issuance, revocation guarantees, and refresh behavior remain open. External agents
-  precede platform-hosted agent execution.
-
-- [ ] **Activity log**
-
-  **Source:** [Activity log](architecture/decisions.md#activity-log).
-
-  - [ ] [Medium] Record app installs, removals, and updates; role changes and delegations; member changes; and every agent request through the gateway, with the actual actor.
-  - [ ] [Medium] Let the owner review the log, available but out of the way by default.
-
-  Retention, detail level, and who besides the owner can view entries need a specification.
-
-### 3. Apps
-
-- [ ] **App installation**
-
-  **Source:** [Platform and independent apps](architecture/decisions.md#platform-and-independent-apps), [app distribution](architecture/decisions.md#accepted-future-app-distribution-direction), and [app deployment](architecture/decisions.md#accepted-future-app-deployment-direction).
-
-  **Changed (2026-11-14):** apps install from their own Compose files with optional installation
-  kits, replacing a Your Space-specific deployment file with an `x-your-space` section; see
-  [app deployment](architecture/decisions.md#accepted-future-app-deployment-direction).
-
-  - [x] [High] Let the owner install an app by pasting the GitHub link to its own Compose file in a public repository into the UI. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
-
-    **Replaced (2026-11-14):** "…the GitHub URL of its deployment file…".
-  - [x] [High] Read the file at the exact commit the link resolves to and record it, with the commit of any installation kit applied; updates re-read the file from the same link. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
-  - [x] [High] Pin every image, including database services, to an exact version by digest, and validate and retain the installed image identity. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
-
-    **Replaced (2026-11-14):** "…using the exact image and version declared in the app's integration files…". Apps' own files often name moving tags.
-  - [x] [High] Check the app's fully resolved Compose file against an allowlist of settings; adapt it only by rules that hold for every app, reporting each change, and refuse anything else with reasons, including settings that would break app isolation. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
-  - [x] [High] Apply an installation kit, kept in a separate repository, for what a particular app needs (its interface, generated values, starter hosts, limits), with no app-specific logic in Your Space; an app without a kit installs if its own files are enough. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
-
-    **Replaced (2026-11-14):** "Read the app's name and requested access from the `x-your-space` section of its Compose file."
-  - [x] [High] Let the owner provide app settings and secrets at installation and change them later; generate secrets instead of using published defaults, keep them out of output and logs, and store them encrypted in Your Space's database. (2026-11-17, [PR #28](https://github.com/your-space-ai/your-space/pull/28))
-
-    **Replaced (2026-11-14):** "…stored and supplied by a component in the Your Space Compose stack."
-  - [x] [High] Install an app if its images run on the engine's processor type (ARM or Intel/AMD); fail installation with a clear message if no image matches. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
-
-    **Replaced (2026-11-14):** "Require app images for both ARM and Intel/AMD machines…". See [app deployment](architecture/decisions.md#accepted-future-app-deployment-direction).
-  - [ ] [High] Install [Sure](https://github.com/we-promise/sure), an existing open-source app, unchanged from its own Compose file as the first app, with [Twenty](https://github.com/twentyhq/twenty) beside it as the second, and verify the complete installation and usage journey.
-
-    **Replaced and moved (2026-11-14):** "Provide a small Tasks app as the first independently maintained, installable app…", formerly under the developer kit. See [later candidate journeys](architecture/decisions.md#later-candidate-journeys).
-  - [ ] [Medium] Let the owner add an app someone already runs elsewhere through a connector that runs next to it and connects out to Your Space, instead of deploying it.
-
-    **Replaced (2026-11-14):** "…by pointing Your Space at its running instance…". See [platform and independent apps](architecture/decisions.md#platform-and-independent-apps).
-  - [x] [High] Restrict app installation and removal to the owner for the first public release. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
-  - [x] [High] Warn the owner when installing an app that it is trusted with its own data, and state in the documentation that Your Space protects itself and other apps but is not a sandbox for hostile code. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
-
-  Published images are the only first-release installation path; Your Space does not build app source
-  during installation. Spec 002 and its plan define the allowlist, the kit format, and settings and
-  secrets; what the owner sees and sets for generated secrets in the review is still open. Apps
-  someone already runs are outside Your Space's isolation, network limits, resource limits, and
-  backups.
-
-- [ ] **App runtime and isolation**
-
-  **Source:** [Responsibility and trust boundary](architecture/decisions.md#responsibility-and-trust-boundary).
-
-  - [x] [High] Run each app's containers through a runtime manager, the only part of Your Space that holds the engine connection, on any Docker-compatible engine shared with Your Space; apps keep running through Your Space restarts and updates, and come back when it starts. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
-
-    **Reworded (2026-11-14):** was "…using Docker on the same server as Your Space."
-  - [x] [High] Run an app-declared database service alongside the app when needed. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
-
-    **Raised to High (2026-11-02):** the Tasks app in spec 002 needs a database; see [journey-based specifications](architecture/decisions.md#journey-based-specifications). Sure, which replaced Tasks on 2026-11-14, needs one too.
-  - [x] [High] Provide app-specific durable storage that survives restarts and remains after uninstall. (2026-11-17, [PR #30](https://github.com/your-space-ai/your-space/pull/30))
-  - [x] [Medium] Let the owner explicitly delete retained app data from the administration UI. (2026-11-17, [PR #30](https://github.com/your-space-ai/your-space/pull/30))
-  - [x] [High] Isolate apps from host filesystem access, devices, and Docker controls, and protect platform services and other apps: each app on its own sealed network with its own volumes. (2026-11-17, [PR #29](https://github.com/your-space-ai/your-space/pull/29))
-  - [x] [High] Let apps reach only approved internet hosts: the installation kit's starter hosts, approved with the install, and hosts the owner approves when an app's attempt shows up as an access request. (2026-11-17, [PR #28](https://github.com/your-space-ai/your-space/pull/28))
-
-    **Replaced (2026-11-14):** "…each app declares the access it needs in its `x-your-space` section, and the owner approves it at installation." See [app deployment](architecture/decisions.md#accepted-future-app-deployment-direction).
-  - [x] [Medium] Run each managed app with memory and CPU limits so one app cannot take down the host. (2026-11-17, [PR #29](https://github.com/your-space-ai/your-space/pull/29))
-  - [x] [Medium] Show the owner each app's status and logs. (2026-11-17, [PR #29](https://github.com/your-space-ai/your-space/pull/29))
-  - [x] [Medium] Show the owner an Engine page with the engine connection, its version, and the space's resources and each app's use. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
-
-    **Added (2026-11-14)** with spec 002.
-
-  An app's own Compose file does not itself guarantee isolation; spec 002's plan designs the runtime
-  manager, sealed networks and egress proxies, and its tests verify them.
-
-- [ ] **App updates**
-
-  **Source:** [App distribution](architecture/decisions.md#accepted-future-app-distribution-direction).
-
-  - [ ] [Medium] Preserve app identity, exact source version, provenance, and approved update source or policy; do not silently expand granted access on update.
-  - [ ] [Medium] Let the owner trigger updates of installed apps, preserving app data and requiring explicit approval for any additional access.
-  - [ ] [Medium] Back up app data and record image versions before each update; if the update fails, automatically roll back to the previous versions and restore the backup.
-
-  App updates and Your Space updates share one pre-update snapshot and rollback mechanism.
-  Owner-triggered update mechanics and failed-update detection need definition.
-
-- [ ] **Apps inside Your Space**
-
-  **Source:** [UI integration](architecture/decisions.md#ui-integration).
-
-  - [x] [High] Open installed apps within the Your Space interface while platform navigation remains available. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
-  - [x] [High] Preserve normal frontend requests to the app backend without requiring each request to be rewritten for Your Space. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
-  - [ ] [High] Apply equivalent backend authorization checks to human UI and programmatic access.
-
-    **Moved (2026-11-14):** to journey 005. Programmatic access to apps comes with agents and level 2 integration; journey 002's apps keep their own sign-in.
-  - [x] [High] Run each app's interface on its own origin, isolated from Your Space and other apps, at `<app>.<Your Space's address>` in every setup (`space.localhost` on this machine), in a cross-origin iframe in the web client. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
-
-    **Reworded (2026-11-14):** the port-per-app fallback is dropped; see [UI integration](architecture/decisions.md#ui-integration).
-  - [x] [High] Let only people signed in to Your Space reach an app's origin, through an access gate at the built-in proxy; Your Space's cookies never reach apps, and apps' cookies never reach Your Space or each other. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
-
-    **Added (2026-11-14)** with spec 002.
-  - [x] [Medium] Open several apps side by side in one layout on larger screens; show one app at a time on phones. (2026-11-17, [PR #30](https://github.com/your-space-ai/your-space/pull/30))
-  - [x] [Medium] Open any app in its own browser tab or window when it cannot run in a pane. (2026-11-17, [PR #27](https://github.com/your-space-ai/your-space/pull/27))
-  - [ ] [Medium] Publish an app's interface on a port of this machine, opt-in per app, for the owner's own proxy or tunnel to reach at the owner's link; the app's address settings follow the link, and its pane shows the app at the link unless the owner turns that off for it. Tailscale needs this, with one Tailscale Service per app.
-
-    **Added (2026-11-19):** see [running apps and reaching them](architecture/decisions.md#running-apps-and-reaching-them). It replaces journey 002's open task T035, Tailscale Services for apps.
-
-    **Reworded (2026-11-20):** a published app shows at its link in its pane by default, its own Caddy letting only Your Space frame it; see the same decisions.
-
-  Spec 002 decides framing (the proxy replaces an app's framing headers), sign-in inside a pane (the
-  app's own), and routing. On the plain-HTTP local setup, WebKit can't keep an app's cookies in a
-  pane, so Your Space offers the app in its own tab there. Shell-to-app messages remain open.
-
-- [ ] **Developer kit**
-
-  **Source:** [Platform and independent apps](architecture/decisions.md#platform-and-independent-apps).
-
-  - [ ] [High] Document versioned public integration contracts for independently built and running apps.
-  - [ ] [High] Design the contract so it works the same whether Your Space runs the app or the app is hosted elsewhere.
-  - [ ] [High] Publish TypeScript and Python SDKs from this repository for apps in their own repositories, including first-party apps.
-  - [ ] [High] Verify each SDK with a working app.
-  - [ ] [High] Enable developers to create or adapt apps and install them without rebuilding Your Space or including app source in the platform build.
-
-  **Moved (2026-11-14):** the contracts and SDKs move from journey 002 to journeys 005 and 007, with
-  level 2 integration. The Tasks app item was replaced by Sure and moved to
-  [app installation](#3-apps).
-
-  SDKs for languages other than TypeScript and Python are post-open-source. The app contract and SDK
-  coverage remain open.
-
-### 4. Agents
-
-- [ ] **Agent access through Your Space**
-
-  **Source:** [Agent access through Your Space](architecture/decisions.md#agent-access-through-your-space).
-
-  - [ ] [High] Route all agent requests to apps through Your Space as the gateway; agents never call apps directly, and app containers publish no network ports of their own.
-  - [ ] [High] Let agents use app actions through the Your Space CLI with their own credentials, for local and remote servers.
-  - [ ] [High] Verify permitted operations, denied actions, attribution, and revocation against an installed app.
-
-  A workspace MCP endpoint is post-open-source. Whether the gateway enforces per-action roles is
-  decided in the app integration specification.
-
-### 5. Clients
-
-- [ ] **Workspace clients**
-
-  **Source:** [First public-release audience and clients](architecture/decisions.md#first-public-release-audience-and-clients).
-
-  - [ ] [High] Provide web and desktop clients with the same core workspace and installed-app experience when connected to the server.
-  - [ ] [Low] Provide an installable PWA client with the same experience.
-  - [ ] [High] Keep the default experience simple: show people only what they need, and put advanced settings and configuration behind power-user controls.
-  - [ ] [Medium] Define which desktop app, CLI, and server versions work together, and show a clear "update the app" or "update the server" message on a mismatch.
-
-  **Source for simplicity:** [Product experience principles](architecture/decisions.md#product-experience-principles).
-
-  The desktop app is the intended primary client; web and PWA stay full clients. The owner-access
-  feature uses the web client. PWA offline behavior remains open.
-
-- [ ] **Desktop app**
-
-  **Source:** [First public-release audience and clients](architecture/decisions.md#first-public-release-audience-and-clients).
-
-  - [ ] [High] Ship an Electron desktop app for macOS.
-  - [ ] [Medium] Ship the desktop app for Linux.
-  - [ ] [Low] On Windows, support the desktop app and a local workspace in an engine Your Space provides; Windows is not a supported server host.
-
-    **Replaced (2026-11-14):** "…a local workspace through Docker Desktop…". See [installation and hosting](architecture/decisions.md#installation-and-hosting).
-  - [ ] [High] Sign and notarize macOS builds with an Apple Developer ID in CI.
-  - [ ] [Low] Sign Windows builds through SignPath, with Microsoft Artifact Signing as fallback, in CI.
-  - [ ] [High] On setup, let the user connect to an existing server by URL or run Your Space locally.
-  - [ ] [High] Show installed apps in native views, one per app, instead of iframes.
-  - [ ] [Medium] Update the desktop app itself, checking GitHub for new releases.
-
-  Desktop packaging and self-update mechanics need a specification.
-
-- [ ] **Desktop local mode**
-
-  **Source:** [First public-release audience and clients](architecture/decisions.md#first-public-release-audience-and-clients). The setup code was replaced by the owner command 2026-11-03; see [authentication and initial claim](architecture/decisions.md#authentication-and-initial-claim).
-
-  - [ ] [High] In local mode, drive the Your Space CLI to set up and run the Docker Compose stack on the same machine, then connect to it.
-  - [ ] [High] Provide a Docker-compatible engine: Your Space's own virtual machine by default on macOS (and later Windows), or an engine the owner already runs as an advanced option.
-
-    **Replaced (2026-11-14):** "Detect Docker and link to the Docker Desktop download when it is missing." Settled 2026-11-17: Your Space's own engine comes with the desktop app in journey 008; until then the CLI uses an engine the person runs ([spec 003](../specs/003-install-with-the-cli/spec.md#changes-to-shared-direction), Change 4).
-  - [ ] [High] In local mode, create the owner through the CLI and set the password on the user's behalf, using the same owner command as every other installation.
-  - [ ] [High] Start the local stack when the desktop app opens, and update Your Space when the owner chooses.
-  - [ ] [Medium] Back up and restore the local workspace through the CLI.
-
-    **Replaced (2026-11-14):** "…and move it to a server". Moving is a backup and a restore the person does themselves.
-  - [ ] [Medium] Uninstall the local workspace through the CLI's uninstall command.
-  - [ ] [Medium] Document that a local workspace is unavailable to others while its machine is asleep or off, and state Docker Desktop's license terms for owners who choose it as their engine.
-
-    **Reworded (2026-11-14):** Docker Desktop is no longer required.
-
-  Streamlined local setup is specified in journey 008 and, like every journey, delivered as a stack of
-  pull requests; this replaced its own implementation PR 2026-11-08 (see
-  [journey-based specifications](architecture/decisions.md#journey-based-specifications)). It wraps
-  the CLI and setup flow without changing them; the desktop app drives the CLI rather than managing
-  Docker itself.
-
-### 6. Trust and Release
-
-- [ ] **Security**
-
-  **Source:** [Responsibility and trust boundary](architecture/decisions.md#responsibility-and-trust-boundary).
-
-  - [ ] [High] Review security and isolation, provide safe defaults, and establish private vulnerability reporting.
-  - [ ] [High] Complete a security hardening pass on the boundaries between apps and the workspace, enforcing them and protecting users as far as reasonably possible.
-
-- [ ] **Privacy**
-
-  **Source:** [Telemetry and outbound connections](architecture/decisions.md#telemetry-and-outbound-connections). Reworded 2026-11-03: the built-in proxy's certificate requests for an owner-configured domain are allowed.
-
-  - [ ] [High] Send no telemetry; the only automatic outbound requests are GitHub update checks, which the owner can turn off, and the built-in proxy's certificate requests for an owner-configured domain.
-
-- [ ] **Legal**
-
-  **Source:** [Project license and business model](architecture/decisions.md#project-license-and-business-model).
-
-  - [ ] [High] Review publication rights, project and dependency licensing, and required notices.
-  - [ ] [High] License Your Space under AGPL-3.0 and the SDKs under MIT, decide on the "Your Space" trademark, and require DCO sign-offs, all reviewed by a lawyer.
-    **Replaced (2026-11-16):** "…the SDKs under Apache-2.0, file the "Your Space" trademark, and set up a contributor license agreement…". See [project license and business model](architecture/decisions.md#project-license-and-business-model).
-
-- [ ] **Release**
-
-  **Source:** [Public release readiness checklist](public-release-readiness.md).
-
-  - [ ] [High] Review repository history, GitHub content, and release artifacts for private data and secrets.
-  - [ ] [High] Document installation, operation, recovery, developer integration, contribution, and project status.
-  - [ ] [High] Verify the core journeys, supported environments, release artifacts, recovery, and maintenance paths.
-  - [ ] [High] Review release evidence, unresolved issues, and GitHub settings before authorizing publication.
+- Install and open the dashboard (001, 003)
+  - Download a versioned release and follow one guide on a personal machine with Docker and Compose already installed.
+  - Repeat on a Docker server.
+- Connect an app (002)
+  - Install and open an independent app from the web dashboard.
+- Put one AI agent to work (005)
+  - In the web UI, create a named agent, issue its own credential, and grant specific roles for one connected app.
+  - Use an external AI agent through the CLI and gateway to complete one useful action in that app.
+  - Remove the grant and retry with the existing session.
+- Prepare the public release (gate)
+  - Run the complete owner journey from a clean download on the supported hosts.
+  - Close the security, privacy, licensing, documentation, and publication checks in the [release checklist](public-release-readiness.md).
+
+### What is already on main
+
+- Owner setup, sign-in, recovery, and durable workspace identity shipped in [001](../specs/001-workspace-owner-access/tasks.md).
+- Independent app installation, isolation, and web panes shipped in [002](../specs/002-install-an-app/tasks.md). Subsequent changes added local Compose files, published-app framing, and complete removal ([PR 54](https://github.com/your-space-ai/your-space/pull/54), [PR 57](https://github.com/your-space-ai/your-space/pull/57)).
+- The [003 CLI](../specs/003-install-with-the-cli/tasks.md) includes init/start, stop/status/logs, owner recovery, secret management, and domain/proxy configuration. Stored app settings are [encrypted](../specs/009-encrypt-stored-data/tasks.md). Real-domain and release-host checks remain open.
+
+The [previous detailed delivery checklist](https://github.com/your-space-ai/your-space/blob/eb352241/docs/roadmap.md) preserves dated completions and their implementation PRs. Below, a check means the whole release outcome has been demonstrated.
+
+- [ ] **Install and open the dashboard (001, 003)**
+  - [ ] Download a versioned release and follow one guide on a personal machine with Docker and Compose already installed. Create the owner, sign in from localhost, restart, and recover access.
+  - [ ] Repeat on a Docker server. Open the web UI over HTTPS from a second device, once behind an owner-managed proxy or tunnel and once at a domain using the built-in proxy and a real certificate.
+- [ ] **Connect an app (002)**
+  - [ ] Install and open an independent app from the web dashboard. Verify the documented real-source install and the browsers claimed for release. Identify which connected apps support agent actions.
+- [ ] **Put one AI agent to work (005)**
+  - [ ] In the web UI, create a named agent, issue its own credential, and grant specific roles for one connected app. The owner can inspect and change grants, rotate credentials, and revoke the agent.
+  - [ ] Use an external AI agent through the CLI and gateway to complete one useful action in that app. Show the result and actual actor to the owner. Verify a disallowed action and access to an ungranted app are denied.
+  - [ ] Remove the grant and retry with the existing session. Verify denial, then verify rotated and revoked credentials lose access. Document the supported app and action so another owner can repeat the example.
+- [ ] **Prepare the public release (gate)**
+  - [ ] Run the complete owner journey from a clean download on the supported hosts. Record the release candidate, verified configurations, and limitations.
+  - [ ] Close the security, privacy, licensing, documentation, and publication checks in the [release checklist](public-release-readiness.md). Obtain the owner’s publication decision.
+
+**Next implementation work:** Shape journey 005 around the first app and useful action. Verify the existing install and browser paths alongside that work.
 
 ## Post-public: Later Direction and Enhancements
 
 These capabilities are not required for the first public release. Their order and timing remain open.
+
+### Deferred from the first release
+
+These journeys keep their numbers. Timing and order after publication are open.
+
+- [ ] **004 · Invite a team.** Invitations, additional human accounts, member recovery and removal, and shared workspace administration.
+- [ ] **006 · Maintain and move a workspace.** Guided backup, restore, migration, updates with rollback, and lifecycle automation. The first release still documents durable storage and how to protect data on supported installations.
+- [ ] **007 · Build and connect more apps.** Public TypeScript and Python SDKs, developer tooling, and connectors for apps running elsewhere. The first agent-enabled app and its role enforcement belong to 005.
+- [ ] **008 · Use a desktop client.** Native clients, bundled engine, signed installers and updates, and installable PWA. Additional packaging such as Homebrew and Windows distribution can follow demonstrated demand.
+
+### Other later directions
 
 - [ ] **Optional owner-configured email**
 
@@ -679,28 +178,6 @@ These capabilities are not required for the first public release. Their order an
 
   Provisioning, operations, billing, and email delivery require future planning. See [project license and business model](architecture/decisions.md#project-license-and-business-model).
 
-## Maintaining the Checklist
+## Maintaining the checklist
 
-- Keep the pre-public [overview tree](#overview) in sync with the checklist in the same change.
-  Whenever a pre-public item is added, removed, moved between capabilities or layers,
-  re-prioritized, reworded in a way that changes its meaning, or deferred to post-public work,
-  update the matching tree leaf. Every tree leaf must map to one or more checklist items, every
-  checklist item must be represented in the tree, and tree priority markers must match: no marker
-  for High, `(M)` for Medium, `(L)` for Low. Mark delivered work in the checklist, not the tree.
-- Place new pre-public capabilities in the layer they belong to (install and operate, identity and
-  access, apps, agents, clients, or trust and release). Add a layer only when a capability fits none
-  of them, and add it to the tree at the same time.
-- Keep high-level functionality as parent checkboxes and specific functionality as nested checkboxes.
-  Add detail as specifications are agreed rather than inventing functionality to fill out future items.
-- Check an item only after its scoped behavior is delivered and verified. Add the completion date
-  and an implementation PR or release link beside it, and retain checked entries in place.
-- Check a parent only when all its in-scope children are complete and the combined capability works.
-  If agreed scope grows later, add the new children and reopen the parent while retaining completed children.
-- Record deferrals, cancellations, or replacements explicitly with a date and decision link. Do not
-  delete an item to hide unfinished work or check it off because it was dropped.
-- Give every pre-public tree leaf the number of the [journey specification](spec-map.md) that
-  delivers it, and update the spec map in the same change when an item is added or moved.
-- Record changed direction in the decision record first, then update this checklist in the same PR.
-  Keep rationale in decisions and acceptance criteria in specifications.
-- Update statuses and links as specifications and implementation evidence become available. Preserve
-  the distinction between agreed order, unscheduled direction, and candidates.
+Keep the overview and spec map in step with the release checklist. Date each completed outcome and link its implementation and verification. Move deferred work into the post-public section and preserve its journey number and delivery history.
