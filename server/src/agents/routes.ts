@@ -3,16 +3,28 @@ import type pg from "pg";
 import type { Auth } from "../auth.ts";
 import type { Db } from "../db/client.ts";
 import { ownerFor } from "../apps/routes.ts";
+import { AgentKitError } from "../apps/agent-kit.ts";
 import {
   activity,
   AgencyError,
   dashboard,
   forbidden,
+  hash,
+  identity,
+  invalid,
   object,
   transaction,
   uuid,
 } from "./store.ts";
 import { bind, createAgent, editAgent, grant, manageKey } from "./owner.ts";
+import { decide, discover, invoke, receipt } from "./invoke.ts";
+
+function verifier(req: Request) {
+  const value = req.get("Authorization");
+  if (!value || !/^Bearer ysa_[A-Za-z0-9_-]{43}$/.test(value))
+    throw new AgencyError(401, "invalid_credential", "A current agent key is required.");
+  return hash(value.slice(7));
+}
 export function agentRoutes(auth: Auth, db: Db, dataKey: string) {
   const router = Router();
   const route =
@@ -23,6 +35,8 @@ export function agentRoutes(auth: Auth, db: Db, dataKey: string) {
         await handler(req, res);
       } catch (err) {
         if (err instanceof AgencyError) res.status(err.status).json({ error: err.code, message: err.message });
+        else if (err instanceof AgentKitError)
+          res.status(400).json({ error: "invalid_input", message: "The action input does not match its route." });
         else next(err);
       }
     };
@@ -77,6 +91,39 @@ export function agentRoutes(auth: Auth, db: Db, dataKey: string) {
   router.put(
     "/agents/:id/grants/:installationId",
     ownerRoute((c, id, r) => grant(c, id, uuid(r.params.id), uuid(r.params.installationId), object(r.body))),
+  );
+  router.post(
+    "/agents/requests/:id/decision",
+    route(async (r, res) => {
+      res.json(await decide(db, dataKey, await owner(r), uuid(r.params.id), r.body));
+    }),
+  );
+  router.get(
+    "/agent/actions",
+    route(async (r, res) => {
+      const key = verifier(r);
+      res.json(await transaction(db, async (c) => discover(c, await identity(c, key))));
+    }),
+  );
+  router.get(
+    "/agent/requests/:id",
+    route(async (r, res) => {
+      const key = verifier(r);
+      res.json(await receipt(db, key, uuid(r.params.id), dataKey));
+    }),
+  );
+  router.post(
+    "/agent/invoke",
+    route(async (r, res) => {
+      if (!r.is("application/json")) invalid();
+      const outcome = await invoke(db, dataKey, verifier(r), r.body);
+      const status = { pending: 202, denied: 403, conflict: 409, refused: 422, unknown: 502 }[outcome.status] ?? 200;
+      if (outcome.status === "denied") {
+        res.status(403).json({ error: "denied", status: "denied" });
+      } else {
+        res.status(status).json(status >= 400 ? { ...outcome, error: outcome.status } : outcome);
+      }
+    }),
   );
   return router;
 }
