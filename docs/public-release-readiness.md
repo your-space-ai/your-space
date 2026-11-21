@@ -1,53 +1,17 @@
-# Public Open-Source Release Readiness
-
-**Status:** Working checklist. The first-release scope was settled in the 2026-11-02 interview; the detailed readiness bar is still being defined.
-
-The current direction is to make the repository public with an installable first version that
-demonstrates the core experience. This checklist captures work to implement, prove, and polish
-before that release. More requirements and the exact launch bar remain under discussion.
-
-The [roadmap](roadmap.md) tracks product delivery, and the [architecture and product decisions](architecture/decisions.md)
-record agreed direction. The [owner access specification](../specs/001-workspace-owner-access/spec.md)
-defines the first feature's acceptance criteria. This checklist does not expand that specification;
-new capabilities need their own specifications and implementation work.
-
-## How to Use This Checklist
-
-- Finalize the release scope before treating every item as an agreed gate.
-- Items for Low-priority roadmap work, currently Windows support and PWA installation, stop being
-  gates if that work moves to post-open-source; record the deferral with a decision link.
-- Each parent represents a readiness area, and its children identify concrete work or evidence.
-- Check an item only when completed and verified. Add the date, tested commit or release version,
-  and a link to the implementation, review, or test evidence; retain checked items as a record.
-- Record any accepted exception or deferral with its rationale, owner, and follow-up. A deferred
-  item remains unchecked. Check a parent only when every applicable child is complete and the area
-  works as a whole. Mark conditional items that do not apply as out of scope with a decision link,
-  without checking them as delivered.
-- Revalidate evidence affected by later changes against the release candidate. Resolve blockers and
-  record accepted limitations before launch.
+# Public open-source release readiness
 
 ## Release Scope and Promise
 
-- [ ] **Define the public release promise**
-  - [ ] Target people who can install the desktop app for a local workspace, or install Docker and
-    follow a guided CLI for a server or local workspace, without one-on-one help. Since 2026-11-14
-    Docker Desktop is not required: Your Space provides the engine
-    ([decision](architecture/decisions.md#installation-and-hosting)).
-  - [ ] Record the intended users, release maturity, supported behaviors, and what is explicitly
-    deferred; update the roadmap and decisions if the agreed direction changes.
-  - [ ] For milestones that claim supported environments, define supported operating system versions,
-    CPU architectures, browsers, Docker/Compose versions, and local or remote deployment paths.
-  - [ ] Define release blockers and who will accept remaining known limitations.
+One owner downloads Your Space, runs it with Docker locally or on a server, opens the dashboard in a browser, and manages what an AI agent can do in a connected app. The [roadmap](roadmap.md) tracks product scope and the [spec map](spec-map.md) assigns the work.
 
-**First public version:** owner setup; invited member signup and removal; the CLI for servers and
-local workspaces; a desktop app that drives the CLI to run a local workspace; web, desktop, and PWA
-workspace clients; at least one independently installed app; developer ability to create and install
-additional apps; and external-agent access through the Your Space gateway. It also includes built-in
-HTTPS; built-in backup and restore; owner-triggered Your
-Space and app updates that roll back automatically if they fail; an activity log; uninstall; and
-signed desktop releases. Windows support and PWA installation are low priority. Sure, an existing
-open-source app installed unchanged from its own Compose file, is the first app, with Twenty as the
-second (replacing the Tasks app on 2026-11-14). This scope does not change the owner-only first specification.
+## First Public Product Scope
+
+- [ ] Verify a clean local installation and a server installation from the published candidate artifacts. Record host, CPU, Docker/Compose and browser versions.
+- [ ] Verify owner claim, sign-in, restart and recovery. Open the dashboard on localhost, behind an existing proxy, and at a domain with a real certificate.
+- [ ] Install and open an independent app. Use the web UI to create an agent and grant access to a supported app action.
+- [ ] Repeat the [002 installation and isolation checks](../specs/002-install-an-app/tasks.md) on the release candidate. Verify digest pins and source provenance, owner confirmation and secrets, resource limits, network boundaries and persistent app storage.
+- [ ] Run a real external AI agent through the gateway. Capture the app result and attribution. Verify denial outside the grant, loss of access after a role change, rotation, and revocation.
+- [ ] Link the public roadmap and document supported integrations, storage, recovery and release limitations.
 
 ## Early Source Publication: Building in Public
 
@@ -127,18 +91,14 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     [GitHub's visibility guidance](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility).
 
 - [ ] **Establish project rights and licensing**
-  - [ ] Add AGPL-3.0 for Your Space (server, web client, CLI, and desktop app) and MIT for the
-    SDKs, with license files and headers where needed.
-    **Replaced (2026-11-16):** "…and Apache-2.0 for the SDKs…". See the
-    [2026-11-16 decision update](architecture/decisions.md#project-license-and-business-model).
+  - [ ] Verify the shipped release includes the AGPL-3.0-only license and notices. The MIT SDK license applies when SDKs ship under journey 007.
   - [ ] Have a lawyer review the license setup, trademark, and contributor terms (DCO) before publication.
   - [ ] Clear and file the "Your Space" trademark, and publish a short trademark policy for forks.
   - [ ] Require a DCO sign-off before publication, enforced on pull requests from outside contributors
     by the DCO GitHub App.
     **Replaced (2026-11-16):** "Set up a contributor license agreement…". See the
     [2026-11-16 decision update](architecture/decisions.md#project-license-and-business-model).
-  - [ ] Verify every shipped dependency's license is compatible with AGPL-3.0 distribution, and the SDKs'
-    dependencies with MIT.
+  - [ ] Verify the licenses and notices of dependencies shipped in the AGPL-3.0-only release.
   - [ ] Keep managed-service code in a separate private repository that integrates through the core's APIs.
   - [ ] Review ownership and permission to publish project code, documentation, assets, and generated
     material, including contributions and any imported material.
@@ -155,7 +115,7 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     and safe handling of secrets in ordinary logs, configuration, and public errors.
   - [ ] Review default network exposure, access to operator commands and setup credentials, encrypted
     remote access, and the documented deployment's configuration for supported environments.
-  - [ ] Verify the server, CLI, and desktop app send no telemetry, make no automatic outbound
+  - [ ] Verify the shipped server, CLI, and web client send no telemetry, make no automatic outbound
     requests other than update checks and the built-in proxy's certificate requests for an
     owner-configured domain, and stop update checks when the owner turns them off.
   - [ ] Review dependencies and container images for known vulnerabilities, remediate release
@@ -172,8 +132,7 @@ is chosen instead, explicitly decide which items apply and describe what is not 
     certificate requests for an owner-configured domain are its only automatic outbound requests.
   - [ ] Provide accurate installation, configuration, restart, remote access, troubleshooting,
     owner recovery, and uninstall guidance for the actual release.
-  - [ ] Document where durable data lives, how to back up and restore with the CLI, and how a person
-    or their agent can move a workspace with a backup and a restore.
+  - [ ] Document where durable data lives, which files and volumes to protect, and which recovery procedures have been tested.
   - [ ] Explain local development, tests, contribution and review expectations, issue reporting,
     maintainer support expectations, and where to find the roadmap and security policy.
   - [ ] Decide and publish the project's community participation expectations and contact paths.
@@ -201,153 +160,10 @@ is chosen instead, explicitly decide which items apply and describe what is not 
   - [ ] Build and identify versioned release artifacts and images, verify installation uses the
     intended versions, and document their source and integrity verification where available.
   - [ ] Define the initial upgrade and rollback policy, including schema migrations and data safety;
-    test supported paths and document unsupported transitions. The first release must include the
-    owner-triggered app update path and the CLI's Your Space update path, both with automatic rollback
-    of failed updates.
+    test supported paths and document unsupported transitions. Automated update and rollback tooling is scheduled after publication.
   - [ ] Verify Your Space images run on ARM (including Apple Silicon) and Intel/AMD hosts.
   - [ ] Record test evidence, outstanding issues, accepted limitations, and any unsupported paths for
     the exact release candidate.
-
-## First Public Product Scope
-
-These areas capture the scope agreed so far for the first public version. Their detailed requirements
-belong in the journey specifications listed in the [spec map](spec-map.md). Roadmap priorities decide what moves to post-open-source work first if needed.
-
-- [ ] **CLI installation and management**
-  - [ ] Specify and implement the supported commands and CLI distribution for the established
-    Compose deployment, including installation, prerequisite handling, and management scope. Provide
-    at least install, start, stop, status, logs, update Your Space, owner password recovery, backup,
-    restore, and uninstall.
-  - [ ] Verify uninstall removes Your Space and every app container it manages, keeps data by default,
-    and deletes data only after explicit confirmation with a backup offered first.
-  - [ ] Verify a failed Your Space update through the CLI automatically restores the previous
-    versions and the pre-update data snapshot.
-  - [ ] Verify owner-only backup and restore through the CLI for local and remote installations,
-    including members' accounts, credentials, and app data, and restore into a fresh installation.
-  - [ ] Verify that the desktop app backs up and restores a local workspace through the same CLI
-    operation.
-  - [ ] Verify the CLI drives Docker Compose for server and local installations on macOS and Linux,
-    and for local installations on Windows, and that the desktop app drives it in local mode.
-  - [ ] Test the CLI on each claimed host for initial setup, repeat invocation, failures, and
-    preservation of existing configuration and data; document manual alternatives and limitations.
-  - [ ] Verify the guided installation is usable by someone comfortable installing Docker and following a CLI.
-  - [ ] Verify HTTPS through the built-in proxy with automatic certificates for a domain, the
-    bring-your-own-proxy option, and the documented tunnel path; verify PWA installation and secure
-    session cookies work on each.
-
-- [ ] **Additional members and signup**
-  - [ ] Let the owner create invitation links and share them directly so recipients can sign up and join.
-  - [ ] Verify membership and access controls while preserving existing owner, account, and workspace identities.
-  - [ ] Let the owner assign app roles to human members.
-  - [ ] Verify member password recovery with the signup recovery code, and with an owner-issued
-    temporary password that must be replaced at next sign-in; both revoke existing sessions.
-  - [ ] Verify removing a member immediately revokes their sessions, app roles, and their agents'
-    access, including existing app sessions and credentials; their agents are disabled, not deleted.
-  - [ ] Verify past app activity still identifies former members and deleted agents.
-  - [ ] Document and test invitation, signup, and recovery paths; detailed invitation and signup rules remain open.
-
-- [ ] **Workspace clients on web, desktop, and PWA**
-  - [ ] Provide the same core workspace and installed-app experience on web, desktop, and installable
-    PWA clients.
-  - [ ] Ship and test the Electron desktop app on macOS, Linux, and Windows; Windows is low priority.
-    Support server hosts on macOS and Linux; on Windows, support the desktop app and a local workspace
-    in an engine Your Space provides (Docker Desktop no longer required, 2026-11-14).
-  - [ ] Verify release builds are signed in CI: macOS with an Apple Developer ID and notarization,
-    and Windows (low priority) through SignPath or Microsoft Artifact Signing. Verify a downloaded macOS build opens with
-    the standard prompt and updates itself.
-  - [ ] Verify the desktop app can connect to an existing server by URL, or set up, run, and connect to
-    a local Your Space Docker Compose stack on the same machine through the CLI.
-  - [ ] In local mode, verify Your Space provides a Docker-compatible engine (its own VM by default,
-    replacing Docker detection with a download link on 2026-11-14), stack startup when
-    the app opens, and owner-triggered Your Space updates.
-  - [ ] Verify the desktop app uninstalls a local workspace through the CLI's uninstall command.
-  - [ ] Verify the desktop app completes local-mode owner setup by running the owner command through
-    the CLI and setting the password on the user's behalf, through the same flow as every other
-    installation.
-  - [ ] Document that a local workspace is unavailable to others while its machine is asleep or off,
-    and state Docker Desktop's license terms for owners who choose it as their engine.
-  - [ ] Verify supported clients connect to the same workspace and handle authentication and failures;
-    a connection to the server is required.
-  - [ ] Define and test supported devices, platforms, installation and accessibility expectations.
-  - [ ] Verify the desktop app updates itself from GitHub releases, and that mismatched app, CLI, and
-    server versions show a clear message about what to update.
-  - [ ] Review the default experience against the simple-by-default principle: beginners see only
-    what they need, and advanced settings stay behind power-user controls.
-
-  Desktop packaging, self-update mechanics, and PWA offline behavior remain open.
-
-- [ ] **Independent apps and developer integration**
-  - [ ] Specify and implement the versioned app integration and SDK contract (level 2, journeys 005
-    and 007); keep apps independently built, running, and maintained in their own repositories.
-  - [ ] Let only the owner install and remove apps; support installing apps from public GitHub
-    repositories by pasting the link to the app's own Compose file in the workspace UI. Private
-    repository support is post-public.
-  - [ ] Read the file at the exact commit the link resolves to and record it, with the installation
-    kit's commit; verify updates re-read the file from the same link.
-  - [ ] Pin every image, including database services, to its digest; verify the installed image
-    identities match the review and are retained with installation provenance.
-  - [ ] Let the owner trigger updates of installed apps; verify app data is preserved, the installed
-    revision and image provenance reflect the update, and additional access requires explicit approval.
-  - [ ] Apply installation kits from their separate repository, with no app-specific logic in Your
-    Space (replacing the `x-your-space` section, 2026-11-14).
-  - [ ] Check each app's fully resolved Compose file against the allowlist in the 002 plan; verify
-    unlisted settings and settings that would break app isolation, such as host folder mounts,
-    devices, privileged mode, or host networking, are refused with reasons.
-  - [ ] Back up app data and record image versions before each update; verify a failed update
-    automatically restores the previous image versions and the pre-update data.
-  - [ ] Have Your Space run each app's containers, including an app-declared database service, through
-    the runtime manager, the only part that holds the engine connection.
-  - [ ] Isolate apps from host folders, devices, and Docker controls; verify the boundary for the
-    supported deployment path and do not assume containers alone make untrusted code safe.
-  - [ ] Warn the owner at installation, and state in the documentation, that an installed app is
-    trusted with its own data; Your Space protects itself and other apps but is not a sandbox for
-    hostile code.
-  - [ ] Verify the owner can provide and change app settings and secrets, that published secret
-    defaults are never used, and that secrets are not exposed in logs, errors, or output.
-  - [ ] Verify apps reach only their kit's starter hosts and hosts the owner approved from access
-    requests, and that an update asking for more needs new approval.
-  - [ ] Verify memory and CPU limits contain a misbehaving app, and that the owner can see app status
-    and logs.
-  - [ ] Verify installation on ARM and Intel/AMD hosts, and a clear error when an app has no image for
-    the engine's processor type.
-  - [ ] Verify an app someone already runs elsewhere can be added through a connector and is reached
-    only through Your Space; whether it must also verify Your Space identity is open.
-  - [ ] Provide persistent app-specific storage; keep data after uninstall and allow the owner to
-    explicitly delete retained data through an administration UI.
-  - [ ] Install Sure unchanged as the first app and Twenty beside it, use them inside the Your Space
-    interface, and verify their data survives a supported restart.
-  - [ ] Enable a developer to create or adapt and install an additional independent app using the
-    documented SDK and contracts; validate the process beyond the first app.
-  - [ ] Publish TypeScript and Python SDKs and verify each with a working app.
-  - [ ] Review and test the app isolation, source and version provenance, and installation trust
-    boundaries for the supported installation path.
-  - [ ] Document app developer integration and the supported example, including compatibility,
-    limitations, and any intentionally deferred distribution or update functionality.
-
-  Published images are the only first-release installation path. Building apps from source during
-  installation is explicitly [post-open-source
-  work](roadmap.md#post-public-later-direction-and-enhancements). Owner-triggered app updates with
-  automatic rollback of failed updates are required before publication; automatic app updates, backup
-  history, and manual rollback are post-open-source. Apps install from their own Compose files with
-  optional installation kits (2026-11-14); alternative formats are post-open-source. Spec 002's plan
-  sets the allowlist and the kit format. Owner-triggered update mechanics and failed-update
-  detection remain open.
-
-- [ ] **External agent access**
-  - [ ] Implement external-agent access to the installed app through the supported identity and role integration.
-  - [ ] Verify human and external agent identity, app-owned authorization, distinct actor attribution,
-    and exact-subset role delegation.
-  - [ ] Verify denied actions through UI and programmatic access, and removal of delegated roles and
-    access through existing app sessions and credentials.
-  - [ ] Review and test agent credential handling and revocation for the supported integration.
-  - [ ] Verify people can create, view, revoke, and rotate their agents' credentials in the app, and
-    that revoking one credential leaves the agent's roles unchanged.
-  - [ ] Verify the activity log records installs, role and member changes, delegations, and agent
-    requests with the actual actor, and that the owner can review it.
-  - [ ] Verify agents reach apps only through the Your Space gateway: app containers are not reachable
-    directly, and the gateway rejects unauthenticated, undelegated, and revoked requests.
-  - [ ] Verify an agent can use the installed app's actions through the Your Space CLI against local
-    and remote servers.
 
 ## Product Release Decision
 
