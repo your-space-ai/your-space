@@ -83,10 +83,8 @@ jobs:
           rpm -qpl cli/dist/your-space-*.x86_64.rpm | grep -qx /usr/bin/your-space
 
   setups:
-    # While the repository is private, Actions minutes are limited: in a stack of pull requests,
-    # only the one based on main runs this job; the ones above run it when they reach main. A push
-    # to main skips it, since the pull request it merges has just run it on the same code.
-    if: needs.scope.outputs.bottom == 'true'
+    # Public PRs check every stack layer. Private stacks check each layer when it reaches main.
+    if: github.event_name == 'pull_request' && (!github.event.repository.private || needs.scope.outputs.bottom == 'true')
     needs: scope
     timeout-minutes: 10
     # Each setup's Compose files (deploy/modes/) must resolve on the oldest Compose the installation

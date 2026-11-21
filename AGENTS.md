@@ -57,3 +57,7 @@ reviewer is ready to review it, so that changes merged below it don't cost extra
 runs on drafts too: fix its findings before marking a draft ready. Argos's screenshots are
 Chromium's, and a change to documents alone, or a run skipped because its code already passed,
 uploads none.
+
+For public pull requests, Compose checks run on every layer. CircleCI can read public PR metadata
+without a token and keeps screenshots in the job report when Argos credentials are unavailable.
+The subscription-backed review workflow runs only in the private repository.

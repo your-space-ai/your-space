@@ -12,7 +12,7 @@ agent acted.
 
 ## Try it from source
 
-Your Space is in development. There is no tagged release yet.
+This developer preview runs from a source checkout. Start with the Docker quickstart below. The sample apps and kits run from fixtures included in the repository. A tagged desktop download is still in preparation.
 
 - Product releases distribute Apple Silicon and Intel DMGs through [GitHub Releases](https://github.com/your-space-ai/your-space/releases). To try the Mac launcher before publication, run from source or build a private preview ZIP. The launcher can set up a workspace using a local Docker engine or connect to an existing server. [Mac setup and preview guide](docs/install/macos-desktop.md)
 - To try the dashboard, build the Docker Compose test stack from a checkout, create its owner,
@@ -58,7 +58,7 @@ privately as described in [SECURITY.md](SECURITY.md). Everyone taking part follo
 Copyright (c) 2026 Chen Stanilovsky and contributors.
 
 Your Space (server, runtime, web client, CLI and desktop app) is licensed under the
-[GNU Affero General Public License v3.0 only](LICENSE). The SDKs, once published from this
+[GNU Affero General Public License v3.0 only](LICENSE). The repository includes development scripts, templates and agent skills from GitHub Spec Kit 1.2.5 under its [MIT license](.specify/LICENSE). The SDKs, once published from this
 repository, are licensed under the MIT License, so apps that use them can choose any license.
 
 For an agent-led workspace, see [set up with an agent](docs/agent-setup.md), [build a Home app](docs/build-an-app.md), and [manage repositories and kits](docs/managed-repositories.md).

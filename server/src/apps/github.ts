@@ -101,12 +101,38 @@ async function resolveRef(fetcher: Fetch, endpoints: GithubEndpoints, link: File
 export async function fetchSource(link: string, endpoints: GithubEndpoints = githubEndpoints(), fetcher: Fetch = fetch): Promise<SourceFile> {
   const parsed = parseLink(link);
   const { ref, path, commit } = await resolveRef(fetcher, endpoints, parsed);
-  const res = await get(fetcher, `${endpoints.raw}/${parsed.repo}/${commit}/${path.split("/").map(encodeURIComponent).join("/")}`, "text/plain");
-  if (res.status === 404) throw new SourceError(`There is no file ${path} in ${parsed.repo} at ${ref}.`);
+  return readResolvedFile(parsed.repo, ref, path, commit, link.trim(), endpoints, fetcher);
+}
+
+/** GitHub lists commits on the repository's default branch when no sha is requested. */
+export async function fetchDirectoryFile(repo: string, path: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
+  const response = await get(fetcher, `${endpoints.api}/repos/${repo}/commits?per_page=1`, "application/vnd.github+json");
+  if (!response.ok) throw new SourceError("GitHub could not read the configured kit directory.");
+  const commits: unknown = await response.json().catch(() => null);
+  const commit = Array.isArray(commits) ? commits[0]?.sha : null;
+  if (typeof commit !== "string" || !/^[0-9a-f]{40}$/.test(commit)) throw new SourceError("GitHub did not return a directory commit.");
+  return fetchPinnedFile(repo, path, commit, endpoints, fetcher);
+}
+
+export function fetchPinnedFile(repo: string, path: string, commit: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
+  const link = `https://github.com/${repo}/blob/${commit}/${path}`;
+  return readResolvedFile(repo, commit, path, commit, link, endpoints, fetcher);
+}
+
+async function readResolvedFile(repo: string, ref: string, path: string, commit: string, link: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
+  const res = await get(fetcher, `${endpoints.raw}/${repo}/${commit}/${path.split("/").map(encodeURIComponent).join("/")}`, "text/plain");
+  if (res.status === 404) throw new SourceError(`There is no file ${path} in ${repo} at ${ref}.`);
   if (!res.ok) throw new SourceError(`GitHub answered ${res.status} for the file. Try again later.`);
   const length = Number(res.headers.get("content-length") ?? 0);
   if (length > MAX_FILE_BYTES) throw new SourceError("The file is larger than a Compose file should be.");
-  const text = await res.text();
-  if (Buffer.byteLength(text) > MAX_FILE_BYTES) throw new SourceError("The file is larger than a Compose file should be.");
-  return { link: link.trim(), repo: parsed.repo, ref, path, commit, text, pinnedLink: `https://github.com/${parsed.repo}/blob/${commit}/${path}` };
+  const bytes = await res.arrayBuffer();
+  if (bytes.byteLength > MAX_FILE_BYTES) throw new SourceError("The file is larger than a Compose file should be.");
+  let text: string;
+  try {
+    // Preserve a byte-order mark when hashing the exact kit file.
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    throw new SourceError("Choose a UTF-8 file.");
+  }
+  return { link, repo, ref, path, commit, text, pinnedLink: `https://github.com/${repo}/blob/${commit}/${path}` };
 }

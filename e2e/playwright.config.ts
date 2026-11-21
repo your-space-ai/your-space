@@ -9,6 +9,8 @@ const evidence = process.env.YS_E2E_EVIDENCE === "1";
 // The journeys run one at a time against a single Compose stack, which each spec resets.
 export default defineConfig({
   testDir: "./tests",
+  // Shared reports need test results and screenshots, not private commit metadata or diffs.
+  captureGitInfo: { commit: false, diff: false },
   globalSetup: "./global-setup.ts",
   fullyParallel: false,
   workers: 1,

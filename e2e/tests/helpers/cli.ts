@@ -144,6 +144,7 @@ export function githubStandIn(folder: string): string {
       - ${join(root, "e2e/github")}:/github:ro
   server:
     environment:
+      YS_KITS_REPOSITORY: ys-fixtures/catalog
       YS_E2E_GITHUB_API: http://github:8080
       YS_E2E_GITHUB_RAW: http://github:8080
     depends_on:

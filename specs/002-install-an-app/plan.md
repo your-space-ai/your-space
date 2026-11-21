@@ -127,7 +127,7 @@ corrected.
 | Part | What it does |
 | --- | --- |
 | `apps/github.ts` | Turns `https://github.com/<owner>/<repo>/blob/<ref>/<path>` into the commit (GitHub API, `application/vnd.github.sha`) and the file at that commit (raw content). Refuses other hosts, private repos (404), files over 256 KB. |
-| `apps/kits.ts` | Reads `apps/<owner>/<repo>.yaml` from the kits repository at its current commit, a kit link the owner gives, or, from `install-app --kit`, a kit file, kits folder or standard input on this machine. A kit names the source file it fits (a kit given with a Compose file on this machine may leave it out), the app's name, the interface service and port, values to generate, values to derive (`app_origin`), plain values from the app's own example settings, settings that are secret, starter outbound hosts, limits, and whether the app can run in a pane. Parsed with `yaml` and validated by hand. |
+| `apps/kits.ts` | Reads `apps/<owner>/<repo>.yaml` from the optional configured directory at its default branch’s current commit, a kit link the owner gives, or, from `install-app --kit`, a kit file, kits folder or standard input on this machine. A kit names the source file it fits (a kit given with a Compose file on this machine may leave it out), the app's name, the interface service and port, values to generate, values to derive (`app_origin`), plain values from the app's own example settings, settings that are secret, starter outbound hosts, limits, and whether the app can run in a pane. Parsed with `yaml` and validated by hand. |
 | `apps/local.ts` | From `install-app --compose`, a Compose file on this machine or standard input, for an app whose own file doesn't fit Your Space's rules: read with the same 256 KB limit, and recorded by its digest and file name, with no repository or commit. The rules for the command's sources: a link or `--compose`, and only one of `--compose` and `--kit` on standard input. |
 | `apps/settings.ts` | The file's variables become settings. Kit-generated values, and without a kit any variable whose name contains `SECRET`, `PASSWORD`, `TOKEN`, `KEY` and that has a published default, are generated (32 random bytes unless the kit says otherwise) and never use the default (FR-006). Values are encrypted with AES-256-GCM under a key derived from the auth secret. |
 | `apps/runtime-client.ts` | The runtime API client over the Unix socket. |
@@ -272,7 +272,7 @@ See [data-model.md](data-model.md): `app`, `app_setting`, `app_outbound`, `app_a
   and, shown in Your Space or not, what it does to apps' framing headers: none, `X-Frame-Options`
   `DENY` or `SAMEORIGIN`, a policy without `frame-ancestors`, and `frame-ancestors 'none'`.
 - **Browser (Playwright, Compose stack)**: a stand-in for GitHub serves fixture Compose files and
-  kits (`YS_E2E_GITHUB_API`, `YS_E2E_GITHUB_RAW`, `YS_E2E_KITS`). Install whoami from the UI, open it
+  kits (`YS_E2E_GITHUB_API`, `YS_E2E_GITHUB_RAW`, `YS_KITS_REPOSITORY`). Install whoami from the UI, open it
   in a pane (in WebKit, its own tab), sign out and be refused, isolation probes with busybox, egress
   requests and approval, settings, limits, restart and stop, removal and reuse, publishing on a port
   (whoami, 200 requests at once, and a fixture that refuses to be framed, which shows in its pane

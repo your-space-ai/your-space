@@ -20,7 +20,9 @@ File reads return content and SHA. Writes return the new commit and file SHA. If
 
 ## Install a kit from GitHub
 
-Open **Apps → Kit directory**, choose a listing or paste a GitHub link to its YAML file, then review the ordinary installation preview. The directory reads the configured kits repository, at its pinned commit, from `apps/<upstream-owner>/<upstream-repo>.yaml`. A linked kit can name the target repository and Compose path. A co-located kit without a source uses a sibling `compose.yaml`. Import a separate private source repository before following a kit's reference to it. Installation records include the resolved kit and Compose revisions. Directory inclusion grants no agent permissions.
+Open **Apps → Kit directory**, paste a GitHub link to a kit YAML file and review the installation preview. A fresh workspace can use links and local kit files without configuring a directory. To use a local kit with an app’s public Compose link, run `docker compose exec -T server install-app <compose-link> --kit - < kit.yaml` in the installation folder. A linked kit can name its Compose repository and path, or use a sibling `compose.yaml`. Import a separate private Compose repository before following a kit's reference to it. The installation records the resolved kit and Compose revisions.
+
+To offer a directory, set `YS_KITS_REPOSITORY=owner/repository` in the workspace’s `.env` and recreate the server with `docker compose up -d`. Choose a repository you trust to publish kit reviews. Your Space lists `apps/<upstream-owner>/<upstream-repo>.yaml` from its default branch and pins each entry to a commit. The web directory uses the workspace owner’s connected GitHub account when available. For a Compose link, automatic kit discovery uses public GitHub access. Review status requires matching repository, path and content digest for the attested kit commit. A review continues to apply across unrelated commits only if the kit bytes match that revision. Your Space looks up this evidence in `reviews/sha256/<digest>.json` on the configured repository’s default branch. Owners still choose every agent grant.
 
 ## Apply an in-place change
 

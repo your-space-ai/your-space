@@ -6,14 +6,8 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import { parseAgentAccess, AgentKitError } from "./agent-kit.ts";
 import type { Kit } from "../db/schema.ts";
-import { fetchSource, githubEndpoints, MAX_FILE_BYTES, parseLink, SourceError, type GithubEndpoints } from "./github.ts";
+import { fetchDirectoryFile, fetchPinnedFile, fetchSource, githubEndpoints, MAX_FILE_BYTES, parseLink, SourceError, type GithubEndpoints } from "./github.ts";
 import { TEMPLATE_REFERENCE, templateNames } from "./settings.ts";
-
-export const KITS_REPO = "your-space-ai/your-space-app-kits";
-
-export function kitsRepo(env: NodeJS.ProcessEnv = process.env): string {
-  return env.YS_E2E_KITS || KITS_REPO;
-}
 
 export class KitError extends Error {
   constructor(message: string) {
@@ -222,6 +216,26 @@ export function kitFromFile(text: string, file: { repo: string; path: string } |
   return { kit, source: `sha256:${createHash("sha256").update(text).digest("hex")}` };
 }
 
+/** A review can follow unchanged kit bytes through an unrelated repository commit.
+ * Fetch older bytes only from the already authorized repository and path. */
+export async function matchesKitReview(
+  record: unknown, digest: string, file: { repo: string; path: string; commit: string; text: string },
+  readAt: (commit: string) => Promise<string>,
+): Promise<boolean> {
+  if (!isObject(record) || record.status !== "reviewed" || record.sha256 !== digest || typeof record.kit !== "string") return false;
+  const pin = /^https:\/\/github\.com\/([^/?#]+\/[^/?#]+)\/blob\/([0-9a-f]{40})\/([^?#]+)$/.exec(record.kit);
+  if (!pin || pin[1].toLowerCase() !== file.repo.toLowerCase()) return false;
+  let path: string;
+  try {
+    path = decodeURIComponent(pin[3]);
+  } catch {
+    return false;
+  }
+  if (path !== file.path) return false;
+  const attested = pin[2];
+  return attested === file.commit || await readAt(attested) === file.text;
+}
+
 /**
  * The kit for an app's file: the one the owner linked, or the kits repository's kit for the app's
  * repository. A kit for another file of the same repository doesn't apply.
@@ -230,13 +244,15 @@ export async function findKit(
   repo: string,
   path: string,
   kitLink: string | undefined,
+  directory: string | undefined,
   endpoints: GithubEndpoints = githubEndpoints(),
   fetcher: typeof fetch = fetch,
 ): Promise<FoundKit | null> {
-  const link = kitLink?.trim() || `https://github.com/${kitsRepo()}/blob/main/apps/${repo.toLowerCase()}.yaml`;
+  if (!kitLink && !directory) return null;
   let file;
   try {
-    file = await fetchSource(link, endpoints, fetcher);
+    file = kitLink ? await fetchSource(kitLink, endpoints, fetcher)
+      : await fetchDirectoryFile(directory!, `apps/${repo.toLowerCase()}.yaml`, endpoints, fetcher);
   } catch (error) {
     // No kit in the kits repository is normal; a link the owner gave must work.
     if (!kitLink && error instanceof SourceError) return null;
@@ -247,14 +263,13 @@ export async function findKit(
     if (!kitLink) return null;
     throw misfit(kit, repo, path);
   }
-  if (kit.agentAccess) {
+  if (kit.agentAccess && directory) {
     const digest = createHash("sha256").update(file.text).digest("hex");
-    // Only the maintained registry on its default review branch can attest to this exact file.
-    const reviewLink = `https://github.com/${kitsRepo()}/blob/main/reviews/sha256/${digest}.json`;
     try {
-      const review = await fetchSource(reviewLink, endpoints, fetcher);
+      const review = await fetchDirectoryFile(directory, `reviews/sha256/${digest}.json`, endpoints, fetcher);
       const record: unknown = JSON.parse(review.text);
-      if (isObject(record) && record.kit === file.pinnedLink && record.sha256 === digest && record.status === "reviewed") {
+      if (await matchesKitReview(record, digest, file, async (commit) =>
+        (await fetchPinnedFile(file.repo, file.path, commit, endpoints, fetcher)).text)) {
         kit.agentReview = { source: review.pinnedLink };
       }
     } catch (error) {

@@ -48,7 +48,7 @@ async function main(argv: string[]): Promise<number> {
   const opened = openForCommand(out);
   if (!opened) return EXIT.unexpected;
   const { config, database } = opened;
-  const apps = new AppsService(database.db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey });
+  const apps = new AppsService(database.db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey, kitsRepository: config.kitsRepository });
   const name = positionals[0]!;
   try {
     const publish = values.off

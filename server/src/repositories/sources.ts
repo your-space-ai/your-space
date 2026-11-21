@@ -2,7 +2,7 @@ import { posix } from "node:path";
 import { createHash } from "node:crypto";
 import type { Db } from "../db/client.ts";
 import { parseLink, type SourceFile } from "../apps/github.ts";
-import { kitFromFile, KitError, kitsRepo, type FoundKit } from "../apps/kits.ts";
+import { kitFromFile, KitError, matchesKitReview, type FoundKit } from "../apps/kits.ts";
 import type { ReplacementSnapshot } from "../apps/replacement.ts";
 import { AppError, type AppsService } from "../apps/service.ts";
 import { publicGithubClient, type GithubClient, type GithubRepo } from "./github.ts";
@@ -72,8 +72,9 @@ export function previewSnapshot(apps: AppsService, snap: Snapshot) {
   return preview(apps, snap, found);
 }
 
-export async function catalog(reader: Reader) {
-  const registry = await reader.repo(kitsRepo());
+export async function catalog(reader: Reader, directory?: string) {
+  if (!directory) return { commit: null, kits: [] };
+  const registry = await reader.repo(directory);
   const commit = await reader.resolve(registry.id, registry.defaultBranch);
   const paths = await reader.kitPaths(registry.id, commit);
   return {
@@ -134,16 +135,18 @@ async function targetRepo(
   }
 }
 
-async function attachReview(reader: Reader, found: FoundKit, text: string) {
-  if (!found.kit.agentAccess) return;
-  const digest = createHash("sha256").update(text).digest("hex");
+async function attachReview(reader: Reader, found: FoundKit, file: Awaited<ReturnType<typeof linkedKit>>, directory?: string) {
+  if (!directory || !found.kit.agentAccess) return;
+  const digest = createHash("sha256").update(file.content).digest("hex");
   const path = "reviews/sha256/" + digest + ".json";
   try {
-    const registry = await reader.repo(kitsRepo());
-    const commit = await reader.resolve(registry.id, "main");
+    const registry = await reader.repo(directory);
+    const commit = await reader.resolve(registry.id, registry.defaultBranch);
     const record = JSON.parse((await reader.file(registry.id, path, commit)).content);
-    if (record?.kit === found.source && record?.sha256 === digest && record?.status === "reviewed")
+    if (await matchesKitReview(record, digest, { repo: file.repo.fullName, path: file.path, commit: file.commit, text: file.content },
+      async (attested) => (await reader.file(file.repo.id, file.path, attested)).content)) {
       found.kit.agentReview = { source: link(registry.fullName, commit, path) };
+    }
   } catch (error) {
     if (!(error instanceof AppError || error instanceof SyntaxError)) throw error;
   }
@@ -175,7 +178,7 @@ export async function previewKitUrl(
   }
   const compose = await sourceReader.file(sourceRepo.id, composePath, commit);
   found.source = link(kit.repo.fullName, kit.commit, kit.path);
-  await attachReview(reader, found, kit.content);
+  await attachReview(reader, found, kit, apps.config.kitsRepository);
   return preview(
     apps,
     {

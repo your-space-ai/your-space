@@ -2,7 +2,9 @@
 
 The first release serves one owner. They can download the macOS app to set up a local Docker workspace or connect to an existing server. They can also run a headless Docker server and use a browser. In the selected workspace they install apps using kits and decide what their AI agent can do.
 
-## Pre-public: Core Experience and First Working Version
+The first publication milestone is a quiet source preview with a Docker quickstart. The checklist below tracks the first packaged release. [Source publication checks](public-release-readiness.md#early-source-publication-building-in-public)
+
+## Core Experience and First Packaged Release
 
 ### Overview
 
@@ -21,7 +23,7 @@ The first release serves one owner. They can download the macOS app to set up a 
   - Pick one of three starter themes, edit colors and fonts, and share a custom theme file.
 - Build and customize a personal workspace with an agent (011)
   - Provision the workspace, scaffold an app and choose its Home read roles.
-  - Manage GitHub sources, install from a kit URL or directory, and confirm an in-place deployment.
+  - Manage GitHub sources, install from a kit URL or an optional directory, and confirm an in-place deployment.
 - Arrange installed apps (012)
   - Resize app panes, open named views and reorder app shortcuts in the sidebar.
 - Prepare the public release (gate)
@@ -33,6 +35,7 @@ The first release serves one owner. They can download the macOS app to set up a 
 - Owner setup, sign-in, recovery, and durable workspace identity shipped in [001](../specs/001-workspace-owner-access/tasks.md).
 - Independent app installation, isolation, and web panes shipped in [002](../specs/002-install-an-app/tasks.md). Subsequent changes added local Compose files, published-app framing, and complete removal ([PR 54](https://github.com/your-space-ai/your-space/pull/54), [PR 57](https://github.com/your-space-ai/your-space/pull/57)).
 - The [003 CLI](../specs/003-install-with-the-cli/tasks.md) includes init/start, stop/status/logs, owner recovery, secret management, and domain/proxy configuration. Stored app settings are [encrypted](../specs/009-encrypt-stored-data/tasks.md). Real-domain and release-host checks remain open.
+- The [Mac launcher](../specs/008-desktop-entry/spec.md), [portable themes](../specs/010-personal-themes/spec.md), [agent setup and GitHub-backed apps](../specs/011-agent-workspace/spec.md), and [resizable saved views](../specs/012-multi-app-layouts/spec.md) are on main. Clean installation of the signed desktop downloads remains a release check.
 
 The [previous detailed delivery checklist](https://github.com/your-space-ai/your-space/blob/eb352241/docs/roadmap.md) preserves dated completions and their implementation PRs. Below, a check means the whole release outcome has been demonstrated.
 
@@ -228,7 +231,7 @@ These journeys keep their original numbers. Their order after publication is ope
 
 - [ ] **Additional discovery sources**
 
-  Private GitHub installation, direct kit URLs and the maintained kit directory moved to pre-public journey 011 on 2026-11-21. Later discovery work includes custom and private directories and preserving update routing when a directory changes.
+  Journey 011 supports private GitHub sources, direct kit URLs and one optional operator-selected GitHub directory. Later discovery work includes combining multiple directories and preserving update routing when a directory changes.
 
 - [ ] **Workspace MCP endpoint**
 

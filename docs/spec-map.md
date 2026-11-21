@@ -10,7 +10,7 @@ The [roadmap](roadmap.md) follows one owner from a download to a useful action b
 | [005 · Let my agent work for me](../specs/005-owner-agent/spec.md) | Web and CLI tests cover identity, kit-defined roles, server-held credentials, approvals, denial and revocation. A live external agent completed an approved read. Creating and editing recurring records in the independent app still require verification. |
 | [008 · Open a workspace from the macOS desktop](../specs/008-desktop-entry/spec.md) | Download the native app. Use a detected or owner-selected Docker engine for local setup, with guidance when Docker is missing, or connect to an existing server without local Docker. Apply an installation kit from the selected dashboard. |
 | [010 · Make Your Space look like yours](../specs/010-personal-themes/spec.md) | Pick, customize and share a theme. Store workspace appearance on its server and launcher appearance on the device. |
-| [011 · Build and customize a personal workspace with an agent](../specs/011-agent-workspace/spec.md) | Agent setup, portable app authoring, Home read grants, managed GitHub repos, a kit directory and owner-confirmed replacement. |
+| [011 · Build and customize a personal workspace with an agent](../specs/011-agent-workspace/spec.md) | Agent setup, portable app authoring, Home read grants, managed GitHub repos, an optional operator-selected kit directory and owner-confirmed replacement. |
 | [012 · Arrange apps and return to a saved view](../specs/012-multi-app-layouts/spec.md) | Resize installed apps in four arrangements, share the composition, save named views and order app shortcuts. |
 | Release gate | Repeat the combined journey against release artifacts and complete the [publication review](public-release-readiness.md). |
 

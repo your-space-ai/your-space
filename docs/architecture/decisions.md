@@ -22,6 +22,8 @@ One useful action in a real connected app, with attribution, denial, and revocat
 
 **Owner update (2026-11-21).** The first public release also requires a downloadable macOS Electron app. On first launch the owner chooses between setting up a local workspace and connecting to an existing server by URL. Local setup detects a Docker engine, lets the owner override that choice, guides them through installation or startup if needed, and drives the existing Your Space CLI and owner setup. Connecting to a server works on a Mac without Docker. Both paths open the selected server's dashboard, where the owner can review and apply installation kits. The headless Docker and browser paths still ship. Journey [008](../../specs/008-desktop-entry/spec.md) owns desktop entry and packaging. Journey 005 still owns agent identity, grants and approvals. Windows and Linux desktop downloads, a bundled engine or VM, and the remaining desktop lifecycle features follow publication.
 
+**Source preview (2026-11-21).** Prepare a quiet source preview with a Docker quickstart before the first tagged product release. The owner reviews exposure before changing repository visibility. The Mac download, clean-install checks and marketing launch follow separately. Public pull requests use ordinary CI without the maintainer’s subscription-backed reviewer.
+
 ### Portable workspace appearance
 
 The owner chooses from three starters, customizes colors and local font families, and imports or exports versioned theme files. The dashboard uses its selected server’s appearance. The disconnected Mac launcher stores its own device preference and reads the same file format. Theme data controls visual presentation. The server keeps roles, approvals, installed apps and their permissions independent of theme selection. [Journey 010](../../specs/010-personal-themes/spec.md)
@@ -490,7 +492,7 @@ Dependency selection must consider actual licenses, including bundled components
 - Your Space itself (server, web client, CLI, and desktop app) is licensed under AGPL-3.0 (`AGPL-3.0-only`). Anyone may self-host and modify it; anyone who runs a modified version as a network service must publish their changes.
 - The SDKs are licensed under MIT, so apps can use any license. Apps are separate programs that integrate through APIs and are not covered by the core's license. (Apache-2.0 superseded 2026-11-16; see below.)
 - SDK code never imports or copies code from the AGPL parts of the repository; SDKs reach Your Space only through its public APIs and contracts. Each SDK package states its own MIT license.
-- "Your Space" is protected as a trademark, so others cannot offer services under the name. A short trademark policy explains how forks may and may not use the name. getyourspace.ai is the project domain.
+- The project uses the name Your Space and the domain getyourspace.ai. Trademark filing and a policy for forks remain open.
 - Outside contributions are accepted under the Developer Certificate of Origin (DCO): contributors sign off each commit and keep their copyright, and the code they contribute is licensed under the license of the part it changes. (Contributor license agreement superseded 2026-11-16; see below.)
 - Code specific to the managed service, such as billing, provisioning, and multi-tenant operations, lives in a separate private repository and integrates with the core through its APIs.
 - The license, trademark, and contributor agreement are in place before publication, after review by a lawyer.
@@ -533,7 +535,7 @@ of technical parts. The [glossary](../glossary.md) records the terms.
 
 ## Accepted Future App Distribution Direction
 
-**Current scope (2026-11-21).** Journey 011 includes direct kit URLs, the maintained kit directory, private GitHub sources, and owner-confirmed compatible replacements. Journey 006 covers broader updates and backup-based data rollback after publication. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
+**Current scope (2026-11-21).** Journey 011 includes direct kit URLs, an optional operator-selected GitHub kit directory, private GitHub sources, and owner-confirmed compatible replacements. Journey 006 covers broader updates and backup-based data rollback after publication. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
 
 - For the first public release, an owner installs a compatible app by pasting the GitHub URL of the app's deployment file in a public repository into Your Space. (Since 2026-11-14 that file is the app's own Compose file; see below.)
 - The owner can connect GitHub to install authorized private repositories in 011.
@@ -610,8 +612,9 @@ kits. Your Space reads an app's own Compose file and applies rules that hold for
 of requiring a Your Space-specific deployment file with an `x-your-space` section. This supersedes
 the 2026-10-31 decision to put app details in an `x-your-space` section and the bullets above that
 the developer supplies a separate deployment file. Help a particular app needs comes from an
-installation kit that Your Space's project maintains in a separate repository
-(`your-space-ai/your-space-app-kits`): which service is the interface, which values to generate rather than
+installation kit supplied by the owner or discovered in their optional `YS_KITS_REPOSITORY`
+GitHub directory. Each fresh installation starts without a directory. Kits declare which service
+is the interface, which values to generate rather than
 take from published defaults, values Your Space works out itself such as the app's own address,
 which outbound hosts it needs, its limits, and whether it can run in a pane. A kit refers to the
 app's files by link and exact commit and never copies them, so the app's license is untouched. Your

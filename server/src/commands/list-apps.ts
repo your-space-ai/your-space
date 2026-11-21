@@ -13,7 +13,7 @@ async function main(argv: string[]): Promise<number> {
   const opened = openForCommand(out);
   if (!opened) return EXIT.unexpected;
   const { config, database } = opened;
-  const apps = new AppsService(database.db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey });
+  const apps = new AppsService(database.db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey, kitsRepository: config.kitsRepository });
   try {
     const { apps: list, retained } = await apps.list();
     const details = await Promise.all(list.map((a) => apps.detail(a.name)));

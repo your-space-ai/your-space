@@ -216,7 +216,7 @@ export class GithubClient {
     if (data.length !== result.size || data.length > limit) throw badResponse();
     let content: string;
     try {
-      content = new TextDecoder("utf-8", { fatal: true }).decode(data);
+      content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(data);
     } catch {
       throw new AppError(422, "unsupported_repository_file", "Choose a UTF-8 text file.");
     }

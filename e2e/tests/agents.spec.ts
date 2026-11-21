@@ -160,7 +160,7 @@ test("upgrading a running installation keeps its app ID and volume and installs 
   const originalVolume = await volume();
   expect(originalVolume).toBeTruthy();
 
-  const kit = readFileSync(new URL("../github/fixtures/your-space-ai/your-space-app-kits/apps/ys-fixtures/records.yaml", import.meta.url), "utf8");
+  const kit = readFileSync(new URL("../github/fixtures/ys-fixtures/catalog/apps/ys-fixtures/records.yaml", import.meta.url), "utf8");
   const applied = await composeWithInput([...operator, "--kit", "-", "--expect-installation", before.installation, "--expect-kit", before.kitSource], kit);
   expect(JSON.parse(applied.stdout)).toMatchObject({ ok: true, appId: before.appId, kitVersion: 2, runtime: "refreshed" });
   const after = await inspect();

@@ -71,7 +71,7 @@ Community leaders will follow these Community Impact Guidelines in determining t
 
 ## Attribution
 
-This Code of Conduct is adapted from the [Contributor Covenant][homepage], version 2.1, available at [https://www.contributor-covenant.org/version/2/1/code_of_conduct.html][v2.1].
+This Code of Conduct is adapted from the [Contributor Covenant][homepage], version 2.1, available at [https://www.contributor-covenant.org/version/2/1/code_of_conduct.html][v2.1], and licensed under [CC BY 4.0](https://github.com/EthicalSource/contributor_covenant/blob/2.1/LICENSE.md).
 
 Community Impact Guidelines were inspired by [Mozilla's code of conduct enforcement ladder][Mozilla CoC].
 

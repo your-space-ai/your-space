@@ -173,9 +173,10 @@ describe("apps API", () => {
     server = await startServer(t.db, {
       apps: {
         runtime,
+        kitsRepository: "ys-fixtures/catalog",
         fetch: fakeGithub({
           "ys-fixtures/whoami/compose.yaml": WHOAMI,
-          "your-space-ai/your-space-app-kits/apps/ys-fixtures/whoami.yaml": KIT,
+          "ys-fixtures/catalog/apps/ys-fixtures/whoami.yaml": KIT,
           "ys-fixtures/plain/compose.yaml": WHOAMI,
         }),
       },
@@ -230,7 +231,7 @@ describe("apps API", () => {
     const review = JSON.parse(text);
     expect(review).toMatchObject({ name: "whoami", title: "Who Am I", ok: true, origin: `http://whoami.${new URL(server.publicUrl).host}`, outbound: ["example.com"], interface: { service: "web", port: 80 } });
     expect(review.source).toMatchObject({ repo: "ys-fixtures/whoami", commit: COMMIT });
-    expect(review.kit.source).toContain(`your-space-app-kits/blob/${COMMIT}/apps/ys-fixtures/whoami.yaml`);
+    expect(review.kit.source).toContain(`ys-fixtures/catalog/blob/${COMMIT}/apps/ys-fixtures/whoami.yaml`);
     expect(review.settings.find((s: { name: string }) => s.name === "API_TOKEN")).toMatchObject({ secret: true, generated: true, set: true });
     expect(text).not.toContain("published-default-token");
     expect(review.warning).toMatch(/trusts it/);
