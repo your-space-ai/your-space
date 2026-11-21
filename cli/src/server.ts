@@ -3,15 +3,15 @@
 import { CliError, type ErrorCode } from "./errors.ts";
 import type { Compose } from "./compose.ts";
 
-export type ServerCommand = "create-owner" | "reset-link" | "show-secrets" | "show-owner" | "list-apps";
+export type ServerCommand = "create-owner" | "reset-link" | "show-secrets" | "show-owner" | "list-apps" | "upgrade-agent-kit";
 
 export interface ServerResult {
   status: number;
   json: Record<string, unknown> & { ok?: boolean; error?: string; message?: string };
 }
 
-export async function serverCommand(compose: Compose, name: ServerCommand, args: string[] = []): Promise<ServerResult> {
-  const ran = await compose.run(["exec", "-T", "server", name, ...args, "--json"]);
+export async function serverCommand(compose: Compose, name: ServerCommand, args: string[] = [], input?: string): Promise<ServerResult> {
+  const ran = await compose.run(["exec", "-T", "server", name, ...args, "--json"], { input });
   try {
     return { status: ran.code, json: JSON.parse(ran.stdout.trim().split("\n").at(-1) ?? "") };
   } catch {
@@ -25,6 +25,11 @@ export async function serverCommand(compose: Compose, name: ServerCommand, args:
 
 const CODES: Record<string, ErrorCode> = {
   usage: "invalid_input",
+  kit_file: "kit_file",
+  invalid_kit: "invalid_kit",
+  app_not_found: "app_not_found",
+  upgrade_conflict: "upgrade_conflict",
+  interface_refresh_failed: "interface_refresh_failed",
   invalid_input: "invalid_input",
   no_owner: "no_owner",
   owner_exists: "owner_exists",

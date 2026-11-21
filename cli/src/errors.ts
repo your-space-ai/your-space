@@ -5,6 +5,11 @@ export const EXIT = { ok: 0, usage: 1, state: 2, unreachable: 3, unexpected: 4 }
 const STATUS = {
   usage: EXIT.usage,
   agent_request_failed: EXIT.state,
+  kit_file: EXIT.state,
+  invalid_kit: EXIT.state,
+  app_not_found: EXIT.state,
+  upgrade_conflict: EXIT.state,
+  interface_refresh_failed: EXIT.unreachable,
   gateway_unavailable: EXIT.unreachable,
   invalid_input: EXIT.usage,
   cancelled: EXIT.usage,
