@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
+    <title>Your Space</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script src="./launcher.js" defer></script>
+  </head>
+  <body>
+    <header><span class="brand-mark" aria-hidden="true"></span>Your Space</header>
+    <main>
+      <button type="button" id="back" class="back" hidden><span aria-hidden="true">‹</span> Back</button>
+      <section id="welcome" aria-labelledby="welcome-title">
+        <h1 id="welcome-title" tabindex="-1">Open your workspace</h1>
+        <p class="intro">Choose where to run your personal dashboard.</p>
+        <div class="choices">
+          <button type="button" id="local-choice" class="choice">
+            <span class="choice-icon computer" aria-hidden="true"></span>
+            <span><strong>Run on this Mac</strong><small>Start a local workspace with Docker.</small></span>
+            <span class="chevron" aria-hidden="true">›</span>
+          </button>
+          <button type="button" id="remote-choice" class="choice">
+            <span class="choice-icon server" aria-hidden="true"></span>
+            <span><strong>Connect to a server</strong><small>Open a workspace you already run.</small></span>
+            <span class="chevron" aria-hidden="true">›</span>
+          </button>
+        </div>
+      </section>
+      <section id="local" hidden aria-labelledby="local-title">
+        <h1 id="local-title" tabindex="-1">Run on this Mac</h1>
+        <p class="intro">Your Space uses Docker to run your dashboard and its apps.</p>
+        <form id="local-form">
+          <div class="surface">
+            <div class="engine-summary">
+              <span class="choice-icon computer" aria-hidden="true"></span>
+              <div><strong id="engine-label">Local Docker engine</strong><small id="endpoint"></small></div>
+            </div>
+            <details id="engine-details">
+              <summary>Choose another engine</summary>
+              <label for="engine">Local Docker context</label>
+              <select id="engine"></select>
+              <div id="socket-field" hidden>
+                <label for="socket">Unix socket path</label>
+                <input id="socket" type="text" placeholder="/var/run/docker.sock" autocomplete="off" spellcheck="false">
+              </div>
+              <small>Applies only to this Your Space installation.</small>
+            </details>
+          </div>
+          <p id="engine-guidance" hidden>On a Mac you can use OrbStack, Colima or Docker Desktop with the Docker CLI and Compose.</p>
+          <div class="actions">
+            <button type="submit" class="primary" id="start">Open local workspace</button>
+            <button type="button" class="secondary" id="retry">Check again</button>
+            <button type="button" class="text-action" id="guide" hidden>Docker Desktop setup guide</button>
+          </div>
+        </form>
+      </section>
+      <section id="remote" hidden aria-labelledby="remote-title">
+        <h1 id="remote-title" tabindex="-1">Connect to a server</h1>
+        <p class="intro">Use your workspace’s HTTPS address. A workspace on this Mac can also use HTTP on localhost.</p>
+        <form id="remote-form">
+          <label for="address">Server address</label>
+          <input id="address" type="url" maxlength="2048" placeholder="https://space.example.com" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" required>
+          <div class="actions"><button type="submit" class="primary">Connect</button></div>
+        </form>
+      </section>
+      <section id="owner" hidden aria-labelledby="owner-title">
+        <h1 id="owner-title" tabindex="-1">Create your owner account</h1>
+        <p class="intro">Your local workspace is ready. Choose your sign-in name, then set a password in the dashboard.</p>
+        <form id="owner-form">
+          <label for="owner-name">Your name</label>
+          <input id="owner-name" autocomplete="name" maxlength="100" required>
+          <label for="username">Username</label>
+          <input id="username" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" minlength="3" maxlength="30" required aria-describedby="username-help">
+          <small id="username-help">Use 3–30 letters, numbers, underscores or periods. Place periods between other characters.</small>
+          <div class="actions"><button type="submit" class="primary">Continue to password setup</button></div>
+        </form>
+      </section>
+      <div id="feedback">
+        <p id="status" role="status" aria-live="polite"></p>
+        <p id="problem" role="alert"></p>
+      </div>
+    </main>
+  </body>
+</html>

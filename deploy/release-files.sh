@@ -14,7 +14,7 @@ trap 'rm -rf "$work"' EXIT
 
 cp -r "$deploy/compose.yaml" "$deploy/stack.yaml" "$deploy/modes" "$work/"
 cp "$deploy/.env.example" "$work/env.example"
-sed -i "s/\${YS_VERSION:-latest}/\${YS_VERSION:-$version}/g" "$work/stack.yaml"
+sed "s/\${YS_VERSION:-latest}/\${YS_VERSION:-$version}/g" "$deploy/stack.yaml" > "$work/stack.yaml"
 # Every Your Space image: the secrets step, Caddy, the server and the runtime manager.
 images=$(grep -c "YS_VERSION:-$version}" "$work/stack.yaml")
 if [ "$images" -ne 4 ]; then echo "Expected 4 images pinned to $version in stack.yaml, found $images." >&2; exit 1; fi

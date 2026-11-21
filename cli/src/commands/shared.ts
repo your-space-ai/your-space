@@ -192,15 +192,16 @@ export async function gather(
   installation: Installation,
   compose: Compose,
   engine: Engine | null,
-  extra: { link?: Link; certificate?: Certificate | null } = {},
+  extra: { link?: Link; certificate?: Certificate | null; requireRunning?: boolean } = {},
 ): Promise<Summary> {
   const setup = installation.setup();
   const services = await compose.ps();
   const running = services.some((s) => s.name === "server" && s.state === "running");
+  if (extra.requireRunning && !running) throw new CliError("not_running", "This installation is not running.");
   let owner: Owner | null = null;
   let apps: App[] | null = null;
   if (running) {
-    owner = await showOwner(compose).catch(() => null);
+    owner = extra.requireRunning ? await showOwner(compose) : await showOwner(compose).catch(() => null);
     apps = await listApps(compose).catch(() => null);
   }
   let certificate = extra.certificate ?? null;

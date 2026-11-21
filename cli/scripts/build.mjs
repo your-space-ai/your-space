@@ -7,7 +7,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const { version } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const { version: packageVersion } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const version = process.argv[2] ?? packageVersion;
 const outfile = join(root, "dist", "your-space.cjs");
 
 const result = await build({

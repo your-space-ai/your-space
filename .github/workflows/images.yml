@@ -117,3 +117,10 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
           PRERELEASE: ${{ github.event.release.prerelease }}
+
+  desktop:
+    if: github.event_name == 'release'
+    needs: release-files
+    permissions:
+      contents: write
+    uses: ./.github/workflows/macos-desktop.yml

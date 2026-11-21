@@ -8,16 +8,18 @@
     "runtime",
     "cli",
     "web",
-    "e2e"
+    "e2e",
+    "desktop"
   ],
   "engines": {
     "node": ">=26"
   },
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test --workspace server && npm test --workspace runtime && npm test --workspace cli",
+    "test": "npm test --workspace server && npm test --workspace runtime && npm test --workspace cli && npm test --workspace desktop",
     "build": "npm run build --workspace web && npm run build --workspace cli",
-    "e2e": "npm test --workspace e2e"
+    "e2e": "npm test --workspace e2e",
+    "desktop": "npm start --workspace desktop"
   },
   "devDependencies": {
     "typescript": "^7.0.2"

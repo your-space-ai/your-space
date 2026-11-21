@@ -1,0 +1,123 @@
+name: macOS desktop
+
+on:
+  pull_request:
+    paths:
+      - desktop/**
+      - cli/**
+      - deploy/**
+      - package-lock.json
+      - package.json
+      - .github/workflows/macos-desktop.yml
+      - .github/workflows/images.yml
+  workflow_dispatch:
+  # Called by Images only after that release's server images and files are available.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package and open (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - name: Build the candidate and launch the packaged entry
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=${RELEASE_TAG#v}
+          if [[ -z $version ]]; then version=$(node -p 'require("./desktop/package.json").version'); fi
+          desktop/scripts/package-macos.sh "$version" "$RUNNER_TEMP/packages"
+          name="your-space-macos-${{ matrix.arch }}-$version-preview.zip"
+          (cd "$RUNNER_TEMP/packages" && shasum -a 256 -c "$name.sha256")
+          ditto -x -k "$RUNNER_TEMP/packages/$name" "$RUNNER_TEMP/open"
+          app="$RUNNER_TEMP/open/Your Space.app"
+          codesign --verify --deep --strict "$app"
+          (cd "$app/Contents/Resources/release" && shasum -a 256 -c SHA256SUMS)
+          test "$("$app/Contents/Resources/bin/your-space" --version)" = "$version"
+          YS_DESKTOP_EXECUTABLE="$app/Contents/MacOS/Your Space" npm run test:native -w desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-preview-${{ matrix.arch }}
+          path: ${{ runner.temp }}/packages/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 5
+
+  notarize:
+    if: github.event_name == 'release'
+    needs: package
+    runs-on: [self-hosted, macOS, your-space-release-signing]
+    environment: macos-release
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: macos-preview-*
+          path: ${{ runner.temp }}/macos-input-${{ github.run_id }}-${{ github.run_attempt }}
+          merge-multiple: true
+      - name: Sign, notarize, staple and assess both archives
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          MACOS_SIGN_IDENTITY: ${{ vars.MACOS_SIGN_IDENTITY }}
+          MACOS_NOTARY_PROFILE: ${{ vars.MACOS_NOTARY_PROFILE }}
+        run: |
+          input="$RUNNER_TEMP/macos-input-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          out="$RUNNER_TEMP/macos-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          for arch in arm64 x64; do
+            name="your-space-macos-$arch-${RELEASE_TAG#v}-preview.zip"
+            (cd "$input" && shasum -a 256 -c "$name.sha256")
+            desktop/scripts/notarize-macos.sh "$input/$name" "$out"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notarized-macos
+          path: ${{ runner.temp }}/macos-release-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 5
+      - name: Clean the protected runner's artifact copies
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/macos-input-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+                 "$RUNNER_TEMP/macos-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+
+  attach:
+    if: github.event_name == 'release'
+    needs: notarize
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: notarized-macos
+          path: release
+      - name: Attach the assessed downloads to the existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          (cd release && sha256sum -c -- *.sha256)
+          gh release upload "$TAG" release/*.zip release/*.sha256 --repo "$GITHUB_REPOSITORY"

@@ -16,6 +16,7 @@ export interface StartFlags {
   open: boolean;
   ignoreChecks?: boolean;
   newSecrets?: boolean;
+  deferOwner?: boolean;
 }
 
 /** How long `start` waits for a domain's certificate, in seconds. Caddy keeps trying afterwards. */
@@ -31,7 +32,7 @@ export async function start(ui: Ui, workdir: string, flags: StartFlags): Promise
   await startOrRecover(ui, compose, flags.newSecrets === true);
 
   let link: Link | undefined;
-  if ((await showOwner(compose)) === null) link = await createOwner(ui, compose, flags);
+  if ((await showOwner(compose)) === null && !flags.deferOwner) link = await createOwner(ui, compose, flags);
   const certificate = await waitForCertificate(ui, compose, setup, CERTIFICATE_WAIT);
 
   const summary = await gather(installation, compose, engine, { link, certificate });

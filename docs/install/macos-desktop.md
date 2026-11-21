@@ -1,0 +1,17 @@
+# Download and run Your Space on a Mac
+
+On a product release with macOS downloads, choose the zip for your Mac from the [project releases](https://github.com/your-space-ai/your-space/releases). Use `arm64` for Apple Silicon and `x64` for Intel. Download its matching `.sha256` file, run `shasum -a 256 -c <filename>.sha256` in the downloads folder, expand the zip, and move **Your Space** to Applications. The product download carries an Apple Developer ID signature and Apple's notarization ticket.
+
+Choose **local setup** to run the server on this Mac. Set up or start a Docker-compatible engine and Docker Compose if prompted, or select a different local engine. Complete owner setup, then open the workspace dashboard. While the Mac is asleep or off, its workspace is unavailable to other devices and agents. Owners who choose Docker Desktop should check its [installation and licensing terms](https://docs.docker.com/desktop/setup/install/mac-install/).
+
+Choose **connect to a server** to use an existing workspace without installing Docker on this Mac. Enter the HTTPS address supplied by its operator and sign in as usual. In either workspace, review and confirm an app's installation kit in the dashboard. The selected server runs the app. The [CLI and headless installation guide](README.md) covers server setup, owner recovery and proxies.
+
+## Build and verify a private candidate
+
+On the target Mac, from a clean checkout with Node 26 and npm installed, run `npm ci` and then `desktop/scripts/package-macos.sh 0.1.0 /tmp/your-space-build`, substituting the candidate version. A native build uses the existing CLI and Compose files from the same checkout. A local workspace also needs Your Space images of that exact version available to its Docker engine. The resulting `-preview.zip` has an ad-hoc signature for development. It may be blocked by Gatekeeper if downloaded. Follow the public-download flow above only for a notarized release.
+
+For a source run, first build the CLI with `npm run build -w cli`, then run `deploy/release-files.sh 0.1.0 desktop/dist/release` with the same version. In that folder run `shasum -a 256 your-space.tar.gz > SHA256SUMS`. Start the launcher with `npm start -w desktop`. Set `YS_DESKTOP_RELEASE_DIR` to an absolute directory if the matching files are elsewhere.
+
+The macOS desktop workflow builds and opens the archived app on Apple Silicon and Intel runners. A PR or manual run uploads short-lived workflow artifacts. A published project release triggers signing only after the versioned images and install files are available. The protected `macos-release` environment uses a dedicated macOS signing runner labelled `your-space-release-signing`. Configure its pre-authorized Developer ID Application identity and notarytool keychain profile through the environment variables `MACOS_SIGN_IDENTITY` and `MACOS_NOTARY_PROFILE` in GitHub environment settings (Variables). Restrict the runner group to the reviewed release workflow on protected release refs. The ordinary build jobs require neither signing authority nor notarization credentials.
+
+The release job re-signs nested code and the app with hardened runtime and timestamps, checks the Apple Developer ID requirement, submits the app to Apple, staples the ticket, then validates the ticket, signature and Gatekeeper assessment on a fresh extraction of the distribution zip. Attachment to the existing GitHub release occurs only after both archives pass. The [distribution notices](../../desktop/THIRD-PARTY.md) identify pinned upstream artifacts and source.

@@ -1,0 +1,17 @@
+{
+  "name": "@your-space/desktop",
+  "productName": "Your Space",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "src/main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.mjs",
+    "test:native": "node --test tests/native-smoke.mjs"
+  },
+  "devDependencies": {
+    "electron": "45.4.1"
+  }
+}

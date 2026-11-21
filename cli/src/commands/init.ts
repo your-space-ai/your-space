@@ -11,7 +11,7 @@ import type { Ui } from "../ui.ts";
 import { VERSION } from "../version.ts";
 import { engineFor, rememberSocket } from "./shared.ts";
 
-export async function init(ui: Ui, workdir: string, flags: SetupFlags): Promise<void> {
+export async function init(ui: Ui, workdir: string, flags: SetupFlags, releaseDir?: string): Promise<void> {
   const folder = resolve(workdir);
   ui.intro("Your Space");
   if (Installation.isOne(folder)) {
@@ -29,7 +29,11 @@ export async function init(ui: Ui, workdir: string, flags: SetupFlags): Promise<
   const engine = await engineFor(ui, installation);
   const setup = await chooseSetup(ui, flags, { kind: "this-machine", port: 80 });
 
-  await ui.step(`Downloading Your Space ${VERSION}`, `Downloaded and checked Your Space ${VERSION}`, () => fetchRelease(VERSION, folder));
+  await ui.step(
+    releaseDir ? `Checking bundled Your Space ${VERSION}` : `Downloading Your Space ${VERSION}`,
+    `Checked Your Space ${VERSION}`,
+    () => fetchRelease(VERSION, folder, releaseDir),
+  );
   if (!existsSync(installation.envPath)) copyFileSync(join(folder, "env.example"), installation.envPath);
   const env = installation.writeEnv(setupLines(setup));
   rememberSocket(ui, installation, engine);
