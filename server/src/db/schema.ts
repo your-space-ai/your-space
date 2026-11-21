@@ -1,4 +1,5 @@
 // Your Space's own tables (T011, data-model.md): whether the owner exists, actors, and events.
+import type { Theme } from "../../../appearance/theme.mjs";
 import type { AgentAccess } from "../apps/agent-kit.ts";
 import { sql } from "drizzle-orm";
 import { boolean, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
@@ -299,3 +300,11 @@ export const agentRequest = pgTable(
     index("agent_denied_samples").on(t.agentId, t.createdAt.desc(), t.id.desc()).where(sql`${t.status} = 'denied'`),
   ],
 );
+
+/** The owner's saved themes share one revision across edits and selection. An absent row uses the platform default. */
+export const workspaceAppearance = pgTable("workspace_appearance", {
+  workspaceId: uuid("workspace_id").primaryKey().references(() => organization.id, { onDelete: "cascade" }),
+  revision: integer("revision").notNull(),
+  activeId: text("active_id").notNull(),
+  themes: jsonb("themes").$type<{ id: string; theme: Theme }[]>().notNull(),
+});

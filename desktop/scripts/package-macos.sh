@@ -35,6 +35,10 @@ app="$work/Your Space.app"
 mv electron/Electron.app "$app"
 resources="$app/Contents/Resources"
 mkdir -p "$resources/app/desktop" "$resources/bin" "$resources/licenses" "$resources/release"
+# Keep shared theme code and artwork inside the sealed archive at their source-relative paths.
+mkdir -p "$resources/app/appearance" "$resources/app/web/public/themes"
+cp "$root/appearance/theme.mjs" "$resources/app/appearance/"
+cp "$root/web/public/themes/"{canopy,tide,ember}.webp "$resources/app/web/public/themes/"
 rm "$resources/default_app.asar"
 # Keep only product assets, excluding tooling, developer files and test fixtures.
 cp "$root/desktop/package.json" "$resources/app/"

@@ -9,6 +9,7 @@ The [roadmap](roadmap.md) follows one owner from a download to a useful action b
 | [003 · Run with the CLI](../specs/003-install-with-the-cli/spec.md) | Download and run on existing Docker locally or on a server. Verify localhost, an existing proxy, and a real domain. |
 | [005 · Let my agent work for me](../specs/005-owner-agent/spec.md) | Web and CLI tests cover identity, kit-defined roles, server-held credentials, approvals, denial and revocation. A live external agent completed an approved read. Creating and editing recurring records in the independent app still require verification. |
 | [008 · Open a workspace from the macOS desktop](../specs/008-desktop-entry/spec.md) | Download the native app. Use a detected or owner-selected Docker engine for local setup, with guidance when Docker is missing, or connect to an existing server without local Docker. Apply an installation kit from the selected dashboard. |
+| [010 · Make Your Space look like yours](../specs/010-personal-themes/spec.md) | Pick, customize and share a theme. Store workspace appearance on its server and launcher appearance on the device. |
 | Release gate | Repeat the combined journey against release artifacts and complete the [publication review](public-release-readiness.md). |
 
 001–003 supply the foundation for 005. One app must implement the role and action contract needed for 005. Acceptance covers listing, creating and editing a synthetic record in an independent app through kit-defined routes. An app that only offers a browser sign-in can still appear on the dashboard.

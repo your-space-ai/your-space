@@ -1,5 +1,6 @@
 // Run with node --test desktop/tests/launcher.browser.mjs after installing e2e's Chromium.
 import assert from "node:assert/strict";
+import { starterThemes, themeVariables } from "../../appearance/theme.mjs";
 import { createRequire } from "node:module";
 import { after, before, test } from "node:test";
 
@@ -23,12 +24,16 @@ async function launch(t, handlers) {
   page.on("pageerror", error => errors.push(error.message));
   t.after(() => assert.deepEqual(errors, []));
   await page.exposeFunction("testDispatch", (method, arg) => {
+    if (method === "appearance" && !handlers.appearance) return {
+      selected: "canopy",
+      themes: starterThemes.map(({id, theme}) => ({id, name: theme.name, scheme: theme.scheme, variables: themeVariables(theme)})),
+    };
     calls.push({ method, arg });
     if (!Object.hasOwn(handlers, method)) throw new Error("Unexpected bridge call");
     return handlers[method](arg);
   });
   await page.addInitScript(() => {
-    window.yourSpace = Object.fromEntries(["engines", "start", "createOwner", "connect", "openDockerGuide"]
+    window.yourSpace = Object.fromEntries(["appearance", "previewTheme", "saveTheme", "engines", "start", "createOwner", "connect", "openDockerGuide"]
       .map(method => [method, arg => window.testDispatch(method, arg)]));
   });
   await page.goto(launcher);

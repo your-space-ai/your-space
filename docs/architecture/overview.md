@@ -62,6 +62,8 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
 6. **Apps.** Each managed app runs as a Compose project with its own network and declared storage. Owner-approved outbound hosts and opt-in publishing are described in [running apps and reaching them](decisions.md#running-apps-and-reaching-them). The connector for externally hosted apps belongs to 007.
 7. **Host.** The owner supplies a Docker-compatible engine on their personal machine or server. Only the workspace host needs Docker. A Mac connecting to an existing server needs its URL and the owner's sign-in. A bundled engine or VM follows publication.
 
+The dashboard reads presentation tokens from its workspace server. The Mac launcher uses the same portable theme format with a local device preference before connection. [Appearance](../appearance.md)
+
 ## Request Paths
 
 - **Starting on a Mac (008).** For local setup the app detects Docker, lets the owner select a different engine and guides them through installing or starting it if needed. The existing CLI sets up the stack and starts the owner flow. For a remote workspace the owner enters its URL and signs in without starting Docker on the Mac. In either case, kit review, confirmation and installation run against the selected workspace.

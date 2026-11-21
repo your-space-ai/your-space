@@ -1,30 +1,20 @@
 :root {
-  color-scheme: light dark;
-  --bg: #f6f6f4;
-  --surface: #fff;
-  --ink: #1d1d1f;
-  --muted: #5f6368;
-  --line: #d5d5d0;
-  --accent: #2f5bd3;
-  --accent-bg: #eaf0ff;
-  --danger: #a5231a;
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #161616;
-    --surface: #202020;
-    --ink: #ececec;
-    --muted: #adadaf;
-    --line: #474748;
-    --accent: #a6bfff;
-    --accent-bg: #25324d;
-    --danger: #ff9f97;
-  }
+  color-scheme: light;
+  --bg: Canvas;
+  --panel: Canvas;
+  --fg: CanvasText;
+  --muted: CanvasText;
+  --accent: Highlight;
+  --accent-ink: HighlightText;
+  --border: ButtonBorder;
+  --danger: CanvasText;
+  --font-body: system-ui, sans-serif;
+  --font-heading: Georgia, serif;
+  font: 15px/1.5 var(--font-body);
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-body { margin: 0; min-height: 100vh; color: var(--ink); background: var(--bg); }
+body { margin: 0; min-height: 100vh; color: var(--fg); background: var(--bg); }
 header {
   display: flex;
   align-items: center;
@@ -36,9 +26,9 @@ header {
 .brand-mark {
   width: 1.75rem;
   height: 1.75rem;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--fg);
   border-radius: .42rem;
-  background: linear-gradient(90deg, transparent 29%, var(--ink) 29% 38%, transparent 38%);
+  background: linear-gradient(90deg, transparent 29%, var(--fg) 29% 38%, transparent 38%);
 }
 main {
   width: min(100% - 3rem, 34rem);
@@ -52,7 +42,7 @@ button { color: inherit; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 h1:focus { outline: none; }
 .choices { display: grid; gap: .75rem; }
-.surface, .choice { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.surface, .choice { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
 .choice, .engine-summary { display: flex; align-items: center; gap: 1rem; }
 .choice { width: 100%; padding: 1.15rem; text-align: left; }
 .choice:hover { border-color: var(--accent); }
@@ -61,7 +51,7 @@ strong { font-weight: 650; }
 small { color: var(--muted); font-size: .87rem; }
 .choice-icon {
   position: relative;
-  background: var(--accent-bg);
+  background: color-mix(in srgb, var(--accent) 13%, var(--panel));
   color: var(--accent);
   border-radius: .65rem;
   width: 2.6rem;
@@ -80,21 +70,21 @@ small { color: var(--muted); font-size: .87rem; }
 .surface { overflow: hidden; }
 .engine-summary, details { padding: 1rem; }
 .engine-summary { overflow-wrap: anywhere; }
-details { border-top: 1px solid var(--line); }
+details { border-top: 1px solid var(--border); }
 summary, .text-action, .back { color: var(--accent); }
 summary { width: fit-content; }
 details[open] summary { margin-bottom: .8rem; }
 label { display: block; font-weight: 600; margin-bottom: .3rem; }
 input, select {
   width: 100%; border-radius: 6px; padding: .62rem .75rem;
-  color: var(--ink); background: var(--surface); border: 1px solid var(--line);
+  color: var(--fg); background: var(--panel); border: 1px solid var(--border);
 }
 input + label, #socket-field { margin-top: .85rem; }
 input + small, details > small { margin-top: .45rem; }
 .actions { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-top: 1.3rem; }
 .primary, .secondary { padding: .55rem .85rem; border: 1px solid transparent; border-radius: 7px; font-weight: 600; }
-.primary { background: var(--accent); color: var(--surface); }
-.secondary { background: var(--surface); border-color: var(--line); }
+.primary { background: var(--accent); color: var(--accent-ink); }
+.secondary { background: var(--panel); border-color: var(--border); }
 .text-action, .back { padding: .4rem .1rem; border: none; background: none; }
 .back { display: flex; align-items: center; gap: .35rem; margin-bottom: .8rem; }
 .back span { font-size: 1.4rem; line-height: .7; }
@@ -105,3 +95,48 @@ button:disabled { opacity: .56; cursor: default; }
 #problem { color: var(--danger); }
 #problem:not(:empty) { border-inline-start: 3px solid currentColor; padding-inline-start: .7rem; }
 #status:empty, #problem:empty { margin: 0; }
+
+h1, h2 { font-family: var(--font-heading); font-weight: 600; }
+#open-appearance {
+  margin-inline-start: auto; padding: .42rem .85rem; border: 1px solid var(--border);
+  border-radius: 999px; background: var(--panel); color: var(--fg); font-size: .9rem;
+}
+#workspace-art {
+  display: block; width: 100%; height: clamp(6rem, 17vh, 9rem); object-fit: cover;
+  border-radius: .9rem; margin: 0 0 1.6rem;
+}
+dialog {
+  width: min(calc(100% - 2rem), 43rem); max-height: calc(100vh - 2rem); overflow: auto;
+  padding: clamp(1.25rem, 4vw, 2.2rem); color: var(--fg); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 1.2rem;
+}
+dialog::backdrop { background: rgb(16 23 17 / 56%); }
+dialog h2 { margin: 0; font-size: 1.9rem; line-height: 1.18; }
+dialog .intro { margin-bottom: 1.15rem; }
+#theme-controls { border: 0; padding: 0; margin: 0; min-width: 0; }
+#theme-controls legend, #theme-controls > label { font-size: .85rem; font-weight: 600; }
+#theme-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; margin: .45rem 0 1.25rem; }
+.theme-card {
+  position: relative; margin: 0; cursor: pointer; overflow: hidden; border-radius: .65rem;
+  border: 2px solid var(--border); background: var(--panel);
+}
+.theme-card:has(input:checked) { border-color: var(--accent); }
+.theme-card:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 3px; }
+.theme-card input {
+  position: absolute; top: .45rem; right: .45rem; z-index: 1; width: 1rem; height: 1rem;
+  margin: 0; padding: 0; accent-color: var(--accent); cursor: pointer;
+}
+.theme-sample, .theme-sample img { display: block; width: 100%; }
+.theme-sample { height: 4.7rem; }
+.theme-sample img { height: 100%; object-fit: cover; }
+.custom-sample { background: linear-gradient(120deg, var(--sample-bg) 65%, var(--sample-accent) 65%); }
+.theme-name { display: block; padding: .45rem .6rem; overflow-wrap: anywhere; }
+#theme-file::file-selector-button {
+  background: var(--panel); color: var(--fg); border: 0; border-inline-end: 1px solid var(--border);
+  padding-inline-end: .7rem; margin-inline-end: .6rem; font: inherit; cursor: pointer;
+}
+#theme-error { color: var(--danger); }
+#theme-error:empty { margin: 0; }
+@media (max-width: 470px) {
+  #theme-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
