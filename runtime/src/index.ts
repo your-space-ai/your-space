@@ -15,6 +15,7 @@ import {
   isStopping,
   listApps,
   resolveInterface,
+  refreshInterface,
   logs,
   SpecError,
   stats,
@@ -103,6 +104,11 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (method === "GET" && action === "/denials") return send(res, 200, await denials(project));
     if (method === "POST" && action === "/port") {
       return send(res, 200, await checkPort(project, validatePortCheck(await readBody(req))));
+    }
+    if (method === "POST" && action === "/interface") {
+      const spec = validateSpec(await readBody(req));
+      if (spec.project !== project) throw new SpecError("The app does not match the requested project.");
+      return send(res, 200, { status: await refreshInterface(spec) });
     }
     if (method === "GET" && action === "/interface") {
       return send(res, 200, await resolveInterface(project, url.searchParams.get("id") ?? "", url.searchParams.get("service") ?? "", Number(url.searchParams.get("port"))));

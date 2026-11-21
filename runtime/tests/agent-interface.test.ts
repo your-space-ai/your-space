@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { interfaceAddress, INSTALLATION } from "../src/apps.ts";
+import { interfaceAddress, interfaceTarget, INSTALLATION } from "../src/apps.ts";
 import type { ContainerSummary } from "../src/engine.ts";
 
 const appId = "656f43f0-8780-42a2-ac44-0b8e546a8c51";
@@ -53,4 +53,23 @@ it("fails closed without a unique running service connected to the expected netw
   expect(() => resolve([app], { ...network, Internal: false })).toThrow();
   expect(() => resolve([app], { ...network, Name: "other_app" })).toThrow();
   expect(() => resolve([app], { ...network, Containers: { "container-1": { IPv4Address: "" } } })).toThrow();
+});
+
+it("accepts only a fully unlabelled legacy target for operator refresh and still refuses agent traffic", () => {
+  const legacy = { ...app, Labels: { ...app.Labels } };
+  delete legacy.Labels["ai.your-space.app-id"];
+  delete legacy.Labels["ai.your-space.interface-port"];
+  const inspect = (c: ContainerSummary) => interfaceTarget(project, appId, "web", 8080, [c], network);
+  expect(inspect(legacy)).toEqual({ address: "172.20.0.8", legacy: true });
+  expect(inspect(app)).toEqual({ address: "172.20.0.8", legacy: false });
+  expect(() => interfaceAddress(project, appId, "web", 8080, [legacy], network)).toThrow();
+  const mismatches: Record<string, string>[] = [
+    { "ai.your-space.app-id": appId },
+    { "ai.your-space.interface-port": "8080" },
+    { "ai.your-space.installation": "other" },
+    { "com.docker.compose.service": "database" },
+  ];
+  for (const mismatched of mismatches) {
+    expect(() => inspect({ ...legacy, Labels: { ...legacy.Labels, ...mismatched } })).toThrow();
+  }
 });

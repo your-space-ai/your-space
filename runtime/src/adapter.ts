@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 
 export interface AppSpec {
-  /** Stable server installation ID, available when applying an installed app. */
+  /** Stable server installation ID for a kit with agent access; identifies its declared interface. */
   appId?: string;
   /** The Compose project, `ys-<app>`. */
   project: string;
@@ -442,8 +442,10 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
     // The server and runtime determine these labels. A Compose file cannot declare its own identity.
     delete serviceLabels["ai.your-space.app-id"];
     delete serviceLabels["ai.your-space.interface-port"];
-    if (spec.appId) serviceLabels["ai.your-space.app-id"] = spec.appId;
-    if (spec.interface?.service === name) serviceLabels["ai.your-space.interface-port"] = String(spec.interface.port);
+    if (spec.appId && spec.interface?.service === name) {
+      serviceLabels["ai.your-space.app-id"] = spec.appId;
+      serviceLabels["ai.your-space.interface-port"] = String(spec.interface.port);
+    }
     out.labels = serviceLabels;
     out.networks = {
       app: spec.interface?.service === name ? { aliases: [`${spec.project}-ui`] } : {},

@@ -15,7 +15,7 @@ export class RuntimeError extends Error {
 }
 
 export interface AppSpec {
-  /** Stable server installation ID, available when applying an installed app. */
+  /** Stable server installation ID for a kit with agent access; identifies its declared interface. */
   appId?: string;
   project: string;
   app: string;
@@ -153,6 +153,10 @@ async function json<T>(method: string, path: string, body?: unknown, socketPath?
 export function installedInterface(project: string, id: string, service: string, port: number): Promise<{ address: string }> {
   const query = new URLSearchParams({ id, service, port: String(port) });
   return json("GET", `/apps/${encodeURIComponent(project)}/interface?${query}`, undefined, undefined, 5_000);
+}
+
+export function refreshRuntimeInterface(spec: AppSpec): Promise<{ status: "current" | "refreshed" }> {
+  return json("POST", `/apps/${encodeURIComponent(spec.project)}/interface`, spec);
 }
 
 export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {

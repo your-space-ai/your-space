@@ -3,6 +3,7 @@
 // current folder, or the one --workdir names (contracts/cli-commands.md).
 import { Command, CommanderError, Option } from "commander";
 import { registerAgentCommands } from "./commands/agent.ts";
+import { upgradeAgentKit, type UpgradeFlags } from "./commands/app-kit.ts";
 import { configure } from "./commands/configure.ts";
 import { init } from "./commands/init.ts";
 import { logs } from "./commands/logs.ts";
@@ -142,6 +143,17 @@ owner
   .command("reset-link")
   .description("print a new set-password link for the owner")
   .action(action(async (ui, g) => ownerResetLink(ui, g.workdir)));
+
+const app = program.command("app").description("manage an installed app");
+app
+  .command("upgrade-agent-kit <name>")
+  .description("inspect the installed kit or add agent access declarations from a version 2 kit")
+  .option("--inspect", "show the installation token, app ID, kit version and kit source")
+  .option("--kit <file>", "read the new kit from a local file or - for stdin")
+  .option("--refresh", "retry the interface refresh for an already upgraded kit")
+  .option("--expect-kit <source>", "current kit source from --inspect")
+  .option("--expect-installation <token>", "installation token from --inspect")
+  .action(action(async (ui, g, name: string, flags: UpgradeFlags) => upgradeAgentKit(ui, g.workdir, name, flags)));
 
 const secrets = program.command("secrets").description("the auth secret and the database password");
 secrets

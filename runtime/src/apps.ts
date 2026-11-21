@@ -523,14 +523,14 @@ interface AppNetwork {
 }
 
 /** Select a single engine-observed interface on this exact app's sealed bridge. */
-export function interfaceAddress(
+export function interfaceTarget(
   project: string,
   appId: string,
   service: string,
   port: number,
   containers: ContainerSummary[],
   network: AppNetwork,
-): string {
+): { address: string; legacy: boolean } {
   const app = project.slice(3);
   const expected = {
     "ai.your-space.installation": INSTALLATION,
@@ -561,22 +561,64 @@ export function interfaceAddress(
     (c) =>
       c.State === "running" &&
       matches(c.Labels) &&
-      c.Labels["ai.your-space.app-id"] === appId &&
-      c.Labels["com.docker.compose.service"] === service &&
-      c.Labels["ai.your-space.interface-port"] === String(port),
+      c.Labels["com.docker.compose.service"] === service,
   );
   if (candidates.length !== 1) throw refused();
-  const address = network.Containers?.[candidates[0]!.Id]?.IPv4Address?.split("/")[0];
+  const target = candidates[0]!;
+  const recordedId = target.Labels["ai.your-space.app-id"];
+  const recordedPort = target.Labels["ai.your-space.interface-port"];
+  const legacy = recordedId === undefined && recordedPort === undefined;
+  if (!legacy && (recordedId !== appId || recordedPort !== String(port))) throw refused();
+  const address = network.Containers?.[target.Id]?.IPv4Address?.split("/")[0];
   if (!address || isIP(address) !== 4) throw refused();
-  return address;
+  return { address, legacy };
 }
 
-export async function resolveInterface(project: string, appId: string, service: string, port: number) {
+export function interfaceAddress(...args: Parameters<typeof interfaceTarget>): string {
+  const target = interfaceTarget(...args);
+  if (target.legacy) throw new EngineError("The app interface needs its installation labels refreshed.", 503);
+  return target.address;
+}
+
+async function inspectInterface(project: string) {
   const [containers, network] = await Promise.all([
     projectContainers(project),
     engineJson<AppNetwork>("GET", "/networks/" + encodeURIComponent(project + "_app")),
   ]);
+  return { containers, network };
+}
+
+export async function resolveInterface(project: string, appId: string, service: string, port: number) {
+  const { containers, network } = await inspectInterface(project);
   return { address: interfaceAddress(project, appId, service, port, containers, network) };
+}
+
+/** The operator may upgrade only the previously unlabelled, running interface of this installation. */
+export async function refreshInterface(spec: AppSpec): Promise<"current" | "refreshed"> {
+  if (stopping) throw new EngineError("Your Space is stopping.", 409);
+  const { appId, project, interface: iface } = spec;
+  if (!appId || !iface) throw new SpecError("An installed app and its interface are required.");
+  const { containers, network } = await inspectInterface(project);
+  const target = interfaceTarget(project, appId, iface.service, iface.port, containers, network);
+  if (!target.legacy) return "current";
+
+  const { adapted } = await checkWithImages(spec);
+  if (!adapted) throw new SpecError("The installed app no longer passes the runtime checks.");
+  const dir = mkdtempSync("/tmp/ys-refresh-interface-");
+  try {
+    const file = join(dir, "compose.json");
+    writeFileSync(file, JSON.stringify(adapted), { mode: 0o600 });
+    const result = await docker([
+      "compose", "-p", project, "--project-directory", dir, "-f", file,
+      "up", "-d", "--no-deps", "--no-build", "--pull", "never", iface.service,
+    ], {}, dir);
+    // Keep settings, upstream output and process diagnostics inside the runtime.
+    if (result.code !== 0) throw new EngineError("Compose could not refresh this app's interface.", 503);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  await resolveInterface(project, appId, iface.service, iface.port);
+  return "refreshed";
 }
 
 export async function logs(project: string, service: string, tail: number): Promise<string[]> {

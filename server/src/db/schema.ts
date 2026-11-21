@@ -58,6 +58,7 @@ export type EventType =
   | "recovery.link_issued"
   | "recovery.password_reset"
   | "app.installed"
+  | "app.agent_kit_upgraded"
   | "app.settings_changed"
   | "app.limits_changed"
   | "app.outbound_approved"

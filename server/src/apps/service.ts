@@ -568,7 +568,7 @@ export class AppsService {
     const pins = Object.fromEntries(Object.entries(row.images).map(([ref, { digest }]) => [ref, digest]));
     return {
       project: `ys-${row.name}`,
-      appId: row.id,
+      ...(row.kit?.agentAccess ? { appId: row.id } : {}),
       app: row.name,
       compose: row.compose,
       env: this.envOf([...resolveTemplates(row.kit, values)].map(([name, value]) => ({ name, value }))),

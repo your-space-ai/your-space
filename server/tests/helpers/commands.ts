@@ -1,4 +1,4 @@
-// Runs create-owner and reset-link as real processes, the way the operator does.
+// Runs operator commands as real processes.
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { PUBLIC_URL, settingsFor, TEST_DATA_KEY, TEST_SECRET } from "./env.ts";
@@ -12,9 +12,9 @@ export interface CommandResult {
 }
 
 export function runCommand(
-  name: "create-owner" | "reset-link" | "show-owner" | "install-app",
+  name: "create-owner" | "reset-link" | "show-owner" | "install-app" | "upgrade-agent-kit",
   args: string[],
-  options: { databaseUrl: string; publicUrl?: string; env?: Record<string, string> },
+  options: { databaseUrl: string; input?: string; publicUrl?: string; env?: Record<string, string> },
 ): Promise<CommandResult> {
   const script = fileURLToPath(new URL(`../../src/commands/${name}.ts`, import.meta.url));
   return new Promise((resolve, reject) => {
@@ -28,12 +28,17 @@ export function runCommand(
         YS_DATA_KEY: TEST_DATA_KEY,
         ...options.env,
       },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     });
+    child.stdin?.on("error", (error: NodeJS.ErrnoException) => {
+      // A rejected command may exit before it consumes all input. Its exit code remains authoritative.
+      if (error.code !== "EPIPE") reject(error);
+    });
+    child.stdin?.end(options.input);
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => (stdout += chunk));
-    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.stdout!.on("data", (chunk) => (stdout += chunk));
+    child.stderr!.on("data", (chunk) => (stderr += chunk));
     child.on("error", reject);
     child.on("close", (code) => {
       let json: unknown;

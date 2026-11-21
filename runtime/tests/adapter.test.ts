@@ -50,6 +50,17 @@ describe("Sure's own file", () => {
     }
   });
 
+  it("changes only the declared interface service when opting an existing app into agent access", () => {
+    const id = "656f43f0-8780-42a2-ac44-0b8e546a8c51";
+    const next = adapt({ ...spec, appId: id }, sure, ["backup", "backup-offsite"]).adapted!.services as Record<string, Service>;
+    expect(next.web).toEqual({
+      ...services.web,
+      labels: { ...(services.web!.labels as object), "ai.your-space.app-id": id, "ai.your-space.interface-port": "3000" },
+    });
+    for (const name of Object.keys(services).filter((name) => name !== "web")) {
+      expect(next[name]).toEqual(services[name]);
+    }
+  });
   it("pins every image by digest", () => {
     expect(services.web!.image).toBe("ghcr.io/we-promise/sure@sha256:aaa");
     expect(services.db!.image).toBe("postgres@sha256:bbb");

@@ -3,6 +3,7 @@ services:
   app:
     image: node:26-slim
     ports: ["8080:8080"]
+    volumes: ["records-data:/records"]
     command:
       - node
       - -e
@@ -35,3 +36,5 @@ services:
           receipts.set(op, row);
           return send(200, row);
         }).listen(8080);
+volumes:
+  records-data: {}
