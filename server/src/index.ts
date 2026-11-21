@@ -1,6 +1,7 @@
 // Server entry point (T013): validate config, migrate, then listen on port 3000.
 import type { Server } from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
+import { expireRequests } from "./agents/store.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { ConfigError, loadConfig } from "./config.ts";
@@ -14,7 +15,8 @@ import { AppsService } from "./apps/service.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 /** The gate's listener: only Caddy reaches it (deploy/Caddyfile). */
-const GATE_PORT = 3001;
+// Process-level tests launch independent servers concurrently and do not use Caddy.
+const GATE_PORT = process.env.YS_E2E_EPHEMERAL_GATE === "1" ? 0 : 3001;
 const RECONCILE_INTERVAL_MS = 15_000;
 const MIGRATE_ATTEMPTS = 30;
 
@@ -78,7 +80,7 @@ try {
 const auth = createAuth({ config, db });
 const handoffs = new Handoffs();
 const apps = new AppsService(db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey });
-const app = createApp({ auth, db, apps: { service: apps, handoffs } });
+const app = createApp({ auth, db, dataKey: config.dataKey, apps: { service: apps, handoffs } });
 const gate = createGate({ db, publicUrl: config.publicUrl, authSecret: config.authSecret, handoffs });
 const gateServer: Server = gate.listen(GATE_PORT, "0.0.0.0");
 
@@ -90,6 +92,7 @@ async function reconcile(): Promise<void> {
   if (reconciling) return;
   reconciling = true;
   try {
+    await expireRequests(pool);
     await apps.reconcile();
   } catch (error) {
     log("warn", "apps.reconcile_failed", errorFields(error));
