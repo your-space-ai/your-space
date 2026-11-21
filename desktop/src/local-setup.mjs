@@ -14,6 +14,7 @@ const messages = {
   folder_not_empty: "Your Space found other files in its installation folder. Move them aside before setting up here.",
   download_failed: "The desktop installation files are missing. Install the matching Your Space desktop build and retry.",
   checksum_mismatch: "The packaged installation files failed verification. Install a fresh copy of this desktop build.",
+  not_running: "The local workspace is stopped. Start it again to continue.",
   start_failed: "The local workspace could not start. Check that Docker can pull and start this build’s images.",
   storage_unavailable: "Your Space cannot read its database. Check that the local stack is running, then retry.",
   lost_secrets: "This installation is missing its secrets. Use the installation guide to recover it.",
@@ -77,7 +78,7 @@ export function createLocalSetup({ folder, cli, releaseDir, run = runProcess, en
 
   async function command(socket, workdir, args) {
     const result = await run(cli.program, [...(cli.args ?? []), "--json", "--workdir", workdir, ...args], {
-      env: { ...base, ...(cli.args?.length ? { ELECTRON_RUN_AS_NODE: "1" } : {}), DOCKER_HOST: "unix://" + socket },
+      env: { ...base, DOCKER_HOST: "unix://" + socket },
       timeout: args.includes("start") ? 10 * 60_000 : 30_000,
     });
     let value;
@@ -139,7 +140,11 @@ export function createLocalSetup({ folder, cli, releaseDir, run = runProcess, en
     const engines = [];
     try {
       const checked = new Map();
-      for (const candidate of await contexts()) {
+      const candidates = await contexts();
+      if (saved && socketPath(saved.name) && !candidates.some(candidate => candidate.name === saved.name)) {
+        candidates.push({ ...saved, detected: false });
+      }
+      for (const candidate of candidates) {
         if (!checked.has(candidate.socket)) {
           try { checked.set(candidate.socket, await preflight(candidate.socket)); }
           catch (error) { checked.set(candidate.socket, localSetupError(error.code)); }
@@ -174,7 +179,7 @@ export function createLocalSetup({ folder, cli, releaseDir, run = runProcess, en
     await mkdir(dirname(installation), { recursive: true, mode: 0o700 });
     const stage = await mkdtemp(join(dirname(installation), ".your-space-init-"));
     try {
-      await command(engine.socket, stage, ["init", "--this-machine", "--port", "8081", "--release-dir", releaseDir]);
+      await command(engine.socket, stage, ["init", "--require-project-check", "--this-machine", "--port", "8081", "--release-dir", releaseDir]);
       await writeFile(join(stage, stateFile), JSON.stringify(engine), { mode: 0o600, flag: "wx" });
       await rename(stage, installation);
     } finally { await rm(stage, { recursive: true, force: true }); }
@@ -193,7 +198,7 @@ export function createLocalSetup({ folder, cli, releaseDir, run = runProcess, en
         if (expectedSocket !== undefined && expectedSocket !== pick.socket) throw localSetupError("engine_changed");
         if (saved) sameEngine(saved, pick);
         else await install(pick);
-        const started = await command(pick.socket, installation, ["start", "--defer-owner", "--no-open", "--yes"]);
+        const started = await command(pick.socket, installation, ["start", "--require-project-check", "--defer-owner", "--no-open", "--yes"]);
         const origin = localOrigin(started);
         const status = await command(pick.socket, installation, ["status", "--require-running"]);
         if (localOrigin(status) !== origin || Boolean(status.owner) !== Boolean(started.owner)) throw localSetupError("invalid_workspace");
@@ -211,7 +216,15 @@ export function createLocalSetup({ folder, cli, releaseDir, run = runProcess, en
         const origin = localOrigin(status);
         if (status.owner) return { state: "ready", origin, url: origin };
         // The public name and username are operator command arguments. Passwords are entered only on the workspace page.
-        const result = await command(saved.socket, installation, ["owner", "create", "--name", name.trim(), "--username", username]);
+        let result;
+        try {
+          result = await command(saved.socket, installation, ["owner", "create", "--name", name.trim(), "--username", username]);
+        } catch (error) {
+          if (error.code !== "owner_exists") throw error;
+          const fresh = await command(saved.socket, installation, ["status", "--require-running"]);
+          if (!fresh.owner || localOrigin(fresh) !== origin) throw localSetupError("invalid_workspace");
+          return { state: "ready", origin, url: origin };
+        }
         let link;
         try { link = new URL(result.url); } catch { throw localSetupError("invalid_workspace"); }
         if (link.origin !== origin || link.username || link.password || link.pathname !== "/reset-password" ||

@@ -33,6 +33,11 @@ export function webDestination(value) {
   } catch { return false; }
 }
 
+export function linkTarget(value) {
+  if (!webDestination(value)) return 'deny';
+  return isWorkspaceAddress(new URL(value)) ? 'workspace' : 'browser';
+}
+
 export function ownerDestination(origin, value) {
   let url;
   try { url = new URL(value); } catch { /* handled below */ }

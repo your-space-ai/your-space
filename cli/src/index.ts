@@ -75,11 +75,12 @@ const program = new Command()
   });
 
 setupOptions(program.command("init").description("make this folder a Your Space installation: download the release and write .env"))
+  .option("--require-project-check", "fail if Docker cannot list existing installation folders")
   .option("--release-dir <folder>", "use packaged release files and SHA256SUMS from this folder")
   .action(
   action(async (ui, g) => {
     const o = program.commands.find((c) => c.name() === "init")!.opts();
-    await init(ui, g.workdir, { thisMachine: o.thisMachine, domain: o.domain, proxyUrl: o.proxyUrl, port: o.port }, o.releaseDir);
+    await init(ui, g.workdir, { thisMachine: o.thisMachine, domain: o.domain, proxyUrl: o.proxyUrl, port: o.port, releaseDir: o.releaseDir, requireProjectCheck: o.requireProjectCheck });
   }),
 );
 
@@ -99,6 +100,7 @@ program
   .addOption(new Option("--defer-owner", "start the server and create the first owner separately").conflicts(["ownerName", "ownerUsername", "ownerEmail"]))
   .option("--no-open", "don't open the set-password link in the browser")
   .option("--ignore-checks", "start even when the domain's names don't resolve")
+  .option("--require-project-check", "fail if Docker cannot list existing installation folders")
   .option("--new-secrets", "start with new secrets when they were lost (signs everyone out)")
   .action(
     action(async (ui, g) => {
@@ -111,6 +113,7 @@ program
         ignoreChecks: o.ignoreChecks,
         newSecrets: o.newSecrets,
         deferOwner: o.deferOwner,
+        requireProjectCheck: o.requireProjectCheck,
       });
     }),
   );

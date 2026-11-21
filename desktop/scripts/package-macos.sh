@@ -50,6 +50,7 @@ test -f "$resources/app/$("$node_bin" -p 'require(process.argv[1]).main' "$resou
 
 plist="$app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c 'Delete :ElectronAsarIntegrity' "$plist"
+plutil -replace LSMinimumSystemVersion -string '13.5' "$plist"
 plutil -replace CFBundleIdentifier -string 'ai.your-space.desktop' "$plist"
 cp "$root/desktop/assets/your-space.icns" "$resources/your-space.icns"
 rm "$resources/electron.icns"
@@ -99,7 +100,7 @@ chmod +x "$resources/bin/your-space"
 "$root/desktop/scripts/sign-bundle.sh" "$app" -
 test "$("$resources/bin/your-space" --version)" = "$version"
 name="your-space-macos-$arch-$version-preview.zip"
-ditto -c -k --keepParent "$app" "$work/$name"
+ditto -c -k --norsrc --noextattr --noacl --noqtn --keepParent "$app" "$work/$name"
 mv "$work/$name" "$out/$name"
 (cd "$out" && shasum -a 256 "$name" > "$name.sha256")
 echo "Prepared $name"

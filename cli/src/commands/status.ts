@@ -10,8 +10,9 @@ export async function status(ui: Ui, workdir: string, requireRunning = false): P
   const installation = Installation.open(workdir);
   const engine = await checkEngine();
   const compose = new Compose(installation.folder);
-  if (requireRunning && await otherInstallation(installation.project(), installation.folder, true)) {
-    throw new CliError("another_installation", "The running workspace belongs to another installation folder.");
+  if (requireRunning) {
+    const other = await otherInstallation(installation.project(), installation.folder, "require-match");
+    if (other) throw new CliError("another_installation", "The running workspace belongs to another installation folder.", { folder: other });
   }
   const summary = await gather(installation, compose, engine, { requireRunning });
   showSummary(ui, summary);

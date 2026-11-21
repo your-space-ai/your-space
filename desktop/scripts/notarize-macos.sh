@@ -19,14 +19,14 @@ app="$work/extracted/Your Space.app"
 "$bin/sign-bundle.sh" "$app" "$MACOS_SIGN_IDENTITY"
 # Apple-issued Developer ID Application, never an ad-hoc or private test certificate.
 codesign --verify --deep --strict -R='anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists' "$app"
-ditto -c -k --keepParent "$app" submit.zip
+ditto -c -k --norsrc --noextattr --noacl --noqtn --keepParent "$app" submit.zip
 xcrun notarytool submit submit.zip --keychain-profile "$MACOS_NOTARY_PROFILE" --wait --output-format json > result.json
 [[ $(plutil -extract status raw -o - result.json) == Accepted ]] || { echo 'Apple did not accept this archive.' >&2; exit 1; }
 xcrun stapler staple "$app"
 xcrun stapler validate "$app"
 spctl --assess --type execute "$app"
 name="${name%-preview.zip}.zip"
-ditto -c -k --keepParent "$app" "$work/$name"
+ditto -c -k --norsrc --noextattr --noacl --noqtn --keepParent "$app" "$work/$name"
 # Verify the stapled app after the final distribution archive is unpacked.
 ditto -x -k "$work/$name" verify
 xcrun stapler validate 'verify/Your Space.app'

@@ -39,11 +39,12 @@ async function fixture(t) {
         return env.DOCKER_HOST.endsWith("offline") ? failed("engine_missing") :
           ok({ engine: { endpoint: env.DOCKER_HOST, os: "linux", arch: "arm64" } });
       case "init":
-        assert.deepEqual(command, ["init", "--this-machine", "--port", "8081", "--release-dir", "/bundle/release"]);
+        assert.deepEqual(command, ["init", "--require-project-check", "--this-machine", "--port", "8081", "--release-dir", "/bundle/release"]);
         await writeFile(join(cwd, "compose.yaml"), "name: your-space\n");
         if (app.initFailure) return failed(app.initFailure);
         return ok({});
       case "start":
+        assert.ok(command.includes("--require-project-check"));
         assert.ok(command.includes("--defer-owner"));
         assert.ok(command.includes("--no-open"));
         break;
@@ -53,6 +54,7 @@ async function fixture(t) {
         break;
       case "owner":
         app.owner = { name: command[3], username: command[5] };
+        if (app.racingClaim) return failed("owner_exists");
         return ok({ url: app.link, token: "do-not-send" });
       default: throw new Error("Unexpected command in fixture");
     }
@@ -125,4 +127,14 @@ test("preserves unrelated files, leaves failed initialization retryable and refu
   await service().start({ engine: app.socket });
   app.link = "https://elsewhere.invalid/reset-password#token=fixture";
   await assert.rejects(service().createOwner({ name: "Sam", username: "sam" }), { code: "invalid_workspace" });
+});
+
+test("remembers a manual socket without a named context and resumes after a racing owner claim", async t => {
+  const { app, service } = await fixture(t);
+  const other = "/run/custom engine.sock";
+  await service().start({ engine: other });
+  assert.ok((await service().engines()).engines.some(item => item.name === other && item.socket === other));
+  app.racingClaim = true;
+  assert.deepEqual(await service().createOwner({ name: "Sam", username: "sam" }),
+    { state: "ready", origin: "http://space.localhost:8081", url: "http://space.localhost:8081" });
 });

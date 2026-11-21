@@ -46,11 +46,14 @@ export function engineProblem(stderr: string): CliError {
   );
 }
 
-/** The client's endpoint: DOCKER_HOST, or the current context's. */
+/** Docker gives an explicit DOCKER_CONTEXT precedence over DOCKER_HOST. Inspecting a context reads local metadata. */
 export async function endpoint(): Promise<string> {
-  if (process.env.DOCKER_HOST) return process.env.DOCKER_HOST;
+  if (!process.env.DOCKER_CONTEXT && process.env.DOCKER_HOST) return process.env.DOCKER_HOST;
   const ran = await run("docker", ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"]);
-  return ran.code === 0 && ran.stdout.trim() ? ran.stdout.trim() : "unix:///var/run/docker.sock";
+  if (ran.code !== 0 || !ran.stdout.trim()) {
+    throw new CliError("engine_unsupported", "Docker could not resolve its selected context. Choose a local engine and try again.");
+  }
+  return ran.stdout.trim();
 }
 
 /**
@@ -73,10 +76,10 @@ export function engineSocket(host: string, platform: NodeJS.Platform = process.p
 /** Checks the engine and Compose, and returns what the summary shows. */
 export async function checkEngine(): Promise<Engine> {
   // An engine on another machine is refused before trying to reach it.
-  const host = await endpoint().catch(() => "unix:///var/run/docker.sock");
-  engineSocket(host);
-  let ran;
+  let host, ran;
   try {
+    host = await endpoint();
+    engineSocket(host);
     ran = await run("docker", ["version", "--format", "json"]);
   } catch (error) {
     if (isMissingProgram(error)) {

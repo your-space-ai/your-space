@@ -158,6 +158,9 @@ jobs:
           command: timeout 10m npx playwright install --with-deps $YS_E2E_BROWSERS
           working_directory: e2e
       - run:
+          name: Desktop launcher choices in Chromium
+          command: node --test desktop/tests/launcher.browser.mjs
+      - run:
           # Builds the images, then runs the journeys against deploy/compose.yaml in the browsers
           # above.
           name: Browser journeys

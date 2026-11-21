@@ -17,9 +17,9 @@ export interface Opened {
 }
 
 /** The engine, checked, and refused when it already runs Your Space from another folder. */
-export async function engineFor(ui: Ui, installation: Installation): Promise<Engine> {
+export async function engineFor(ui: Ui, installation: Installation, requireProjectCheck = false): Promise<Engine> {
   const engine = await ui.step("Checking Docker", "Docker is ready", () => checkEngine());
-  const other = await otherInstallation(installation.project(), installation.folder);
+  const other = await otherInstallation(installation.project(), installation.folder, requireProjectCheck ? "require-list" : "best-effort");
   if (other) {
     throw new CliError(
       "another_installation",
@@ -40,9 +40,9 @@ export function rememberSocket(ui: Ui, installation: Installation, engine: Engin
   }
 }
 
-export async function open(ui: Ui, workdir: string): Promise<Opened> {
+export async function open(ui: Ui, workdir: string, requireProjectCheck = false): Promise<Opened> {
   const installation = Installation.open(workdir);
-  const engine = await engineFor(ui, installation);
+  const engine = await engineFor(ui, installation, requireProjectCheck);
   rememberSocket(ui, installation, engine);
   return { installation, compose: new Compose(installation.folder), engine };
 }

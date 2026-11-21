@@ -17,6 +17,7 @@ export interface StartFlags {
   ignoreChecks?: boolean;
   newSecrets?: boolean;
   deferOwner?: boolean;
+  requireProjectCheck?: boolean;
 }
 
 /** How long `start` waits for a domain's certificate, in seconds. Caddy keeps trying afterwards. */
@@ -24,7 +25,7 @@ const CERTIFICATE_WAIT = 180;
 
 export async function start(ui: Ui, workdir: string, flags: StartFlags): Promise<void> {
   ui.intro("Your Space");
-  const { installation, compose, engine } = await open(ui, workdir);
+  const { installation, compose, engine } = await open(ui, workdir, flags.requireProjectCheck);
   let setup = installation.setup();
   await checkDomain(ui, setup, flags.ignoreChecks === true);
   setup = await checkPorts(ui, installation, compose, setup);

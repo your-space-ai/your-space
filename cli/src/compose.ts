@@ -72,9 +72,12 @@ export class Compose {
 }
 
 /** The folder another installation runs from, when the engine already runs `project` from elsewhere. */
-export async function otherInstallation(project: string, folder: string, requireMatch = false): Promise<string | null> {
+export async function otherInstallation(project: string, folder: string, check: "best-effort" | "require-list" | "require-match" = "best-effort"): Promise<string | null> {
   const ran = await run("docker", ["compose", "ls", "--all", "--format", "json"]);
-  if (ran.code !== 0) throw engineProblem(ran.stderr);
+  if (ran.code !== 0) {
+    if (check === "best-effort") return null;
+    throw engineProblem(ran.stderr);
+  }
   const mine = realpathSync(folder);
   for (const entry of parseJsonLines<{ Name: string; ConfigFiles: string }>(ran.stdout)) {
     if (entry.Name !== project) continue;
@@ -82,6 +85,6 @@ export async function otherInstallation(project: string, folder: string, require
     if (dirs.some((dir) => dir === mine || dir === folder)) return null;
     return dirs[0] || "an unknown installation";
   }
-  if (requireMatch) throw new CliError("not_running", "Docker has no running project for this installation.");
+  if (check === "require-match") throw new CliError("not_running", "Docker has no running project for this installation.");
   return null;
 }

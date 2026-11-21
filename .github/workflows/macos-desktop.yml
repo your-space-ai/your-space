@@ -55,6 +55,8 @@ jobs:
           test "$("$app/Contents/Resources/bin/your-space" --version)" = "$version"
           YS_DESKTOP_EXECUTABLE="$app/Contents/MacOS/Your Space" npm run test:native -w desktop
       - uses: actions/upload-artifact@v4
+        # Public PRs still build and test. Their unnotarized downloads stay off the public repo.
+        if: github.event_name == 'release' || github.event.repository.private
         with:
           name: macos-preview-${{ matrix.arch }}
           path: ${{ runner.temp }}/packages/

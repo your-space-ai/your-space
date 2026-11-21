@@ -11,7 +11,8 @@ import type { Ui } from "../ui.ts";
 import { VERSION } from "../version.ts";
 import { engineFor, rememberSocket } from "./shared.ts";
 
-export async function init(ui: Ui, workdir: string, flags: SetupFlags, releaseDir?: string): Promise<void> {
+export async function init(ui: Ui, workdir: string, flags: SetupFlags & { releaseDir?: string; requireProjectCheck?: boolean }): Promise<void> {
+  const { releaseDir } = flags;
   const folder = resolve(workdir);
   ui.intro("Your Space");
   if (Installation.isOne(folder)) {
@@ -26,7 +27,7 @@ export async function init(ui: Ui, workdir: string, flags: SetupFlags, releaseDi
 
   const installation = new Installation(folder);
   // Checked before downloading anything, so a missing engine is found first (FR-005).
-  const engine = await engineFor(ui, installation);
+  const engine = await engineFor(ui, installation, flags.requireProjectCheck);
   const setup = await chooseSetup(ui, flags, { kind: "this-machine", port: 80 });
 
   await ui.step(

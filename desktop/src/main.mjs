@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, Menu, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } from 'electron';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createLocalSetup, localSetupError } from './local-setup.mjs';
-import { checkWorkspace, lastWorkspace, ownerDestination, rememberWorkspace, webDestination, WorkspaceError, workspaceOrigin, workspacePartition } from './workspace.mjs';
+import { checkWorkspace, lastWorkspace, linkTarget, ownerDestination, rememberWorkspace, webDestination, WorkspaceError, workspaceOrigin, workspacePartition } from './workspace.mjs';
 
 const desktop = fileURLToPath(new URL('..', import.meta.url));
 const launcherURL = pathToFileURL(join(desktop, 'renderer/index.html')).href;
@@ -58,14 +58,25 @@ function workspaceWindow(browser, origin, workspace = origin, enableLinks = true
   };
   contents.on('will-frame-navigate', allowNavigation);
   contents.on('will-redirect', allowNavigation);
+  let confirmingLink = false;
   contents.setWindowOpenHandler(({url}) => {
-    // The dashboard uses new tabs for installed apps and source links. Open them in
-    // an ordinary sandboxed window in this workspace, without a native opener.
-    if (enableLinks && webDestination(url)) {
+    if (!enableLinks) return {action: 'deny'};
+    const target = linkTarget(url);
+    if (target === 'workspace') {
       const child = workspaceWindow(browser, new URL(url).origin, workspace, false);
       child.loadURL(url).then(() => child.show(), () => child.destroy());
+    } else if (target === 'browser' && !confirmingLink) {
+      // Published apps can have a plain HTTP address. Keep those links out of
+      // the workspace session and let the owner choose whether to leave the app.
+      confirmingLink = true;
+      void dialog.showMessageBox(win, {
+        type: 'question', message: 'Open this HTTP link in your browser?',
+        detail: new URL(url).origin, buttons: ['Cancel', 'Open in Browser'],
+        defaultId: 0, cancelId: 0,
+      }).then(({response}) => response === 1 && shell.openExternal(url))
+        .catch(() => {}).finally(() => { confirmingLink = false; });
     }
-    return { action: 'deny' };
+    return {action: 'deny'};
   });
   return win;
 }

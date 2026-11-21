@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkWorkspace, lastWorkspace, ownerDestination, rememberWorkspace, webDestination, workspaceOrigin, workspacePartition } from '../src/workspace.mjs';
+import { checkWorkspace, lastWorkspace, linkTarget, ownerDestination, rememberWorkspace, webDestination, workspaceOrigin, workspacePartition } from '../src/workspace.mjs';
 
 test('only HTTPS and loopback HTTP origins are accepted and a workspace has its own session partition', () => {
   for (const address of ['https://workspace.example.com', 'http://127.0.0.1:3001', 'http://[::1]', 'http://space.localhost']) {
@@ -15,6 +15,11 @@ test('only HTTPS and loopback HTTP origins are accepted and a workspace has its 
   assert.equal(workspacePartition('https://space.example.com'), workspacePartition('HTTPS://Space.Example.com/'));
   assert.notEqual(workspacePartition('https://space.example.com'), workspacePartition('https://space.example.com:8081'));
   assert.equal(webDestination('file:///tmp/index.html'), false);
+  assert.equal(linkTarget('http://app.example.com/task'), 'browser');
+  assert.equal(linkTarget('http://my-app.localhost:8081/task'), 'workspace');
+  assert.equal(linkTarget('https://app.example.com/task'), 'workspace');
+  assert.equal(linkTarget('http://user:secret@app.example.com'), 'deny');
+  assert.equal(linkTarget('file:///tmp/index.html'), 'deny');
 });
 
 test('owner handoff stays on the exact local workspace reset route', () => {
