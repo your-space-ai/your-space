@@ -17,6 +17,7 @@ import { ErrorState } from "./components/ErrorState.tsx";
 import { Layout } from "./components/Layout.tsx";
 import { AppDetail } from "./pages/AppDetail.tsx";
 import { AppPane } from "./pages/AppPane.tsx";
+import { Agents } from "./pages/Agents.tsx";
 import { Apps } from "./pages/Apps.tsx";
 import { Engine } from "./pages/Engine.tsx";
 import { failureKind } from "./errors.ts";
@@ -79,6 +80,12 @@ const homeRoute = createRoute({
   component: Home,
 });
 
+const agentsRoute = createRoute({
+  getParentRoute: () => signedInRoute,
+  path: "/agents",
+  component: Agents,
+});
+
 const appsRoute = createRoute({
   getParentRoute: () => signedInRoute,
   path: "/apps",
@@ -134,7 +141,7 @@ const resetPasswordRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  signedInRoute.addChildren([homeRoute, appsRoute, appDetailRoute, openRoute, engineRoute]),
+  signedInRoute.addChildren([homeRoute, agentsRoute, appsRoute, appDetailRoute, openRoute, engineRoute]),
   signInRoute,
   resetPasswordRoute,
 ]);

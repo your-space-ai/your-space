@@ -47,7 +47,7 @@ export async function startServer(db: Db, options: { publicUrl?: string; apps?: 
         github: { api: "https://api.github.test", raw: "https://raw.github.test" },
       })
     : undefined;
-  server.on("request", createApp({ auth, db, apps: apps ? { service: apps, handoffs } : undefined }));
+  server.on("request", createApp({ auth, db, dataKey: TEST_DATA_KEY, apps: apps ? { service: apps, handoffs } : undefined }));
   return {
     url,
     publicUrl,

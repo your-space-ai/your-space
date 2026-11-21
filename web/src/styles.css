@@ -521,3 +521,49 @@ form.inline {
     padding: 1rem;
   }
 }
+
+.agent-page .agent-picker {
+  margin: 1.25rem 0;
+}
+.agent-page fieldset {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.agent-page .agent-details {
+  border-top: 1px solid var(--border);
+  padding: 0.65rem 0;
+}
+.agent-page .agent-details[open] > summary {
+  margin-bottom: 1rem;
+}
+.agent-page .role-choices code {
+  display: inline-block;
+  margin-right: 0.5rem;
+}
+.agent-page .secret {
+  margin-top: 1rem;
+}
+.agent-page .agent-route {
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: center;
+}
+.agent-page .agent-route small {
+  grid-column: 1 / -1;
+}
+.agent-page summary,
+.agent-page dd,
+.agent-page code {
+  overflow-wrap: anywhere;
+}
+.agent-page .agent-activity details {
+  width: 100%;
+}
+.agent-page .agent-activity dl {
+  margin: 0.75rem 0 0.5rem;
+}
+@media (max-width: 560px) {
+  .agent-page .agent-route {
+    grid-template-columns: auto;
+  }
+}

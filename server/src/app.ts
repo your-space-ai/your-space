@@ -9,14 +9,17 @@ import { appRoutes } from "./apps/routes.ts";
 import type { Handoffs } from "./apps/gate.ts";
 import type { AppsService } from "./apps/service.ts";
 
+import { agentRoutes } from "./agents/routes.ts";
+
 export interface AppDeps {
+  dataKey?: string;
   auth: Auth;
   db: Db;
   /** Apps (journey 002). Left out by tests that don't need a runtime. */
   apps?: { service: AppsService; handoffs: Handoffs };
 }
 
-export function createApp({ auth, db, apps }: AppDeps): express.Express {
+export function createApp({ auth, db, apps, dataKey }: AppDeps): express.Express {
   const app = express();
   app.disable("x-powered-by");
   // Caddy is the one proxy in front of the server.
@@ -58,6 +61,7 @@ export function createApp({ auth, db, apps }: AppDeps): express.Express {
   // The largest body is an app's settings.
   app.use(express.json({ limit: "64kb" }));
   app.use("/api", ownerRoutes(db));
+  if (dataKey) app.use("/api", agentRoutes(auth, db, dataKey));
   if (apps) app.use("/api", appRoutes(auth, db, apps.service, apps.handoffs));
 
   app.use("/api", (_req, res) => {

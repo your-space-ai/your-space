@@ -1,6 +1,7 @@
 // Server entry point (T013): validate config, migrate, then listen on port 3000.
 import type { Server } from "node:http";
 import { setTimeout as sleep } from "node:timers/promises";
+import { expireRequests } from "./agents/store.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { ConfigError, loadConfig } from "./config.ts";
@@ -78,7 +79,7 @@ try {
 const auth = createAuth({ config, db });
 const handoffs = new Handoffs();
 const apps = new AppsService(db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey });
-const app = createApp({ auth, db, apps: { service: apps, handoffs } });
+const app = createApp({ auth, db, dataKey: config.dataKey, apps: { service: apps, handoffs } });
 const gate = createGate({ db, publicUrl: config.publicUrl, authSecret: config.authSecret, handoffs });
 const gateServer: Server = gate.listen(GATE_PORT, "0.0.0.0");
 
@@ -90,6 +91,7 @@ async function reconcile(): Promise<void> {
   if (reconciling) return;
   reconciling = true;
   try {
+    await expireRequests(pool);
     await apps.reconcile();
   } catch (error) {
     log("warn", "apps.reconcile_failed", errorFields(error));
