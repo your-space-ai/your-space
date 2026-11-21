@@ -29,3 +29,9 @@ To offer a directory, set `YS_KITS_REPOSITORY=owner/repository` in the workspace
 Select an existing installation and review the candidate commit, services, image digests and storage impact. A custom image must be available to the runtime and named by digest. The HTML starter can update through `app pack`. Changes that require different mounts, service topology or settings require a separate migration. Compatible deployments keep the installation ID, settings and attached named volumes. The owner reviews agent access again after the source changes. If startup fails, Your Space attempts to reapply the previous Compose and recorded image versions. Application-level data written by the new version needs the app's own recovery plan.
 
 If deployment is interrupted, reconnect the same GitHub account, reopen the repository and select the installation under **Update an installed app**. Your Space retrieves the reviewed commit, image digests and volumes. Choose **Resume reviewed deployment** to confirm and continue.
+
+If the confirmation response is lost, the owner can check the exact deployment with
+`GET /api/repositories/:id/deploy/receipt`. Supply `appId`, `previewId` and the full reviewed
+`commit` as query parameters. The response contains `receipt` with the app ID, repository ID,
+commit and `applied` status when that review completed under the connected GitHub account.
+Otherwise the receipt is `null`. Checking a receipt never starts or resumes a deployment.

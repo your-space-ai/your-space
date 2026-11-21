@@ -220,7 +220,7 @@ it("keeps ambiguous deployment interrupted across restart and resumes the exact 
   expect(await pendingReplacement(restarted, id, owner, "123", "456")).toEqual({ pending: null });
 });
 
-it("recovers only the connected owner's managed repository through a fresh HTTP session", async () => {
+it("recovers an interrupted deployment and reads only its exact account-scoped receipt in a fresh HTTP session", async () => {
   const preview = await previewReplacement(service, id, owner, source(next), "456");
   engine.failApply = "fixture";
   await expect(applyReplacement(service, id, owner, preview.previewId, "123", "456")).rejects.toMatchObject({
@@ -244,11 +244,44 @@ it("recovers only the connected owner's managed repository through a fresh HTTP 
       }),
     );
     expect((await server.request(path)).status).toBe(401);
+    const receiptPath = `/api/repositories/123/deploy/receipt?appId=${id}&previewId=${preview.previewId}&commit=${preview.commit}`;
+    const readReceipt = async (url = receiptPath) => {
+      const response = await server.request(url, { headers: { cookie } });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      return response.json();
+    };
+    expect((await server.request(receiptPath)).status).toBe(401);
+    expect(await readReceipt()).toEqual({ receipt: null });
     const response = await server.request(path, { headers: { cookie } });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ pending: preview });
     await t.pool.query("update github_connection set github_user_id='789' where owner_id=$1", [owner]);
     expect(await (await server.request(path, { headers: { cookie } })).json()).toEqual({ pending: null });
+    await t.pool.query("update github_connection set github_user_id='456' where owner_id=$1", [owner]);
+    engine.failApply = undefined;
+    const applied = await applyReplacement(service, id, owner, preview.previewId, "123", "456", preview.commit);
+    const calls = engine.calls.length;
+    expect(await readReceipt()).toEqual({ receipt: applied });
+    expect(await readReceipt()).toEqual({ receipt: applied });
+    expect(await readReceipt(receiptPath.replace(preview.commit, "a".repeat(40)))).toEqual({ receipt: null });
+    expect(await readReceipt(receiptPath.replace(preview.previewId, id))).toEqual({ receipt: null });
+    expect(await readReceipt(receiptPath.replace("appId=" + id, "appId=" + preview.previewId))).toEqual({ receipt: null });
+    expect((await server.request(receiptPath.replace(preview.commit, "main"), { headers: { cookie } })).status).toBe(400);
+    expect((await server.request(receiptPath.replace("/123/", "/999/"), { headers: { cookie } })).status).toBe(403);
+    await t.pool.query("update github_connection set github_user_id='789' where owner_id=$1", [owner]);
+    expect(await readReceipt()).toEqual({ receipt: null });
+    await t.pool.query("update github_connection set github_user_id='456' where owner_id=$1", [owner]);
+    await t.pool.query(
+      "update app_replacement set owner_id=(select id from actor where kind='operator') where id=$1",
+      [preview.previewId],
+    );
+    expect(await readReceipt()).toEqual({ receipt: null });
+    await t.pool.query("update app_replacement set owner_id=$1, original=original - 'review' where id=$2", [
+      owner, preview.previewId,
+    ]);
+    expect(await readReceipt()).toEqual({ receipt: null });
+    expect(engine.calls).toHaveLength(calls);
     expect((await server.request(path.replace("/123/", "/999/"), { headers: { cookie } })).status).toBe(403);
   } finally {
     await server.close();
