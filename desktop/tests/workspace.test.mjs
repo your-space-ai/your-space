@@ -15,10 +15,11 @@ test('only HTTPS and loopback HTTP origins are accepted and a workspace has its 
   assert.equal(workspacePartition('https://space.example.com'), workspacePartition('HTTPS://Space.Example.com/'));
   assert.notEqual(workspacePartition('https://space.example.com'), workspacePartition('https://space.example.com:8081'));
   assert.equal(webDestination('file:///tmp/index.html'), false);
-  assert.equal(linkTarget('http://app.example.com/task'), 'browser');
-  assert.equal(linkTarget('http://my-app.localhost:8081/task'), 'workspace');
-  assert.equal(linkTarget('https://app.example.com/task'), 'workspace');
+  assert.equal(linkTarget('http://app.example.com/task', 'https://space.example.com'), 'browser');
+  assert.equal(linkTarget('http://my-app.localhost:8081/task', 'http://space.localhost:8081'), 'browser');
+  assert.equal(linkTarget('https://app.example.com/task', 'https://space.example.com'), 'browser');
   assert.equal(linkTarget('http://user:secret@app.example.com'), 'deny');
+  assert.equal(linkTarget('https://space.example.com/apps', 'https://space.example.com'), 'workspace');
   assert.equal(linkTarget('file:///tmp/index.html'), 'deny');
 });
 

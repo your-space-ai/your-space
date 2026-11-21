@@ -12,6 +12,8 @@
     "test:native": "node --test tests/native-smoke.mjs"
   },
   "devDependencies": {
+    "@electron/asar": "4.3.2",
+    "@electron/fuses": "2.1.3",
     "electron": "45.4.1"
   }
 }

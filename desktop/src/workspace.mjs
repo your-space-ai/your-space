@@ -33,9 +33,9 @@ export function webDestination(value) {
   } catch { return false; }
 }
 
-export function linkTarget(value) {
+export function linkTarget(value, workspace) {
   if (!webDestination(value)) return 'deny';
-  return isWorkspaceAddress(new URL(value)) ? 'workspace' : 'browser';
+  return new URL(value).origin === workspace ? 'workspace' : 'browser';
 }
 
 export function ownerDestination(origin, value) {

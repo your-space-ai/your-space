@@ -218,11 +218,11 @@ export function createLocalSetup({ folder, cli, releaseDir, run = runProcess, en
         // The public name and username are operator command arguments. Passwords are entered only on the workspace page.
         let result;
         try {
-          result = await command(saved.socket, installation, ["owner", "create", "--name", name.trim(), "--username", username]);
+          result = await command(saved.socket, installation, ["owner", "create", "--name=" + name.trim(), "--username=" + username]);
         } catch (error) {
           if (error.code !== "owner_exists") throw error;
           const fresh = await command(saved.socket, installation, ["status", "--require-running"]);
-          if (!fresh.owner || localOrigin(fresh) !== origin) throw localSetupError("invalid_workspace");
+          if (fresh.owner?.username?.toLowerCase() !== username.toLowerCase() || localOrigin(fresh) !== origin) throw localSetupError("invalid_workspace");
           return { state: "ready", origin, url: origin };
         }
         let link;

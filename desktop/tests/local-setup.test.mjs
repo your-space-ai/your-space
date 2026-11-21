@@ -53,7 +53,8 @@ async function fixture(t) {
         if (app.statusFailure) return failed(app.statusFailure);
         break;
       case "owner":
-        app.owner = { name: command[3], username: command[5] };
+        app.owner = { name: command[2].slice("--name=".length), username: command[3].slice("--username=".length) };
+        if (app.racingUsername) app.owner.username = app.racingUsername;
         if (app.racingClaim) return failed("owner_exists");
         return ok({ url: app.link, token: "do-not-send" });
       default: throw new Error("Unexpected command in fixture");
@@ -137,4 +138,12 @@ test("remembers a manual socket without a named context and resumes after a raci
   app.racingClaim = true;
   assert.deepEqual(await service().createOwner({ name: "Sam", username: "sam" }),
     { state: "ready", origin: "http://space.localhost:8081", url: "http://space.localhost:8081" });
+});
+
+test("a different owner claiming during setup returns to recovery", async t => {
+  const {app,service} = await fixture(t);
+  await service().start({engine:"local",expectedSocket:app.socket});
+  app.racingClaim = true;
+  app.racingUsername = "another";
+  await assert.rejects(service().createOwner({name:"-Sam",username:"sam"}),{code:"invalid_workspace"});
 });

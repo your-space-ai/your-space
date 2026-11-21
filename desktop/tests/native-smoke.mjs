@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { _electron as electron, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { launchDesktop } from './launch-desktop.mjs';
 
 const desktop = fileURLToPath(new URL('..', import.meta.url));
 
@@ -27,10 +28,7 @@ async function fixture() {
 test('native launcher opens a workspace, isolates its app and reopens the saved address', {timeout: 90_000}, async () => {
   const userData = await mkdtemp(join(tmpdir(), 'your-space-native-'));
   const {server, origin} = await fixture();
-  const executablePath = process.env.YS_DESKTOP_EXECUTABLE;
-  const launch = () => electron.launch({
-    executablePath, args: [...(executablePath ? [] : [desktop]), '--user-data-dir=' + userData],
-  });
+  const launch = () => launchDesktop(desktop,userData);
   let client;
   try {
     client = await launch();

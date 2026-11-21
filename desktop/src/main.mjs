@@ -22,16 +22,25 @@ const savedFile = join(app.getPath('userData'), 'connection.json');
 let launcher;
 let busy = false;
 
-function secureSession(partition) {
+function secureSession(partition, origin) {
   const browser = session.fromPartition(partition);
-  browser.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  browser.setPermissionCheckHandler(() => false);
+  // Only the workspace's main frame may copy text. Reads and child-frame clipboard access stay denied.
+  const canCopy = (contents, permission, address, main) =>
+    !!origin && main === true && permission === 'clipboard-sanitized-write' &&
+    webDestination(address) && new URL(address).origin === origin &&
+    contents && webDestination(contents.getURL()) && new URL(contents.getURL()).origin === origin;
+  browser.setPermissionRequestHandler((contents, permission, callback, details) =>
+    callback(Boolean(canCopy(contents, permission, details.requestingUrl, details.isMainFrame))));
+  browser.setPermissionCheckHandler((contents, permission, requestingOrigin, details) =>
+    Boolean(canCopy(contents, permission, requestingOrigin, details.isMainFrame)));
   browser.setDevicePermissionHandler(() => false);
   return browser;
 }
 
-function showLauncher() {
+function showLauncher(page = launcherURL) {
+  if (typeof page !== 'string') page = launcherURL;
   if (launcher && !launcher.isDestroyed()) {
+    if (launcher.webContents.getURL() !== page) void launcher.loadURL(page).catch(() => {});
     launcher.show();
     launcher.focus();
     return;
@@ -44,7 +53,7 @@ function showLauncher() {
   launcher.webContents.on('will-frame-navigate', event => event.preventDefault());
   launcher.webContents.on('will-redirect', event => event.preventDefault());
   launcher.on('closed', () => { launcher = undefined; });
-  void launcher.loadURL(launcherURL);
+  void launcher.loadURL(page).catch(() => {});
 }
 
 function workspaceWindow(browser, origin, workspace = origin, enableLinks = true) {
@@ -61,16 +70,15 @@ function workspaceWindow(browser, origin, workspace = origin, enableLinks = true
   let confirmingLink = false;
   contents.setWindowOpenHandler(({url}) => {
     if (!enableLinks) return {action: 'deny'};
-    const target = linkTarget(url);
+    const target = linkTarget(url, workspace);
     if (target === 'workspace') {
       const child = workspaceWindow(browser, new URL(url).origin, workspace, false);
       child.loadURL(url).then(() => child.show(), () => child.destroy());
     } else if (target === 'browser' && !confirmingLink) {
-      // Published apps can have a plain HTTP address. Keep those links out of
-      // the workspace session and let the owner choose whether to leave the app.
+      // External app and provider origins open in the system browser after owner confirmation.
       confirmingLink = true;
       void dialog.showMessageBox(win, {
-        type: 'question', message: 'Open this HTTP link in your browser?',
+        type: 'question', message: 'Open this link in your browser?',
         detail: new URL(url).origin, buttons: ['Cancel', 'Open in Browser'],
         defaultId: 0, cancelId: 0,
       }).then(({response}) => response === 1 && shell.openExternal(url))
@@ -84,7 +92,7 @@ function workspaceWindow(browser, origin, workspace = origin, enableLinks = true
 async function openWorkspace(value, {ownerLink, localInstall = false} = {}) {
   const origin = workspaceOrigin(value);
   const url = ownerLink ? ownerDestination(origin, ownerLink) : origin;
-  const browser = secureSession(workspacePartition(origin));
+  const browser = secureSession(workspacePartition(origin), origin);
   await checkWorkspace(origin, browser.fetch.bind(browser));
   const win = workspaceWindow(browser, origin);
   try {
@@ -104,7 +112,7 @@ async function startLocal(input) {
   const result = await local.start({engine: input?.engine, expectedSocket: input?.expectedSocket});
   if (result.state === 'ready') return openWorkspace(result.origin, {localInstall: true});
   const origin = workspaceOrigin(result.origin);
-  const browser = secureSession(workspacePartition(origin));
+  const browser = secureSession(workspacePartition(origin), origin);
   if (await checkWorkspace(origin, browser.fetch.bind(browser))) return openWorkspace(origin, {localInstall: true});
   return {state: 'owner-needed', origin};
 }
@@ -112,17 +120,28 @@ async function startLocal(input) {
 async function reopen() {
   if (busy) return;
   busy = true;
+  let openingLocal = false;
   try {
     const last = await lastWorkspace(savedFile);
     if (!last) return showLauncher();
     if (!last.local) return await openWorkspace(last.origin);
+    // Local Docker startup can take minutes. Show progress while reconnecting on launch.
+    openingLocal = true;
+    showLauncher(pathToFileURL(join(desktop, 'renderer/opening.html')).href);
+    launcher.setProgressBar(2);
     const {saved} = await local.engines();
     if (saved) {
       const result = await startLocal({engine: saved.name, expectedSocket: saved.socket});
       if (result.state === 'ready') return;
     }
   } catch { /* The launcher lets the owner retry local setup or enter an address. */ }
-  finally { busy = false; }
+  finally {
+    busy = false;
+    if (openingLocal && launcher && !launcher.isDestroyed()) {
+      launcher.setProgressBar(-1);
+      await launcher.loadURL(launcherURL).catch(() => {});
+    }
+  }
   showLauncher();
 }
 

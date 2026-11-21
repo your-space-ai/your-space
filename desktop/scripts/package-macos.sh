@@ -34,22 +34,21 @@ node_bin="$work/node-$node_version-darwin-$arch/bin/node"
 app="$work/Your Space.app"
 mv electron/Electron.app "$app"
 resources="$app/Contents/Resources"
-mkdir -p "$resources/app" "$resources/bin" "$resources/licenses" "$resources/release"
+mkdir -p "$resources/app/desktop" "$resources/bin" "$resources/licenses" "$resources/release"
 rm "$resources/default_app.asar"
 # Keep only product assets, excluding tooling, developer files and test fixtures.
 cp "$root/desktop/package.json" "$resources/app/"
-ditto --norsrc --noextattr "$root/desktop/src" "$resources/app/src"
-if [[ -d $root/desktop/renderer ]]; then ditto --norsrc --noextattr "$root/desktop/renderer" "$resources/app/renderer"; fi
+ditto --norsrc --noextattr "$root/desktop/src" "$resources/app/desktop/src"
+if [[ -d $root/desktop/renderer ]]; then ditto --norsrc --noextattr "$root/desktop/renderer" "$resources/app/desktop/renderer"; fi
 find "$resources/app" -name '._*' -type f -delete
 "$node_bin" -e '
   const fs = require("node:fs"), [file, version] = process.argv.slice(1);
   const {name, productName, main, license, type} = JSON.parse(fs.readFileSync(file));
-  fs.writeFileSync(file, JSON.stringify({name, productName, main, license, type, version}, null, 2) + "\n");
+  fs.writeFileSync(file, JSON.stringify({name, productName, main:"desktop/"+main, license, type, version}, null, 2) + "\n");
 ' "$resources/app/package.json" "$version"
 test -f "$resources/app/$("$node_bin" -p 'require(process.argv[1]).main' "$resources/app/package.json")"
 
 plist="$app/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c 'Delete :ElectronAsarIntegrity' "$plist"
 plutil -replace LSMinimumSystemVersion -string '13.5' "$plist"
 plutil -replace CFBundleIdentifier -string 'ai.your-space.desktop' "$plist"
 cp "$root/desktop/assets/your-space.icns" "$resources/your-space.icns"
@@ -97,6 +96,7 @@ test -s "$resources/licenses/CLI-NOTICES.txt"
 chmod +x "$resources/bin/your-space"
 "$root/deploy/release-files.sh" "$version" "$resources/release"
 (cd "$resources/release" && shasum -a 256 your-space.tar.gz > SHA256SUMS)
+"$node_bin" "$root/desktop/scripts/seal-macos.mjs" seal "$app"
 "$root/desktop/scripts/sign-bundle.sh" "$app" -
 test "$("$resources/bin/your-space" --version)" = "$version"
 name="your-space-macos-$arch-$version-preview.zip"
