@@ -1,7 +1,7 @@
 // Your Space's own tables (T011, data-model.md): whether the owner exists, actors, and events.
 import type { AgentAccess } from "../apps/agent-kit.ts";
 import { sql } from "drizzle-orm";
-import { boolean, check, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organization, user } from "./auth-schema.ts";
 
 /** Exactly one row, created by the first migration. Owner existence is read from it, never inferred. */
@@ -220,3 +220,81 @@ export const installJob = pgTable("install_job", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
 });
+
+// External agents are actors; ownership remains a separate human identity.
+export const externalAgent = pgTable("external_agent", {
+  id: uuid("id")
+    .primaryKey()
+    .references(() => actor.id),
+  ownerId: uuid("owner_id")
+    .notNull()
+    .references(() => actor.id),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => organization.id),
+  name: text("name").notNull(),
+  disabled: boolean("disabled").notNull().default(false),
+});
+export const agentKey = pgTable("agent_key", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id")
+    .notNull()
+    .references(() => externalAgent.id),
+  verifier: text("verifier").unique().notNull(),
+  revoked: boolean("revoked").notNull().default(false),
+});
+export const agentBinding = pgTable("agent_binding", {
+  appId: uuid("app_id")
+    .primaryKey()
+    .references(() => app.id, { onDelete: "cascade" }),
+  credential: text("credential"),
+  enabledRoles: text("enabled_roles").array().notNull(),
+  kitDigest: text("kit_digest").notNull(),
+  /** Earliest request revision admitted under the present upstream authority. */
+  credentialRevision: integer("credential_revision").notNull().default(1),
+  revision: integer("revision").notNull(),
+});
+export const agentGrant = pgTable(
+  "agent_grant",
+  {
+    appId: uuid("app_id")
+      .notNull()
+      .references(() => agentBinding.appId, { onDelete: "cascade" }),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => externalAgent.id),
+    roles: text("roles").array().notNull(),
+    askAllWrites: boolean("ask_all_writes").notNull(),
+    overrides: jsonb("overrides").notNull(),
+    revision: integer("revision").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.appId, t.agentId] })],
+);
+export const agentRequest = pgTable(
+  "agent_request",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => externalAgent.id),
+    keyId: uuid("key_id")
+      .notNull()
+      .references(() => agentKey.id),
+    appId: uuid("app_id").notNull(),
+    route: text("route").notNull(),
+    operationId: text("operation_id"),
+    fingerprint: text("fingerprint"),
+    input: text("input"),
+    result: text("result"),
+    status: text("status").notNull(),
+    bindingRevision: integer("binding_revision").notNull(),
+    grantRevision: integer("grant_revision").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revision: integer("revision").notNull().default(1),
+  },
+  (t) => [
+    unique("agent_operation").on(t.agentId, t.appId, t.route, t.operationId),
+    index("agent_denied_samples").on(t.agentId, t.createdAt.desc(), t.id.desc()).where(sql`${t.status} = 'denied'`),
+  ],
+);
