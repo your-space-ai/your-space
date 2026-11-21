@@ -6,7 +6,7 @@
     Owner's CLI → Docker Compose → server, runtime, installed apps
     External AI agent → CLI → gateway → permitted action in one connected app
 
-The owner manages agent identities, kit-defined app roles and request approval settings in the web UI. Before forwarding, the gateway checks the kit route and HTTP method, obtains any required owner approval, then injects the server-held app credential. The gateway and the integrated app enforce the supported action path. This is the target for 005. Later journeys add teams (004), lifecycle tooling (006), SDKs (007), and desktop clients (008). The [roadmap](../roadmap.md) gives their delivery stage.
+The owner manages agent identities, kit-defined app roles and request approval settings in the web UI. Before forwarding, the gateway checks the kit route and HTTP method, obtains any required owner approval, then injects the server-held app credential. The runtime identifies the installed service on its private Docker network. The app checks the injected credential and enforces its native permissions. Later journeys add teams (004), lifecycle tooling (006), SDKs (007), and desktop clients (008). The [roadmap](../roadmap.md) gives their delivery stage.
 
 ## Layers
 
@@ -22,7 +22,7 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
 
 ## What Each Layer Does
 
-1. **People and agents.** One owner controls the workspace. In 005 the owner delegates a subset of their app roles to an external agent and can revoke its access.
+1. **People and agents.** One owner controls the workspace. The owner chooses which kit roles to enable for each installation, then grants any subset to an agent. They can narrow or revoke that access.
 2. **Clients.** The browser displays the dashboard and app panes. The operator runs the CLI on the Docker host. In 005 the agent uses its own credential through the gateway on local or remote installations. See [CLI delivery](decisions.md#cli-delivery-sequence).
 3. **Edge.** A Caddy reverse proxy in the Compose stack provides HTTPS with automatic certificates, unless
    the owner brings their own proxy or tunnel. Then the owner's proxy sits in front of Caddy and
@@ -37,7 +37,7 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
    [installation and hosting](decisions.md#installation-and-hosting) and
    [UI integration](decisions.md#ui-integration).
 4. **Your Space core.** Identity and sessions, roles and delegation, the gateway for agent requests,
-   app management, and the planned agent activity log. Guided backup, restore and updates follow in 006. The session cookie
+   app management, and the agent activity log. Guided backup, restore and updates follow in 006. The session cookie
    is a `__Host-` cookie over HTTPS and host-only on the plain-HTTP local setup. The access gate is
    a second server listener on port 3001 that only Caddy reaches: it checks an app's pass, turns a
    one-time code into a pass on the app's own host, and allows certificates only for installed

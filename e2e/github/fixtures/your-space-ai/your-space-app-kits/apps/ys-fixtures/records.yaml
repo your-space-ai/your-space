@@ -1,0 +1,33 @@
+kit: 2
+source: {repo: ys-fixtures/records, path: compose.yaml}
+name: records
+interface: {service: app, port: 8080}
+agentAccess:
+  credential:
+    binding: service
+    inject: {location: header, name: X-API-Key}
+  roles:
+    reader: {title: Reader, routes: [list]}
+    manager: {title: Manager, routes: [list, create, edit]}
+  routes:
+    list:
+      method: GET
+      path: /items
+      effect: read
+      outputFields: [id, revision, title]
+    create:
+      method: POST
+      path: /items
+      effect: write
+      bodyFields: {title: string}
+      operationId: {in: header, name: Idempotency-Key}
+      outputFields: [id, revision, title]
+    edit:
+      method: PATCH
+      path: /items/{id}
+      effect: write
+      pathParams: {id: uuid}
+      bodyFields: {title: string}
+      operationId: {in: header, name: Idempotency-Key}
+      expectedRevision: {in: header, name: If-Match}
+      outputFields: [id, revision, title]
