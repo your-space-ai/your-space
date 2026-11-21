@@ -118,7 +118,11 @@ export function agentRoutes(auth: Auth, db: Db, dataKey: string) {
       if (!r.is("application/json")) invalid();
       const outcome = await invoke(db, dataKey, verifier(r), r.body);
       const status = { pending: 202, denied: 403, conflict: 409, refused: 422, unknown: 502 }[outcome.status] ?? 200;
-      res.status(status).json(status >= 400 ? { ...outcome, error: outcome.status } : outcome);
+      if (outcome.status === "denied") {
+        res.status(403).json({ error: "denied", status: "denied" });
+      } else {
+        res.status(status).json(status >= 400 ? { ...outcome, error: outcome.status } : outcome);
+      }
     }),
   );
   return router;

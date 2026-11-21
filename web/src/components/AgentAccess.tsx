@@ -76,7 +76,7 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
   return (
     <details className="agent-details">
       <summary>
-        {app.title || app.name} · {app.bound ? "Connected" : "No credential"}
+        {app.title || app.name} · {app.bound ? "Credential saved" : "No credential"}
       </summary>
       <p className="muted small">
         Kit source: <code>{app.source || "Unknown"}</code>

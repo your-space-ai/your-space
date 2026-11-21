@@ -72,10 +72,11 @@ export async function bind(client: pg.PoolClient, id: string, body: Record<strin
       : null;
   if (enabled.length && !credential) invalid("Supply an app credential before enabling roles.");
   const revision = (row.revision ?? 0) + 1;
+  const credentialRevision = current && !supplied ? row.credential_revision : revision;
   await client.query(
-    `insert into agent_binding(app_id,credential,enabled_roles,kit_digest,revision) values ($1,$2,$3,$4,$5)
-    on conflict(app_id) do update set credential=excluded.credential,enabled_roles=excluded.enabled_roles,kit_digest=excluded.kit_digest,revision=excluded.revision`,
-    [id, credential, enabled, digest, revision],
+    `insert into agent_binding(app_id,credential,enabled_roles,kit_digest,revision,credential_revision) values ($1,$2,$3,$4,$5,$6)
+    on conflict(app_id) do update set credential=excluded.credential,enabled_roles=excluded.enabled_roles,kit_digest=excluded.kit_digest,revision=excluded.revision,credential_revision=excluded.credential_revision`,
+    [id, credential, enabled, digest, revision, credentialRevision],
   );
   // A replacement credential or kit could represent broader upstream authority. Regrant explicitly.
   if (!current || supplied) await client.query("delete from agent_grant where app_id=$1", [id]);

@@ -1,7 +1,7 @@
 // Your Space's own tables (T011, data-model.md): whether the owner exists, actors, and events.
 import type { AgentAccess } from "../apps/agent-kit.ts";
 import { sql } from "drizzle-orm";
-import { boolean, check, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organization, user } from "./auth-schema.ts";
 
 /** Exactly one row, created by the first migration. Owner existence is read from it, never inferred. */
@@ -250,6 +250,8 @@ export const agentBinding = pgTable("agent_binding", {
   credential: text("credential"),
   enabledRoles: text("enabled_roles").array().notNull(),
   kitDigest: text("kit_digest").notNull(),
+  /** Earliest request revision admitted under the present upstream authority. */
+  credentialRevision: integer("credential_revision").notNull().default(1),
   revision: integer("revision").notNull(),
 });
 export const agentGrant = pgTable(
@@ -291,5 +293,8 @@ export const agentRequest = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     revision: integer("revision").notNull().default(1),
   },
-  (t) => [unique("agent_operation").on(t.agentId, t.appId, t.route, t.operationId)],
+  (t) => [
+    unique("agent_operation").on(t.agentId, t.appId, t.route, t.operationId),
+    index("agent_denied_samples").on(t.agentId, t.createdAt.desc(), t.id.desc()).where(sql`${t.status} = 'denied'`),
+  ],
 );

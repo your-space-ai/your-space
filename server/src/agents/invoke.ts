@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { sampleDenial } from "./denials.ts";
 import type { Db } from "../db/client.ts";
 import { decrypt, encrypt } from "../apps/settings.ts";
 import { agentCredentialHeader, filterAgentResult, renderAgentRequest, type AgentRoute } from "../apps/agent-kit.ts";
@@ -109,23 +110,13 @@ export async function receipt(db: Db, verifier: string, id: string, dataKey: str
       .rows[0];
     if (!row) forbidden();
     const install = await permissions(client, who, row.app_id);
-    if (
-      !install.allowed.has(row.route) ||
-      row.binding_revision !== install.row.revision ||
-      row.grant_revision !== install.grant.revision
-    )
-      forbidden();
+    if (!install.allowed.has(row.route) || row.binding_revision < install.row.credential_revision) forbidden();
     const outcome = summary(row, dataKey);
     const mapping = install.access.routes[row.route]?.receipt;
     if (row.status !== "unknown" || !mapping || !row.operation_id || install.row.state !== "running")
       return { outcome };
     // A receipt is a separate read of the original operation. Never replay the write.
-    if (
-      !install.allowed.has(mapping.route) ||
-      install.grant.revision !== row.grant_revision ||
-      install.row.revision !== row.binding_revision
-    )
-      return { outcome };
+    if (!install.allowed.has(mapping.route)) return { outcome };
     const receiptRoute = install.access.routes[mapping.route]!;
     if ((install.grant.overrides[mapping.route] ?? receiptRoute.approval) === "ask") return { outcome };
     const secret = decrypt(dataKey, install.row.credential);
@@ -136,7 +127,12 @@ export async function receipt(db: Db, verifier: string, id: string, dataKey: str
       outcome,
       lookup: {
         args: {
-          installation: { id: row.app_id, name: install.row.name, interfacePort: install.row.interface.port },
+          installation: {
+            id: row.app_id,
+            name: install.row.name,
+            interfaceService: install.row.interface.service,
+            interfacePort: install.row.interface.port,
+          },
           ...request,
           headers: { ...request.headers, ...agentCredentialHeader(install.access, secret) },
         },
@@ -180,12 +176,8 @@ async function admit(
     if (!(error instanceof AgencyError) || error.status !== 403) throw error;
   }
   if (!install || !install.allowed.has(v.actionId)) {
-    const { rows } = await client.query(
-      `insert into agent_request(agent_id,key_id,app_id,route,status,binding_revision,grant_revision,expires_at)
-      values($1,$2,$3,$4,'denied',0,0,now()) returning id,status`,
-      [who.agent, who.key, v.installationId, v.actionId],
-    );
-    return { outcome: { id: rows[0].id, status: "denied" } };
+    const id = await sampleDenial(client, who, v.installationId, v.actionId);
+    return { outcome: { id, status: "denied" } };
   }
   const { access, row, grant } = install;
   if (row.state !== "running") throw new AgencyError(503, "app_unavailable", "The app is unavailable.");
@@ -194,17 +186,21 @@ async function admit(
     invalid("Use a printable operation ID of up to 128 characters.");
   const operation = v.operationId === undefined ? undefined : upstreamId(who.agent, row.id, v.actionId, v.operationId);
   const request = renderAgentRequest(route, v.input, operation, v.expectedRevision);
-  const fingerprint = hash(
-    JSON.stringify([
-      request.method,
-      request.path,
-      request.headers,
-      request.body,
-      who.key,
-      row.revision,
-      grant.revision,
-    ]),
-  );
+  // Pending decisions bind current authority. For a read-only replay, compare the
+  // exact rendered request against the authority metadata of its original admission.
+  const fingerprintFor = (credentialId: string, bindingRevision: number, grantRevision: number) =>
+    hash(
+      JSON.stringify([
+        request.method,
+        request.path,
+        request.headers,
+        request.body,
+        credentialId,
+        bindingRevision,
+        grantRevision,
+      ]),
+    );
+  const fingerprint = fingerprintFor(who.key, row.revision, grant.revision);
   if (v.operationId && !pending) {
     const previous = (
       await client.query(
@@ -213,7 +209,11 @@ async function admit(
       )
     ).rows[0];
     if (previous) {
-      if (previous.fingerprint !== fingerprint) conflict();
+      if (
+        previous.binding_revision < row.credential_revision ||
+        previous.fingerprint !== fingerprintFor(previous.key_id, previous.binding_revision, previous.grant_revision)
+      )
+        conflict();
       return { outcome: summary(previous, dataKey) };
     }
   }
@@ -232,9 +232,10 @@ async function admit(
   const status = ask && !pending ? "pending" : "dispatching";
   let id: string;
   if (pending) {
-    await client.query("update agent_request set status='dispatching',input=null,expires_at=now()+interval '1 minute',revision=revision+1 where id=$1", [
-      pending.id,
-    ]);
+    await client.query(
+      "update agent_request set status='dispatching',input=null,expires_at=now()+interval '1 minute',revision=revision+1 where id=$1",
+      [pending.id],
+    );
     id = pending.id;
   } else {
     const input = status === "pending" ? encrypt(dataKey, JSON.stringify(v)) : null;

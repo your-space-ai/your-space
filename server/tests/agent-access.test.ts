@@ -172,6 +172,29 @@ it("reconciles an unknown write using its scoped upstream receipt and never repe
   vi.mocked(dispatchAppAction).mockRejectedValueOnce(new Error("Lost response"));
   const outcome = await invoke(t.db, key, verifier, write());
   expect(outcome.status).toBe("unknown");
+  // Saving the same upstream binding and changing approval preferences neither
+  // dispatches another write nor strands its receipt when both routes remain allowed.
+  await transaction(t.db, async (c) => {
+    const updated = await bind(c, installation, { revision: 3, enabledRoles: ["manager"] }, key);
+    await grant(c, owner, agent, installation, {
+      revision: 1,
+      bindingRevision: updated.revision,
+      roles: ["manager"],
+      askAllWrites: true,
+      overrides: { lookup: "ask" },
+    });
+  });
+  expect((await receipt(t.db, verifier, outcome.id, key)).status).toBe("unknown");
+  expect(dispatchAppAction).toHaveBeenCalledTimes(1);
+  await transaction(t.db, (c) =>
+    grant(c, owner, agent, installation, {
+      revision: 2,
+      bindingRevision: 4,
+      roles: ["manager"],
+      askAllWrites: true,
+      overrides: { lookup: "allow" },
+    }),
+  );
   expect((await invoke(t.db, key, verifier, write())).status).toBe("unknown");
   expect(dispatchAppAction).toHaveBeenCalledTimes(1);
   expect(await receipt(t.db, verifier, outcome.id, key)).toMatchObject({
@@ -181,6 +204,24 @@ it("reconciles an unknown write using its scoped upstream receipt and never repe
   const [writeCall, lookupCall] = vi.mocked(dispatchAppAction).mock.calls;
   expect(lookupCall![0].method).toBe("GET");
   expect(lookupCall![0].path).toBe("/receipts/" + writeCall![0].headers["Idempotency-Key"]);
+  await transaction(t.db, async (c) => {
+    const changed = await bind(
+      c,
+      installation,
+      { revision: 4, credential: "another-principal", enabledRoles: ["manager"] },
+      key,
+    );
+    await grant(c, owner, agent, installation, {
+      revision: 0,
+      bindingRevision: changed.revision,
+      roles: ["manager"],
+      askAllWrites: false,
+      overrides: {},
+    });
+  });
+  await expect(receipt(t.db, verifier, outcome.id, key)).rejects.toMatchObject({ status: 403 });
+  await expect(invoke(t.db, key, verifier, write())).rejects.toMatchObject({ status: 409 });
+  expect(dispatchAppAction).toHaveBeenCalledTimes(2);
 });
 
 it("keeps owner cookies and agent credentials on separate authority paths", async () => {
@@ -248,4 +289,158 @@ it("cannot retrieve a previous receipt after removing and reinstalling an app wi
   await expect(receipt(t.db, verifier, pending.id, key)).rejects.toMatchObject({ status: 403 });
   await expect(invoke(t.db, key, verifier, write())).rejects.toMatchObject({ status: 409 });
   expect(dispatchAppAction).toHaveBeenCalledTimes(1);
+});
+
+it("isolates two actors and unrelated installation catalogs through discovery, invocation and receipts", async () => {
+  const telemetry = parseAgentAccess({
+    credential: { binding: "sensor", inject: { location: "header", name: "Authorization", scheme: "Bearer" } },
+    roles: { observer: { title: "Observer", routes: ["temperature"] } },
+    routes: { temperature: { method: "GET", path: "/observations", effect: "read", outputFields: ["degrees"] } },
+  });
+  const [sensor] = await t.db
+    .insert(app)
+    .values({
+      name: "sensor",
+      title: "Sensor",
+      sourceUrl: "https://example.test/sensor",
+      repo: "sample/sensor",
+      path: "compose.yaml",
+      ref: "main",
+      commit: "e".repeat(40),
+      compose: "{}",
+      images: {},
+      adaptations: [],
+      limits: {},
+      installedBy: owner,
+      state: "running",
+      interface: { service: "sensor", port: 8080 },
+      kit: { kit: 2, agentAccess: telemetry },
+    })
+    .returning({ id: app.id });
+  const sensorId = sensor!.id;
+  await setGrant(0, true);
+  const secondVerifier = await transaction(t.db, async (c) => {
+    const observer = await createAgent(c, owner, "Observer");
+    const observerKey = await manageKey(c, owner, observer.id);
+    await bind(c, sensorId, { revision: 0, enabledRoles: ["observer"], credential: "sensor-fixture" }, key);
+    await grant(c, owner, observer.id, sensorId, {
+      revision: 0,
+      bindingRevision: 1,
+      roles: ["observer"],
+      askAllWrites: false,
+      overrides: {},
+    });
+    return hash(observerKey.key!);
+  });
+
+  const actionsFor = (token: string) => transaction(t.db, async (c) => discover(c, await identity(c, token)));
+  expect((await actionsFor(verifier)).actions).toMatchObject([{ installationId: installation, actionId: "list" }]);
+  expect((await actionsFor(secondVerifier)).actions).toMatchObject([
+    { installationId: sensorId, actionId: "temperature" },
+  ]);
+  const reading = { installationId: sensorId, actionId: "temperature" };
+  expect((await invoke(t.db, key, verifier, reading)).status).toBe("denied");
+  expect((await invoke(t.db, key, secondVerifier, { installationId: installation, actionId: "list" })).status).toBe(
+    "denied",
+  );
+  expect(dispatchAppAction).not.toHaveBeenCalled();
+
+  vi.mocked(dispatchAppAction).mockResolvedValueOnce({ status: 200, body: { degrees: 19, raw: "internal" } });
+  const outcome = await invoke(t.db, key, secondVerifier, reading);
+  expect(outcome).toMatchObject({ status: "succeeded", result: { degrees: 19 } });
+  expect(dispatchAppAction).toHaveBeenCalledWith(
+    expect.objectContaining({
+      installation: expect.objectContaining({ id: sensorId, interfaceService: "sensor" }),
+      method: "GET",
+      path: "/observations",
+      headers: { Authorization: "Bearer sensor-fixture" },
+    }),
+  );
+  await expect(receipt(t.db, verifier, outcome.id, key)).rejects.toMatchObject({ status: 403 });
+  const { events } = await transaction(t.db, (c) => activity(c, owner));
+  expect(events.find((event) => event.id === outcome.id)).toMatchObject({
+    ownerId: owner,
+    installationId: sensorId,
+    actionId: "temperature",
+    status: "succeeded",
+  });
+});
+
+it("keeps an interrupted claim unknown after its deadline and never re-dispatches the write", async () => {
+  await setGrant(0);
+  const pending = await invoke(t.db, key, verifier, write());
+  // A stopped process can leave a committed dispatch claim without any upstream response.
+  await t.pool.query(
+    "update agent_request set status='dispatching', input=null, expires_at=now() - interval '1 minute' where id=$1",
+    [pending.id],
+  );
+  expect(await receipt(t.db, verifier, pending.id, key)).toMatchObject({ status: "unknown" });
+  expect(await invoke(t.db, key, verifier, write())).toEqual({ id: pending.id, status: "unknown" });
+  expect(dispatchAppAction).not.toHaveBeenCalled();
+});
+
+it("serializes grant withdrawal with approval and prevents subsequent writes", async () => {
+  await setGrant(0);
+  const offered = await transaction(t.db, async (c) => discover(c, await identity(c, verifier)));
+  expect(offered.actions.map((action) => action.actionId).sort()).toEqual(["create", "list"]);
+  const pending = await invoke(t.db, key, verifier, write());
+  expect(pending.status).toBe("pending");
+
+  const approve = () => decide(t.db, key, owner, pending.id, { approve: true, revision: 1 });
+  const [approval, withdrawal] = await Promise.allSettled([approve(), setGrant(1, true)]);
+  expect(withdrawal.status).toBe("fulfilled");
+  const state = (await t.pool.query("select status from agent_request where id=$1", [pending.id])).rows[0].status;
+  const dispatched = approval.status === "fulfilled" ? 1 : 0;
+  if (approval.status === "fulfilled") {
+    expect(approval.value.status).toBe("succeeded");
+    expect(state).toBe("succeeded");
+  } else {
+    expect(approval.reason).toMatchObject({ status: 409 });
+    expect(state).toBe("stale");
+  }
+  expect(dispatchAppAction).toHaveBeenCalledTimes(dispatched);
+
+  await expect(approve()).rejects.toMatchObject({ status: 409 });
+  for (const operationId of [write().operationId, "later-write"]) {
+    expect((await invoke(t.db, key, verifier, { ...write(), operationId })).status).toBe("denied");
+  }
+  expect(dispatchAppAction).toHaveBeenCalledTimes(dispatched);
+});
+
+it("retires the old grant, credential and pending approval when a kit changes its route", async () => {
+  await setGrant(0);
+  const pending = await invoke(t.db, key, verifier, write());
+  const approve = (id: string) => decide(t.db, key, owner, id, { approve: true, revision: 1 });
+  const revised = parseAgentAccess({
+    ...access,
+    routes: { ...access.routes, create: { ...access.routes.create, path: "/new-items" } },
+  });
+  await t.pool.query("update app set kit=$2 where id=$1", [
+    installation, JSON.stringify({ kit: 2, agentAccess: revised }),
+  ]);
+
+  const afterChange = await transaction(t.db, (c) => dashboard(c, owner, key));
+  expect(afterChange.agents[0]).toMatchObject({ grants: [] });
+  expect(afterChange.installations[0]).toMatchObject({ id: installation, bound: false, enabledRoles: [] });
+  expect(afterChange.requests).toEqual([]);
+  expect(afterChange.events.find((event) => event.id === pending.id)?.status).toBe("stale");
+  await expect(approve(pending.id)).rejects.toMatchObject({ status: 409 });
+  expect((await invoke(t.db, key, verifier, write())).status).toBe("denied");
+
+  const rebound = await transaction(t.db, (c) =>
+    bind(c, installation, { revision: 2, credential: secret, enabledRoles: ["manager"] }, key),
+  );
+  expect((await invoke(t.db, key, verifier, write())).status).toBe("denied");
+  await transaction(t.db, (c) =>
+    grant(c, owner, agent, installation, {
+      revision: 0, bindingRevision: rebound.revision, roles: ["manager"], askAllWrites: true, overrides: {},
+    }),
+  );
+  await expect(approve(pending.id)).rejects.toMatchObject({ status: 409 });
+  await expect(invoke(t.db, key, verifier, write())).rejects.toMatchObject({ status: 409 });
+  expect(dispatchAppAction).not.toHaveBeenCalled();
+  const fresh = await invoke(t.db, key, verifier, { ...write(), operationId: "revised-kit-write" });
+  expect(fresh.status).toBe("pending");
+  expect((await approve(fresh.id)).status).toBe("succeeded");
+  expect(dispatchAppAction).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ path: "/new-items" }));
 });

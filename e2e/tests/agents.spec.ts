@@ -77,7 +77,7 @@ test("kit grants and exact approvals route real calls to the installed app", asy
   await app.getByRole("checkbox", { name: /Manager/ }).check();
   await app.getByRole("checkbox", { name: /Reader/ }).check();
   await app.getByRole("button", { name: "Save connection" }).click();
-  await expect(app.locator("summary")).toContainText("Connected");
+  await expect(app.locator("summary")).toContainText("Credential saved");
   const settings = page.getByRole("region", { name: "Manage agents" });
   const access = settings.locator("details").filter({ has: page.locator("summary", { hasText: /records/i }) });
   await access.locator("summary").click();
@@ -111,6 +111,7 @@ test("kit grants and exact approvals route real calls to the installed app", asy
   expect(created.status).toBe("succeeded");
   const id = created.result.id;
   expect(created.result).toEqual({ id, revision: 1, title: "Original" });
+  expect(await invoke("create", { body: { title: "Original" } }, "fixture-create")).toEqual(created);
   const edit = await invoke("edit", { path: { id }, body: { title: "Changed" } }, "fixture-edit", '"1"');
   expect(edit.status).toBe("pending");
   expect((await invoke("list", {})).result).toEqual([created.result]);
@@ -120,6 +121,14 @@ test("kit grants and exact approvals route real calls to the installed app", asy
   await pending.getByRole("button", { name: "Approve once" }).click();
   await expect(pending.getByText("No requests awaiting approval.")).toBeVisible();
   expect((await run(["request", edit.id])).result).toEqual({ id, revision: 2, title: "Changed" });
+  expect((await invoke("list", {})).result).toEqual([{ id, revision: 2, title: "Changed" }]);
+
+  const staleEdit = await invoke("edit", { path: { id }, body: { title: "Stale change" } }, "fixture-stale", '"1"');
+  expect(staleEdit.status).toBe("pending");
+  await pending.locator("summary").click();
+  await pending.getByRole("button", { name: "Approve once" }).click();
+  await expect(pending.getByText("No requests awaiting approval.")).toBeVisible();
+  expect((await run(["request", staleEdit.id])).status).toBe("conflict");
   expect((await invoke("list", {})).result).toEqual([{ id, revision: 2, title: "Changed" }]);
 
   await access.locator("summary").click();

@@ -1,6 +1,6 @@
 // T041: a newer build's migration upgrades an installation in place (FR-024, cross-cutting scenario 8).
 import { createHash } from "node:crypto";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { asc, sql } from "drizzle-orm";
 import { account, member, organization, session, user, verification } from "../src/db/auth-schema.ts";
 import { createDatabase, type Db } from "../src/db/client.ts";
-import { actor, event, installation } from "../src/db/schema.ts";
+import { actor, app, event, installation } from "../src/db/schema.ts";
 import { MIGRATIONS_FOLDER, runMigrations, schemaVersion } from "../src/migrate.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { PUBLIC_URL } from "./helpers/env.ts";
@@ -61,9 +61,6 @@ afterAll(() => {
 });
 
 let t: TestDatabase;
-beforeEach(async () => {
-  t = await createTestDatabase();
-});
 afterEach(async () => {
   vi.restoreAllMocks();
   await t.destroy();
@@ -117,22 +114,95 @@ async function records(db: Db) {
   };
 }
 
+async function signedInOwnerCookie(db: Db) {
+  const oldBuild = await startServer(db, { publicUrl: PUBLIC_URL });
+  try {
+    const signIn = await oldBuild.request("/api/auth/sign-in/username", {
+      method: "POST",
+      body: JSON.stringify({ username: OWNER.username, password: OWNER.password }),
+    });
+    expect(signIn.status).toBe(200);
+    return cookieHeader(signIn);
+  } finally {
+    await oldBuild.close();
+  }
+}
+
+it("upgrades a populated 0005 workspace in place without granting agent access", async () => {
+  t = await createTestDatabase({ migrate: false });
+  const baseline = mkdtempSync(join(tmpdir(), "ys-before-agent-migrations-"));
+  const entries = JOURNAL.entries.filter((entry) => entry.idx <= 5);
+  expect(entries.at(-1)?.tag).toBe("0005_frame");
+  try {
+    mkdirSync(join(baseline, "meta"));
+    for (const { tag } of entries) cpSync(join(MIGRATIONS_FOLDER, tag + ".sql"), join(baseline, tag + ".sql"));
+    writeFileSync(join(baseline, "meta", "_journal.json"), JSON.stringify({ ...JOURNAL, entries }));
+    await runMigrations(t.pool, baseline);
+  } finally {
+    rmSync(baseline, { recursive: true, force: true });
+  }
+  expect(await recorded(t.db)).toEqual(SHIPPED_ROWS.slice(0, entries.length));
+
+  await createOwnerWithPassword(t.db, OWNER, PUBLIC_URL);
+  const cookie = await signedInOwnerCookie(t.db);
+  const before = await records(t.db);
+  const owner = before.actors.find((row) => row.kind === "human")!;
+  const appsBefore = await t.db
+    .insert(app)
+    .values({
+      name: "legacy",
+      title: "Legacy app",
+      sourceUrl: "https://example.test/legacy",
+      repo: "sample/legacy",
+      path: "compose.yaml",
+      ref: "main",
+      commit: "a".repeat(40),
+      compose: "services: {}",
+      kit: { kit: 1 },
+      interface: { service: "web", port: 8080 },
+      images: {},
+      adaptations: [],
+      limits: {},
+      state: "running",
+      installedBy: owner.id,
+    })
+    .returning();
+  expect(appsBefore).toHaveLength(1);
+
+  await runMigrations(t.pool);
+  expect(await recorded(t.db)).toEqual(SHIPPED_ROWS);
+  expect(await records(t.db)).toEqual(before);
+  expect(await t.db.select().from(app)).toEqual(appsBefore);
+  const authority = await t.pool.query(`select
+    (select count(*)::int from external_agent) as agents,
+    (select count(*)::int from agent_key) as keys,
+    (select count(*)::int from agent_binding) as bindings,
+    (select count(*)::int from agent_grant) as grants,
+    (select count(*)::int from agent_request) as requests`);
+  expect(authority.rows).toEqual([{ agents: 0, keys: 0, bindings: 0, grants: 0, requests: 0 }]);
+
+  const upgraded = await startServer(t.db, { publicUrl: PUBLIC_URL });
+  try {
+    const session = await upgraded.request("/api/auth/get-session", { headers: { cookie } });
+    expect(session.status).toBe(200);
+    expect(await session.json()).toMatchObject({ session: { id: before.sessions[0]!.id }, user: { id: owner.userId } });
+    const dashboard = await upgraded.request("/api/agents/dashboard", { headers: { cookie } });
+    expect(dashboard.status).toBe(200);
+    expect(await dashboard.json()).toMatchObject({ agents: [], installations: [], requests: [], events: [] });
+    expect((await upgraded.request("/api/agent/actions", { headers: { cookie } })).status).toBe(401);
+  } finally {
+    await upgraded.close();
+  }
+});
+
 describe("schema migrations", () => {
+  beforeEach(async () => {
+    t = await createTestDatabase();
+  });
   it("upgrades an installation in place and keeps identities, ownership, claim state, and sessions", async () => {
     // An installation created by the current build, with a signed-in owner.
     await createOwnerWithPassword(t.db, OWNER, PUBLIC_URL);
-    const oldBuild = await startServer(t.db, { publicUrl: PUBLIC_URL });
-    let cookie: string;
-    try {
-      const signIn = await oldBuild.request("/api/auth/sign-in/username", {
-        method: "POST",
-        body: JSON.stringify({ username: OWNER.username, password: OWNER.password }),
-      });
-      expect(signIn.status).toBe(200);
-      cookie = cookieHeader(signIn);
-    } finally {
-      await oldBuild.close();
-    }
+    const cookie = await signedInOwnerCookie(t.db);
 
     expect(await schemaVersion(t.pool)).toBe(CURRENT_VERSION);
     expect(await recorded(t.db)).toEqual(SHIPPED_ROWS);
