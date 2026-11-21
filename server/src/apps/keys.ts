@@ -3,7 +3,7 @@
 // values encrypted with the data key a replacement left behind. It runs before the server serves
 // anything, in one transaction, so a value is never half moved. A value no key can read is left as
 // it is, and the app reports it when it next needs its settings.
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { appSetting } from "../db/schema.ts";
 import { decrypt, decryptLegacy, encrypt } from "./settings.ts";
@@ -60,6 +60,36 @@ export async function moveSettingsToDataKey(db: Db, keys: Keys): Promise<Moved> 
       }
       await tx.update(appSetting).set({ value: encrypt(keys.dataKey, value) }).where(and(eq(appSetting.appId, row.appId), eq(appSetting.name, row.name)));
       result.moved++;
+    }
+    // Agent credentials, approval previews and receipts use the same installation data key.
+    // Batch migration avoids loading all historical results into memory during rotation.
+    if (keys.previousDataKey) {
+      for (const [table, pk, column] of [
+        ["agent_binding", "app_id", "credential"],
+        ["agent_request", "id", "input"],
+        ["agent_request", "id", "result"],
+      ] as const) {
+        let cursor = "00000000-0000-0000-0000-000000000000";
+        for (;;) {
+          const page = await tx.execute<{id:string; value:string}>(sql`select ${sql.identifier(pk)} as id,
+            ${sql.identifier(column)} as value from ${sql.identifier(table)} where ${sql.identifier(column)} is not null
+            and ${sql.identifier(pk)} > ${cursor} order by ${sql.identifier(pk)} limit 128 for update`);
+          for (const record of page.rows) {
+            cursor = record.id;
+            try {
+              decrypt(keys.dataKey, record.value);
+              result.current++;
+            } catch {
+              const value = readable(keys, record.value);
+              if (value === undefined) { result.unreadable++; continue; }
+              await tx.execute(sql`update ${sql.identifier(table)} set ${sql.identifier(column)}=${encrypt(keys.dataKey, value)}
+                where ${sql.identifier(pk)}=${record.id}`);
+              result.moved++;
+            }
+          }
+          if (page.rows.length < 128) break;
+        }
+      }
     }
     return result;
   });

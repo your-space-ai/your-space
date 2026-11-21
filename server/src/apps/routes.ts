@@ -14,7 +14,7 @@ interface Owner {
   actorId: string;
 }
 
-async function ownerFor(auth: Auth, db: Db, req: Request): Promise<Owner | "signed_out" | "forbidden"> {
+export async function ownerFor(auth: Auth, db: Db, req: Request): Promise<Owner | "signed_out" | "forbidden"> {
   const current = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
   if (!current) return "signed_out";
   const rows = await db
