@@ -248,19 +248,22 @@ export async function findKit(
   endpoints: GithubEndpoints = githubEndpoints(),
   fetcher: typeof fetch = fetch,
 ): Promise<FoundKit | null> {
-  if (!kitLink && !directory) return null;
+  const link = kitLink?.trim();
   let file;
-  try {
-    file = kitLink ? await fetchSource(kitLink, endpoints, fetcher)
-      : await fetchDirectoryFile(directory!, `apps/${repo.toLowerCase()}.yaml`, endpoints, fetcher);
-  } catch (error) {
-    // No kit in the kits repository is normal; a link the owner gave must work.
-    if (!kitLink && error instanceof SourceError) return null;
-    throw error;
+  if (link) {
+    file = await fetchSource(link, endpoints, fetcher);
+  } else {
+    if (!directory) return null;
+    try {
+      file = await fetchDirectoryFile(directory, `apps/${repo.toLowerCase()}.yaml`, endpoints, fetcher);
+    } catch (error) {
+      if (error instanceof SourceError) return null;
+      throw error;
+    }
   }
   const kit = parseKit(file.text);
   if (!fits(kit, repo, path)) {
-    if (!kitLink) return null;
+    if (!link) return null;
     throw misfit(kit, repo, path);
   }
   if (kit.agentAccess && directory) {

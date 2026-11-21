@@ -68,7 +68,22 @@ it("carries a later directory review only across identical bytes at the same pat
   }
 });
 
-it("skips directory discovery entirely when there is no configured repository or explicit kit", async () => {
+it.each([undefined, "  \t "])("skips discovery without a directory or an explicit kit (%j)", async (link) => {
   const fetcher = () => { throw Error("Unexpected network access"); };
-  expect(await findKit("example/app", "compose.yaml", undefined, undefined, undefined, fetcher)).toBeNull();
+  expect(await findKit("example/app", "compose.yaml", link, undefined, undefined, fetcher)).toBeNull();
+});
+
+it("discovers a kit in the configured directory when the optional link is blank", async () => {
+  const directory = "community/catalog";
+  const path = "apps/example/app.yaml";
+  const fetcher: typeof fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname === `/repos/${directory}/commits`) return Response.json([{ sha: revision }]);
+    if (url.pathname === `/${directory}/${revision}/${path}`) {
+      return new Response("kit: 1\nsource: { repo: example/app, path: compose.yaml }");
+    }
+    throw Error("Unexpected GitHub request: " + url.pathname);
+  };
+  const found = await findKit("example/app", "compose.yaml", "  \t ", directory, undefined, fetcher);
+  expect(found?.source).toBe(`https://github.com/${directory}/blob/${revision}/${path}`);
 });
