@@ -61,7 +61,7 @@ describe("links, kits and settings", () => {
     const kit = parseKit(KIT);
     expect(kit).toMatchObject({ name: "whoami", interface: { service: "web", port: 80 }, outbound: ["example.com"], limits: { web: { memory: 64 * 1024 ** 2, cpus: 0.5 } } });
     expect(() => parseKit(`${KIT}\nextra: true`)).toThrow(KitError);
-    expect(() => parseKit(KIT.replace("kit: 1", "kit: 2"))).toThrow(/format/);
+    expect(() => parseKit(KIT.replace("kit: 1", "kit: 3"))).toThrow(/format/);
     expect(() => parseKit(KIT.replace("[example.com]", "['http://x']"))).toThrow(/host name/);
     expect(() => parseKit(KIT.replace("bytes: 24", "bytes: 4"))).toThrow(/16 to 128/);
     expect(parseMemory("1.5G")).toBe(1.5 * 1024 ** 3);
