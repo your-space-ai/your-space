@@ -9,6 +9,15 @@
 # Behind your own proxy, YS_PROXY_URL names Your Space's address; every other name on port 8080 is an
 # app's.
 {
+	log {
+		format filter {
+			wrap json
+			fields {
+				request>headers delete
+				request>uri delete
+			}
+		}
+	}
 	servers :8080 {
 		# Only port 8080, where your own proxy forwards, accepts the visitor address a proxy reports.
 		# Strict mode reads X-Forwarded-For from the right and skips private addresses as proxies, so
@@ -105,4 +114,12 @@
 
 {$YS_REDIRECT_SITES:http://127.0.0.1} {
 	redir {$YS_REDIRECT_URL:http://space.localhost}{uri}
+}
+
+# Private server-to-app dispatch. The volume is mounted only by the server and edge.
+http://:3099 {
+	bind unix//run/ys-agent/edge.sock|0666
+	reverse_proxy {http.request.header.X-YS-Target} {
+		header_up -X-YS-Target
+	}
 }

@@ -15,6 +15,8 @@ export class RuntimeError extends Error {
 }
 
 export interface AppSpec {
+  /** Stable server installation ID, available when applying an installed app. */
+  appId?: string;
   project: string;
   app: string;
   compose: string;
@@ -100,11 +102,11 @@ export interface Runtime {
   checkPort(project: string, publish: { port: number; bind: string }): Promise<{ inUse: boolean; by?: string }>;
 }
 
-function call(method: string, path: string, body?: unknown, onLine?: (line: string) => void, socketPath = RUNTIME_SOCKET): Promise<{ status: number; text: string }> {
+function call(method: string, path: string, body?: unknown, onLine?: (line: string) => void, socketPath = RUNTIME_SOCKET, deadlineMs?: number): Promise<{ status: number; text: string }> {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? undefined : JSON.stringify(body);
     const req = request(
-      { socketPath, method, path, headers: payload ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } : {} },
+      { socketPath, method, path, signal: deadlineMs === undefined ? undefined : AbortSignal.timeout(deadlineMs), headers: payload ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } : {} },
       (res) => {
         let text = "";
         let buffer = "";
@@ -132,8 +134,8 @@ function call(method: string, path: string, body?: unknown, onLine?: (line: stri
   });
 }
 
-async function json<T>(method: string, path: string, body?: unknown, socketPath?: string): Promise<T> {
-  const { status, text } = await call(method, path, body, undefined, socketPath);
+async function json<T>(method: string, path: string, body?: unknown, socketPath?: string, deadlineMs?: number): Promise<T> {
+  const { status, text } = await call(method, path, body, undefined, socketPath, deadlineMs);
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -145,6 +147,12 @@ async function json<T>(method: string, path: string, body?: unknown, socketPath?
     throw new RuntimeError(message ?? "The runtime manager refused the request.", status, error ?? "runtime_error");
   }
   return data as T;
+}
+
+/** Resolve through the private engine-owning runtime just before dispatch. */
+export function installedInterface(project: string, id: string, service: string, port: number): Promise<{ address: string }> {
+  const query = new URLSearchParams({ id, service, port: String(port) });
+  return json("GET", `/apps/${encodeURIComponent(project)}/interface?${query}`, undefined, undefined, 5_000);
 }
 
 export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {

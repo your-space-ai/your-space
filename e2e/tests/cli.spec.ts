@@ -303,8 +303,8 @@ test("your own domain: the names are checked, and HTTPS comes up with the certif
 function setUpPebble(folder: string): void {
   // Pebble's public test root (e2e/pebble/README.md), so Caddy trusts Pebble's own HTTPS.
   const caddyfile = readFileSync(join(root, "deploy/Caddyfile"), "utf8").replace(
-    "{\n\tservers :8080 {",
-    "{\n\tacme_ca https://pebble:14000/dir\n\tacme_ca_root /pebble/root.pem\n\tservers :8080 {",
+    /^\{$/m,
+    "{\n\tacme_ca https://pebble:14000/dir\n\tacme_ca_root /pebble/root.pem",
   );
   if (!caddyfile.includes("acme_ca https://pebble")) throw new Error("The Caddyfile's global options changed; update this test.");
   writeFileSync(join(folder, "Caddyfile.pebble"), caddyfile);

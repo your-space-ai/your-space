@@ -14,6 +14,7 @@ import {
   INSTALLATION,
   isStopping,
   listApps,
+  resolveInterface,
   logs,
   SpecError,
   stats,
@@ -102,6 +103,9 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (method === "GET" && action === "/denials") return send(res, 200, await denials(project));
     if (method === "POST" && action === "/port") {
       return send(res, 200, await checkPort(project, validatePortCheck(await readBody(req))));
+    }
+    if (method === "GET" && action === "/interface") {
+      return send(res, 200, await resolveInterface(project, url.searchParams.get("id") ?? "", url.searchParams.get("service") ?? "", Number(url.searchParams.get("port"))));
     }
     if (method === "GET" && action === "/logs") {
       const service = url.searchParams.get("service") ?? "";
