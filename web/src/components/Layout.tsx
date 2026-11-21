@@ -38,6 +38,9 @@ export function Layout() {
               Apps
             </Link>
           </li>
+          <li>
+            <Link to="/agents" onClick={close}>Agents</Link>
+          </li>
         </ul>
         {openable.length > 0 ? (
           <ul aria-label="Your apps">
