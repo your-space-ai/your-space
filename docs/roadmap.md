@@ -2,7 +2,7 @@
 
 The first release serves one owner. They can download the macOS app to set up a local Docker workspace or connect to an existing server. They can also run a headless Docker server and use a browser. In the selected workspace they install apps using kits and decide what their AI agent can do.
 
-The first publication milestone is a quiet source preview with a Docker quickstart. The checklist below tracks the first packaged release. [Source publication checks](public-release-readiness.md#early-source-publication-building-in-public)
+The first publication milestone is a quiet source preview with a Docker quickstart, AGPL-3.0-only licensing and DCO sign-offs. The checklist below tracks the first packaged release. [Source publication checks](public-release-readiness.md#early-source-publication-building-in-public)
 
 ## Core Experience and First Packaged Release
 
