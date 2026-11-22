@@ -18,23 +18,23 @@
       <section id="welcome" aria-labelledby="welcome-title">
         <img id="workspace-art" src="../../web/public/themes/canopy.webp" alt="">
         <h1 id="welcome-title" tabindex="-1">Open your workspace</h1>
-        <p class="intro">Choose where to run your personal dashboard.</p>
+        <p class="intro">Bring your apps into one personal dashboard. Start here or open one you already use.</p>
         <div class="choices">
           <button type="button" id="local-choice" class="choice">
             <span class="choice-icon computer" aria-hidden="true"></span>
-            <span><strong>Run on this Mac</strong><small>Start a local workspace with Docker.</small></span>
+            <span><strong>Run on this Mac</strong><small>Keep your workspace and apps on this computer.</small></span>
             <span class="chevron" aria-hidden="true">›</span>
           </button>
           <button type="button" id="remote-choice" class="choice">
             <span class="choice-icon server" aria-hidden="true"></span>
-            <span><strong>Connect to a server</strong><small>Open a workspace you already run.</small></span>
+            <span><strong>Connect to a server</strong><small>Use an existing dashboard. Only the server needs Docker.</small></span>
             <span class="chevron" aria-hidden="true">›</span>
           </button>
         </div>
       </section>
       <section id="local" hidden aria-labelledby="local-title">
         <h1 id="local-title" tabindex="-1">Run on this Mac</h1>
-        <p class="intro">Your Space uses Docker to run your dashboard and its apps.</p>
+        <p class="intro">Your Space will check Docker, start your dashboard, and help you create your owner account.</p>
         <form id="local-form">
           <div class="surface">
             <div class="engine-summary">
@@ -55,7 +55,7 @@
           <p id="engine-guidance" hidden>On a Mac you can use OrbStack, Colima or Docker Desktop with the Docker CLI and Compose.</p>
           <div class="actions">
             <button type="submit" class="primary" id="start">Open local workspace</button>
-            <button type="button" class="secondary" id="retry">Check again</button>
+            <button type="button" class="secondary" id="retry" hidden>Check again</button>
             <button type="button" class="text-action" id="guide" hidden>Docker Desktop setup guide</button>
           </div>
         </form>

@@ -92,7 +92,7 @@ program.command("setup")
   .option("--release-dir <folder>", "use version-matched release files and SHA256SUMS from this folder")
   .option("--owner-name <name>", "first owner's display name (default Owner)")
   .option("--owner-username <username>", "first owner's username (default owner)")
-  .action(action(async (ui, g, flags: WorkspaceSetupFlags) => setupWorkspace(ui, g.workdir, flags)));
+  .action(action(async (ui, g, flags: WorkspaceSetupFlags) => setupWorkspace(ui, g.workdir, flags, program.getOptionValueSource("workdir") === "cli")));
 
 program.command("engine").description("check the local Docker engine")
   .command("check").description("check engine and Compose compatibility without starting an installation")

@@ -40,6 +40,21 @@ afterEach(async () => {
 });
 
 describe("operator setup", () => {
+  it("uses the choices made during guided setup for the private owner handoff", async () => {
+    const guided = new Ui({ json: false, verbose: false, yes: false });
+    Object.defineProperty(guided, "interactive", { value: true });
+    vi.spyOn(guided, "intro").mockImplementation(() => {});
+    vi.spyOn(guided, "note").mockImplementation(() => {});
+    vi.spyOn(guided, "result").mockImplementation(() => {});
+    vi.spyOn(guided, "select").mockResolvedValue("custom");
+    vi.spyOn(guided, "text").mockResolvedValueOnce(dir).mockResolvedValueOnce("Pat")
+      .mockResolvedValueOnce("pat").mockResolvedValueOnce("8081");
+    await setupWorkspace(guided, ".", {}, false);
+    expect(prepareInstallation).toHaveBeenCalledWith(guided, expect.any(String), expect.objectContaining({ port: "8081" }));
+    expect(createOwner).toHaveBeenCalledWith(guided, expect.anything(), { ownerName: "Pat", ownerUsername: "pat", open: false });
+    expect((await stat(join(dir, ".your-space-owner-link"))).mode & 0o777).toBe(0o600);
+  });
+
   it("resumes a partial install, persists the handoff privately and prints only its path", async () => {
     await writeFile(join(dir,"env.example"),"");
     await setupWorkspace(ui,dir,{});

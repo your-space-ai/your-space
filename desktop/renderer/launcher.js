@@ -79,6 +79,7 @@ function fillEngines(result) {
   byId("engine-details").open = (selectionMissing && (engines.length > 0 || !!saved)) || chosen === custom;
   byId("guide").hidden = !(guideCodes.has(engineProblem?.code) || (!saved && !engines.length));
   byId("engine-guidance").hidden = byId("guide").hidden;
+  byId("retry").hidden = !engineProblem && !selectionMissing;
   if (engineProblem) byId("problem").textContent = engineProblem.message;
   else if (selectionMissing && (saved || previous)) byId("problem").textContent = "The selected engine changed or is unavailable. Check the socket before choosing an engine.";
   updateEngine();
@@ -113,6 +114,7 @@ async function run(message, action) {
 function successful(result) {
   if (!result?.error) return true;
   byId("problem").textContent = result.error.message;
+  if (active === "local") byId("retry").hidden = false;
   if (active === "local" && guideCodes.has(result.error.code)) {
     byId("guide").hidden = false;
     byId("engine-guidance").hidden = false;
@@ -132,7 +134,10 @@ async function checkEngines() {
     const result = await api.engines();
     if (request === discovery && successful(result)) fillEngines(result);
   } catch {
-    if (request === discovery) byId("problem").textContent = "Your Space couldn’t check Docker. Try again.";
+    if (request === discovery) {
+      byId("retry").hidden = false;
+      byId("problem").textContent = "Your Space couldn’t check Docker. Try again.";
+    }
   } finally {
     if (request === discovery) {
       checking = false;

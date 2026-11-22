@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { chmod, link, lstat, mkdir, mkdtemp, open, readdir, readFile, rm } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { Compose } from "../compose.ts";
 import { CliError } from "../errors.ts";
@@ -107,10 +108,39 @@ async function existingHandoff(path: string): Promise<string | null> {
   }
 }
 
-export async function setupWorkspace(ui: Ui, workdir: string, flags: WorkspaceSetupFlags): Promise<void> {
-  const folder = resolve(workdir);
+export async function setupWorkspace(ui: Ui, workdir: string, flags: WorkspaceSetupFlags, explicitFolder = true): Promise<void> {
+  const guided = ui.interactive && !ui.yes;
+  let folder = resolve(workdir);
+  if (guided) {
+    ui.intro("Set up your personal workspace");
+    if (!explicitFolder && !Installation.isOne(folder)) {
+      folder = resolve(await ui.text({
+        message: "Where should Your Space keep its installation files?",
+        flag: "--workdir", initial: join(homedir(), "my-your-space"),
+        validate: value => value.trim() ? undefined : "Choose a folder.",
+      }));
+    }
+    ui.note(folder, "Workspace folder");
+  }
   if (flags.port !== undefined && checkPort(flags.port)) throw new CliError("invalid_input", "Choose a valid local port from 1 to 65535.");
   const existing = existsSync(folder) && Installation.isOne(folder);
+  if (guided && !existing) {
+    const choice = await ui.select({
+      message: "How would you like to start?", flag: "--yes", initial: "quick",
+      options: [
+        { value: "quick", label: "Use these settings", hint: `local Docker · port ${flags.port ?? 80} · sign in as ${flags.ownerUsername ?? "owner"}` },
+        { value: "custom", label: "Customize owner and port" },
+      ],
+    });
+    if (choice === "custom") {
+      flags = {
+        ...flags,
+        ownerName: await ui.text({ message: "Owner display name", flag: "--owner-name", initial: flags.ownerName ?? "Owner", validate: name => name.trim() ? undefined : "Enter a name." }),
+        ownerUsername: await ui.text({ message: "Sign-in username", flag: "--owner-username", initial: flags.ownerUsername ?? "owner", validate: name => /^[a-z0-9_]+(?:\.[a-z0-9_]+)*$/i.test(name) && name.length >= 3 && name.length <= 30 ? undefined : "Use 3–30 letters, digits or underscores, with periods between parts." }),
+        port: await ui.text({ message: "Local port", flag: "--port", initial: flags.port ?? "80", validate: checkPort }),
+      };
+    }
+  }
   if (!existing) await initialize(ui, folder, flags);
   const installation = Installation.open(folder);
   const current = installation.setup();
@@ -123,6 +153,7 @@ export async function setupWorkspace(ui: Ui, workdir: string, flags: WorkspaceSe
   const result = { folder, version: summary.version, workspaceUrl: summary.setup.address, running: true, ...handoff };
   ui.result(result, () => {
     ui.note(result.workspaceUrl, "Open Your Space");
-    if (handoff.handoffFile) ui.note(handoff.handoffFile, "Private owner handoff file");
+    if (handoff.handoffFile) ui.note(handoff.handoffFile, "Set your password using the private link in this file");
+    ui.outro("After signing in, choose Install your first kit on Home.");
   });
 }
