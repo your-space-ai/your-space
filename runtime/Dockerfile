@@ -4,6 +4,11 @@ FROM docker:29-cli AS docker
 
 FROM node:26-slim
 ENV NODE_ENV=production
+
+# Refresh the base's OS packages and remove build-time package managers from the running image.
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+    && rm -rf /usr/local/lib/node_modules/npm /opt/yarn-v*
 COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
 WORKDIR /app/runtime

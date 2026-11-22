@@ -13,6 +13,11 @@ COPY runtime/package.json runtime/
 COPY cli/package.json cli/
 RUN npm ci --omit=dev --workspace server --no-audit --no-fund && npm cache clean --force
 
+# Refresh the base's OS packages and remove build-time package managers from the running image.
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+    && rm -rf /usr/local/lib/node_modules/npm /opt/yarn-v*
+
 COPY shared/appearance/theme.mjs shared/appearance/theme.mjs
 COPY shared/workspace-layout/model.mjs shared/workspace-layout/model.mjs
 COPY server/src server/src
