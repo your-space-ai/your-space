@@ -64,7 +64,7 @@ jobs:
           (cd "$RUNNER_TEMP/signing-input" && shasum -a 256 "$dmg" > "$dmg.sha256")
       - name: Offer the private ZIP preview
         if: github.event.repository.private && github.event_name != 'release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: macos-preview-${{ matrix.arch }}
           path: ${{ runner.temp }}/packages/
@@ -73,7 +73,7 @@ jobs:
           retention-days: 5
       - name: Transfer the tested image to the protected signing job
         if: github.event_name == 'release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: macos-signing-input-${{ matrix.arch }}
           path: ${{ runner.temp }}/signing-input/
@@ -91,7 +91,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: macos-signing-input-*
           path: ${{ runner.temp }}/macos-input-${{ github.run_id }}-${{ github.run_attempt }}
@@ -109,7 +109,7 @@ jobs:
             (cd "$input" && shasum -a 256 -c "$name.sha256")
             desktop/scripts/notarize-macos.sh "$input/$name" "$out"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: notarized-macos
           path: ${{ runner.temp }}/macos-release-${{ github.run_id }}-${{ github.run_attempt }}/
@@ -129,7 +129,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: notarized-macos
           path: release
