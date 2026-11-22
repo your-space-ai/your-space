@@ -13,7 +13,7 @@ The source preview can open for contributions before downloadable builds are ava
 - Install an independent app from its real source. Review the pinned images and kit revision, confirm installation and verify app limits, network isolation and persistent storage. Follow the [app installation acceptance checks](../../specs/002-install-an-app/tasks.md).
 - Grant an external agent kit-defined roles. Use synthetic data to list, create and edit a recurring record through the gateway. Check approval, attribution and the upstream result. Try an ungranted action, change the role, rotate the credential and revoke access. Follow the [agent access specification](../../specs/005-owner-agent/spec.md).
 - Run [agent-led setup](../install/agent-setup.md) and install an [agent-built Home](../apps/build-an-app.md) with owner-selected reads. Use a disposable GitHub account to exercise public and authorized private sources, a direct kit URL, and a fork with an edit. Confirm the exact commit and storage changes before replacement. Verify retained data and denied access after revocation. Follow the [managed repository guide](../apps/managed-repositories.md).
-- Exercise the [roadmap’s appearance and layout journeys](../roadmap.md#core-experience-and-first-packaged-release). Test keyboard navigation, focus, labels and error recovery during setup and in the dashboard at the screen sizes claimed for release.
+- Exercise the [roadmap’s appearance and layout journeys](../roadmap.md#dashboard-and-desktop). Test keyboard navigation, focus, labels and error recovery during setup and in the dashboard at the screen sizes claimed for release.
 
 ## Review and publish
 

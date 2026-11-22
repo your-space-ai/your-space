@@ -20,14 +20,10 @@ The [architecture overview](docs/architecture/overview.md) diagrams the running 
 layer. When a decision adds, removes, or moves a component, layer, or request path, update the
 overview in the same change.
 
-The [spec map](specs/README.md) maps the first packaged release to journey specifications and sets
-their build order. Write new specifications as the journeys listed there, and keep each tree leaf's
-spec number and the spec map in sync with the roadmap.
-
-The first packaged release section of the roadmap opens with an overview tree. Whenever
-an item in that section is added, removed, moved, re-prioritized, reworded in meaning, or deferred, update
-the tree in the same change so it still maps one-to-one to the checklist and its priority markers
-match. See "Maintaining the Checklist" in the roadmap.
+The [spec map](specs/README.md) records journey numbers, dependencies and build order.
+Keep each roadmap outcome under the product area it belongs to. Record its delivery stage there
+and link its journey when one exists. When a change in scope or timing affects a journey,
+update the corresponding spec map entry in the same change.
 
 Structure the roadmap as nested checklists: high-level capabilities contain specific functionality.
 Check off only delivered, verified work; retain completed entries with a completion date and

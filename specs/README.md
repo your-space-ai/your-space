@@ -18,7 +18,7 @@ The [roadmap](../docs/roadmap.md) tracks delivery. Open a specification below fo
 
 008 reuses 001 owner setup, 002 installation kits and the 003 CLI. macOS desktop entry and 005 agent access have independent acceptance checks. Both precede the product release.
 
-004 (teams), 006 (lifecycle tooling), 007 (developer ecosystem), and broader 008 desktop support move to the [post-public roadmap](../docs/roadmap.md#post-public-later-direction-and-enhancements). The existing specifications and their historical task records keep their original scope.
+The roadmap tracks [004 teams](../docs/roadmap.md#accounts-and-access), [006 lifecycle tooling](../docs/roadmap.md#workspace-and-hosting), [007 developer ecosystem](../docs/roadmap.md#apps-and-kits), and [broader 008 desktop support](../docs/roadmap.md#dashboard-and-desktop) as later work. The existing specifications and their historical task records keep their original scope.
 
 ## Rules Every Spec Follows
 
@@ -45,6 +45,6 @@ Follow the [maintainer release guide](../docs/maintainers/releasing.md) to test 
 
 ## Keeping This Current
 
-- When a roadmap item is added or moved, give it a spec number in the overview tree and update the
-  matching section here in the same change.
+- When a journey’s scope or release stage changes, update its entry here and the corresponding
+  product area in the roadmap. Keep its journey number and implementation history.
 - When a spec is merged, link it here and replace its PR link.
