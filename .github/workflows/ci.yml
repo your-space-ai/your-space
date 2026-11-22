@@ -80,6 +80,9 @@ jobs:
           done <<< "$commits"
 
   dependencies:
+    # A visible signal, not part of Contribution checks: a maintainer can still merge a PR whose
+    # new dependency has an advisory, after deciding the risk is acceptable.
+    name: Dependency review
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -198,15 +201,13 @@ jobs:
   contribution:
     name: Contribution checks
     if: always()
-    needs: [scope, check, setups, browser, dependencies]
+    needs: [scope, check, setups, browser]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     permissions: {}
     steps:
       - name: Required checks completed
         env:
-          IS_PR: ${{ github.event_name == 'pull_request' }}
-          DEPENDENCIES: ${{ needs.dependencies.result }}
           SCOPE: ${{ needs.scope.result }}
           RUN_CODE: ${{ needs.scope.outputs.code }}
           CODE: ${{ needs.check.result }}
@@ -222,7 +223,6 @@ jobs:
               *) echo "$3 was scheduled=$1 and returned $2" >&2; return 1 ;;
             esac
           }
-          expect_result "$IS_PR" "$DEPENDENCIES" "Dependency review"
           expect_result "$RUN_CODE" "$CODE" "Workspace checks"
           expect_result "$RUN_SETUPS" "$SETUPS" "Compose setups"
           expect_result "$RUN_BROWSER" "$BROWSER" "Chromium"
