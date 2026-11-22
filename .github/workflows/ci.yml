@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 # A newer push to the same pull request cancels the run it replaces.
 concurrency:
@@ -21,10 +22,15 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      code: ${{ github.event_name == 'push' || steps.base.outputs.code == 'true' }}
-      setups: ${{ github.event_name == 'pull_request' && steps.base.outputs.code == 'true' && (!github.event.repository.private || steps.base.outputs.bottom == 'true') }}
-      browser: ${{ !github.event.repository.private && (github.event_name == 'push' || steps.base.outputs.code == 'true') }}
+      code: ${{ github.event_name != 'pull_request' || steps.base.outputs.code == 'true' }}
+      setups: ${{ github.event_name == 'workflow_dispatch' || (steps.base.outputs.code == 'true' && (!github.event.repository.private || steps.base.outputs.bottom == 'true')) }}
+      browser: ${{ github.event_name == 'workflow_dispatch' || (!github.event.repository.private && (github.event_name == 'push' || steps.base.outputs.code == 'true')) }}
     steps:
+      - name: Check the branch for a manual run
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: |
+          echo "Select main to run the full CI checks." >&2
+          exit 1
       - if: github.event_name == 'pull_request'
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
