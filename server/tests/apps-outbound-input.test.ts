@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, expect } from "vitest";
 import { eq } from "drizzle-orm";
-import { app } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
 import { fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
@@ -52,10 +51,6 @@ async function install(): Promise<void> {
   const installed = await send("/api/apps", { previewId: review.previewId });
   expect(installed.status).toBe(202);
   await waitForJob(((await installed.json()) as any).jobId);
-}
-
-async function desired(): Promise<string> {
-  return (await t.db.select({ desired: app.desired }).from(app).where(eq(app.name, "plain")))[0]!.desired;
 }
 
 import { describe, it } from "vitest";

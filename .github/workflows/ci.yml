@@ -23,7 +23,7 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ github.event_name != 'pull_request' || steps.base.outputs.code == 'true' }}
-      setups: ${{ github.event_name == 'workflow_dispatch' || (steps.base.outputs.code == 'true' && (!github.event.repository.private || steps.base.outputs.bottom == 'true')) }}
+      setups: ${{ github.event_name != 'pull_request' || (steps.base.outputs.code == 'true' && (!github.event.repository.private || steps.base.outputs.bottom == 'true')) }}
       browser: ${{ github.event_name == 'workflow_dispatch' || (!github.event.repository.private && (github.event_name == 'push' || steps.base.outputs.code == 'true')) }}
     steps:
       - name: Check the branch for a manual run
@@ -32,7 +32,7 @@ jobs:
           echo "Select main to run the full CI checks." >&2
           exit 1
       - if: github.event_name == 'pull_request'
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -101,10 +101,10 @@ jobs:
     env:
       TEST_DATABASE_URL: postgres://yourspace:yourspace@localhost:5432/yourspace
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
           cache: npm
@@ -133,10 +133,10 @@ jobs:
       matrix:
         compose: ["2.26.0", runner]
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
           cache: npm
@@ -162,10 +162,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
           cache: npm

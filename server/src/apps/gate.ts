@@ -5,6 +5,7 @@
 import { createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, eq, gt, ne } from "drizzle-orm";
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import type { Db } from "../db/client.ts";
 import { member, session } from "../db/auth-schema.ts";
 import { app } from "../db/schema.ts";
@@ -54,7 +55,11 @@ export function readCookie(header: string | undefined, name: string): string | u
 
 /** Only a path on the same origin, never `//host` or a full address. */
 export function safeReturn(value: unknown): string {
-  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\") ? value : "/";
+  if (typeof value !== "string" || !value.startsWith("/")) return "/";
+  const origin = "https://return.invalid";
+  const target = URL.parse(value, origin);
+  if (!target || target.origin !== origin || target.pathname.startsWith("//")) return "/";
+  return target.pathname + target.search + target.hash;
 }
 
 const LOOP_WINDOW_MS = 15_000;
@@ -124,7 +129,15 @@ export function createGate({ db, publicUrl, authSecret, handoffs }: GateDeps): e
     return (await db.select().from(app).where(and(eq(app.name, name), ne(app.state, "removed"))))[0];
   }
 
-  gate.get("/gate", async (req, res) => {
+  // Caddy replaces the forwarding header with the resolved client IP on this private listener.
+  gate.set("trust proxy", 1);
+  const limitGate = rateLimit({
+    windowMs: 60_000,
+    limit: 1200, // Every app asset also passes through this check.
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+  });
+  gate.get("/gate", limitGate, async (req, res) => {
     res.set("Cache-Control", "no-store");
     const name = appNameFromHost(publicUrl, req.get("x-forwarded-host"));
     try {

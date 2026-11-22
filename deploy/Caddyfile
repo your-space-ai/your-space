@@ -73,6 +73,7 @@
 	handle {
 		forward_auth server:3001 {
 			uri /gate
+			header_up X-Forwarded-For {client_ip}
 			copy_headers X-YS-Upstream
 		}
 		reverse_proxy {http.request.header.X-YS-Upstream} {

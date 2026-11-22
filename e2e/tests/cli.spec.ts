@@ -289,11 +289,23 @@ test("your own domain: the names are checked, and HTTPS comes up with the certif
     expect(checked.json.error).toBe("check_failed");
     expect(checked.json.message).toContain("*.space.example.com doesn't resolve");
 
+    // Pebble creates a fresh issuing root at startup. Trust it only in this test's CLI process.
+    const pebble = await domain.compose(["up", "-d", "pebble"]);
+    expect(pebble.code, pebble.stderr).toBe(0);
+    const address = await domain.compose(["port", "pebble", "15000"]);
+    expect(address.code, address.stderr).toBe(0);
+    const caPath = join(folder, "issuing-root.pem");
+    execFileSync("curl", [
+      "--fail", "--silent", "--show-error", "--retry", "15", "--retry-connrefused",
+      "--cacert", join(root, "e2e/pebble/pebble.minica.pem"),
+      "--output", caPath, `https://localhost:${address.stdout.trim().split(":").at(-1)}/roots/0`,
+    ]);
+    domain.env.NODE_EXTRA_CA_CERTS = caPath;
     const started = ok(await domain.run(["start", "--no-open", "--ignore-checks", "--owner-name", "Sam Rivera", "--owner-username", "sam", "--json"]));
     expect(started.setup).toEqual({ kind: "domain", address: "https://space.example.com" });
     expect(started.certificate).toMatchObject({ state: "valid", issuer: expect.stringContaining("Pebble") });
     expect(started.link.url).toMatch(/^https:\/\/space\.example\.com\/reset-password#token=/);
-    expect(await health("space.example.com")).toBe(200);
+    expect(await health("space.example.com", readFileSync(caPath))).toBe(200);
   } finally {
     await removeInstallation(domain);
   }
@@ -313,6 +325,7 @@ function setUpPebble(folder: string): void {
     `services:
   pebble:
     image: ghcr.io/letsencrypt/pebble:2.10.3
+    ports: ["127.0.0.1::15000"]
     environment:
       # Issue without reaching this machine from outside, and never refuse a nonce at random.
       PEBBLE_VA_ALWAYS_VALID: "1"
@@ -329,9 +342,9 @@ function setUpPebble(folder: string): void {
 }
 
 /** GET /api/health over HTTPS on this machine, with the domain as the TLS server name. */
-function health(name: string): Promise<number> {
+function health(name: string, ca: Buffer): Promise<number> {
   return new Promise((resolve, reject) => {
-    const req = request({ host: "127.0.0.1", port: 443, path: "/api/health", servername: name, headers: { host: name }, rejectUnauthorized: false }, (res) => {
+    const req = request({ host: "127.0.0.1", port: 443, path: "/api/health", servername: name, headers: { host: name }, ca }, (res) => {
       res.resume();
       resolve(res.statusCode ?? 0);
     });

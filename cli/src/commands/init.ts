@@ -46,7 +46,7 @@ export async function prepareInstallation(ui: Ui, workdir: string, flags: InitFl
 
 export async function init(ui: Ui, workdir: string, flags: InitFlags): Promise<void> {
   const result = await prepareInstallation(ui, workdir, flags);
-  const {folder, env} = result;
+  const { env } = result;
   ui.result(result, () => {
     ui.note(env.length ? env.join("\n") : "Nothing: this machine is the default.", "Settings written to .env");
     ui.outro(`Ready. Start it with: ${workdir === "." ? "" : `cd ${workdir} && `}your-space start`);
