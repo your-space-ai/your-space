@@ -180,7 +180,14 @@ jobs:
           # Builds the images, then runs the journeys against deploy/compose.yaml in the browsers
           # above.
           name: Browser journeys
-          command: timeout 30m npx playwright test $(printf -- '--project=%s ' $YS_E2E_BROWSERS)
+          command: |
+            projects=()
+            for browser in ${YS_E2E_BROWSERS:?}; do
+              projects+=("--project=$browser")
+            done
+            # A single Playwright worker runs the selected browsers in sequence.
+            budget_minutes=$((30 * ${#projects[@]}))
+            timeout "${budget_minutes}m" npx playwright test "${projects[@]}"
           working_directory: e2e
       - run:
           name: Stack status
