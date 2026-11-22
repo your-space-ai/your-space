@@ -66,7 +66,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
     - [ ] Sign Windows builds through SignPath, with Microsoft Artifact Signing as fallback, in CI.
     - [ ] Qualify the CLI with the Linux desktop for local workspaces.
     - [ ] Run the CLI on Windows so the desktop app can drive it for local workspaces there.
-    - [ ] Publish the CLI as an npm package, `.deb` and `.rpm` packages, and a Homebrew formula.
+    - [ ] Distribute `.deb` and `.rpm` packages, standalone macOS CLI downloads and a Homebrew formula.
   - **Desktop experience**
     - [ ] Show installed apps in native views, one per app, instead of iframes.
     - [ ] Update the desktop app itself, checking GitHub for new releases.
@@ -327,7 +327,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 - [x] **Prepare the source preview.** The Linux ARM64 Docker quickstart was exercised from owner sign-in through installing, opening and restarting a sample app. The public-contribution CI and sign-off checks are implemented and were exercised locally. (2026-11-21, [PR #73](https://github.com/your-space-ai/your-space/pull/73), [PR #74](https://github.com/your-space-ai/your-space/pull/74)) [Docker quickstart](install/from-source.md)
 - [x] Implement the release workflows for versioned images, CLI and install files, checksums, and Apple Silicon and Intel DMGs. The CLI and Mac packaging paths produced private test artifacts. (2026-11-18, [PR #35](https://github.com/your-space-ai/your-space/pull/35)) (2026-11-21, [PR #68](https://github.com/your-space-ai/your-space/pull/68))
-- [ ] Prepare each release as a draft with the standalone Linux executables and notarized macOS CLI archives, both DMGs, the Compose bundle and `SHA256SUMS`, after fresh Linux installs on both architectures. ([PR #83](https://github.com/your-space-ai/your-space/pull/83), in review)
+- [ ] Prepare each release as a draft with the npm package, the standalone Linux executables, both DMGs, the Compose bundle and `SHA256SUMS`, after fresh Linux installs on both architectures, and publish the npm package only when the owner publishes the draft. ([PR #83](https://github.com/your-space-ai/your-space/pull/83), in review)
 - [ ] **Verify and publish the first packaged release.** Run the combined owner journey from clean downloads on the supported hosts. Record the exact candidate, configurations and limitations, including layout and appearance checks on the distributed build.
 - [ ] Complete the security, privacy, licensing, documentation and publication checks, obtain the owner’s approval, and verify the published artifacts. [Maintainer release guide](maintainers/releasing.md)
 
