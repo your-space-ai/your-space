@@ -153,10 +153,9 @@ name and username, open the set-password link from the summary, set a password a
 
 **Acceptance Scenarios**:
 
-1. **Given** a Linux machine, **When** the person installs the CLI from its `.deb` or `.rpm`
-   package, or runs it with `npx your-space` where Node.js is installed, **Then** the `your-space`
-   command works, and `your-space --version` prints its version. The standalone executables on each
-   release have published checksums.
+1. **Given** a Linux machine, **When** the person downloads the standalone executable for its
+   processor and checks it against the release's `SHA256SUMS`, **Then** the `your-space` command
+   works, and `your-space --version` prints its version.
 2. **Given** an empty folder, **When** they run `your-space init` and accept the defaults, **Then**
    the CLI downloads the release files for its own version, checks them against the release's
    checksums, and writes `.env` with no settings line (this machine is the default). Nothing is
@@ -334,12 +333,12 @@ option that is still complete.
 
 **Getting the CLI**
 
-- **FR-001**: The CLI is published with each release in the ways people already install command-line
-  tools: an npm package (`npx your-space`, or a project or global install), `.deb` and `.rpm`
-  packages for Linux, and a standalone Linux executable for ARM and Intel that needs no language
-  runtime. The macOS executables and a Homebrew formula come with the
-  [macOS and Windows pass](#changes-to-shared-direction); until then, macOS uses the npm package.
-- **FR-002**: Each release publishes checksums for its executables, packages and release files, and
+- **FR-001**: Each release publishes the CLI as standalone executables that need no language
+  runtime: for Linux on ARM and Intel, and as signed, notarized archives for macOS on Apple Silicon
+  and Intel. The npm package, `.deb` and `.rpm` packages and a Homebrew formula are deferred
+  packaging work (changed 2026-11-22, see the
+  [CLI delivery sequence](../../docs/architecture/decisions.md#cli-delivery-sequence)).
+- **FR-002**: Each release publishes checksums for its executables, archives and release files, and
   the documented ways of getting the CLI check them, as the package managers do themselves.
 - **FR-003**: The CLI and Your Space share one version. `init` downloads the release files of the
   CLI's own version and checks them the same way.

@@ -66,7 +66,8 @@ Each branch puts the work on `main` beside the checks and plans for that part of
     - [ ] Sign Windows builds through SignPath, with Microsoft Artifact Signing as fallback, in CI.
     - [ ] Qualify the CLI with the Linux desktop for local workspaces.
     - [ ] Run the CLI on Windows so the desktop app can drive it for local workspaces there.
-    - [ ] Distribute and verify standalone macOS CLI executables and a Homebrew formula.
+    - [ ] Distribute and verify standalone macOS CLI archives with each release. ([PR #83](https://github.com/your-space-ai/your-space/pull/83), in review)
+    - [ ] Publish the CLI as an npm package, `.deb` and `.rpm` packages, and a Homebrew formula.
   - **Desktop experience**
     - [ ] Show installed apps in native views, one per app, instead of iframes.
     - [ ] Update the desktop app itself, checking GitHub for new releases.
