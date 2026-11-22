@@ -15,10 +15,11 @@ automated tests and the evidence for SC-010. Endpoint and command details are in
 
 ## 1. Install and Create the Owner (Story 1)
 
+For the current preview, [try the dashboard from source](../../docs/install/from-source.md).
+For the packaged validation below, select a release containing the matching server images and install files.
+Follow the [manual download and checksum steps](../../docs/install/README.md#1-download), then run these commands in the installation folder:
+
 ```sh
-mkdir your-space && cd your-space
-curl -fsSL https://github.com/your-space-ai/your-space/releases/latest/download/your-space.tar.gz | tar -xz
-cp env.example .env
 # .env can stay as it is for this machine (http://localhost); the first start generates the secrets.
 docker compose up -d
 docker compose ps           # every service healthy

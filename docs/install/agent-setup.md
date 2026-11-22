@@ -4,7 +4,7 @@ An owner can authorize a local operator or coding assistant to set up Your Space
 
 ## Get the CLI and Docker
 
-1. Select a [Your Space release](https://github.com/your-space-ai/your-space/releases) that includes the setup command, its matching install files and the server images. Follow the [standalone CLI instructions](README.md#1-get-the-your-space-command) for the operator machine’s OS and processor. Verify with `your-space --version`. If no matching release is available, use the candidate procedure below.
+1. For the current source preview, follow the [Docker source walkthrough](from-source.md) to try the dashboard. To exercise CLI-driven setup with matching local artifacts, use [Test from reviewed source](#test-from-reviewed-source). The steps below assume a published CLI. Once a [Your Space release](https://github.com/your-space-ai/your-space/releases) includes the CLI, install files and server images, get the CLI as the [installation guide](README.md#1-get-the-your-space-command) describes for the operator machine: the npm package where Node is available, or the standalone Linux executable. Check that `your-space --version` matches the selected release.
 2. Run `your-space engine check --json`. It checks the selected local Docker engine and Docker Compose. On Linux use a supported Docker Engine and the Compose plugin. On a Mac use a running Docker-compatible engine such as Colima, OrbStack or Docker Desktop with its CLI. Start an installed engine or let the operator install their preferred one, then repeat the check. Fix a local permission problem through the operator. The setup command never installs Docker, obtains administrator access, or changes the system's Docker context. See [requirements and installation](README.md#before-you-start).
 3. Choose a new private folder outside any source repository. For example, run the following from the operator's account.
 
@@ -24,4 +24,27 @@ For routine operations, use `your-space status --workdir <folder> --json`, `your
 
 ## Test from reviewed source
 
-For a private candidate without published artifacts, build the CLI with `npm ci` then `npm run build -w cli` from the source checkout. Run `deploy/release-files.sh <cli-version> <release-folder>`. Generate `SHA256SUMS` in that folder with `shasum -a 256 your-space.tar.gz > SHA256SUMS` on macOS or `sha256sum your-space.tar.gz > SHA256SUMS` on Linux. Make the matching candidate images available to the local engine. Invoke `node cli/dist/your-space.cjs setup --release-dir <release-folder> --workdir <new-folder> --json`. The local release bundle must pin the same version as the CLI. This tests local candidate files and images. Public downloads require a published matching release.
+From a reviewed checkout with Node.js 26, run the following in the repository root. Use a local Docker engine where you can build and tag the three Your Space images for this version. Keep the same shell and Docker engine for setup.
+
+```sh
+npm ci
+npm run build -w cli
+cli_version=$(node cli/dist/your-space.cjs --version)
+docker compose -f deploy/compose.yaml -f deploy/compose.build.yaml build caddy server runtime
+for component in web server runtime; do
+  docker image tag "your-space-$component:local" "ghcr.io/your-space-ai/your-space-$component:$cli_version"
+done
+```
+
+The tags stay in your engine so the install files can select those images. In the same shell, create the matching install bundle and its checksum:
+
+```sh
+release_dir=$(mktemp -d)
+deploy/release-files.sh "$cli_version" "$release_dir"
+```
+
+In that directory run `shasum -a 256 your-space.tar.gz > SHA256SUMS` on macOS or `sha256sum your-space.tar.gz > SHA256SUMS` on Linux. Back in the repository root, run the command below with a new private workspace directory. Follow the owner handoff described above.
+
+```sh
+node cli/dist/your-space.cjs setup --release-dir "$release_dir" --workdir "$HOME/my-your-space" --json
+```

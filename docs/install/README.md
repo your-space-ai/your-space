@@ -2,10 +2,9 @@
 
 For the current source preview, start with [Try Your Space from source](from-source.md). It walks through creating an owner and opening a sample app. The [Mac guide](macos-desktop.md) covers building the launcher from source and using a published DMG when one is available.
 
-This guide installs Your Space with the `your-space` command, creates its owner, and keeps it
-running. You need access to the machine's command line: that access, not a web page, is what makes
-you the owner. Installing by hand with Docker Compose is still possible; see
-[Install by Hand](#install-by-hand-advanced).
+The steps below cover the `your-space` command for a tagged release. Creating the owner requires shell access
+to that machine. The [manual Docker Compose steps](#install-by-hand-advanced)
+cover the same setup.
 
 Your Space runs as four containers, after a short step that runs first:
 
@@ -59,32 +58,32 @@ too, and says what is missing.
 
 ## 1. Get the `your-space` Command
 
-Choose a version from [GitHub Releases](https://github.com/your-space-ai/your-space/releases) and download its `SHA256SUMS` alongside the file for your machine. Until the first release is available, use the [source guide](from-source.md).
+The source preview has no published CLI. To run the dashboard today, use the
+[Docker source walkthrough](from-source.md). To exercise the CLI with locally built artifacts,
+follow the [source candidate instructions](agent-setup.md#test-from-reviewed-source).
 
-| Machine | CLI download |
+Once a tagged [Your Space release](https://github.com/your-space-ai/your-space/releases) includes the
+CLI and server images, select that version and get the CLI one of these ways:
+
+| Machine | How to get `your-space` |
 | --- | --- |
-| Linux Intel/AMD or ARM64 | `your-space-linux-x64` or `your-space-linux-arm64` |
-| Mac Apple Silicon or Intel | `your-space-cli-macos-arm64-<version>.tar.gz` or `your-space-cli-macos-x64-<version>.tar.gz` |
+| Any Mac or Linux machine with Node 22.12 or newer | The npm package: `npx your-space@<version>` or `npm install -g your-space@<version>` |
+| Linux Intel/AMD or ARM64 without Node | The standalone executable `your-space-linux-x64` or `your-space-linux-arm64` |
+| Mac with the desktop app | The CLI bundled in the app, at `Your Space.app/Contents/Resources/bin/your-space` |
 
-In a fresh download folder, verify the file you chose. On Linux, for example:
+For a standalone executable, download it and `SHA256SUMS` from the same release into an empty
+folder, then verify and install it. On Intel/AMD, for example (use `arm64` on ARM):
 
 ```sh
-asset=your-space-linux-x64  # use your-space-linux-arm64 on ARM
+asset=your-space-linux-x64
 awk -v name="$asset" '$2 == name { print }' SHA256SUMS | sha256sum -c - &&
   mkdir -p ~/.local/bin &&
   install -m 755 "$asset" ~/.local/bin/your-space
 ```
 
-Proceed only when the expected asset prints `OK`. On a Mac, set `archive` to the downloaded archive name, then run:
-
-```sh
-awk -v name="$archive" '$2 == name { print }' SHA256SUMS | shasum -a 256 -c - &&
-  tar -xzf "$archive" &&
-  mkdir -p ~/.local/bin &&
-  install -m 755 your-space ~/.local/bin/your-space
-```
-
-Add `~/.local/bin` to your PATH if needed. Run `your-space --version` to check the installed command. For a quick local installation, use `your-space setup`. For a domain or existing reverse proxy, continue below.
+Proceed only when it prints `OK`, and make sure `~/.local/bin` is on your `PATH`. Check that
+`your-space --version` matches the release you selected. For a quick local installation, use
+`your-space setup`. For a domain or existing reverse proxy, continue below.
 
 ## 2. Make a Folder for Your Space
 
@@ -745,12 +744,14 @@ Each step says which `your-space` command does the same.
 
 `your-space init` does this step.
 
-Make a folder for Your Space, download the release into it, and make your settings file. It starts
-with every line commented out:
+For the source preview, use the [Docker source walkthrough](from-source.md). For a published
+[Your Space release](https://github.com/your-space-ai/your-space/releases), save `your-space.tar.gz`
+and `SHA256SUMS` from the same release to a new installation folder. In that folder, run
+`sha256sum your-space.tar.gz` on Linux or `shasum -a 256 your-space.tar.gz` on macOS. Check that
+the digest matches the `your-space.tar.gz` entry in `SHA256SUMS` before unpacking it:
 
 ```sh
-mkdir your-space && cd your-space
-curl -fsSL https://github.com/your-space-ai/your-space/releases/latest/download/your-space.tar.gz | tar -xz
+tar -xzf your-space.tar.gz
 cp env.example .env
 ```
 
