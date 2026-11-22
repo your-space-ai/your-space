@@ -1,6 +1,6 @@
 # Build a dashboard app
 
-An agent with an authorized shell can make an ordinary web app, install it and let its owner choose it as Home. Start with a working workspace and the Your Space CLI. See [agent setup](agent-setup.md) for the one-command installation.
+An agent with an authorized shell can make an ordinary web app, install it and let its owner choose it as Home. Start with a working workspace and the Your Space CLI. See [agent setup](../install/agent-setup.md) for the one-command installation.
 
 ```sh
 your-space app new morning-board

@@ -2,12 +2,12 @@
 
 **Current release view · 2026-11-21**
 
-    Planned Mac app → local setup via CLI or existing server by URL → dashboard
+    Mac launcher → local setup via CLI or existing server by URL → dashboard
     Owner's browser → localhost / HTTPS proxy or domain → dashboard and server
     Owner's CLI → Docker Compose → server, runtime, installed apps
     External AI agent → CLI → gateway → permitted action in one connected app
 
-The owner manages agent identities, kit-defined app roles and request approval settings in the web UI. Before forwarding, the gateway checks the kit route and HTTP method, obtains any required owner approval, then injects the server-held app credential. The runtime identifies the installed service on its private Docker network. The app checks the injected credential and enforces its native permissions. The first desktop download (008) takes a Mac owner into this same dashboard. Teams (004), lifecycle tooling (006), SDKs (007), Windows and Linux desktops, and the bundled engine follow publication. The [roadmap](../roadmap.md) gives their delivery stage.
+The owner manages agent identities, kit-defined app roles and request approval settings in the web UI. Before forwarding, the gateway checks the kit route and HTTP method, obtains any required owner approval, then injects the server-held app credential. The runtime identifies the installed service on its private Docker network. The app checks the injected credential and enforces its native permissions. The [Mac launcher](../install/macos-desktop.md) opens this same dashboard. It can be built from source ahead of the first public DMG. Teams (004), lifecycle tooling (006), SDKs (007), Windows and Linux desktops, and the bundled engine follow publication. The [roadmap](../roadmap.md) gives their delivery stage.
 
 ## Layers
 
@@ -24,7 +24,7 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
 ## What Each Layer Does
 
 1. **People and agents.** One owner controls the workspace. The owner chooses which kit roles to enable for each installation, then grants any subset to an agent. They can narrow or revoke that access.
-2. **Clients.** The browser displays the dashboard and app panes. The planned macOS app opens the same dashboard for a local or remote workspace. Headless operators run the CLI on the Docker host. In 005 the agent uses its own credential through the gateway on local or remote installations. See [CLI delivery](decisions.md#cli-delivery-sequence).
+2. **Clients.** The browser displays the dashboard and app panes. The macOS launcher opens the same dashboard for a local or remote workspace. Headless operators run the CLI on the Docker host. An agent uses its own Your Space key through the gateway on local or remote installations. See [CLI delivery](decisions.md#cli-delivery-sequence).
 3. **Edge.** A Caddy reverse proxy in the Compose stack provides HTTPS with automatic certificates, unless
    the owner brings their own proxy or tunnel. Then the owner's proxy sits in front of Caddy and
    reaches it on `127.0.0.1:8080`, or over the stack's `edge` network when the proxy runs in a
@@ -53,14 +53,14 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
    and the server, unless the owner sets them
    ([2026-11-08 decision](decisions.md#installation-and-hosting)). See
    [server and database](decisions.md#server-and-database).
-   **Runtime manager.** The Docker adapter and the only part of Your Space that holds the engine
+6. **Runtime manager.** The Docker adapter and the only part of Your Space that holds the engine
    connection. It has no network, mounts the engine socket, and serves the server on a Unix socket
    in the `ys-runtime` volume. It runs `docker compose` to resolve, check, pin, start, stop, log, and
    remove apps, connects Caddy to each app's network, and reads each egress proxy's denials. See
    [app deployment](decisions.md#accepted-future-app-deployment-direction) and
    [concepts and adapters](decisions.md#concepts-and-adapters).
-6. **Apps.** Each managed app runs as a Compose project with its own network and declared storage. Owner-approved outbound hosts and opt-in publishing are described in [running apps and reaching them](decisions.md#running-apps-and-reaching-them). The connector for externally hosted apps belongs to 007.
-7. **Host.** The owner supplies a Docker-compatible engine on their personal machine or server. Only the workspace host needs Docker. A Mac connecting to an existing server needs its URL and the owner's sign-in. A bundled engine or VM follows publication.
+7. **Apps.** Each managed app runs as a Compose project with its own network and declared storage. Owner-approved outbound hosts and opt-in publishing are described in [running apps and reaching them](decisions.md#running-apps-and-reaching-them). The connector for externally hosted apps belongs to 007.
+8. **Host.** The owner supplies a Docker-compatible engine on their personal machine or server. Only the workspace host needs Docker. A Mac connecting to an existing server needs its URL and the owner's sign-in. A bundled engine or VM follows publication.
 
 The dashboard reads presentation tokens from its workspace server. The Mac launcher uses the same portable theme format with a local device preference before connection. [Appearance](../appearance.md)
 
@@ -86,16 +86,16 @@ The signed-in dashboard arranges installed app panes in a resizable grid. A name
   owner confirms, it starts the app's Compose project.
 - **An app reaching the internet:** app → its egress proxy → approved host, or a denial the
   runtime manager reads and the server turns into an access request.
-- **An agent:** CLI → proxy → the gateway checks the credential, delegation, and revocation →
-  forwards the request to the app → the activity log records it. An agent never reaches an app
-  directly.
+- **An agent.** The CLI sends the agent’s key and requested action to the server through the edge.
+  The gateway checks the current grant against the kit’s allowed method and route and obtains any
+  required owner approval. The server adds the stored app credential and sends the request through
+  Caddy’s private socket to the installed app. The owner can review the action in the activity log.
 
 ## Still Open
 
 - How the later desktop release provides and maintains its own engine.
 - Messages between Your Space and an app in a pane, such as navigation and theme.
-- How identity reaches apps at levels 1 and 2, and whether the gateway enforces per-action roles
-  declared by apps.
+- How a signed-in person’s identity and roles reach apps at integration levels 1 and 2.
 - The connector for apps someone already runs elsewhere.
 
 ## Keeping This Current
@@ -115,4 +115,4 @@ Kit URL or directory → pinned kit and Compose → standard install preview
 Owner → confirmed replacement preview → runtime → same installation and volumes
 ```
 
-[Author a Home app](../build-an-app.md) · [Manage repositories](../managed-repositories.md)
+[Author a Home app](../apps/build-an-app.md) · [Manage repositories](../apps/managed-repositories.md)

@@ -12,4 +12,4 @@
 
 The general app SDK, building arbitrary Dockerfiles on the installation host, backup-based data rollback, automatic upstream updates and multi-catalog publishing remain later work. A packed static app and an ordinary app with a published image both use the existing Compose runtime.
 
-[Operator setup](../../docs/agent-setup.md) · [App authoring and Home messages](../../docs/build-an-app.md) · [Repository management and kit directory](../../docs/managed-repositories.md)
+[Operator setup](../../docs/install/agent-setup.md) · [App authoring and Home messages](../../docs/apps/build-an-app.md) · [Repository management and kit directory](../../docs/apps/managed-repositories.md)

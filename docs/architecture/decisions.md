@@ -8,7 +8,7 @@
 
 **Scope**: Project-wide direction, independent of any feature specification
 
-**Delivery view**: [Roadmap](../roadmap.md), derived from this record, and the [spec map](../spec-map.md)
+**Delivery view**: [Roadmap](../roadmap.md), derived from this record, and the [spec map](../../specs/README.md)
 
 **Related features**: [Workspace Setup and Owner Access specification](../../specs/001-workspace-owner-access/spec.md) and [Install an App and Use It specification](../../specs/002-install-an-app/spec.md)
 
@@ -511,7 +511,7 @@ Dependency selection must consider actual licenses, including bundled components
 **Decision update (2026-11-21, quiet source preview).** The owner chose to publish the developer
 preview under AGPL-3.0-only and accept outside contributions under the DCO without a counsel
 review for this milestone. Trademark filing and the policy for forks remain open. The separately
-packaged product release keeps its own checklist.
+packaged product release follows the [maintainer release guide](../maintainers/releasing.md).
 
 ### Product Experience Principles
 
@@ -1033,14 +1033,14 @@ This is a developing release roadmap, not a complete acceptance specification or
 
 **Current scope (2026-11-21).** 001–003 supply the foundation. Both 005 agent access and 008 macOS desktop entry must pass before release. Journeys 004, 006, 007 and the rest of 008 follow publication. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
 
-**Decision update (2026-11-02):** Pre-public work is specified as eight user journeys rather than one specification per roadmap capability. Each journey follows a person from where they start to a result they can see, so one specification covers many roadmap items and is tested the way people will use it. The [spec map](../spec-map.md) lists the journeys, what each covers, and the build order.
+**Decision update (2026-11-02):** Pre-public work is specified as eight user journeys rather than one specification per roadmap capability. Each journey follows a person from where they start to a result they can see, so one specification covers many roadmap items and is tested the way people will use it. The [spec map](../../specs/README.md) lists the journeys, what each covers, and the build order.
 
 - The build order is 001 set up my space ([spec](../../specs/001-workspace-owner-access/spec.md)), 002 install an app and use it, 003 install and run with the CLI, 004 invite my team, 005 let my agent work for me, 006 keep my space safe over time, then 007 build my own app and 008 use Your Space as an app on my computer in parallel.
 - The app UI and sign-in specification becomes part of 002, which ends with the Tasks app working inside Your Space. It still comes before the CLI, so app origins are settled before the CLI sets up HTTPS. If 002 proves too large, it can split into opening an app inside Your Space and installing an app from a URL. (2026-11-14: 002 ends with Sure working inside Your Space, and is delivered in slices instead of split; see below.)
 - The app contract defines app roles in 002, although only the owner exists then, so 004 adds role assignment without changing the contract. (Superseded 2026-11-14: app roles come with level 2 integration in a later journey; see [identity and app-owned roles](#identity-and-app-owned-roles).)
 - The activity log arrives with agents in 005, since reviewing what agents did is its main purpose. App installs and member changes are logged from then on.
 - The app database moves from Medium to High, because the Tasks app in 002 needs one. (2026-11-14: Sure, which replaces Tasks, needs one too, so it stays High.)
-- Security, privacy, legal, and the final release review stay in the [public release readiness checklist](../public-release-readiness.md) as a release gate rather than becoming a journey.
+- Maintainers review security, privacy and legal requirements across the finished journeys using the [packaged release guide](../maintainers/releasing.md).
 - Every specification follows shared rules from the start: simple by default, no telemetry, ARM and Intel images, all durable state in the database or named volumes, the actual actor credited from the first schema, and its own docs and security tests. (2026-11-14: ARM and Intel applies to Your Space's own images; apps need only the engine's processor type.)
 
 This refines the sequence above without changing scope: it groups existing pre-public items into journeys and orders the work after the CLI.
@@ -1065,7 +1065,7 @@ This refines the sequence above without changing scope: it groups existing pre-p
 
 **Decision update (2026-11-11):** Pushes to `main` run the browser tests again, superseding the part of the 2026-11-10 decision that ran only the check job there. Argos compares a pull request's screenshots with the closest approved build in `main`'s history, and builds on `main` are approved automatically. Pull requests are squash-merged, so a pull request's own build is not in that history, and with no build on `main` every pull request showed all its screenshots as new instead of only the ones it changed. Pushes to `main` still skip the Compose setups checks, which the merged pull request has just run on the same code.
 
-**Decision update (2026-11-11):** The browser tests run on CircleCI instead of GitHub Actions, superseding where they ran in the decisions above. CircleCI's plan allows far more build time than the private repository's Actions minutes, and the browser tests were most of each GitHub run; as journeys add tests, they would have used up the minutes after a few more journeys. The stack rule stays: the job runs on pushes to `main` and on the pull request based on `main`, and stops after its first step on the ones above it, so a restack runs the browser tests once. GitHub's webhook names `main` as the base of every pull request in a stack, so the job reads the pull request's own base from GitHub's API with a read-only token kept in CircleCI's settings (`GITHUB_PR_READ_TOKEN`), and CircleCI's "auto-cancel redundant workflows" stops a run when a newer push replaces it. The job runs on CircleCI's x86_64 Linux machine, the only job that uploads to Argos (`YS_ARGOS_UPLOAD`), authenticated with a project `ARGOS_TOKEN` kept in CircleCI's settings, so Argos still compares one environment's renderings. CircleCI keeps the Playwright report and videos as job artifacts. The browser install step stops after 10 minutes, after an unreachable package mirror held it for 25 minutes on GitHub. GitHub Actions keeps the typecheck, server tests and build on every pull request, and the Compose setups checks on the pull request based on `main`. CircleCI doesn't pass secrets to pull requests from forks, so before going public, forks need another route to Argos; the readiness checklist tracks it.
+**Decision update (2026-11-11):** The browser tests run on CircleCI instead of GitHub Actions, superseding where they ran in the decisions above. CircleCI's plan allows far more build time than the private repository's Actions minutes, and the browser tests were most of each GitHub run; as journeys add tests, they would have used up the minutes after a few more journeys. The stack rule stays: the job runs on pushes to `main` and on the pull request based on `main`, and stops after its first step on the ones above it, so a restack runs the browser tests once. GitHub's webhook names `main` as the base of every pull request in a stack, so the job reads the pull request's own base from GitHub's API with a read-only token kept in CircleCI's settings (`GITHUB_PR_READ_TOKEN`), and CircleCI's "auto-cancel redundant workflows" stops a run when a newer push replaces it. The job runs on CircleCI's x86_64 Linux machine, the only job that uploads to Argos (`YS_ARGOS_UPLOAD`), authenticated with a project `ARGOS_TOKEN` kept in CircleCI's settings, so Argos still compares one environment's renderings. CircleCI keeps the Playwright report and videos as job artifacts. The browser install step stops after 10 minutes, after an unreachable package mirror held it for 25 minutes on GitHub. GitHub Actions keeps the typecheck, server tests and build on every pull request, and the Compose setups checks on the pull request based on `main`. CircleCI doesn't pass secrets to pull requests from forks. At the time of this decision, visual comparison for forks remained open.
 
 **Public source preview (2026-11-21).** GitHub Actions reports one required contribution check for
 all pull requests, including documentation. Code changes run the workspace checks and Compose
@@ -1099,7 +1099,7 @@ kits, settings and secrets, outbound access requests, isolation, limits, status 
 with retained data, and an Engine page showing the engine connection and its resources. App roles,
 verified identity for apps and the TypeScript SDK move to the journeys that bring levels 1 and 2
 (004, 005 and 007). This supersedes the bullets above that 002 ends with the Tasks app and defines
-app roles. The [spec map](../spec-map.md) and [roadmap](../roadmap.md) follow it.
+app roles. The [spec map](../../specs/README.md) and [roadmap](../roadmap.md) follow it.
 
 ## Choices Still Open
 
@@ -1114,7 +1114,7 @@ app roles. The [spec map](../spec-map.md) and [roadmap](../roadmap.md) follow it
 | Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup and restore are scheduled after publication, and moving between installations is a backup and restore the person does (2026-11-14); whether a remote backup goes through the client or a credential issued there (2026-11-17), restore into a broken or fresh installation, and backup format and protection remain open. |
 | Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
-| Public launch scope | The [personal dashboard decision](#personal-dashboard-release-boundary) sets the scope. The [release checklist](../public-release-readiness.md) records the evidence required. |
+| Public launch scope | The [personal dashboard decision](#personal-dashboard-release-boundary) sets the scope. The [packaged release guide](../maintainers/releasing.md) lists the evidence required. |
 | App UI execution | Apps open in panes, side by side on larger screens: cross-origin iframes in the web client and PWA, native views in the desktop app. Each app is at `<app>.<Your Space's address>` behind Caddy's `forward_auth` gate, with no port fallback; Caddy replaces framing headers, and apps keep their own sign-in (2026-11-14). The platform session is a `__Host-` cookie over HTTPS and host-only on the plain-HTTP local setup, where WebKit opens apps in their own tab. An app can also be published on a port of this machine for the owner's own proxy or tunnel, and is then reached at the owner's link, outside the gate (2026-11-19); Your Space shows it there in its pane, where the app's own Caddy lets only Your Space frame it, unless the owner turns that off for the app (2026-11-20). On Tailscale the owner creates one Tailscale Service per published app. Shell-to-app messages remain open; Safari on macOS is still to check. |
 | Project license | AGPL-3.0-only for the platform and MIT for future SDKs. The quiet source preview uses the DCO without counsel review. Trademark filing remains open. |
 | Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off, apart from the built-in proxy's certificate requests for an owner-configured domain, which are part of HTTPS setup (2026-11-03). Future reporting must be opt-in; opt-out is prohibited. |

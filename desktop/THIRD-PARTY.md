@@ -11,7 +11,7 @@ The bundle ships Your Space under AGPL-3.0-only. Its release tag identifies the 
 
 The application icon uses the launcher’s own workspace mark. The three starter theme illustrations are project assets from [the shared theme collection](../web/public/themes/) and ship in the bundle for offline use. Electron supplies the native browser engine and sandboxed renderer. The CLI can run on a clean Mac because it carries Node. Neither requires a separately installed JavaScript runtime. The packager checks the architecture-specific SHA-256 digest of both upstream archives before unpacking them. Projects that redistribute a build must retain its notices and fulfill the applicable component source and license obligations, including the LGPL terms for the separately linked FFmpeg library. The published source and matching upstream dependency revisions allow rebuilding the launcher and replacing that library. Re-sign a locally modified bundle before running it.
 
-The desktop download includes no Docker engine. The owner selects and installs their engine separately. Before distributing a new version, review the exact upstream binaries, credits and source availability again as part of [release readiness](../docs/public-release-readiness.md).
+The desktop download includes no Docker engine. The owner selects and installs their engine separately. Before distributing a new version, review the exact upstream binaries, credits and source availability again as part of the [packaged release checks](../docs/maintainers/releasing.md).
 
 ## Packaging tools
 

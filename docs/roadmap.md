@@ -2,7 +2,7 @@
 
 The first release serves one owner. They can download the macOS app to set up a local Docker workspace or connect to an existing server. They can also run a headless Docker server and use a browser. In the selected workspace they install apps using kits and decide what their AI agent can do.
 
-The first publication milestone is a quiet source preview with a Docker quickstart, AGPL-3.0-only licensing and DCO sign-offs. The checklist below tracks the first packaged release. [Source publication checks](public-release-readiness.md#early-source-publication-building-in-public)
+Start with the [Docker quickstart](install/from-source.md) for the source preview. The repository can open for contributions before the first packaged release. The checklist below tracks that release, including the macOS downloads.
 
 ## Core Experience and First Packaged Release
 
@@ -26,9 +26,9 @@ The first publication milestone is a quiet source preview with a Docker quicksta
   - Manage GitHub sources, install from a kit URL or an optional directory, and confirm an in-place deployment.
 - Arrange installed apps (012)
   - Resize app panes, open named views and reorder app shortcuts in the sidebar.
-- Prepare the public release (gate)
+- Verify and publish the first packaged release
   - Run the complete owner journey from a clean download on the supported hosts.
-  - Close the security, privacy, licensing, documentation, and publication checks in the [release checklist](public-release-readiness.md).
+  - Close the security, privacy, licensing, documentation, and publication checks in the [maintainer release guide](maintainers/releasing.md).
 
 ### What is already on main
 
@@ -100,11 +100,11 @@ The [previous detailed delivery checklist](https://github.com/your-space-ai/your
   - [ ] Verify managed public and private repos, agent edits, a direct kit URL and the kit directory. Confirm a pinned deployment preserving installation identity and named volumes.
 - [ ] **Arrange installed apps (012)**
   - [ ] Verify four resizable layouts, composition links, saved views and sidebar app order across a large screen and a phone-sized display. [Layout journey](../specs/012-multi-app-layouts/spec.md)
-- [ ] **Prepare the public release (gate)**
+- [ ] **Verify and publish the first packaged release**
   - [ ] Run the complete owner journey from a clean download on the supported hosts. Record the release candidate, verified configurations, and limitations.
-  - [ ] Close the security, privacy, licensing, documentation, and publication checks in the [release checklist](public-release-readiness.md). Obtain the owner’s publication decision.
+  - [ ] Close the security, privacy, licensing, documentation, and publication checks in the [maintainer release guide](maintainers/releasing.md). Obtain the owner’s approval to publish the packaged release.
 
-Qualify the outstanding real-app writes in [005](../specs/005-owner-agent/spec.md) and deliver [macOS desktop entry in 008](../specs/008-desktop-entry/spec.md). Both need release-candidate evidence alongside the existing headless install and browser paths.
+The outstanding real-app writes in [005](../specs/005-owner-agent/spec.md) and the [signed macOS downloads in 008](../specs/008-desktop-entry/spec.md) still need release-candidate evidence alongside the headless install and browser paths.
 
 ## Post-public: Later Direction and Enhancements
 
@@ -278,4 +278,4 @@ These journeys keep their original numbers. Their order after publication is ope
 
 ## Maintaining the checklist
 
-Keep the overview and spec map in step with the release checklist. Date each completed outcome and link its implementation and verification. Move deferred work into the post-public section and preserve its journey number and delivery history.
+Keep the overview and [journey specifications](../specs/README.md) in step with the roadmap. Date each completed outcome and link its implementation and verification. Move deferred work into the post-public section and preserve its journey number and delivery history.

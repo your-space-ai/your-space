@@ -1,6 +1,6 @@
 # Install Your Space
 
-For the downloadable native app and both Mac setup choices, see [Run Your Space on a Mac](macos-desktop.md).
+For the current source preview, start with [Try Your Space from source](from-source.md). It walks through creating an owner and opening a sample app. The [Mac guide](macos-desktop.md) covers building the launcher from source and using a published DMG when one is available.
 
 This guide installs Your Space with the `your-space` command, creates its owner, and keeps it
 running. You need access to the machine's command line: that access, not a web page, is what makes
@@ -887,8 +887,7 @@ passphrase is a good choice. Then sign in with your username and that password.
 The link works once. If it expires or you lose it, run
 `docker compose exec server reset-link` for a new one.
 
-You now see your workspace, your name and username, and a way to sign out. The workspace is empty:
-installing apps comes in a later release.
+You now see your workspace, your name and username, and a way to sign out. Open **Apps** to review and install your first kit.
 
 ## Give an external agent access to one app
 

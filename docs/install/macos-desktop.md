@@ -1,5 +1,7 @@
 # Download and run Your Space on a Mac
 
+The first tagged desktop release is in preparation. For the current source preview, [build the Mac launcher](#build-and-verify-a-private-candidate). Once disk images are published, use the steps below.
+
 1. Open [Your Space Releases](https://github.com/your-space-ai/your-space/releases) and choose the disk image for your Mac. In **Apple menu → About This Mac**, look for **Chip** (Apple Silicon) or **Processor** (Intel).
 
    | Mac | Download |

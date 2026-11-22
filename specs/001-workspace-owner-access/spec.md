@@ -8,7 +8,7 @@
 
 **Status**: Delivered and checked in a development environment; verification on real hosts and of the published images (tasks T052, T055, and T056) follows the first release; [tasks.md](tasks.md) shows what has been delivered
 
-**Journey**: 001 "Set up my space", the first of eight journeys in the [spec map](../../docs/spec-map.md)
+**Journey**: 001 "Set up my space" in the [spec map](../README.md)
 
 **Input**: Establish an owner-only Your Space installation with manual Docker Compose installation,
 owner creation by a server command, a web client, durable workspace state, and account recovery. Preserve the agreed platform, app, and agent
@@ -47,7 +47,7 @@ The [project-wide decision record](../../docs/architecture/decisions.md) preserv
 selected technologies, accepted future app and agent design, and choices still open. That shared
 record applies across specifications; its future work is not required to complete this feature. The
 [constitution](../../.specify/memory/constitution.md) remains the governing document. The
-[spec map](../../docs/spec-map.md) sets the rules every specification follows; FR-001, FR-022 to
+[spec map](../README.md) sets the rules every specification follows; FR-001, FR-022 to
 FR-027, and the cross-cutting scenarios apply them so later specs build on this feature without
 reworking it.
 
@@ -188,7 +188,7 @@ complete the issued password-reset flow, and verify identity preservation and se
 
 ### Cross-Cutting Verification Scenarios
 
-Scenarios 4 to 8 check the [spec map's](../../docs/spec-map.md) shared rules that are not covered
+Scenarios 4 to 8 check the [spec map's](../README.md) shared rules that are not covered
 by the user stories.
 
 1. **Given** account creation and a completed password reset, **When** credential storage is
@@ -416,7 +416,7 @@ These are domain concepts, not prescribed database tables or framework types.
 
 ## Explicitly Out of Scope
 
-Later journeys in the [spec map](../../docs/spec-map.md) deliver these:
+Later journeys in the [spec map](../README.md) deliver these:
 
 - **Spec 002:** installing or running apps, including Tasks; app UI and sign-in; the app contract,
   TypeScript SDK, and app roles.

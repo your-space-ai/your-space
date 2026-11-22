@@ -4,11 +4,10 @@
 
 **Created**: 2026-11-12
 
-**Status**: Draft for review. Every question is decided.
-Nothing in it is delivered yet.
+**Implementation**: The [task record](tasks.md) lists the delivered slices and outstanding real-source installation checks.
 
-**Journey**: 002 "Install an app and use it", the second of eight journeys in the
-[spec map](../../docs/spec-map.md)
+**Journey**: 002 "Install an app and use it" in the
+[spec map](../README.md)
 
 **Input**: The owner installs an existing open-source app from its public GitHub repository and
 uses it inside Your Space, without the app's authors changing anything. The first app is
@@ -49,7 +48,7 @@ without reworking it. The [slice plan](#slices-and-their-dependencies) orders th
 
 The [constitution](../../.specify/memory/constitution.md), the
 [decision record](../../docs/architecture/decisions.md) and the
-[spec map](../../docs/spec-map.md)'s shared rules apply. Where this spec departs from the decision
+[spec map](../README.md)'s shared rules apply. Where this spec departs from the decision
 record's accepted app direction, it says so in
 [Changes to Shared Direction](#changes-to-shared-direction), and the decision record changes in the
 first pull request.

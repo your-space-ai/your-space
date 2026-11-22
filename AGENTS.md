@@ -20,12 +20,12 @@ The [architecture overview](docs/architecture/overview.md) diagrams the running 
 layer. When a decision adds, removes, or moves a component, layer, or request path, update the
 overview in the same change.
 
-The [spec map](docs/spec-map.md) assigns pre-public roadmap items to journey specifications and sets
+The [spec map](specs/README.md) maps the first packaged release to journey specifications and sets
 their build order. Write new specifications as the journeys listed there, and keep each tree leaf's
 spec number and the spec map in sync with the roadmap.
 
-The roadmap's pre-public section is grouped into layers and opens with an overview tree. Whenever
-a pre-public item is added, removed, moved, re-prioritized, reworded in meaning, or deferred, update
+The first packaged release section of the roadmap opens with an overview tree. Whenever
+an item in that section is added, removed, moved, re-prioritized, reworded in meaning, or deferred, update
 the tree in the same change so it still maps one-to-one to the checklist and its priority markers
 match. See "Maintaining the Checklist" in the roadmap.
 
@@ -36,7 +36,7 @@ combined capability are complete. Preserve deferred or replaced work explicitly 
 its history or marking it complete.
 
 When a feature specification referenced through an in-review PR is merged, replace its PR links
-in the roadmap and readiness documents with links to the maintained specification.
+in the roadmap and release guide with links to the maintained specification.
 
 Write pull request descriptions with the [template](.github/pull_request_template.md). Its visible
 part answers three questions in a minute: what the PR changes and why (Summary), where to look

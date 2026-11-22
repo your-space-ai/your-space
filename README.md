@@ -1,28 +1,32 @@
 # Your Space
 
 Your Space is a personal dashboard you run with Docker on your own computer or server.
-Open the dashboard in a browser or the Mac app to install self-hosted apps and use them side by side.
+Open it in a browser or the Mac app to install self-hosted apps and use them side by side.
+Save a layout to reopen it from the sidebar, pick a theme, or make your own.
 
-Choose a starter theme or design your own with local fonts and colors. [Customize and share a theme](docs/appearance.md)
-
-You can give an AI agent its own identity and key. Each app's installation kit defines the
-roles you can grant, such as read access. You choose the roles for each agent and decide which
-actions need your approval. Your Space keeps the app credential on the server and records which
-agent acted.
+You can give an AI agent its own key and choose what it can do in each app.
+The app’s installation kit defines the roles. You decide which actions need approval.
+Your Space keeps app credentials on the server and records which agent acted.
 
 ## Try it from source
 
-This developer preview runs from a source checkout. Start with the Docker quickstart below. The sample apps and kits run from fixtures included in the repository. A tagged desktop download is still in preparation.
+[Start the dashboard with Docker](docs/install/from-source.md). The walkthrough takes you from a
+clean checkout to signing in, installing a sample app, and opening it in the dashboard.
+It uses a local demo environment and the sample kits included here.
 
-- Product releases distribute Apple Silicon and Intel DMGs through [GitHub Releases](https://github.com/your-space-ai/your-space/releases). To try the Mac launcher before publication, run from source or build a private preview ZIP. The launcher can set up a workspace using a local Docker engine or connect to an existing server. [Mac setup and preview guide](docs/install/macos-desktop.md)
-- To try the dashboard, build the Docker Compose test stack from a checkout, create its owner,
-  and install a sample app in the browser. [Dashboard quickstart](specs/002-install-an-app/quickstart.md)
-- To try the command-line setup, use Node.js 26 or later and Docker. The CLI walkthrough builds
-  the command and exercises it against locally built images. [CLI quickstart](specs/003-install-with-the-cli/quickstart.md)
+The current preview runs from source. To try the Mac launcher, follow the
+[Mac build instructions](docs/install/macos-desktop.md#build-and-verify-a-private-candidate).
+Apple Silicon and Intel disk images will be published on [GitHub Releases](https://github.com/your-space-ai/your-space/releases).
 
-The installation guide describes how to use matching release artifacts once a release is
-available. It covers localhost, a server behind your own proxy, and a domain with HTTPS.
-[Installation guide](docs/install/README.md)
+## Explore Your Space
+
+- [Give an agent access to an app](docs/install/README.md#give-an-external-agent-access-to-one-app)
+- [Build your own Home app](docs/apps/build-an-app.md)
+- [Customize an installed app or bring your own kit](docs/apps/managed-repositories.md)
+- [Create and share a theme](docs/appearance.md)
+
+For setup on a server, contributor guides, and design decisions, browse the [documentation](docs/README.md).
+The [roadmap](docs/roadmap.md) tracks what’s implemented and what’s planned.
 
 ## Current limits
 
@@ -31,34 +35,22 @@ Creating and editing records have been tested with a synthetic app. Those writes
 verification against an independent app, including replay after an interrupted request and
 rejection of a stale edit. [Agent verification](specs/005-owner-agent/tasks.md)
 
-## Feedback
+## Feedback and contributions
 
-For bugs or feature requests, open an issue with what you tried, what you expected, and what
-happened. Use a synthetic example and omit keys, sign-in links, and private app data.
-[Open an issue](https://github.com/your-space-ai/your-space/issues/new)
+For bugs or feature requests, [open an issue](https://github.com/your-space-ai/your-space/issues/new)
+with what you tried and what happened. Use a synthetic example and omit keys, sign-in links, and
+private app data. For a vulnerability, use the [private reporting instructions](SECURITY.md).
 
-## Project guides
-
-- [Roadmap](docs/roadmap.md)
-- [Spec map](docs/spec-map.md): the journey specifications that deliver the roadmap
-- [Public open-source readiness](docs/public-release-readiness.md)
-- [Architecture overview](docs/architecture/overview.md)
-- [Architecture and product decisions](docs/architecture/decisions.md)
-- [Project constitution](.specify/memory/constitution.md)
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). Contributions are signed off under the
-[Developer Certificate of Origin](https://developercertificate.org/). Report security issues
-privately as described in [SECURITY.md](SECURITY.md). Everyone taking part follows the
-[code of conduct](CODE_OF_CONDUCT.md).
+The [contributor guide](CONTRIBUTING.md) covers the repository layout, local checks and commit
+sign-off under the [Developer Certificate of Origin](https://developercertificate.org/).
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
 Copyright (c) 2026 Chen Stanilovsky and contributors.
 
 Your Space (server, runtime, web client, CLI and desktop app) is licensed under the
-[GNU Affero General Public License v3.0 only](LICENSE). The repository includes development scripts, templates and agent skills from GitHub Spec Kit 1.2.5 under its [MIT license](.specify/LICENSE). The SDKs, once published from this
-repository, are licensed under the MIT License, so apps that use them can choose any license.
-
-For an agent-led workspace, see [set up with an agent](docs/agent-setup.md), [build a Home app](docs/build-an-app.md), and [manage repositories and kits](docs/managed-repositories.md).
+[GNU Affero General Public License v3.0 only](LICENSE). The repository includes development
+scripts, templates and agent skills from GitHub Spec Kit 1.2.5 under its [MIT license](.specify/LICENSE).
+The SDKs, once published from this repository, are licensed under the MIT License, so apps that
+use them can choose any license.

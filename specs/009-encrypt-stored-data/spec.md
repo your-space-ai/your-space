@@ -4,11 +4,10 @@
 
 **Created**: 2026-11-17
 
-**Status**: Draft for review. Every question is decided. Nothing in it is delivered yet.
+**Implementation**: The [task record](tasks.md) lists the delivered changes and tests.
 
-**Linear**: YOU-50. Delivered as the last pull request of journey 003's stack, after the guide
-slice. It is a follow-up specification, not one of the eight journeys in the
-[spec map](../../docs/spec-map.md).
+**Linear**: YOU-50. This follow-up shipped in the last pull request of journey 003's stack. See the
+[spec map](../README.md) for the related installation journey.
 
 **Input**: The owner asked that Your Space's database be encrypted, after journey 003's tests found
 that replacing the auth secret leaves installed apps' settings unreadable.
