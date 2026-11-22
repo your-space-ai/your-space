@@ -69,15 +69,16 @@ Choose a version from [GitHub Releases](https://github.com/your-space-ai/your-sp
 In a fresh download folder, verify the file you chose. On Linux, for example:
 
 ```sh
-sha256sum -c --ignore-missing SHA256SUMS
-mkdir -p ~/.local/bin
-install -m 755 your-space-linux-x64 ~/.local/bin/your-space
+asset=your-space-linux-x64  # use your-space-linux-arm64 on ARM
+awk -v name="$asset" '$2 == name { print }' SHA256SUMS | sha256sum -c - &&
+  mkdir -p ~/.local/bin &&
+  install -m 755 "$asset" ~/.local/bin/your-space
 ```
 
 Proceed only when the expected asset prints `OK`. On a Mac, set `archive` to the downloaded archive name, then run:
 
 ```sh
-grep -F "  $archive" SHA256SUMS | shasum -a 256 -c - &&
+awk -v name="$archive" '$2 == name { print }' SHA256SUMS | shasum -a 256 -c - &&
   tar -xzf "$archive" &&
   mkdir -p ~/.local/bin &&
   install -m 755 your-space ~/.local/bin/your-space
