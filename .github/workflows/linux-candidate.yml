@@ -41,6 +41,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
+      - uses: docker/setup-docker-action@3f1ab1ab0e29231562e4db4ca600c1a49653bac6 # v5.7.0
+        with:
+          version: v29.10.0
       - run: npm ci
       - name: Build local images for the PR rehearsal
         if: github.event_name == 'pull_request'

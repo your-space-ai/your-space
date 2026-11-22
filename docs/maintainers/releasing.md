@@ -1,6 +1,6 @@
 # Prepare a versioned release
 
-Choose a reviewed commit on main with passing CI. Tag it with its version (for example, `v0.1.0`) and push the tag. Run **Prepare draft release** on main with that tag. The workflow verifies that the tag resolves to the selected commit. It pushes versioned server, runtime and web images to GHCR for Linux AMD64 and ARM64. Configure those packages for public pulls.
+Choose the reviewed tip of main with passing CI. The tag must still point to the tip when the workflow is dispatched. Tag it with its version (for example, `v0.1.0`) and push the tag. Run **Prepare draft release** on main with that tag. The workflow verifies that the tag resolves to the selected commit. It pushes versioned server, runtime and web images to GHCR for Linux AMD64 and ARM64. Configure those packages for public pulls.
 
 The protected macOS signing runner requires an approved Developer ID Application identity, a notarytool profile, and the `macos-release` environment variables described in the [desktop guide](../install/macos-desktop.md). Limit the signing environment and runner group to the reviewed workflow on main.
 
@@ -25,3 +25,5 @@ The workflow checks the two DMGs, notarizes the standalone Mac CLIs, checks both
 - Test and document supported upgrades and rollback with existing data, including what to preserve before a migration. Check that the installation, recovery and troubleshooting instructions match the tested paths.
 - Confirm distribution rights and notices for the code, binaries, images and other assets that ship. Review the [desktop notices](../../desktop/THIRD-PARTY.md) and [license and trademark decision](../architecture/decisions.md#project-license-and-business-model), including the legal review for the packaged release.
 - Give the owner the candidate reference, checks performed, open blockers and limitations for a release decision. With approval, publish a GitHub Release for the reviewed tag. The [image and install-file workflow](../../.github/workflows/images.yml) and [Mac distribution workflow](../../.github/workflows/macos-desktop.yml) prepare the draft before publication. Verify that GitHub Releases serves the matching install files, DMGs and checksums. Record the release URL, tested versions and unsupported configurations in the release notes.
+
+The Linux rehearsal uses Docker’s [setup-docker-action v5.7.0](https://github.com/docker/setup-docker-action/tree/3f1ab1ab0e29231562e4db4ca600c1a49653bac6) (Apache-2.0) to provide Docker Engine 29.10.0 on disposable hosted runners. This keeps the install test above the product’s minimum supported engine version.

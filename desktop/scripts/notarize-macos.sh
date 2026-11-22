@@ -82,7 +82,7 @@ cp -R "$delivered/Contents/Resources/licenses" standalone/
 codesign --verify --strict -R="$developer_id" standalone/your-space
 ditto -c -k --keepParent standalone cli-submit.zip
 notarize cli-submit.zip
-spctl --assess --type execute standalone/your-space
+codesign --verify --strict --check-notarization -R="$developer_id" standalone/your-space
 tar -czf "$out/your-space-cli-macos-$arch-$version.tar.gz" -C standalone your-space licenses
 detach
 mv "$name" "$out/"
