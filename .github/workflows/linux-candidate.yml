@@ -1,0 +1,72 @@
+name: Linux install candidate
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/images.yml
+      - .github/workflows/linux-candidate.yml
+      - deploy/release-files.sh
+      - cli/scripts/**
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-candidate-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  install:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      ARCH: ${{ matrix.arch }}
+      VERSION: ${{ inputs.version || '0.0.0-rehearsal' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - run: npm ci
+      - name: Build local images for the PR rehearsal
+        if: github.event_name == 'pull_request'
+        run: |
+          for component in server runtime web; do
+            docker build -f "$component/Dockerfile" -t "ghcr.io/your-space-ai/your-space-$component:$VERSION" .
+          done
+      - name: Install and resume using the candidate CLI
+        run: |
+          deploy/release-files.sh "$VERSION" release
+          (cd release && sha256sum your-space.tar.gz > SHA256SUMS)
+          (cd cli && node scripts/build.mjs "$VERSION")
+          cli/scripts/executable.sh "$ARCH"
+          exe="cli/dist/your-space-linux-$ARCH"
+          test "$("$exe" --version)" = "$VERSION"
+          args=(setup --release-dir "$PWD/release" --workdir "$RUNNER_TEMP/workspace" --port 8081 --json)
+          "$exe" "${args[@]}" | jq -e '.ok and .running and .owner == "created"'
+          "$exe" "${args[@]}" | jq -e '.ok and .running and .owner == "present"'
+          "$exe" status --workdir "$RUNNER_TEMP/workspace" --require-running --json | jq -e '.ok'
+          mkdir payload
+          cp "$exe" payload/
+          if [[ $ARCH == x64 ]]; then cp release/your-space.tar.gz payload/; fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: linux-install-${{ matrix.arch }}
+          path: payload/
+          if-no-files-found: error
+          retention-days: 1

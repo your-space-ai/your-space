@@ -59,32 +59,31 @@ too, and says what is missing.
 
 ## 1. Get the `your-space` Command
 
-It is published with each release, for Linux on Intel/AMD and ARM. Use whichever way you install
-command-line tools:
+Choose a version from [GitHub Releases](https://github.com/your-space-ai/your-space/releases) and download its `SHA256SUMS` alongside the file for your machine. Until the first release is available, use the [source guide](from-source.md).
 
-- **npm**, if Node.js 22.12 or newer is installed: run it with `npx your-space`, or install it with
-  `npm install -g your-space`.
-- **A Linux package**: download the `.deb` or `.rpm` for your machine from the
-  [latest release](https://github.com/your-space-ai/your-space/releases/latest), then install it
-  with `sudo apt install ./your-space_*.deb` or `sudo dnf install ./your-space-*.rpm`.
-- **The standalone command**, which needs nothing else installed. On Intel/AMD (use `arm64` for ARM):
+| Machine | CLI download |
+| --- | --- |
+| Linux Intel/AMD or ARM64 | `your-space-linux-x64` or `your-space-linux-arm64` |
+| Mac Apple Silicon or Intel | `your-space-cli-macos-arm64-<version>.tar.gz` or `your-space-cli-macos-x64-<version>.tar.gz` |
 
-  ```sh
-  curl -fsSLO https://github.com/your-space-ai/your-space/releases/latest/download/your-space-linux-x64
-  curl -fsSLO https://github.com/your-space-ai/your-space/releases/latest/download/SHA256SUMS
-  sha256sum -c --ignore-missing SHA256SUMS
-  install -m 755 your-space-linux-x64 ~/.local/bin/your-space
-  ```
-
-  `sha256sum` must print `your-space-linux-x64: OK`.
-
-Check it works:
+In a fresh download folder, verify the file you chose. On Linux, for example:
 
 ```sh
-your-space --version
+sha256sum -c --ignore-missing SHA256SUMS
+mkdir -p ~/.local/bin
+install -m 755 your-space-linux-x64 ~/.local/bin/your-space
 ```
 
-On a Mac, use npm for now. Packages for macOS come later.
+Proceed only when the expected asset prints `OK`. On a Mac, set `archive` to the downloaded archive name, then run:
+
+```sh
+grep -F "  $archive" SHA256SUMS | shasum -a 256 -c - &&
+  tar -xzf "$archive" &&
+  mkdir -p ~/.local/bin &&
+  install -m 755 your-space ~/.local/bin/your-space
+```
+
+Add `~/.local/bin` to your PATH if needed. Run `your-space --version` to check the installed command. For a quick local installation, use `your-space setup`. For a domain or existing reverse proxy, continue below.
 
 ## 2. Make a Folder for Your Space
 
