@@ -139,23 +139,24 @@ add their addresses to that summary, which `status` shows again.
 
 ### User Story 1 - Init and Start on This Machine (Priority: P1)
 
-As a person with a Linux computer or server and Docker, I can get the CLI from my package manager,
+As a person with a Linux computer or server and Docker, I can download the CLI from a release,
 run `init` and `start` in a folder, and have a working space after answering only my name and
 username.
 
 **Why this priority**: It is the shortest path to a working space and the base every other command
 builds on.
 
-**Independent Test**: On a Linux machine with Docker Engine and Compose and nothing else, install
-the CLI from its package, run `your-space init` and `your-space start` in an empty folder, give a
+**Independent Test**: On a Linux machine with Docker Engine and Compose and nothing else, download
+the standalone executable and `SHA256SUMS` from a release, check it, install it on PATH as
+`your-space`, run `your-space init` and `your-space start` in an empty folder, give a
 name and username, open the set-password link from the summary, set a password and sign in at
 `http://space.localhost`.
 
 **Acceptance Scenarios**:
 
 1. **Given** a Linux machine, **When** the person downloads the standalone executable for its
-   processor and checks it against the release's `SHA256SUMS`, **Then** the `your-space` command
-   works, and `your-space --version` prints its version.
+   processor, checks it against the release's `SHA256SUMS` and installs it as an executable named
+   `your-space` on PATH, **Then** the `your-space` command works, and `your-space --version` prints its version.
 2. **Given** an empty folder, **When** they run `your-space init` and accept the defaults, **Then**
    the CLI downloads the release files for its own version, checks them against the release's
    checksums, and writes `.env` with no settings line (this machine is the default). Nothing is
