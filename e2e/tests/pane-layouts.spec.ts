@@ -166,9 +166,19 @@ test("a saved view changes on explicit update and a standalone composition link 
   await page.goto("/open/notes?with=calendar");
   await page.getByRole("button", { name: "Save view", exact: true }).click();
   await page.getByLabel("View name").fill("Morning");
+  // The address changes before the router finishes checking the owner's session.
+  const navigating = Promise.withResolvers<void>();
+  await page.route("**/api/status", async (route) => {
+    await navigating.promise;
+    await route.fallback();
+  }, { times: 1 });
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page).toHaveURL(/view=b111/);
-  await page.getByLabel("Layout preset").selectOption("rows");
+  try {
+    await page.getByLabel("Layout preset").selectOption("rows");
+  } finally {
+    navigating.resolve();
+  }
   const divider = separators(page, "horizontal").first();
   await expect(divider).toBeVisible();
   await divider.focus();
@@ -204,6 +214,14 @@ test("a saved view changes on explicit update and a standalone composition link 
       .poll(async () => Math.abs(Number(await separators(page, axis).first().getAttribute("aria-valuenow")) - first))
       .toBeLessThan(1);
   }
+  // The same owner can open the standalone link without editing either of their saved views.
+  await page.goto(shared);
+  await expect(page.getByLabel("Layout preset")).toHaveValue("rows");
+  await page.getByLabel("Layout preset").selectOption("columns");
+  await expect(page).toHaveURL(/layout=columns/);
+  expect(new URL(page.url()).searchParams.get("view")).toBeNull();
+  await expect(page.getByRole("button", { name: "Update view" })).toHaveCount(0);
+  expect(views.map((view) => view.revision)).toEqual([2, 1]);
   const visitor = await browser.newPage({ baseURL, viewport: { width: 1280, height: 850 } });
   try {
     const empty = await fixture(visitor);

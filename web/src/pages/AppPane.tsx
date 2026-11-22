@@ -133,6 +133,7 @@ function PaneWorkspace({
   const [focused, setFocused] = useState("");
   const element = useRef<HTMLDivElement>(null);
   const grid = useRef<GridImperativeHandle>(null);
+  const savingViewId = useRef<string | undefined>(undefined);
   const scope = layout + "/" + apps.map((app) => app.name).join(",");
   const remembered = useMemo(
     () => decodeSizes(recentlyUsed(storageKey).find(([key]) => key === scope)?.[1], layout, apps.length),
@@ -194,7 +195,8 @@ function PaneWorkspace({
     void navigate({
       to: "/open/$name",
       params: { name: view.apps[0]! },
-      search: compositionSearch(view, saved?.id),
+      // A just-saved view can be in the URL before its route finishes loading.
+      search: (previous) => compositionSearch(view, previous.view === savingViewId.current ? previous.view : saved?.id),
       replace,
     }).finally(() => setNavigating(false));
   }
@@ -224,11 +226,13 @@ function PaneWorkspace({
           : await updateView(saved!.id, saved!.revision, { composition });
       await queryClient.invalidateQueries({ queryKey: workspaceLayoutQuery.queryKey });
       setEditName(null);
+      savingViewId.current = view.id;
       await navigate({ to: "/open/$name", params: { name: composition.apps[0]! }, search: { view: view.id } });
       setNotice("View saved.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The view could not be saved.");
     } finally {
+      savingViewId.current = undefined;
       setSaving(false);
     }
   }
