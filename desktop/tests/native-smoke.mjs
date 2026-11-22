@@ -1,7 +1,7 @@
 // Runs the actual Electron windows, either from source or from an extracted Mac candidate.
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { starterThemes } from "../../appearance/theme.mjs";
+import { starterThemes } from "../../shared/appearance/theme.mjs";
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

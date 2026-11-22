@@ -1,6 +1,6 @@
 // Run with node --test desktop/tests/launcher.browser.mjs after installing e2e's Chromium.
 import assert from "node:assert/strict";
-import { starterThemes, themeVariables } from "../../appearance/theme.mjs";
+import { starterThemes, themeVariables } from "../../shared/appearance/theme.mjs";
 import { createRequire } from "node:module";
 import { after, before, test } from "node:test";
 

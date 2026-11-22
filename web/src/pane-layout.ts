@@ -1,6 +1,6 @@
 import type { PaneLayout, ViewComposition } from "./workspace-layout.ts";
 
-import { gridShape, maxPanes } from "../../workspace-layout/model.mjs";
+import { gridShape, maxPanes } from "../../shared/workspace-layout/model.mjs";
 export { gridShape, maxPanes };
 const appName = /^[a-z][a-z0-9-]{0,29}$/;
 const presets: PaneLayout[] = ["columns", "rows", "grid", "main"];

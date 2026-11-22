@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { defaultThemeId, starterThemes, themeVariables, validateTheme } from '../../appearance/theme.mjs';
+import { defaultThemeId, starterThemes, themeVariables, validateTheme } from '../../shared/appearance/theme.mjs';
 
 const limit = 16 * 1024;
 

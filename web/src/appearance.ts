@@ -1,6 +1,6 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { useLayoutEffect } from "react";
-import { starterThemes, themeVariables, validateTheme, type Theme } from "../../appearance/theme.mjs";
+import { starterThemes, themeVariables, validateTheme, type Theme } from "../../shared/appearance/theme.mjs";
 import { api } from "./apps-api.ts";
 
 export type ThemeEntry = { id: string; theme: Theme };

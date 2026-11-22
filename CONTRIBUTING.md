@@ -12,7 +12,7 @@ an issue first so we can agree on the direction before you write code.
 | [server/](server/) | The workspace HTTP API, authorization and PostgreSQL migrations. |
 | [runtime/](runtime/) | The service that manages installed apps with Docker. |
 | [cli/](cli/) | The command for setting up and operating a workspace. |
-| [appearance/](appearance/) and [workspace-layout/](workspace-layout/) | Shared theme and pane-layout models used across workspace packages. |
+| [shared/](shared/) | The [theme model](shared/appearance/) and [pane-layout model](shared/workspace-layout/) used by multiple packages. |
 | [deploy/](deploy/) | The Compose stack, edge proxy configuration and release files. |
 | [e2e/](e2e/) | Playwright tests, their disposable Compose stack and sample app fixtures. |
 | [docs/](docs/README.md) and [specs/](specs/README.md) | User and maintainer guides, and the numbered feature specifications with their acceptance criteria. |

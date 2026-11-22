@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { SavedView, ViewComposition } from "../../workspace-layout/model.mjs";
-import { starterThemes } from "../../appearance/theme.mjs";
+import type { SavedView, ViewComposition } from "../../shared/workspace-layout/model.mjs";
+import { starterThemes } from "../../shared/appearance/theme.mjs";
 
 // Isolate layout behavior from the app installer. Each fixture app is a distinct document and origin.
 async function fixture(page: Page) {

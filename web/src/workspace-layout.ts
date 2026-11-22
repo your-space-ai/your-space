@@ -1,7 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { api } from "./apps-api.ts";
-import type { SavedView, ViewComposition, WorkspaceLayout } from "../../workspace-layout/model.mjs";
-export type { PaneLayout, SavedView, ViewComposition, WorkspaceLayout } from "../../workspace-layout/model.mjs";
+import type { SavedView, ViewComposition, WorkspaceLayout } from "../../shared/workspace-layout/model.mjs";
+export type { PaneLayout, SavedView, ViewComposition, WorkspaceLayout } from "../../shared/workspace-layout/model.mjs";
 
 const base = "/api/workspace-layout";
 export const workspaceLayoutQuery = queryOptions({

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { starterThemes } from "../../appearance/theme.mjs";
+import { starterThemes } from "../../shared/appearance/theme.mjs";
 
 async function recoveryFixture(page: Page, response: "received" | "lost-applied" | "lost-pending" | "truncated" | "rollback") {
   const appId = "d1234567-1234-4123-8123-123456789abc";

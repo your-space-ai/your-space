@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { launcherAppearance } from '../src/appearance.mjs';
-import { starterThemes } from '../../appearance/theme.mjs';
+import { starterThemes } from '../../shared/appearance/theme.mjs';
 
 test('launcher keeps a validated custom theme on this device across built-in choices', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'ys-appearance-'));

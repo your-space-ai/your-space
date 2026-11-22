@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { fontSuggestions, themeVariables, validateTheme, type Theme } from "../../../appearance/theme.mjs";
+import { fontSuggestions, themeVariables, validateTheme, type Theme } from "../../../shared/appearance/theme.mjs";
 
 export type ThemeDraft = { id?: string; initial: Theme; revision: number };
 
