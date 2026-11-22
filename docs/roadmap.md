@@ -13,8 +13,8 @@ The first packaged release is for one person running a personal dashboard. Set i
 
 Each branch puts the work on `main` beside the checks and plans for that part of the product.
 
-- **On main** describes what you can use today. Checked items have dated verification.
-- **First packaged release** marks the outcomes still to verify against the release candidate.
+- **Checked** means the feature was implemented and verified in the environment named in the item. The date and link point to the evidence.
+- **First packaged release** marks the scope of the first packaged version. Open checkboxes identify the remaining work, including checks that need the signed downloads or an independent installation.
 - **Deferred journey** marks numbered work moved beyond that release. **Later direction** marks other future work, including ideas still under consideration. Their order and timing are open.
 
 | Product area | Branches |
@@ -30,10 +30,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### App panes and saved views
 
-**On main.** Open apps side by side, resize panes, reorder sidebar shortcuts and return to a [saved view](../specs/012-multi-app-layouts/spec.md).
-
-- [ ] **Arrange installed apps (012)** · *First packaged release*
-  - [ ] Verify four resizable layouts, composition links, saved views and sidebar app order across a large screen and a phone-sized display. [Layout journey](../specs/012-multi-app-layouts/spec.md)
+- [x] **Arrange installed apps (012).** Resize columns, rows, grids and main-with-companion layouts. Share a composition link, reopen saved panes at their original sizes, reorder sidebar apps and switch between them on a phone-sized display. Chromium covered mouse, touch and keyboard input. (2026-11-21, [PR #71](https://github.com/your-space-ai/your-space/pull/71)) [Layout journey](../specs/012-multi-app-layouts/spec.md)
 
 <details>
 <summary>Verified app panes and browser behavior (002)</summary>
@@ -49,19 +46,15 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### Themes
 
-**On main.** Choose one of three [starter themes](../specs/010-personal-themes/spec.md), customize its colors and fonts, or share it as a file.
-
-- [ ] **Personalize the dashboard (010)** · *First packaged release*
-  - [ ] Verify all three starters and a custom theme across the dashboard and isolated Mac launcher. Edit colors and fonts, export a theme and apply it in another workspace. [Appearance journey](../specs/010-personal-themes/spec.md)
+- [x] **Personalize the dashboard (010).** Choose among three starters, edit fonts and colors, and export and import a theme file. The browser walkthrough reapplied an exported theme in the same workspace. A packaged Apple Silicon launcher also verified local theme preview and persistence across relaunch. (2026-11-21, [PR #69](https://github.com/your-space-ai/your-space/pull/69)) [Appearance journey](../specs/010-personal-themes/spec.md)
+- [ ] **First packaged release.** Export a theme from one workspace and apply it in a second, independent workspace. Recheck the dashboard and launcher on the packaged candidate.
 
 ### Desktop clients
 
-**On main.** The [Mac launcher](../specs/008-desktop-entry/spec.md) can set up a local workspace with Docker or open an existing server. Installing a signed download on clean Macs still needs verification.
-
-- [ ] **Open a workspace from the macOS desktop (008)** · *First packaged release*
-  - [ ] Download the Apple Silicon and Intel DMGs from GitHub Releases and verify Developer ID and notarization. Drag the app into Applications, eject the image and test the installed app and its CLI on the supported Macs.
-  - [ ] Choose local setup. Detect Docker, let the owner override the detected engine, guide them through installing or starting it when needed, then set up and start the workspace through the existing CLI. Use its normal owner setup. Document local availability while the Mac is asleep or off and license terms for owners who choose Docker Desktop.
-  - [ ] Choose an existing server, enter its URL and sign in on a Mac without local Docker. From either path, review and confirm an independent app's installation kit on the selected workspace and open the app.
+- [x] **Mac launcher (008).** Detect Docker, allow an engine override, guide the owner if it is missing or stopped, and use the CLI for owner setup. Alternatively, connect to a server by URL without local Docker. The [Mac guide](install/macos-desktop.md) covers local availability and Docker Desktop licensing. (2026-11-21, [PR #68](https://github.com/your-space-ai/your-space/pull/68))
+- [x] Build preview DMGs for Apple Silicon and Intel. Both copies launched after copying to Applications and ejecting the image. The Intel preview ran under Rosetta. With Docker stopped, a native Mac reached the remote HTTPS sign-in page. On disposable Linux, local setup created and resumed a workspace. The packaged Mac app connected to it, installed a fixture kit, and opened its app. (2026-11-21, [PR #68](https://github.com/your-space-ai/your-space/pull/68)) [Mac preview verification](../specs/008-desktop-entry/verification.md)
+- [ ] **First packaged release.** Download the signed and notarized DMGs from GitHub Releases. On clean Apple Silicon and native Intel Macs, verify the signature and notarization, drag the app to Applications, eject the image, and run the installed app and CLI.
+- [ ] Set up Docker on the same Mac with the published images and sign in to a remote server on a Mac without Docker. Review, install and open an independent kit through each path on the candidate. [Desktop journey](../specs/008-desktop-entry/spec.md)
 
 - [ ] **008 · Extend desktop support beyond the first Mac release** · *Deferred journey*
   - **Platforms and distribution**
@@ -88,10 +81,9 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### Installation and isolation
 
-**On main.** Install an independent app from its Compose file and kit, open it in a pane, and manage its isolated services. Local Compose files, framing for published apps, and complete removal also shipped. [App installation tasks](../specs/002-install-an-app/tasks.md) · [PR 54](https://github.com/your-space-ai/your-space/pull/54) · [PR 57](https://github.com/your-space-ai/your-space/pull/57)
-
-- [ ] **Connect an app (002)** · *First packaged release*
-  - [ ] Install and open an independent app from the web dashboard. Verify the documented real-source install and the browsers claimed for release. Identify which connected apps support agent actions. Keep app publishing opt-in for owners using their own proxy.
+- [x] **Install and open apps (002).** Install a Compose file and kit, inspect the review, and open the app in its own pane. Local Compose installs, opt-in port publishing, framing for published apps, and explicit complete removal also shipped. (2026-11-20, [PR #48](https://github.com/your-space-ai/your-space/pull/48), [PR #54](https://github.com/your-space-ai/your-space/pull/54), [PR #56](https://github.com/your-space-ai/your-space/pull/56), [PR #57](https://github.com/your-space-ai/your-space/pull/57)) [App installation tasks](../specs/002-install-an-app/tasks.md)
+- [x] Upgrade a running local installation’s kit in place to add agent routes while retaining its app ID and volume. (2026-11-21, [PR #66](https://github.com/your-space-ai/your-space/pull/66))
+- [ ] **First packaged release.** Follow the documented install from a live upstream GitHub source through the server, open the independent app in each supported browser, and identify its supported agent actions. Include native Safari on macOS with the local app hostnames.
 
 <details>
 <summary>Verified install sources, kits and owner controls (002)</summary>
@@ -125,11 +117,10 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### Custom apps and sources
 
-**On main.** An agent can set up a workspace and scaffold an app. The owner chooses what a custom Home can read and confirms deployments from a pinned GitHub source. Kits can come from a URL or an optional directory the owner selects. [Agent setup and app authoring](../specs/011-agent-workspace/spec.md)
-
-- [ ] **Build and customize a personal workspace with an agent (011)** · *First packaged release*
-  - [ ] Verify unattended, resumable provisioning and an agent-built Home with reads from owner-selected apps and roles. [Creator journey](../specs/011-agent-workspace/spec.md)
-  - [ ] Verify managed public and private repos, agent edits, a direct kit URL and the kit directory. Confirm a pinned deployment preserving installation identity and named volumes.
+- [x] **Build a custom Home with an agent (011).** Resumable provisioning ran on disposable Docker. A scaffolded Home app ran in Chromium with reads from only the apps and roles the owner chose. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70)) [Creator journey](../specs/011-agent-workspace/spec.md)
+- [x] Manage public and private GitHub repositories, grant an agent scoped file edits, and preview an install from a direct kit URL or an optional owner-selected directory. Public GitHub reads ran live. OAuth and write operations used a synthetic GitHub provider. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70), [PR #72](https://github.com/your-space-ai/your-space/pull/72))
+- [x] Require owner confirmation of the pinned replacement and its storage changes. A running replacement read its predecessor’s volume marker under the same installation ID. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70))
+- [ ] **First packaged release.** Rehearse the creator journey with a disposable live GitHub account and production OAuth configuration. Verify a private repo, an authorized fork and edit, and the owner-confirmed deployment from that commit.
 
 - [ ] **Additional discovery sources** · *Later direction*
 
@@ -165,7 +156,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
     - [ ] Build on journey 011’s portable Compose apps with the full SDK for deeper integrations.
   - **External apps and compatibility**
     - [ ] Let the owner add an app someone already runs elsewhere through a connector that runs next to it and connects out to Your Space, instead of deploying it.
-    - [ ] Verify the broader app-installation example with Sure and Twenty side by side. The personal release verifies one real app installation and one permission-aware integration.
+    - [x] Run Sure and Twenty side by side from their own Compose files and kits in development. Their identically named database, Redis and worker services ran without collisions. (2026-11-14, [PR #30](https://github.com/your-space-ai/your-space/pull/30)) [Recorded two-app run](../specs/002-install-an-app/research.md#sure-and-twenty-from-their-own-files)
 
 - [ ] **Additional SDK languages** · *Later direction*
 
@@ -179,12 +170,10 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### Roles and approvals
 
-**On main.** An external agent has completed an approved read. Automated tests cover writes against a synthetic app. Creating and editing records in an independent app still need release-candidate evidence. [Agent access specification](../specs/005-owner-agent/spec.md) · [Verification record](../specs/005-owner-agent/tasks.md)
-
-- [ ] **Put one AI agent to work (005)** · *First packaged release*
-  - [ ] In the web UI, create a named agent, issue its own credential, and grant specific roles for one connected app. Installation kits define stable roles and their allowed HTTP methods and routes. The gateway enforces the granted role union and the app enforces native permissions. The owner can delegate any subset of the kit roles they have enabled for that installation, inspect and change grants, rotate credentials independently of roles, and revoke the agent.
-  - [ ] Use an external AI agent through the CLI and gateway to complete one useful action in that app, with kit-defined roles, server-held app credentials and owner-configurable approvals. Let the owner review agent requests in the activity log, with the result, agent identity and delegating owner. Verify a disallowed action and access to an ungranted app are denied.
-  - [ ] Remove the grant and retry with the existing session. Verify denial, then verify rotated and revoked credentials lose access. Document the supported app and action so another owner can repeat the example.
+- [x] **Agent identities and grants (005).** Create a named agent with its own key in the web UI. Grant any subset of the installation’s enabled kit roles. The gateway checks their combined routes and HTTP methods, supplies the app credential, and the app enforces its native permissions. Inspect or change the grants, rotate the key independently, or revoke the agent. (2026-11-21, [PR #60](https://github.com/your-space-ai/your-space/pull/60), [PR #62](https://github.com/your-space-ai/your-space/pull/62), [PR #65](https://github.com/your-space-ai/your-space/pull/65)) [Agent access specification](../specs/005-owner-agent/spec.md)
+- [x] Enforce per-route approvals and the owner’s all-write override. Record the result, agent and delegating owner. Gateway and browser tests cover denied actions and installations, withdrawn grants, rotated keys, and use of a single approval only once. (2026-11-21, [PR #63](https://github.com/your-space-ai/your-space/pull/63), [PR #65](https://github.com/your-space-ai/your-space/pull/65))
+- [x] Discover and invoke kit actions with the agent CLI. A live external agent completed an owner-approved read from an independently installed app. Automated tests separately exercised creating and editing a record, replay handling and stale edits against a fixture. (2026-11-21, [PR #64](https://github.com/your-space-ai/your-space/pull/64), [PR #66](https://github.com/your-space-ai/your-space/pull/66)) [Verification record](../specs/005-owner-agent/tasks.md)
+- [ ] **First packaged release.** Use an external agent to create and edit a recurring record in the independent app. Verify approval, the upstream result, retry after an interrupted request, and rejection of a stale edit. Remove the grant and retry in the same session, then repeat after key rotation and revocation. Record the app and actions so another owner can repeat the [walkthrough](../specs/005-owner-agent/quickstart.md).
 
 ### Agent connections and workflows
 
@@ -204,7 +193,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
   - [ ] Run hosted agents through the same identity and authorization contracts as external agents.
   - [ ] Support workflows such as daily triage.
-  - [ ] Keep agent identity and permissions independent of a particular runtime or model provider.
+  - [ ] Carry the [provider-independent grants used by external agents](#roles-and-approvals) into hosted execution, regardless of the runtime or model provider.
 
   The execution runtime and model-provider integration remain open.
 
@@ -212,11 +201,10 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### Local and server setup
 
-**On main.** The [CLI](../specs/003-install-with-the-cli/tasks.md) initializes, starts and stops a workspace, reports status and logs, supports owner recovery, manages secrets and configures a domain or proxy. Stored app settings are [encrypted](../specs/009-encrypt-stored-data/tasks.md). Real-domain and release-host checks remain open.
-
-- [ ] **Install and open the dashboard (001, 003)** · *First packaged release*
-  - [ ] Download a versioned release and follow one guide on a personal machine with Docker and Compose already installed. Create the owner, sign in from localhost, restart, and recover access.
-  - [ ] Repeat on a Docker server. Keep the manual Compose guide as an advanced installation path. Open the web UI over HTTPS from a second device, once behind an owner-managed proxy or tunnel and once at a domain using the built-in proxy and a real certificate.
+- [x] **Install and operate a workspace with the CLI (001, 003).** Download and verify a locally served versioned bundle, initialize and start the stack, create the owner, sign in, inspect status and logs, and stop and restart it with app data retained. (2026-11-18, [PR #35](https://github.com/your-space-ai/your-space/pull/35), [PR #36](https://github.com/your-space-ai/your-space/pull/36)) [CLI task record](../specs/003-install-with-the-cli/tasks.md)
+- [x] Recover owner access and manage secrets. Stored app settings are encrypted with a separate key that can be rotated independently. (2026-11-19, [PR #37](https://github.com/your-space-ai/your-space/pull/37), [PR #42](https://github.com/your-space-ai/your-space/pull/42)) [Encryption task record](../specs/009-encrypt-stored-data/tasks.md)
+- [x] Configure a domain, an owner-managed proxy or tunnel, a non-default local engine, or a manual Compose setup. Browser tests exercised proxy forwarding and HTTPS with a test certificate authority. (2026-11-19, [PR #38](https://github.com/your-space-ai/your-space/pull/38), [PR #39](https://github.com/your-space-ai/your-space/pull/39), [PR #40](https://github.com/your-space-ai/your-space/pull/40), [PR #41](https://github.com/your-space-ai/your-space/pull/41))
+- [ ] **First packaged release.** Follow the guide using a published version on a personal machine and a Docker server. Verify owner claim, localhost sign-in, restart and recovery. From a second device, open the dashboard behind the owner’s proxy or tunnel and at a real domain with a publicly trusted certificate.
 
 ### Backups and updates
 
@@ -229,7 +217,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
     - [ ] Uninstall Your Space and every app container it manages; keep data by default, and require explicit confirmation and offer a backup before deleting it.
   - **App updates, history and rollback**
     - [ ] Include app installation, removal and update events in the broader workspace activity history.
-    - [ ] Preserve app identity, exact source version, provenance, and approved update source or policy; do not silently expand granted access on update.
+    - [ ] Extend the [confirmed replacement path](#custom-apps-and-sources) to general updates. Preserve app identity, source revision and provenance, enforce the approved update policy, and prevent silent expansion of access.
     - [ ] Extend 011’s owner-confirmed compatible replacements to general upstream updates with reviewed data migrations.
     - [ ] Back up app data and record image versions before each update; if the update fails, automatically roll back to the previous versions and restore the backup.
 
@@ -287,7 +275,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
   - [x] Retain account and workspace identity across restarts and service recreation with durable storage retained. (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
   - [x] Create the owner with a server command that prints a single-use set-password link; the network alone can never create an account or the owner. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
   - [x] Create one owner account and workspace, keeping account, workspace, membership, and ownership identities distinct. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
-  - [x] Prevent duplicate owners and keep sign-up closed; new people join only by invitation. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
+  - [x] Prevent duplicate owners and keep public sign-up closed. Member invitations are planned in 004. (2026-11-08, [PR #12](https://github.com/your-space-ai/your-space/pull/12))
   - [x] Reach an accurate empty workspace and distinguish unavailable services from empty or unclaimed state. (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
   - [x] Sign in and out through one server-managed authentication system, with server-enforced session expiry and revocation. (2026-11-08, [PR #13](https://github.com/your-space-ai/your-space/pull/13))
   - [x] Keep the platform session in host-only cookies so it is never sent to app origins. (2026-11-08, [PR #13](https://github.com/your-space-ai/your-space/pull/13))
@@ -337,9 +325,10 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### Verification and publication
 
-- [ ] **Verify and publish the first packaged release** · *First packaged release*
-  - [ ] Run the complete owner journey from a clean download on the supported hosts. Record the release candidate, verified configurations, and limitations.
-  - [ ] Close the security, privacy, licensing, documentation, and publication checks in the [maintainer release guide](maintainers/releasing.md). Obtain the owner’s approval to publish the packaged release.
+- [x] **Prepare the source preview.** The Linux ARM64 Docker quickstart was exercised from owner sign-in through installing, opening and restarting a sample app. The public-contribution CI and sign-off checks are implemented and were exercised locally. (2026-11-21, [PR #73](https://github.com/your-space-ai/your-space/pull/73), [PR #74](https://github.com/your-space-ai/your-space/pull/74)) [Docker quickstart](install/from-source.md)
+- [x] Implement the release workflows for versioned images, CLI and install files, checksums, and Apple Silicon and Intel DMGs. The CLI and Mac packaging paths produced private test artifacts. (2026-11-18, [PR #35](https://github.com/your-space-ai/your-space/pull/35)) (2026-11-21, [PR #68](https://github.com/your-space-ai/your-space/pull/68))
+- [ ] **Verify and publish the first packaged release.** Run the combined owner journey from clean downloads on the supported hosts. Record the exact candidate, configurations and limitations, including layout and appearance checks on the distributed build.
+- [ ] Complete the security, privacy, licensing, documentation and publication checks, obtain the owner’s approval, and verify the published artifacts. [Maintainer release guide](maintainers/releasing.md)
 
 ## Maintaining the checklist
 
