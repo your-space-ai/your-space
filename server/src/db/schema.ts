@@ -1,6 +1,6 @@
 // Your Space's own tables (T011, data-model.md): whether the owner exists, actors, and events.
-import type { SavedView } from "../../../workspace-layout/model.mjs";
-import type { Theme } from "../../../appearance/theme.mjs";
+import type { SavedView } from "../../../shared/workspace-layout/model.mjs";
+import type { Theme } from "../../../shared/appearance/theme.mjs";
 import type { AgentAccess } from "../apps/agent-kit.ts";
 import { sql } from "drizzle-orm";
 import { boolean, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";

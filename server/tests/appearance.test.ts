@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { defaultThemeId, starterThemes, type Theme } from "../../appearance/theme.mjs";
+import { defaultThemeId, starterThemes, type Theme } from "../../shared/appearance/theme.mjs";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
 import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";

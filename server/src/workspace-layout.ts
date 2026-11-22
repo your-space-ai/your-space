@@ -6,7 +6,7 @@ import {
   type SavedView,
   type ViewComposition,
   type WorkspaceLayout,
-} from "../../workspace-layout/model.mjs";
+} from "../../shared/workspace-layout/model.mjs";
 import type { Auth } from "./auth.ts";
 import { ownerFor } from "./apps/routes.ts";
 import { AppError } from "./apps/service.ts";

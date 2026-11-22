@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import type { SavedView, WorkspaceLayout } from "../../workspace-layout/model.mjs";
+import type { SavedView, WorkspaceLayout } from "../../shared/workspace-layout/model.mjs";
 import { app } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { fromNodeHeaders } from "better-auth/node";
 import { and, eq } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { defaultThemeId, starterThemes, validateTheme, type Theme } from "../../appearance/theme.mjs";
+import { defaultThemeId, starterThemes, validateTheme, type Theme } from "../../shared/appearance/theme.mjs";
 import type { Auth } from "./auth.ts";
 import { member } from "./db/auth-schema.ts";
 import type { Db } from "./db/client.ts";

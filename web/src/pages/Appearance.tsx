@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { defaultThemeId, starterThemes, validateTheme, type Theme } from "../../../appearance/theme.mjs";
+import { defaultThemeId, starterThemes, validateTheme, type Theme } from "../../../shared/appearance/theme.mjs";
 import { activePaletteQuery, catalogQuery, selectedTheme, type AppearanceCatalog, type ThemeEntry } from "../appearance.ts";
 import { ApiError, api, errorMessage } from "../apps-api.ts";
 import { ThemeEditor, themeStyle, type ThemeDraft } from "../components/ThemeEditor.tsx";

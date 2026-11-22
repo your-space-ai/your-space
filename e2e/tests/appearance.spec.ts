@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { starterThemes } from "../../appearance/theme.mjs";
+import { starterThemes } from "../../shared/appearance/theme.mjs";
 import { evidence } from "./helpers/evidence.ts";
 import { createOwner, resetStack } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
