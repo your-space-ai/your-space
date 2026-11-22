@@ -58,4 +58,4 @@ Every pull request reports **Contribution checks** and verifies DCO sign-offs. P
 requests run Compose on every layer and owner/agent journeys in Chromium on GitHub-hosted runners. CircleCI can read public PR metadata
 without a token. Hosted runs report results in job logs and upload selected synthetic screenshots
 only when Argos is configured. Use a local evidence run for HTML reports and video.
-The subscription-backed review workflow runs only in the private repository.
+Use the [code review guide](.github/code-review.md) when reviewing changes.
