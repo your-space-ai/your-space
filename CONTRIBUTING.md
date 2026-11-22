@@ -69,6 +69,10 @@ Space only through its public APIs and contracts.
   runners. These checks use synthetic accounts and apps. You don’t need any project credentials.
   A maintainer may need to approve the run from a fork.
 
+Maintainers can run the full GitHub checks on `main` with `gh workflow run ci.yml --ref main`
+or **Actions → CI → Run workflow**. This runs the workspace, Compose and Chromium checks on
+GitHub-hosted runners.
+
 ## Security issues
 
 Don't report vulnerabilities in public issues. See [SECURITY.md](SECURITY.md).
