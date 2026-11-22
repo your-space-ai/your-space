@@ -79,6 +79,23 @@ jobs:
             exit 1
           done <<< "$commits"
 
+  dependencies:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: moderate
+          fail-on-scopes: runtime, development, unknown
+          comment-summary-in-pr: never
+
   check:
     needs: scope
     if: needs.scope.outputs.code == 'true'
@@ -181,13 +198,15 @@ jobs:
   contribution:
     name: Contribution checks
     if: always()
-    needs: [scope, check, setups, browser]
+    needs: [scope, check, setups, browser, dependencies]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     permissions: {}
     steps:
       - name: Required checks completed
         env:
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+          DEPENDENCIES: ${{ needs.dependencies.result }}
           SCOPE: ${{ needs.scope.result }}
           RUN_CODE: ${{ needs.scope.outputs.code }}
           CODE: ${{ needs.check.result }}
@@ -203,6 +222,7 @@ jobs:
               *) echo "$3 was scheduled=$1 and returned $2" >&2; return 1 ;;
             esac
           }
+          expect_result "$IS_PR" "$DEPENDENCIES" "Dependency review"
           expect_result "$RUN_CODE" "$CODE" "Workspace checks"
           expect_result "$RUN_SETUPS" "$SETUPS" "Compose setups"
           expect_result "$RUN_BROWSER" "$BROWSER" "Chromium"
