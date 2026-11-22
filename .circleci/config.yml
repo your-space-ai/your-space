@@ -181,13 +181,12 @@ jobs:
           # above.
           name: Browser journeys
           command: |
-            read -r -a browsers <<< "${YS_E2E_BROWSERS:?}"
             projects=()
-            for browser in "${browsers[@]}"; do
+            for browser in ${YS_E2E_BROWSERS:?}; do
               projects+=("--project=$browser")
             done
             # A single Playwright worker runs the selected browsers in sequence.
-            budget_minutes=$((30 * ${#browsers[@]}))
+            budget_minutes=$((30 * ${#projects[@]}))
             timeout "${budget_minutes}m" npx playwright test "${projects[@]}"
           working_directory: e2e
       - run:
