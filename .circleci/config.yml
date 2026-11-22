@@ -95,7 +95,7 @@ jobs:
           # merge.
           name: Browsers
           command: |
-            if [ "<< pipeline.git.branch >>" = main ]; then
+            if [ "${CIRCLE_BRANCH:-}" = main ]; then
               echo 'export YS_E2E_BROWSERS="chromium firefox webkit"' >> "$BASH_ENV"
             else
               echo 'export YS_E2E_BROWSERS=chromium' >> "$BASH_ENV"
@@ -131,7 +131,7 @@ jobs:
           name: Argos upload
           command: |
             if [ -z "${ARGOS_TOKEN:-}" ]; then
-              echo "Keeping screenshots in the CI report."
+              echo "Skipping external visual comparisons because there is no Argos token."
               echo 'export YS_ARGOS_UPLOAD=0' >> "$BASH_ENV"
               exit 0
             fi
@@ -178,16 +178,12 @@ jobs:
           command: timeout 30m npx playwright test $(printf -- '--project=%s ' $YS_E2E_BROWSERS)
           working_directory: e2e
       - run:
-          name: Stack logs
+          name: Stack status
           when: on_fail
           command: |
             docker version --format 'Docker Engine {{.Server.Version}}'
             docker compose -p ys-e2e --env-file e2e/stack.env -f deploy/compose.yaml \
-              -f deploy/compose.build.yaml -f e2e/compose.e2e.yaml logs --no-color
-      - store_artifacts:
-          path: e2e/playwright-report
-      - store_artifacts:
-          path: e2e/test-results
+              -f deploy/compose.build.yaml -f e2e/compose.e2e.yaml ps --all
       - unless:
           condition:
             equal: [main, << pipeline.git.branch >>]
@@ -228,8 +224,6 @@ jobs:
           command: npx playwright test --project chromium
           working_directory: e2e
           no_output_timeout: 30m
-      - store_artifacts:
-          path: e2e/playwright-report
 
 parameters:
   arm-e2e:

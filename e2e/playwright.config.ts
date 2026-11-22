@@ -28,8 +28,8 @@ export default defineConfig({
     viewport: { width: 1280, height: 720 },
     trace: "off",
     screenshot: "only-on-failure",
-    // CI keeps a video of every journey in the run's playwright-report artifact.
-    video: evidence || process.env.CI ? { mode: "on", size: { width: 1280, height: 720 } } : "off",
+    // A local evidence run can record video. Hosted checks report results in the job log.
+    video: evidence ? { mode: "on", size: { width: 1280, height: 720 } } : "off",
   },
   projects: [
     {

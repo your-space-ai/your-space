@@ -32,6 +32,7 @@ Prepare a quiet developer preview from source, with the local Docker quickstart 
     listed zero retained artifacts after cleanup. External session links were removed from the
     affected pull request descriptions and remain in their edit histories. Review the exposure of
     those edits and access to third-party reports before changing visibility.
+  - [x] Keep AGPL-3.0-only and the DCO for the quiet source preview. The owner approved proceeding without counsel review on 2026-11-21.
   - [ ] Confirm publication rights for existing material, add the selected project licenses, and meet
     applicable third-party license and notice obligations.
   - [ ] Explain the project's purpose, current state, unimplemented functionality, and participation
@@ -42,10 +43,10 @@ Prepare a quiet developer preview from source, with the local Docker quickstart 
     reports.
   - [ ] Confirm the Compose setup checks run on each layer of a public pull request stack. The
     workflow limits this check to the bottom layer while the repository is private.
-  - [ ] On the first public fork, confirm that the CI report includes screenshots without exposing
-    project credentials. Confirm who reviews contributed code while the subscription-backed
-    workflow stays disabled. The product release checklist tracks external visual comparison and
-    an open-source review service.
+  - [ ] On a public fork, confirm the required **Contribution checks** status runs the synthetic
+    Chromium journeys and the DCO check. Verify outside-run approvals and repository protection
+    while the subscription-backed review workflow stays disabled. The product release checklist tracks external
+    visual comparison and an open-source review service.
   - [ ] Review public repository settings and the effects of publication, then authorize the visibility
     change separately. Making source public does not imply a supported or production-ready product.
 
@@ -93,10 +94,10 @@ is chosen instead, explicitly decide which items apply and describe what is not 
 
 - [ ] **Establish project rights and licensing**
   - [ ] Verify the shipped release includes the AGPL-3.0-only license and notices. The MIT SDK license applies when SDKs ship under journey 007.
-  - [ ] Have a lawyer review the license setup, trademark, and contributor terms (DCO) before publication.
+  - [ ] Have a lawyer review the license setup, trademark, and contributor terms (DCO) before the packaged release. The owner waived counsel review for the earlier source preview.
   - [ ] Clear and file the "Your Space" trademark, and publish a short trademark policy for forks.
   - [ ] Require a DCO sign-off before publication, enforced on pull requests from outside contributors
-    by the DCO GitHub App.
+    by the contribution workflow. A maintainer verifies the required check on a public fork.
     **Replaced (2026-11-16):** "Set up a contributor license agreement…". See the
     [2026-11-16 decision update](architecture/decisions.md#project-license-and-business-model).
   - [ ] Verify the licenses and notices of dependencies shipped in the AGPL-3.0-only release.

@@ -58,6 +58,8 @@ runs on drafts too: fix its findings before marking a draft ready. Argos's scree
 Chromium's, and a change to documents alone, or a run skipped because its code already passed,
 uploads none.
 
-For public pull requests, Compose checks run on every layer. CircleCI can read public PR metadata
-without a token and keeps screenshots in the job report when Argos credentials are unavailable.
+Every pull request reports **Contribution checks** and verifies DCO sign-offs. Public code pull
+requests run Compose on every layer and owner/agent journeys in Chromium on GitHub-hosted runners. CircleCI can read public PR metadata
+without a token. Hosted runs report results in job logs and upload selected synthetic screenshots
+only when Argos is configured. Use a local evidence run for HTML reports and video.
 The subscription-backed review workflow runs only in the private repository.
