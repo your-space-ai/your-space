@@ -1,9 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { starterThemes } from "../../appearance/theme.mjs";
 
-test("reloading an interrupted installation restores the reviewed commit for explicit confirmation", async ({
-  page,
-}) => {
+async function recoveryFixture(page: Page, response: "received" | "lost-applied" | "lost-pending" | "truncated" | "rollback") {
   const appId = "d1234567-1234-4123-8123-123456789abc";
   const previewId = "e1234567-1234-4123-8123-123456789abc";
   const commit = "b".repeat(40);
@@ -27,6 +25,7 @@ test("reloading an interrupted installation restores the reviewed commit for exp
     volumes: ["storage"],
   };
   let lookups = 0;
+  let receiptReads = 0;
   const writes: { path: string; body: unknown }[] = [];
   await page.route("**/api/**", async (route) => {
     const req = route.request();
@@ -34,7 +33,13 @@ test("reloading an interrupted installation restores the reviewed commit for exp
     let json: unknown;
     if (req.method() === "POST") {
       writes.push({ path: pathname, body: req.postDataJSON() });
-      json = { status: "applied", commit };
+      if (response === "rollback") return route.fulfill({
+        status: 502,
+        json: { error: "previous_artifacts_restored", message: "Deployment failed. The previous app was restored." },
+      });
+      if (response === "truncated") return route.fulfill({ contentType: "application/json", body: '{"status":' });
+      if (response !== "received") return route.abort("connectionreset");
+      json = { status: "applied", appId, repoId: repo.id, commit };
     } else if (pathname === "/api/auth/get-session") {
       json = {
         user: { id: appId, name: "Owner", email: "fixture@example.test" },
@@ -52,19 +57,84 @@ test("reloading an interrupted installation restores the reviewed commit for exp
     else if (pathname === "/api/repositories/123/deploy/pending") {
       expect(searchParams.get("appId")).toBe(appId);
       lookups++;
-      json = { pending: writes.length ? null : plan };
+      json = { pending: writes.length && response !== "lost-pending" ? null : plan };
+    } else if (pathname === "/api/repositories/123/deploy/receipt") {
+      expect(req.method()).toBe("GET");
+      expect(Object.fromEntries(searchParams)).toEqual({ appId, previewId, commit });
+      receiptReads++;
+      if (response === "lost-applied" && receiptReads <= 2) {
+        json = { receipt: null, applying: true };
+      } else {
+        const confirmed = response === "lost-applied" || response === "truncated";
+        json = { receipt: confirmed ? { status: "applied", appId, repoId: repo.id, commit } : null };
+      }
     } else json = {};
     await route.fulfill({ json });
   });
+  return {
+    commit,
+    lookups: () => lookups,
+    receiptReads: () => receiptReads,
+    writes,
+    expectedWrite: { path: "/api/repositories/123/deploy/apply", body: { appId, previewId, commit } },
+  };
+}
+
+test("reloading an interrupted installation restores the reviewed commit for explicit confirmation", async ({ page }) => {
+  const fixture = await recoveryFixture(page, "received");
   await page.goto("/repositories?app=desk");
   await expect(page.getByRole("heading", { name: "Resume deployment to Desk" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Resume deployment to Desk" })).toBeVisible();
-  await expect(page.getByText(commit, { exact: true })).toBeVisible();
-  expect(lookups).toBeGreaterThanOrEqual(2);
-  expect(writes).toEqual([]);
+  await expect(page.getByText(fixture.commit, { exact: true })).toBeVisible();
+  expect(fixture.lookups()).toBeGreaterThanOrEqual(2);
+  expect(fixture.writes).toEqual([]);
   await page.getByRole("button", { name: "Resume reviewed deployment" }).click();
   await expect(page.getByRole("status")).toContainText("Deployment applied");
-  expect(writes).toEqual([{ path: "/api/repositories/123/deploy/apply", body: { appId, previewId, commit } }]);
+  expect(fixture.writes).toEqual([fixture.expectedWrite]);
+  expect(fixture.receiptReads()).toBe(0);
   await expect(page.getByRole("button", { name: "Resume reviewed deployment" })).toHaveCount(0);
+});
+
+test("a lost deployment response recovers only the exact applied receipt without another write", async ({ page }) => {
+  const fixture = await recoveryFixture(page, "lost-applied");
+  await page.goto("/repositories?app=desk");
+  await page.getByRole("button", { name: "Resume reviewed deployment" }).click();
+  await expect(page.getByRole("status")).toContainText("Checking whether the reviewed deployment finished");
+  await expect(page.getByRole("status")).toContainText("Deployment applied");
+  await expect(page.getByRole("link", { name: "View installation" })).toBeVisible();
+  expect(fixture.receiptReads()).toBe(3);
+  expect(fixture.writes).toEqual([fixture.expectedWrite]);
+});
+
+test("a pending deployment with a lost response requires another explicit owner decision", async ({ page }) => {
+  const fixture = await recoveryFixture(page, "lost-pending");
+  await page.goto("/repositories?app=desk");
+  const resume = page.getByRole("button", { name: "Resume reviewed deployment" });
+  await resume.click();
+  await expect(page.getByRole("alert")).toContainText("couldn't confirm");
+  await expect(page.getByRole("link", { name: "Check installation status" })).toBeVisible();
+  await expect(resume).toBeEnabled();
+  await expect(page.getByRole("link", { name: "View installation" })).toHaveCount(0);
+  expect(fixture.receiptReads()).toBeGreaterThan(0);
+  expect(fixture.writes).toEqual([fixture.expectedWrite]);
+});
+
+test("an incomplete successful response still needs an exact receipt", async ({ page }) => {
+  const fixture = await recoveryFixture(page, "truncated");
+  await page.goto("/repositories?app=desk");
+  await page.getByRole("button", { name: "Resume reviewed deployment" }).click();
+  await expect(page.getByRole("status")).toContainText("Deployment applied");
+  expect(fixture.receiptReads()).toBe(1);
+  expect(fixture.writes).toEqual([fixture.expectedWrite]);
+});
+
+test("a known deployment rollback is reported without checking for a receipt", async ({ page }) => {
+  const fixture = await recoveryFixture(page, "rollback");
+  await page.goto("/repositories?app=desk");
+  await page.getByRole("button", { name: "Resume reviewed deployment" }).click();
+  await expect(page.getByRole("alert")).toContainText("The previous app was restored");
+  await expect(page.getByRole("link", { name: "View installation" })).toHaveCount(0);
+  expect(fixture.receiptReads()).toBe(0);
+  expect(fixture.writes).toEqual([fixture.expectedWrite]);
 });

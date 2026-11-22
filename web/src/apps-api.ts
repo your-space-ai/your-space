@@ -40,7 +40,9 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
     const { error, message, details } = (data ?? {}) as { error?: string; message?: string; details?: unknown };
     if (response.status === 401) throw new AppError("session_expired");
     if (response.status === 421) throw new AppError("wrong_address");
-    if (message && response.status !== 502 && response.status !== 504) {
+    // A verified rollback is an application result even though it uses a gateway error status.
+    const restored = response.status === 502 && error === "previous_artifacts_restored";
+    if (message && (restored || (response.status !== 502 && response.status !== 504))) {
       throw new ApiError(response.status, error ?? "error", message, details);
     }
     throw new AppError(failureForStatus(response.status));
