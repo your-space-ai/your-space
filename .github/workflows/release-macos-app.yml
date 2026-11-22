@@ -1,4 +1,4 @@
-name: macOS desktop
+name: Release macOS app
 
 on:
   pull_request:
@@ -10,10 +10,10 @@ on:
       - deploy/**
       - package-lock.json
       - package.json
-      - .github/workflows/macos-desktop.yml
-      - .github/workflows/images.yml
+      - .github/workflows/release-macos-app.yml
+      - .github/workflows/release-draft.yml
   workflow_dispatch:
-  # Called by Images only after that release's server images and files are available.
+  # Called by Release draft, which signs and notarizes on the protected runner.
   workflow_call:
     inputs:
       release_tag:

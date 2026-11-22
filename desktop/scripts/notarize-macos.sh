@@ -75,14 +75,6 @@ delivered="$mount/Your Space.app"
 xcrun stapler validate "$delivered"
 codesign --verify --deep --strict -R="$developer_id" "$delivered"
 spctl --assess --type execute "$delivered"
-# The standalone download carries the exact signed CLI assessed inside the notarized app.
-mkdir standalone
-cp "$delivered/Contents/Resources/bin/your-space" standalone/
-cp -R "$delivered/Contents/Resources/licenses" standalone/
-codesign --verify --strict -R="$developer_id" standalone/your-space
-ditto -c -k --keepParent standalone cli-submit.zip
-notarize cli-submit.zip
-codesign --verify --strict --check-notarization -R="$developer_id" standalone/your-space
-tar -czf "$out/your-space-cli-macos-$arch-$version.tar.gz" -C standalone your-space licenses
 detach
-mv "$name" "$out/"
+shasum -a 256 "$name" > "$name.sha256"
+mv "$name" "$name.sha256" "$out/"
