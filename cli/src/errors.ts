@@ -57,7 +57,3 @@ export class CliError extends Error {
     return STATUS[this.code];
   }
 }
-
-export function statusOf(code: ErrorCode): number {
-  return STATUS[code];
-}
