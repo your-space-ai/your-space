@@ -1,6 +1,39 @@
-# Verify a packaged release
+# Prepare a versioned release
 
-The source preview can open for contributions before downloadable builds are available. Use these checks for a tagged release of the server, CLI and macOS app. Record the candidate commit, version, image digests, asset names and checksums. Follow the published instructions from a clean host and record the OS, CPU, Docker, Compose and browser versions for each result.
+## What a release ships
+
+| File or package | Platforms | Published to | For |
+| --- | --- | --- | --- |
+| Server, web and runtime images, tagged with the version | Linux AMD64 and ARM64 | GHCR | Every installation |
+| `your-space.tar.gz`, the Compose bundle | Any | GitHub release | `your-space init` and manual installs |
+| `your-space-<version>.tgz`, the CLI npm package | Any machine with Node 22.12 or newer | npm, and the same file on the GitHub release | Mac and Linux users with Node, and agents |
+| `your-space-linux-x64`, `your-space-linux-arm64`, the standalone CLI | Linux Intel/AMD and ARM64 | GitHub release | Servers without Node |
+| `your-space-macos-arm64-<version>.dmg`, `your-space-macos-x64-<version>.dmg`, signed and notarized, with the CLI inside | macOS Apple Silicon and Intel | GitHub release | Mac users |
+| `SHA256SUMS` | — | GitHub release | Checking any download |
+
+Not shipped: `.deb` and `.rpm` packages, standalone macOS CLI downloads, Homebrew, the Linux desktop app and Windows. Add a new download as a new file; keep existing file names, the npm package name `your-space`, the image names and the `SHA256SUMS` format stable, because install guides, scripts and the CLI depend on them.
+
+Each piece has its own workflow:
+
+| Workflow | What it does |
+| --- | --- |
+| [Release draft](../../.github/workflows/release-draft.yml) | Checks the tag, runs the workflows below and creates the draft release with `SHA256SUMS` |
+| [Release images](../../.github/workflows/release-images.yml) | Builds and pushes the versioned images to GHCR |
+| [Release CLI](../../.github/workflows/release-cli.yml) | Builds the npm package, the Linux executables and the Compose bundle |
+| [Release macOS app](../../.github/workflows/release-macos-app.yml) | Builds both DMGs, then signs and notarizes them on the protected runner |
+| [Release install test](../../.github/workflows/release-install-test.yml) | Installs from the built files on fresh Linux x64 and ARM64 runners and installs the npm package |
+| [Release publish](../../.github/workflows/release-publish.yml) | When the draft is published, publishes the npm package and moves the images' `latest` tag |
+
+## Release steps
+
+1. **Merge to main** once CI is green.
+2. **Tag the tip of main** with its version (for example `v0.1.0`) and push the tag. The tag must still point to the tip of main when the draft workflow starts.
+3. **Run Release draft** on main with that tag. It verifies the tag, pushes the versioned images, builds the CLI files, installs a fresh workspace from them on Linux x64 and ARM64 and resumes it, signs and notarizes both DMGs, and creates a draft GitHub release with the six files and `SHA256SUMS`. Only the versioned images are public at this point; configure their GHCR packages for public pulls. A failed run creates no draft; if an upload leaves a partial draft, inspect it before deleting it and retrying.
+4. **Review the draft** against the checks below. Mark preview versions as prereleases.
+5. **Publish the draft.** Publishing runs Release publish, which checks the npm tarball against `SHA256SUMS`, publishes that exact file to npm (`next` for prereleases, otherwise `latest`) and points the images' `latest` tag at the version (not for prereleases). It needs the `NPM_TOKEN` repository secret. An npm version can never be reused, so publishing is one-way.
+6. **Check the result from a clean machine:** install with `npx your-space@<version>`, with a Linux executable and with a DMG, and confirm each reports the version.
+
+The protected macOS signing runner requires an approved Developer ID Application identity, a notarytool profile, and the `macos-release` environment variables described in the [desktop guide](../install/macos-desktop.md). Limit the signing environment and runner group to the reviewed workflow on main.
 
 ## Install the candidate
 
@@ -20,4 +53,6 @@ The source preview can open for contributions before downloadable builds are ava
 - Run the automated build and behavior checks for the candidate. Review security boundaries for setup, recovery, app isolation and credentials. Check the default network exposure, outbound requests, update opt-out, dependencies and images. Inspect the distributable files and logs for secrets or private data.
 - Test and document supported upgrades and rollback with existing data, including what to preserve before a migration. Check that the installation, recovery and troubleshooting instructions match the tested paths.
 - Confirm distribution rights and notices for the code, binaries, images and other assets that ship. Review the [desktop notices](../../desktop/THIRD-PARTY.md) and [license and trademark decision](../architecture/decisions.md#project-license-and-business-model), including the legal review for the packaged release.
-- Give the owner the candidate reference, checks performed, open blockers and limitations for a release decision. With approval, publish a GitHub Release for the reviewed tag. The [image and install-file workflow](../../.github/workflows/images.yml) and [Mac distribution workflow](../../.github/workflows/macos-desktop.yml) run on release publication. Verify that GitHub Releases serves the matching install files, DMGs and checksums. Record the release URL, tested versions and unsupported configurations in the release notes.
+- Give the owner the candidate reference, checks performed, open blockers and limitations for a release decision. With approval, publish the reviewed draft. [Release draft](../../.github/workflows/release-draft.yml) prepares the draft before publication. Verify that GitHub Releases serves the matching install files, DMGs and checksums, and that npm serves the matching package. Record the release URL, tested versions and unsupported configurations in the release notes.
+
+The Linux rehearsal uses Docker’s [setup-docker-action v5.7.0](https://github.com/docker/setup-docker-action/tree/3f1ab1ab0e29231562e4db4ca600c1a49653bac6) (Apache-2.0) to provide Docker Engine 29.10.0 on disposable hosted runners. This keeps the install test above the product’s minimum supported engine version.

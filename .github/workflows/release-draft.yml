@@ -1,0 +1,109 @@
+name: Release draft
+
+# Step 3 of the release guide (docs/maintainers/releasing.md). Started by hand on main with an
+# existing version tag on that commit. It builds every release file, installs from them on fresh
+# Linux machines, signs and notarizes the Mac apps, and creates a draft GitHub release with
+# SHA256SUMS. Only the versioned images are public afterwards; npm and `latest` wait for the owner
+# to publish the draft (Release publish).
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag on this main commit (e.g. v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-draft-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  check-tag:
+    if: github.ref == 'refs/heads/main' && github.repository == 'your-space-ai/your-space'
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: validate
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]
+          test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "$GITHUB_SHA"
+          releases=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name')
+          if grep -Fxq "$TAG" <<< "$releases"; then echo "This tag already has a release."; exit 1; fi
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+  images:
+    needs: check-tag
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/release-images.yml
+    with:
+      version: ${{ needs.check-tag.outputs.version }}
+
+  cli:
+    needs: check-tag
+    uses: ./.github/workflows/release-cli.yml
+    with:
+      version: ${{ needs.check-tag.outputs.version }}
+
+  install-test:
+    needs: [check-tag, images, cli]
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/release-install-test.yml
+    with:
+      version: ${{ needs.check-tag.outputs.version }}
+
+  macos-app:
+    needs: check-tag
+    uses: ./.github/workflows/release-macos-app.yml
+    with:
+      release_tag: ${{ inputs.tag }}
+
+  draft:
+    needs: [check-tag, install-test, macos-app]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag }}
+      VERSION: ${{ needs.check-tag.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-cli
+          path: release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notarized-macos
+          path: macos
+      - name: Check the download set and create the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          (cd macos && shasum -a 256 -c -- *.dmg.sha256)
+          mv macos/*.dmg release/
+          cd release
+          files=(your-space.tar.gz "your-space-$VERSION.tgz" your-space-linux-x64 your-space-linux-arm64)
+          files+=("your-space-macos-arm64-$VERSION.dmg" "your-space-macos-x64-$VERSION.dmg")
+          test "$(find . -type f | wc -l)" -eq "${#files[@]}"
+          sha256sum -- "${files[@]}" > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)" = "$GITHUB_SHA"
+          options=(--repo "$GITHUB_REPOSITORY" --draft --verify-tag --generate-notes)
+          if [[ $VERSION == *-* ]]; then options+=(--prerelease); fi
+          gh release create "$TAG" "${options[@]}" --title "Your Space $VERSION" "${files[@]}" SHA256SUMS

@@ -1,0 +1,96 @@
+name: Release install test
+
+# Installs Your Space from the exact CLI downloads on fresh Linux x64 and ARM64 runners: it sets up a
+# workspace with the standalone executable, runs setup again to prove it resumes, and checks that
+# the npm package installs and reports the same version. Release draft calls it after Release CLI
+# and Release images; on pull requests that touch the release files it builds a rehearsal CLI and
+# local images itself.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/release-*.yml
+      - deploy/release-files.sh
+      - cli/scripts/**
+      - cli/package.json
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-install-test-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  cli:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/release-cli.yml
+    with:
+      version: 0.0.0-rehearsal
+
+  install:
+    needs: cli
+    if: ${{ !cancelled() && (needs.cli.result == 'success' || needs.cli.result == 'skipped') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      ARCH: ${{ matrix.arch }}
+      VERSION: ${{ inputs.version || '0.0.0-rehearsal' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.12
+      - uses: docker/setup-docker-action@3f1ab1ab0e29231562e4db4ca600c1a49653bac6 # v5.7.0
+        with:
+          version: v29.10.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-cli
+          path: downloads
+      - name: Sign in to GHCR to pull the release's images before they are public
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build local images for the pull request rehearsal
+        if: github.event_name == 'pull_request'
+        run: |
+          for component in server runtime web; do
+            docker build -f "$component/Dockerfile" -t "ghcr.io/your-space-ai/your-space-$component:$VERSION" .
+          done
+      - name: The npm package installs and reports its version
+        run: |
+          npm install --global "./downloads/your-space-$VERSION.tgz"
+          test "$(your-space --version)" = "$VERSION"
+      - name: Install and resume with the standalone executable
+        run: |
+          set -o pipefail
+          mkdir release
+          cp downloads/your-space.tar.gz release/
+          (cd release && sha256sum your-space.tar.gz > SHA256SUMS)
+          exe="downloads/your-space-linux-$ARCH"
+          chmod +x "$exe"
+          test "$("$exe" --version)" = "$VERSION"
+          args=(setup --release-dir "$PWD/release" --workdir "$RUNNER_TEMP/workspace" --port 8081 --json)
+          "$exe" "${args[@]}" | jq -e 'if .ok then .running and .owner == "created" else error(.error + ": " + .message) end'
+          "$exe" "${args[@]}" | jq -e 'if .ok then .running and .owner == "present" else error(.error + ": " + .message) end'
+          "$exe" status --workdir "$RUNNER_TEMP/workspace" --require-running --json | jq -e '.ok'

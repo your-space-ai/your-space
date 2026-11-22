@@ -123,7 +123,7 @@ Compose's or Docker's own messages, unless they ask for detail.
 | Pull request | Slice | What a person can see |
 | --- | --- | --- |
 | Base | Spec and plan | This specification, its plan and research, and the decision record and roadmap changes |
-| 1 | 1. Init and start on this machine | The CLI from npm or a Linux package; `your-space init` and `your-space start` run Your Space on this machine, create the owner and print a summary with the set-password link |
+| 1 | 1. Init and start on this machine | The CLI from npm or a standalone Linux executable; `your-space init` and `your-space start` run Your Space on this machine, create the owner and print a summary with the set-password link |
 | 2 | 2. Run it | `stop`, `status` and `logs`, for Your Space and its apps |
 | 3 | 3. Recover the owner and manage secrets | `owner reset-link`, `secrets show` and `secrets replace` |
 | 4 | 4. Your own domain | `init` asks for a domain, `start` checks the names and opens HTTPS, and `configure` changes the setup later |
@@ -139,24 +139,25 @@ add their addresses to that summary, which `status` shows again.
 
 ### User Story 1 - Init and Start on This Machine (Priority: P1)
 
-As a person with a Linux computer or server and Docker, I can get the CLI from my package manager,
+As a person with a Linux computer or server and Docker, I can get the CLI from npm or download it from a release,
 run `init` and `start` in a folder, and have a working space after answering only my name and
 username.
 
 **Why this priority**: It is the shortest path to a working space and the base every other command
 builds on.
 
-**Independent Test**: On a Linux machine with Docker Engine and Compose and nothing else, install
-the CLI from its package, run `your-space init` and `your-space start` in an empty folder, give a
+**Independent Test**: On a Linux machine with Docker Engine and Compose and nothing else, download
+the standalone executable and `SHA256SUMS` from a release, check it, install it on PATH as
+`your-space` (or, where Node is installed, use the npm package), run `your-space init` and `your-space start` in an empty folder, give a
 name and username, open the set-password link from the summary, set a password and sign in at
 `http://space.localhost`.
 
 **Acceptance Scenarios**:
 
-1. **Given** a Linux machine, **When** the person installs the CLI from its `.deb` or `.rpm`
-   package, or runs its official npm package with `npx` as directed by the release, **Then** the `your-space`
-   command works, and `your-space --version` prints its version. The standalone executables on each
-   release have published checksums.
+1. **Given** a Linux machine, **When** the person runs the official npm package with `npx` or
+   installs it, or downloads the standalone executable for its processor, checks it against the
+   release's `SHA256SUMS` and installs it as `your-space` on PATH, **Then** the `your-space` command
+   works, and `your-space --version` prints its version.
 2. **Given** an empty folder, **When** they run `your-space init` and accept the defaults, **Then**
    the CLI downloads the release files for its own version, checks them against the release's
    checksums, and writes `.env` with no settings line (this machine is the default). Nothing is
@@ -334,11 +335,12 @@ option that is still complete.
 
 **Getting the CLI**
 
-- **FR-001**: The CLI is published with each release in the ways people already install command-line
-  tools: the project's npm package (for use with `npx`, or a project or global install), `.deb` and `.rpm`
-  packages for Linux, and a standalone Linux executable for ARM and Intel that needs no language
-  runtime. The macOS executables and a Homebrew formula come with the
-  [macOS and Windows pass](#changes-to-shared-direction); until then, macOS uses the npm package.
+- **FR-001**: Each release publishes the CLI as the project's npm package (for use with `npx`, or a
+  project or global install, on any machine with Node) and as standalone Linux executables for ARM
+  and Intel that need no language runtime. On macOS the CLI comes from the npm package or ships
+  inside the signed desktop app. `.deb` and `.rpm` packages, standalone macOS downloads and a
+  Homebrew formula are not part of a release (changed 2026-11-22, see the
+  [CLI delivery sequence](../../docs/architecture/decisions.md#cli-delivery-sequence)).
 - **FR-002**: Each release publishes checksums for its executables, packages and release files, and
   the documented ways of getting the CLI check them, as the package managers do themselves.
 - **FR-003**: The CLI and Your Space share one version. `init` downloads the release files of the

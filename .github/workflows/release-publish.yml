@@ -1,0 +1,73 @@
+name: Release publish
+
+# Step 5 of the release guide (docs/maintainers/releasing.md). Runs when the owner publishes a
+# reviewed draft. It publishes the exact npm tarball attached to the release, after checking it
+# against the release's SHA256SUMS, and points the images' `latest` tag at the release's version
+# (prereleases go to npm's `next` tag and leave `latest` alone). A published npm version can never
+# be reused, which is why this happens only on publication, never at draft time.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-publish-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  npm:
+    if: github.repository == 'your-space-ai/your-space'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      PRERELEASE: ${{ github.event.release.prerelease }}
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          registry-url: https://registry.npmjs.org
+      - name: Publish the release's npm package
+        run: |
+          set -o pipefail
+          if [[ -z $NODE_AUTH_TOKEN ]]; then
+            echo "::error::Add the NPM_TOKEN repository secret, then re-run this job."
+            exit 1
+          fi
+          version=${TAG#v}
+          file="your-space-$version.tgz"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$file" --pattern SHA256SUMS
+          awk -v name="$file" '$2 == name { print }' SHA256SUMS | sha256sum -c -
+          test "$(tar -xOzf "$file" package/package.json | jq -r .version)" = "$version"
+          if [[ $PRERELEASE == true ]]; then dist_tag=next; else dist_tag=latest; fi
+          npm publish "./$file" --provenance --access public --tag "$dist_tag"
+
+  images:
+    if: github.repository == 'your-space-ai/your-space' && !github.event.release.prerelease
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Point latest at the published version
+        run: |
+          for name in your-space-server your-space-web your-space-runtime; do
+            image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/$name"
+            docker buildx imagetools create --tag "$image:latest" "$image:${TAG#v}"
+          done

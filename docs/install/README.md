@@ -63,21 +63,27 @@ The source preview has no published CLI. To run the dashboard today, use the
 follow the [source candidate instructions](agent-setup.md#test-from-reviewed-source).
 
 Once a tagged [Your Space release](https://github.com/your-space-ai/your-space/releases) includes the
-CLI and server images, select that version and follow its installation instructions. For Linux,
-download the file matching your processor (Intel/AMD or ARM) and `SHA256SUMS` from that same release
-into an empty folder. Run `sha256sum -c --ignore-missing SHA256SUMS` there and confirm that it prints
-`OK` for the file you downloaded before installing it.
+CLI and server images, select that version and get the CLI one of these ways:
 
-- For a `.deb` or `.rpm` package, use `sudo apt install ./your-space_*.deb` or `sudo dnf install ./your-space-*.rpm`.
-- For the standalone executable, use the following commands on Intel/AMD. Substitute `arm64` for `x64`
-  on ARM. Make sure `~/.local/bin` is on your `PATH`.
+| Machine | How to get `your-space` |
+| --- | --- |
+| Any Mac or Linux machine with Node 22.12 or newer | The npm package: `npx your-space@<version>` or `npm install -g your-space@<version>` |
+| Linux Intel/AMD or ARM64 without Node | The standalone executable `your-space-linux-x64` or `your-space-linux-arm64` |
+| Mac with the desktop app | The CLI bundled in the app, at `Your Space.app/Contents/Resources/bin/your-space` |
 
-  ```sh
-  mkdir -p ~/.local/bin
-  install -m 755 your-space-linux-x64 ~/.local/bin/your-space
-  ```
+For a standalone executable, download it and `SHA256SUMS` from the same release into an empty
+folder, then verify and install it. On Intel/AMD, for example (use `arm64` on ARM):
 
-Check that `your-space --version` matches the release you selected.
+```sh
+asset=your-space-linux-x64
+awk -v name="$asset" '$2 == name { print }' SHA256SUMS | sha256sum -c - &&
+  mkdir -p ~/.local/bin &&
+  install -m 755 "$asset" ~/.local/bin/your-space
+```
+
+Proceed only when it prints `OK`, and make sure `~/.local/bin` is on your `PATH`. Check that
+`your-space --version` matches the release you selected. For a quick local installation, use
+`your-space setup`. For a domain or existing reverse proxy, continue below.
 
 ## 2. Make a Folder for Your Space
 
