@@ -4,10 +4,10 @@
 
 **Created**: 2026-11-16
 
-**Status**: Draft for review. Every question is decided. Nothing in it is delivered yet.
+**Implementation**: The [task record](tasks.md) lists the delivered CLI features. The [roadmap](../../docs/roadmap.md) tracks remaining release-host and domain checks.
 
-**Journey**: 003 "Install and run with the CLI", the third of eight journeys in the
-[spec map](../../docs/spec-map.md)
+**Journey**: 003 "Install and run with the CLI" in the
+[spec map](../README.md)
 
 **Input**: A person installs Your Space on a server or on their own computer with two commands,
 chooses how it is reached, and gets a working space with the owner created, without writing Compose

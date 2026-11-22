@@ -8,7 +8,7 @@
 
 **Feature**: [Specification](../spec.md)
 
-**Shared direction**: [Project decision record](../../../docs/architecture/decisions.md) and [spec map](../../../docs/spec-map.md)
+**Shared direction**: [Project decision record](../../../docs/architecture/decisions.md) and [spec map](../../README.md)
 
 **Marker semantics**: Checked items indicate reviewed document quality, not implemented or tested
 product behavior. This checklist is maintained by the Spec Kit specification workflow.

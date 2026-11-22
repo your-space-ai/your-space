@@ -1,6 +1,6 @@
 # Mac preview verification
 
-Private preview 0.1.0, November 21, 2026. The desktop and bundled CLI were built from [PR 68](https://github.com/your-space-ai/your-space/pull/68). Release qualification tracks an exact distribution separately in the [readiness checklist](../../docs/public-release-readiness.md).
+Private preview 0.1.0, November 21, 2026. The desktop and bundled CLI were built from [PR 68](https://github.com/your-space-ai/your-space/pull/68). Qualify the signed distribution on each supported Mac using the [packaged release guide](../../docs/maintainers/releasing.md).
 
 | Path | What ran | Observed result |
 | --- | --- | --- |

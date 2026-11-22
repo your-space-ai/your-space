@@ -1,32 +1,21 @@
 # Quickstart: Install an App and Use It
 
-Try the journey on a development machine, with a stand-in for GitHub that serves fixture apps.
+Follow [Try Your Space from source](../../docs/install/from-source.md) to build the fixture workspace, sign in, and install **Who Am I**.
 
-```bash
-docker compose -p ys-e2e --env-file e2e/stack.env -f deploy/compose.yaml -f deploy/compose.build.yaml -f e2e/compose.e2e.yaml up -d --build --wait
-```
+## Check the install journey
 
-```bash
-docker compose -p ys-e2e --env-file e2e/stack.env -f deploy/compose.yaml -f deploy/compose.build.yaml -f e2e/compose.e2e.yaml exec server create-owner --username you --name "You"
-```
+1. Open **Who Am I** and inspect the headers it echoes. Its host is `whoami.space.localhost` with the demo port, and the request carries none of Your Space's session or app-pass cookies.
+2. In **Apps**, review and install `https://github.com/ys-fixtures/probe/blob/main/compose.yaml`. Open both apps side by side. The [browser tests](../../e2e/tests/apps.spec.ts) exercise the probe's network access and verify that the two apps stay isolated.
 
-1. Open the printed link, set a password, and sign in at `http://space.localhost`.
-2. In Apps, paste `https://github.com/ys-fixtures/whoami/blob/main/compose.yaml`, choose Review,
-   then Install. The stand-in serves it with its installation kit.
-3. Open it: `whoami` shows the request it received, at `http://whoami.space.localhost`, with none of
-   Your Space's cookies.
-4. Install `https://github.com/ys-fixtures/probe/blob/main/compose.yaml` too, open both side by side,
-   and try the probes in `e2e/tests/apps.spec.ts` against its container.
+## Run the browser tests
 
-To run a real app, put its Compose file and a kit under `e2e/github/fixtures/<owner>/<repo>/` and
-`e2e/github/fixtures/ys-fixtures/catalog/apps/<owner>/<repo>.yaml`, as research R3 did for
-Sure and Twenty; with internet access, use the real link instead.
+Use a disposable Docker engine for the suite. It resets its `ys-e2e` workspace and creates app containers with the example names. From the repository root, use Node.js 26 and install the dependencies and browsers. On Linux, Playwright may need system packages (`npx playwright install --with-deps`).
 
-The browser journey:
-
-```bash
+```sh
+npm ci
+cd e2e
+npx playwright install
 npx playwright test tests/apps.spec.ts
 ```
 
-Run it from `e2e/`. Add the test names to `/etc/hosts` first (see `.circleci/config.yml`), because
-Node doesn't resolve `*.localhost`.
+Before running the tests, make sure the Node.js process can resolve `space.localhost`, `app.space.localhost`, `whoami.space.localhost`, and `probe.space.localhost` to `127.0.0.1`. The [CircleCI configuration](../../.circleci/config.yml) shows the hosts entry. The suite uses port 80 by default, or the port set in `YS_PORT`.

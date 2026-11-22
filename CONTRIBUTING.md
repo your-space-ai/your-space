@@ -4,6 +4,34 @@ Thanks for your interest in Your Space. Before you start, read the [roadmap](doc
 the [architecture and product decisions](docs/architecture/decisions.md). For larger changes, open
 an issue first so we can agree on the direction before you write code.
 
+## Find your way around
+
+| Location | What lives there |
+| --- | --- |
+| [web/](web/) and [desktop/](desktop/) | The browser dashboard and the Electron Mac launcher. |
+| [server/](server/) | The workspace HTTP API, authorization and PostgreSQL migrations. |
+| [runtime/](runtime/) | The service that manages installed apps with Docker. |
+| [cli/](cli/) | The command for setting up and operating a workspace. |
+| [appearance/](appearance/) and [workspace-layout/](workspace-layout/) | Shared theme and pane-layout models used across workspace packages. |
+| [deploy/](deploy/) | The Compose stack, edge proxy configuration and release files. |
+| [e2e/](e2e/) | Playwright tests, their disposable Compose stack and sample app fixtures. |
+| [docs/](docs/README.md) and [specs/](specs/README.md) | User and maintainer guides, and the numbered feature specifications with their acceptance criteria. |
+
+## Run the local checks
+
+Use Node.js 26 or later and npm. The server tests need a disposable PostgreSQL 18 instance.
+Set `TEST_DATABASE_URL` to a database on that instance using a role that can create databases.
+The tests create and drop their own databases. Run these commands from the repository root.
+
+```sh
+npm ci
+npm run typecheck
+npm test
+npm run build
+```
+
+To exercise the CLI and Docker together, follow the [CLI acceptance walkthrough](specs/003-install-with-the-cli/quickstart.md).
+
 ## Sign off your commits (DCO)
 
 Contributions are accepted under the [Developer Certificate of Origin](https://developercertificate.org/)
@@ -34,7 +62,7 @@ Space only through its public APIs and contracts.
 ## Pull requests
 
 - Describe your pull request with the [template](.github/pull_request_template.md).
-- Run the checks locally before pushing: `npm run typecheck` and `npm test`.
+- Run the [local checks](#run-the-local-checks) for your change before pushing.
 - Keep each pull request to one change.
 - Look for **Contribution checks**. For code changes it includes unit tests, typechecks and
   builds. Public code PRs also exercise Compose and Chromium on disposable GitHub-hosted
