@@ -73,7 +73,6 @@ export type EventType =
 // Apps (journey 002, data-model.md).
 
 export type AppState = "installing" | "starting" | "running" | "degraded" | "stopped" | "failed" | "removed";
-export type AppDesired = "running" | "stopped" | "removed";
 
 export interface Adaptation {
   service: string;

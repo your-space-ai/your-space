@@ -78,7 +78,7 @@ export interface Certificate {
 /** The certificate Caddy presents for the domain, read on this machine whatever the DNS does. */
 export function readCertificate(domain: string, port = 443, timeout = 3000): Promise<Certificate> {
   return new Promise((resolve) => {
-    const socket = tlsConnect({ host: "127.0.0.1", port, servername: domain, rejectUnauthorized: false });
+    const socket = tlsConnect({ host: "127.0.0.1", port, servername: domain });
     const done = (certificate: Certificate) => {
       socket.destroy();
       resolve(certificate);

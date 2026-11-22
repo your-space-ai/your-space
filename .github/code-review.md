@@ -1,8 +1,6 @@
 # Code review guide
 
-How the AI reviewer reviews pull requests in this repository. The review workflow
-(`.github/workflows/code-review.yml`) points the reviewer here, and a human reviewer can use it
-too.
+Use this guide when reviewing pull requests.
 
 ## Scope
 

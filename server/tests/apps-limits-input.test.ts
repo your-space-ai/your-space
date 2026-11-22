@@ -54,10 +54,6 @@ async function install(): Promise<void> {
   await waitForJob(((await installed.json()) as any).jobId);
 }
 
-async function desired(): Promise<string> {
-  return (await t.db.select({ desired: app.desired }).from(app).where(eq(app.name, "plain")))[0]!.desired;
-}
-
 import { describe, it } from "vitest";
 
 const runtime = new FakeRuntime();

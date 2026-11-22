@@ -54,7 +54,6 @@ test("an owner issues, rotates and revokes a zero-grant agent's keys", async ({ 
 
 test("kit grants and exact approvals route real calls to the installed app", async ({
   page,
-  playwright,
   baseURL,
 }) => {
   await resetStack();

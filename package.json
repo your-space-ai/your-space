@@ -23,5 +23,10 @@
   },
   "devDependencies": {
     "typescript": "^7.0.2"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.28.2"
+    }
   }
 }
