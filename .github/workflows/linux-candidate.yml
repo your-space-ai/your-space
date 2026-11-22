@@ -50,6 +50,7 @@ jobs:
           done
       - name: Install and resume using the candidate CLI
         run: |
+          set -o pipefail
           deploy/release-files.sh "$VERSION" release
           (cd release && sha256sum your-space.tar.gz > SHA256SUMS)
           (cd cli && node scripts/build.mjs "$VERSION")
@@ -57,8 +58,8 @@ jobs:
           exe="cli/dist/your-space-linux-$ARCH"
           test "$("$exe" --version)" = "$VERSION"
           args=(setup --release-dir "$PWD/release" --workdir "$RUNNER_TEMP/workspace" --port 8081 --json)
-          "$exe" "${args[@]}" | jq -e '.ok and .running and .owner == "created"'
-          "$exe" "${args[@]}" | jq -e '.ok and .running and .owner == "present"'
+          "$exe" "${args[@]}" | jq -e 'if .ok then .running and .owner == "created" else error(.error + ": " + .message) end'
+          "$exe" "${args[@]}" | jq -e 'if .ok then .running and .owner == "present" else error(.error + ": " + .message) end'
           "$exe" status --workdir "$RUNNER_TEMP/workspace" --require-running --json | jq -e '.ok'
           mkdir payload
           cp "$exe" payload/
