@@ -79,6 +79,26 @@ jobs:
             exit 1
           done <<< "$commits"
 
+  dependencies:
+    # A visible signal, not part of Contribution checks: a maintainer can still merge a PR whose
+    # new dependency has an advisory, after deciding the risk is acceptable.
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: moderate
+          fail-on-scopes: runtime, development, unknown
+          comment-summary-in-pr: never
+
   check:
     needs: scope
     if: needs.scope.outputs.code == 'true'
