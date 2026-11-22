@@ -57,7 +57,8 @@ test("a fresh install offers no way to create an account, and create-owner makes
   const home = page.getByRole("main");
   await expect(home.getByRole("button")).toHaveCount(1);
   await expect(home.getByRole("button", { name: "Sign out" })).toBeVisible();
-  await expect(home.getByRole("link")).toHaveCount(1);
+  await expect(home.getByRole("link")).toHaveCount(2);
+  await expect(home.getByRole("link", { name: "Install your first kit" })).toHaveAttribute("href", "/apps");
   await expect(home.getByRole("link", { name: "Home settings" })).toHaveAttribute("href", "/home/settings");
   await expect(home.locator("input, select, textarea")).toHaveCount(0);
   await evidence(page, testInfo, "us1-3-home");

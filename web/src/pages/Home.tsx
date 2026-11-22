@@ -93,7 +93,10 @@ export function BuiltInHome({ unavailable = false }: { unavailable?: boolean }) 
     <main className="panel" data-state="home">
       <h1>{workspace.data?.name}</h1>
       {unavailable ? <p className="notice">Your selected Home is unavailable. You can keep using the built-in dashboard.</p> : null}
-      {apps.data ? (apps.data.apps.length ? <p><Link to="/apps">Browse installed apps</Link></p> : <p className="muted">Nothing is in this workspace yet.</p>) : null}
+      {apps.data ? (apps.data.apps.length ? <p><Link to="/apps">Browse installed apps</Link></p> : <section aria-label="Getting started">
+        <p>Choose an app for your workspace. Its kit describes what will run, so you can review it before installing.</p>
+        <Link className="button" to="/apps">Install your first kit</Link>
+      </section>) : null}
       <p><Link to="/home/settings">Home settings</Link></p>
       <dl>
         <dt>Name</dt>
