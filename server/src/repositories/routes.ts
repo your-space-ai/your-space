@@ -275,10 +275,12 @@ export function repoRoutes(
            join app a on a.id = r.app_id and a.desired <> 'removed'
            join github_connection c on c.owner_id = r.owner_id and c.github_user_id = (r.original #>> '{review,accountId}')
            where r.owner_id = $1 and c.github_user_id = $2 and r.repo_id = $3 and r.app_id = $4
-             and r.id = $5 and r.candidate->>'commit' = $6 and r.state = 'applied'`,
+             and r.id = $5 and r.candidate->>'commit' = $6 and r.state in ('applying', 'applied')`,
           [p.owner, g.accountId, id, appId, previewId, commit],
         );
-        return { receipt: result.rows[0] ?? null };
+        const row = result.rows[0];
+        if (row?.status === "applying") return { receipt: null, applying: true };
+        return { receipt: row ?? null };
       }),
     );
     router.post(

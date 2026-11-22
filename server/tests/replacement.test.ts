@@ -252,12 +252,15 @@ it("recovers an interrupted deployment and reads only its exact account-scoped r
       return response.json();
     };
     expect((await server.request(receiptPath)).status).toBe(401);
-    expect(await readReceipt()).toEqual({ receipt: null });
+    expect(await readReceipt()).toEqual({ receipt: null, applying: true });
+    expect(await readReceipt(receiptPath.replace(preview.previewId, id))).toEqual({ receipt: null });
+    expect(await readReceipt(receiptPath.replace(preview.commit, "a".repeat(40)))).toEqual({ receipt: null });
     const response = await server.request(path, { headers: { cookie } });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ pending: preview });
     await t.pool.query("update github_connection set github_user_id='789' where owner_id=$1", [owner]);
     expect(await (await server.request(path, { headers: { cookie } })).json()).toEqual({ pending: null });
+    expect(await readReceipt()).toEqual({ receipt: null });
     await t.pool.query("update github_connection set github_user_id='456' where owner_id=$1", [owner]);
     engine.failApply = undefined;
     const applied = await applyReplacement(service, id, owner, preview.previewId, "123", "456", preview.commit);

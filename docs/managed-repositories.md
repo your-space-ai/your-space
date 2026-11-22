@@ -34,4 +34,6 @@ If the confirmation response is lost, the owner can check the exact deployment w
 `GET /api/repositories/:id/deploy/receipt`. Supply `appId`, `previewId` and the full reviewed
 `commit` as query parameters. The response contains `receipt` with the app ID, repository ID,
 commit and `applied` status when that review completed under the connected GitHub account.
-Otherwise the receipt is `null`. Checking a receipt never starts or resumes a deployment.
+While that exact review is in the `applying` state, the response includes `applying: true` and a
+null receipt. A client can recheck for completion. Other unconfirmed outcomes return only a
+null receipt. Checking a receipt never starts or resumes a deployment.
