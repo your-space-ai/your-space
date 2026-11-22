@@ -13,12 +13,10 @@ npx playwright test tests/cli.spec.ts --project chromium
 Run the second command in `e2e/`. It builds the images, makes a release from `deploy/`, serves it
 locally, and runs `init`, `start`, `status`, `stop` and the rest in a temporary folder.
 
-To run it by hand once a release exists:
+To run the source preview by hand, follow [operator setup from reviewed source](../../docs/install/agent-setup.md#test-from-reviewed-source).
+When a tagged release includes the CLI and matching images, [install the CLI for that release](../../docs/install/README.md#1-get-the-your-space-command), then run these commands in an empty folder:
 
 ```bash
-npx your-space init
-```
-
-```bash
-npx your-space start
+your-space init
+your-space start
 ```
