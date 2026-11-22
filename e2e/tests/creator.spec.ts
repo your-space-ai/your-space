@@ -11,7 +11,7 @@ import { setPassword, signIn } from "./helpers/ui.ts";
 // Runs through the real owner UI, database, Docker runtime, edge and managed GitHub routes.
 // Only GitHub is replaced with the synthetic provider mounted by compose.e2e.yaml.
 const composeLink = "https://github.com/ys-fixtures/records/blob/main/compose.yaml";
-const kitLink = "https://github.com/your-space-ai/your-space-app-kits/blob/main/apps/ys-fixtures/whoami.yaml";
+const kitLink = "https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/whoami.yaml";
 
 async function sendHome(frame: Frame, workspace: string, request: Record<string, unknown>) {
   return frame.evaluate(

@@ -260,6 +260,29 @@ export function repoRoutes(
         return pendingReplacement(apps, uuid(r.query.appId), p.owner, id, g.accountId);
       }),
     );
+    router.get(
+      "/:id/deploy/receipt",
+      route(async (p, r, g) => {
+        const id = repoId(r.params.id);
+        await managed(db, p, g, id);
+        const appId = uuid(r.query.appId);
+        const previewId = uuid(r.query.previewId);
+        const commit = r.query.commit;
+        if (typeof commit !== "string" || !/^[0-9a-f]{40}$/.test(commit)) throw bad();
+        const result = await db.$client.query(
+          `select r.app_id as "appId", r.repo_id as "repoId", r.candidate->>'commit' as commit, r.state as status
+           from app_replacement r
+           join app a on a.id = r.app_id and a.desired <> 'removed'
+           join github_connection c on c.owner_id = r.owner_id and c.github_user_id = (r.original #>> '{review,accountId}')
+           where r.owner_id = $1 and c.github_user_id = $2 and r.repo_id = $3 and r.app_id = $4
+             and r.id = $5 and r.candidate->>'commit' = $6 and r.state in ('applying', 'applied')`,
+          [p.owner, g.accountId, id, appId, previewId, commit],
+        );
+        const row = result.rows[0];
+        if (row?.status === "applying") return { receipt: null, applying: true };
+        return { receipt: row ?? null };
+      }),
+    );
     router.post(
       "/:id/deploy/apply",
       route(async (p, r, g) => {

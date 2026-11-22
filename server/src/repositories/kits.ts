@@ -31,7 +31,7 @@ export function kitRoutes(auth: Auth, db: Db, dataKey: string, apps: AppsService
       });
       res.json(
         listing
-          ? await catalog(connected ?? publicGithubClient())
+          ? await catalog(connected ?? publicGithubClient(), apps.config.kitsRepository)
           : await previewKitUrl(db, owner.actorId, connected, apps, req.body?.kitUrl),
       );
     } catch (error) {

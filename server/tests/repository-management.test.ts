@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { beforeEach, afterEach, it, expect, vi } from "vitest";
 import { startServer, cookieHeader, type TestServer } from "./helpers/server.ts";
 import { FakeRuntime, fakeGithub } from "./helpers/runtime.ts";
@@ -7,7 +8,6 @@ import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { encrypt } from "../src/apps/settings.ts";
 import { transaction } from "../src/agents/store.ts";
 import { createAgent, manageKey } from "../src/agents/owner.ts";
-import { kitsRepo } from "../src/apps/kits.ts";
 
 let db: TestDatabase, server: TestServer, cookie: string, actor: string, agent: string, authorization: string;
 const commit = "a".repeat(40);
@@ -92,6 +92,7 @@ it("limits repository files and forks to owner-granted IDs, with owner-only conf
     sha: commit,
   };
   expect((await call(agentApi + "/file", "PUT", edit, true)).status).toBe(200);
+  expect((await call(agentApi + "/32/deploy/receipt", "GET", undefined, true)).status).toBe(404);
   expect((await call(agentApi + "/32/deploy/pending?appId=" + actor, "GET", undefined, true)).status).toBe(404);
   expect((await call(agentApi + "/32/deploy/apply", "POST", {}, true)).status).toBe(404);
   expect((await call(repoApi + "/32/deploy/apply", "POST", {}, true)).status).toBe(401);
@@ -111,13 +112,25 @@ it("limits repository files and forks to owner-granted IDs, with owner-only conf
   expect(JSON.stringify(list)).not.toContain("fixture-private");
 });
 
+it("returns an empty directory without contacting GitHub on a fresh install", async () => {
+  const fetcher = vi.fn<typeof fetch>(() => { throw Error("Unexpected GitHub request"); });
+  vi.stubGlobal("fetch", fetcher);
+  expect(await (await call("/api/kits/catalog")).json()).toEqual({ kits: [], commit: null });
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
 it("pins catalog entries and both sources in the ordinary installation preview", async () => {
-  const registry = kitsRepo();
+  const registry = "ys-fixtures/catalog";
+  server.apps!.config.kitsRepository = registry;
   vi.stubGlobal(
     "fetch",
     vi.fn<typeof fetch>(async (url, init) => {
       const path = new URL(String(url)).pathname;
-      if (path === "/repos/" + registry) return fixture(meta(11, registry, true));
+      if (path === "/repos/" + registry) return fixture({ ...meta(11, registry, true), default_branch: "catalog/stable" });
+      if (path.startsWith("/repositories/11/commits/")) {
+        expect([commit, "catalog/stable"]).toContain(decodeURIComponent(path.slice("/repositories/11/commits/".length)));
+        return fixture({ sha: commit });
+      }
       if (path === "/repositories/11/git/trees/" + commit)
         return fixture({
           truncated: false,
@@ -145,6 +158,84 @@ it("pins catalog entries and both sources in the ordinary installation preview",
   expect(response.status).toBe(200);
   expect(await response.json()).toMatchObject({ name: "morning-board" });
   expect((await call("/api/kits/preview", "POST", { kitUrl: "https://unrelated.invalid/kit.yaml" })).status).toBe(400);
+});
+
+it("uses direct kit URLs without a directory and trusts only exact evidence from a configured directory", async () => {
+  const text = "\uFEFF" + JSON.stringify({
+    kit: 2,
+    name: "demo",
+    agentAccess: { credential: { binding: "service", inject: { location: "header", name: "X-API-Key" } }, roles: {}, routes: {} },
+  });
+  const digest = createHash("sha256").update(text).digest("hex");
+  const pin = `https://github.com/fixture/app/blob/${commit}/kit.yaml`;
+  const evidence = `reviews/sha256/${digest}.json`;
+  const reviewedAt = "b".repeat(40);
+  const probe = vi.spyOn(server.apps!, "previewResolved");
+  const provider = vi.fn<typeof fetch>(async (input) => {
+    const url = new URL(String(input));
+    const path = url.pathname;
+    if (path === "/repos/fixture/app") return fixture(meta(10, "fixture/app"));
+    if (path === "/repositories/10/commits/topic") return fixture({ sha: commit });
+    if (path === "/repositories/10/contents/kit.yaml") return fixture(file(text));
+    if (path === "/repositories/10/contents/compose.yaml") return fixture(file("services:\n  web: { image: example/web:1 }"));
+    if (path === "/repos/fixture/reviews") return fixture({ ...meta(11, "fixture/reviews"), default_branch: "review/stable" });
+    if (path === "/repositories/11/commits/review%2Fstable") return fixture({ sha: reviewedAt });
+    if (path === "/repositories/11/contents/" + evidence && url.searchParams.get("ref") === reviewedAt)
+      return fixture(file(JSON.stringify({ kit: pin, sha256: digest, status: "reviewed" })));
+    throw Error("Unexpected GitHub request: " + path);
+  });
+  vi.stubGlobal("fetch", provider);
+  const preview = () => call("/api/kits/preview", "POST", { kitUrl: "https://github.com/fixture/app/blob/topic/kit.yaml" });
+  expect((await preview()).status).toBe(200);
+  expect(probe.mock.lastCall?.[1]?.kit.agentReview).toBeUndefined();
+  expect(provider.mock.calls.some(([url]) => String(url).includes("reviews"))).toBe(false);
+  server.apps!.config.kitsRepository = "fixture/reviews";
+  expect((await preview()).status).toBe(200);
+  expect(probe.mock.lastCall?.[1]?.kit.agentReview?.source).toBe(`https://github.com/fixture/reviews/blob/${reviewedAt}/${evidence}`);
+});
+
+it("recognizes a separately committed review when the owner chooses a directory entry", async () => {
+  const directory = "fixture/directory";
+  server.apps!.config.kitsRepository = directory;
+  const kitAt = "a".repeat(40), directoryAt = "b".repeat(40);
+  const path = "apps/fixture/app.yaml";
+  const kitText = JSON.stringify({
+    kit: 2, name: "demo",
+    source: { repo: "fixture/app", path: "compose.yaml" },
+    agentAccess: { credential: { binding: "service", inject: { location: "header", name: "X-API-Key" } }, roles: {}, routes: {} },
+  });
+  const digest = createHash("sha256").update(kitText).digest("hex");
+  const evidence = "reviews/sha256/" + digest + ".json";
+  let oldText = kitText;
+  const probe = vi.spyOn(server.apps!, "previewResolved");
+  const provider = vi.fn<typeof fetch>(async (input) => {
+    const url = new URL(String(input));
+    const route = decodeURIComponent(url.pathname);
+    const ref = url.searchParams.get("ref");
+    if (route === "/repos/" + directory) return fixture({ ...meta(11, directory, true), default_branch: "catalog/stable" });
+    if (route === "/repos/fixture/app") return fixture(meta(22, "fixture/app"));
+    if (route === "/repositories/22/commits/main") return fixture({ sha: commit });
+    if (route === "/repositories/22/contents/compose.yaml") return fixture(file("services:\n  web: { image: example/web:1 }"));
+    if (route === "/repositories/11/commits/catalog/stable" || route === "/repositories/11/commits/" + directoryAt)
+      return fixture({ sha: directoryAt });
+    if (route === "/repositories/11/git/trees/" + directoryAt)
+      return fixture({ truncated: false, tree: [{ mode: "100644", type: "blob", path }] });
+    if (route === "/repositories/11/contents/" + path && ref === directoryAt) return fixture(file(kitText));
+    if (route === "/repositories/11/contents/" + path && ref === kitAt) return fixture(file(oldText));
+    if (route === "/repositories/11/contents/" + evidence && ref === directoryAt)
+      return fixture(file(JSON.stringify({ kit: `https://github.com/${directory}/blob/${kitAt}/${path}`, sha256: digest, status: "reviewed" })));
+    throw Error("Unexpected GitHub request: " + route);
+  });
+  vi.stubGlobal("fetch", provider);
+  const listing = await (await call("/api/kits/catalog")).json() as { kits: { kitUrl: string }[] };
+  const kitUrl = listing.kits[0].kitUrl;
+  expect(kitUrl).toBe(`https://github.com/${directory}/blob/${directoryAt}/${path}`);
+  const preview = () => call("/api/kits/preview", "POST", { kitUrl });
+  expect((await preview()).status).toBe(200);
+  expect(probe.mock.lastCall?.[1]?.kit.agentReview?.source).toBe(`https://github.com/${directory}/blob/${directoryAt}/${evidence}`);
+  oldText += "\n";
+  expect((await preview()).status).toBe(200);
+  expect(probe.mock.lastCall?.[1]?.kit.agentReview).toBeUndefined();
 });
 
 it("requires an explicit import before following a linked kit to a different private source", async () => {

@@ -44,6 +44,15 @@ describe("loadConfig: YS_PROXY_URL's form", () => {
   });
 });
 
+it("accepts an optional GitHub kit directory and rejects ambiguous repository names", () => {
+  const config = (value?: string) => loadConfig({ ...SECRETS, YS_KITS_REPOSITORY: value }, { secretsDir: NO_SECRETS });
+  expect(config().kitsRepository).toBeUndefined();
+  expect(config("  ").kitsRepository).toBeUndefined();
+  expect(config("Community/my.kits").kitsRepository).toBe("Community/my.kits");
+  for (const invalid of ["owner", "https://github.com/owner/kits", "owner/..", "./kits", "owner/one/two", "owner/kits?ref=x"])
+    expect(() => config(invalid)).toThrow(/YS_KITS_REPOSITORY/);
+});
+
 describe("loadConfig: which setup", () => {
   it("with nothing set, serves this machine at http://space.localhost", () => {
     expect(loadConfig(SECRETS)).toMatchObject({ mode: "local", publicUrl: "http://space.localhost" });

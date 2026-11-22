@@ -137,15 +137,15 @@ describe("publishing an app", () => {
     t = await createTestDatabase();
     const fetch = fakeGithub({
       "ys-fixtures/linked/compose.yaml": COMPOSE,
-      "your-space-ai/your-space-app-kits/apps/ys-fixtures/linked.yaml": KIT,
+      "ys-fixtures/catalog/apps/ys-fixtures/linked.yaml": KIT,
       "ys-fixtures/other/compose.yaml": COMPOSE,
       "ys-fixtures/plain/compose.yaml": COMPOSE,
       "ys-fixtures/third/compose.yaml": COMPOSE,
       "ys-fixtures/fourth/compose.yaml": COMPOSE,
       "ys-fixtures/nopane/compose.yaml": COMPOSE,
-      "your-space-ai/your-space-app-kits/apps/ys-fixtures/nopane.yaml": NOPANE_KIT,
+      "ys-fixtures/catalog/apps/ys-fixtures/nopane.yaml": NOPANE_KIT,
     });
-    server = await startServer(t.db, { apps: { runtime, fetch } });
+    server = await startServer(t.db, { apps: { runtime, fetch, kitsRepository: "ys-fixtures/catalog" } });
     await createOwnerWithPassword(t.db, OWNER, server.publicUrl);
     const signedIn = await server.request("/api/auth/sign-in/username", { method: "POST", body: JSON.stringify({ username: OWNER.username, password: OWNER.password }) });
     cookie = cookieHeader(signedIn);

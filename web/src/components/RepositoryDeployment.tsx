@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { api, appsQuery, errorMessage } from "../apps-api.ts";
+import { api, ApiError, appsQuery, errorMessage } from "../apps-api.ts";
+import { failureKind } from "../errors.ts";
 import { reposPath, type Repository } from "../repositories-api.ts";
 
 type Plan = {
@@ -15,6 +16,12 @@ type Plan = {
   services: string[];
   volumes?: string[];
 };
+type Receipt = { status: "applied"; appId: string; repoId: string; commit: string };
+function matchesReceipt(receipt: Receipt | null | undefined, plan: Plan): receipt is Receipt {
+  return receipt?.status === "applied" && receipt.appId === plan.appId &&
+    receipt.repoId === plan.repoId && receipt.commit === plan.commit;
+}
+
 export function RepositoryDeployment({
   repo,
   accountScope,
@@ -33,6 +40,7 @@ export function RepositoryDeployment({
   const [composePath, setComposePath] = useState(initialPath || "compose.yaml");
   const [kit, setKit] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [checkingReceipt, setCheckingReceipt] = useState(false);
   const [receipt, setReceipt] = useState<{ status: string; commit: string } | null>(null);
   const selected = apps.data?.apps.find((app) => app.id === appId);
   const pendingKey = ["repository-deployment", accountScope, repo.id, appId];
@@ -56,12 +64,37 @@ export function RepositoryDeployment({
     onSuccess: setPlan,
   });
   const apply = useMutation({
-    mutationFn: (authorized: Plan) =>
-      api<{ status: string; commit: string }>("POST", `${reposPath}/${repo.id}/deploy/apply`, {
-        appId: authorized.appId,
-        previewId: authorized.previewId,
-        commit: authorized.commit,
-      }),
+    mutationFn: async (authorized: Plan) => {
+      const { appId, previewId, commit, repoId } = authorized;
+      const deployment = `${reposPath}/${repoId}/deploy`;
+      try {
+        const done = await api<Receipt>("POST", `${deployment}/apply`, { appId, previewId, commit });
+        if (matchesReceipt(done, authorized)) return done;
+      } catch (error) {
+        if (failureKind(error) !== "server_unreachable") throw error;
+      }
+
+      // The application may have been replaced even if the response was missing or incomplete.
+      // Only a receipt for this owner's reviewed deployment can confirm success.
+      setCheckingReceipt(true);
+      const query = new URLSearchParams({ appId, previewId, commit });
+      let applying = false;
+      // Allow the initial request to reach the server. Keep checking for up to a minute only
+      // while the server has observed this exact replacement applying.
+      for (let attempt = 0; attempt < 30; attempt++) {
+        if (attempt) await new Promise((resolve) => setTimeout(resolve, 2000));
+        try {
+          const result = await api<{ receipt: Receipt | null; applying?: boolean }>("GET", `${deployment}/receipt?${query}`);
+          if (matchesReceipt(result?.receipt, authorized)) return result.receipt;
+          applying = result?.applying === true;
+        } catch (readError) {
+          if (failureKind(readError) !== "server_unreachable") throw readError;
+        }
+        if (!applying && attempt > 0) break;
+      }
+      throw new ApiError(0, "deployment_unconfirmed", "Your Space couldn't confirm the deployment. Check the installation status before trying again.");
+    },
+    onSettled: () => setCheckingReceipt(false),
     onSuccess: async (done) => {
       setReceipt(done);
       setPlan(null);
@@ -166,9 +199,13 @@ export function RepositoryDeployment({
           </button>
         </p>
       ) : null}
+      {checkingReceipt ? <p role="status">Checking whether the reviewed deployment finished…</p> : null}
       {preview.error || apply.error ? (
         <p className="notice error" role="alert">
           {errorMessage(preview.error ?? apply.error)}
+          {apply.error instanceof ApiError && apply.error.code === "deployment_unconfirmed" && selected ? (
+            <> <Link to="/apps/$name" params={{ name: selected.name }}>Check installation status</Link></>
+          ) : null}
         </p>
       ) : null}
       {reviewed && selected && reviewed.appId === selected.id && reviewed.repoId === repo.id ? (

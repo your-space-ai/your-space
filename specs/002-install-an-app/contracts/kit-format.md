@@ -1,6 +1,6 @@
 # Installation Kit Format
 
-A kit is a YAML file in the kits repository at `apps/<owner>/<repo>.yaml`, or anywhere on GitHub when
+A kit is a YAML file in an optional operator-configured directory at `apps/<owner>/<repo>.yaml`, or anywhere on GitHub when
 the owner gives its link, or a file on this machine given to `install-app --kit`, such as one from a
 private kits repository. It refers to the app's own file and never copies it. A kit can also go with
 a Compose file given on this machine (`install-app --compose <file> --kit <file>`); giving both in

@@ -99,6 +99,8 @@ export function fakeGithub(files: Record<string, string>): typeof fetch {
     const url = new URL(String(input));
     const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
     if (url.hostname === "api.github.test" && parts[0] === "repos" && parts[3] === "commits") {
+      if (parts.length === 4 && url.searchParams.get("per_page") === "1")
+        return Response.json([{ sha: COMMIT }]);
       const ref = parts.slice(4).join("/");
       const repo = `${parts[1]}/${parts[2]}`;
       const known = Object.keys(files).some((k) => k.startsWith(`${repo}/`));

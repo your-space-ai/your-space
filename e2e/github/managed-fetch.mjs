@@ -21,7 +21,7 @@ function repo(fullName, privateRepo, files = {}) {
   repositories.set(String(id), record);
   return record;
 }
-const kits = "your-space-ai/your-space-app-kits";
+const kits = "ys-fixtures/catalog";
 const upstream = "ys-fixtures/whoami";
 const kitPath = "apps/ys-fixtures/whoami.yaml";
 repo(kits, false, { [kitPath]: fixture(kits, kitPath) });

@@ -18,36 +18,34 @@ One owner can download the macOS app, choose a local Docker workspace or an exis
 
 ## Early Source Publication: Building in Public
 
-Early source publication remains an alternative if the owner later chooses it. It is not the current
-release plan. These checks are a proposed minimum for that alternative, not a promise of a usable release.
+Prepare a quiet developer preview from source, with the local Docker quickstart as its entry point. Complete the publication checks below and obtain the owner’s decision before changing visibility. The tagged desktop and server downloads follow the product release checks.
 
 - [ ] **Prepare the repository for public development**
   - [ ] Review repository history, branches, tags, commit identities, issues, PRs, logs, artifacts,
     and other potentially public material for private data and secrets; remediate findings and
     rotate or revoke exposed credentials where needed.
-    2026-11-16 review at `dd492df` (not yet complete): gitleaks 8.21.2 over all branches, tags and
-    pull request refs (272 commits) found 15 matches, all test values: a placeholder secret in
-    `server/tests/config.test.ts` and Sure's published `SECRET_KEY_BASE` default in
-    `runtime/tests/sure-resolved.json`, captured from Sure's `compose.example.yml` at `70647cb`. A
-    search for private hostnames, addresses and home paths found only documentation examples.
-    Open: the owner's personal email is the author or committer on 82 commits, and 189 unexpired
-    `playwright-report` Actions artifacts become visible with the repository.
+    On 2026-11-21 the repository review covered the four-PR candidate, 421 reachable commits across
+    branches and pull request refs, and the GitHub discussions, revision history and retained Actions
+    artifacts available at the start of the review. The only secret scanner matches in Git were
+    two verified test fixture values. The owner accepted historical Git email attribution.
+    The historical preview builds and browser reports were removed from Actions. The repository
+    listed zero retained artifacts after cleanup. External session links were removed from the
+    affected pull request descriptions and remain in their edit histories. Review the exposure of
+    those edits and access to third-party reports before changing visibility.
   - [ ] Confirm publication rights for existing material, add the selected project licenses, and meet
     applicable third-party license and notice obligations.
   - [ ] Explain the project's purpose, current state, unimplemented functionality, and participation
     expectations in the README, with links to the roadmap and relevant development instructions.
   - [ ] Review the security and safe-use implications of any runnable code and provide a private
-    security reporting route appropriate to the project state.
-  - [ ] Run the Compose setups checks on every pull request again, not only on the one based on
-    `main`: remove the stack condition in `.github/workflows/ci.yml` (see the CI decisions in
-    [journey-based specifications](architecture/decisions.md#journey-based-specifications)).
-  - [ ] Give pull requests from forks screenshots in Argos: CircleCI doesn't pass `ARGOS_TOKEN` to
-    them, so either run the browser tests for forks on GitHub Actions again, where Argos accepts a
-    tokenless upload, or choose another fork-safe route (see the CircleCI e2e decision in
-    [journey-based specifications](architecture/decisions.md#journey-based-specifications)).
-  - [ ] Move AI code review from the Claude Code GitHub Action on the owner's subscription to the
-    free open-source plan of Greptile or CodeRabbit, so pull requests from forks are reviewed too
-    (see the AI code review decision in [journey-based specifications](architecture/decisions.md#journey-based-specifications)).
+    security reporting route appropriate to the project state. The [security policy](../SECURITY.md)
+    and [Code of Conduct](../CODE_OF_CONDUCT.md) list separate project email aliases for private
+    reports.
+  - [ ] Confirm the Compose setup checks run on each layer of a public pull request stack. The
+    workflow limits this check to the bottom layer while the repository is private.
+  - [ ] On the first public fork, confirm that the CI report includes screenshots without exposing
+    project credentials. Confirm who reviews contributed code while the subscription-backed
+    workflow stays disabled. The product release checklist tracks external visual comparison and
+    an open-source review service.
   - [ ] Review public repository settings and the effects of publication, then authorize the visibility
     change separately. Making source public does not imply a supported or production-ready product.
 
@@ -139,9 +137,8 @@ is chosen instead, explicitly decide which items apply and describe what is not 
   - [ ] Explain local development, tests, contribution and review expectations, issue reporting,
     maintainer support expectations, and where to find the roadmap and security policy.
   - [ ] Decide and publish the project's community participation expectations and contact paths.
-  - [ ] Run the Compose setups checks on every pull request again, not only on the one based on
-    `main`: remove the stack condition in `.github/workflows/ci.yml` (see the CI decisions in
-    [journey-based specifications](architecture/decisions.md#journey-based-specifications)).
+  - [ ] Confirm the Compose setup checks run on each layer of a public pull request stack. The
+    workflow limits this check to the bottom layer while the repository is private.
   - [ ] Give pull requests from forks screenshots in Argos: CircleCI doesn't pass `ARGOS_TOKEN` to
     them, so either run the browser tests for forks on GitHub Actions again, where Argos accepts a
     tokenless upload, or choose another fork-safe route (see the CircleCI e2e decision in

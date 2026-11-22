@@ -8,7 +8,7 @@ export function KitDirectory({ busy, onPreview }: { busy: boolean; onPreview: (u
   const catalog = useQuery({
     queryKey: ["kit-directory"],
     queryFn: () =>
-      api<{ kits: { title: string; repo: string; path: string; kitUrl: string }[]; commit: string }>(
+      api<{ kits: { title: string; repo: string; path: string; kitUrl: string }[]; commit: string | null }>(
         "GET",
         "/api/kits/catalog",
       ),
@@ -47,7 +47,7 @@ export function KitDirectory({ busy, onPreview }: { busy: boolean; onPreview: (u
             ))}
           </ul>
         ) : (
-          <p>No kits are listed in this directory.</p>
+          <p>{catalog.data.commit ? "No kits are listed in this directory." : "No kit directory is configured. Paste a GitHub kit URL below."}</p>
         ))}
       <form
         className="inline"

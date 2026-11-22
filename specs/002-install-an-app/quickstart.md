@@ -19,7 +19,7 @@ docker compose -p ys-e2e --env-file e2e/stack.env -f deploy/compose.yaml -f depl
    and try the probes in `e2e/tests/apps.spec.ts` against its container.
 
 To run a real app, put its Compose file and a kit under `e2e/github/fixtures/<owner>/<repo>/` and
-`e2e/github/fixtures/your-space-ai/your-space-app-kits/apps/<owner>/<repo>.yaml`, as research R3 did for
+`e2e/github/fixtures/ys-fixtures/catalog/apps/<owner>/<repo>.yaml`, as research R3 did for
 Sure and Twenty; with internet access, use the real link instead.
 
 The browser journey:

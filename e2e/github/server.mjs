@@ -12,6 +12,8 @@ createServer(async (req, res) => {
   const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
   // GET /repos/<owner>/<repo>/commits/<ref>
   if (parts[0] === "repos" && parts[3] === "commits") {
+    if (parts.length === 4 && url.searchParams.get("per_page") === "1")
+      return res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify([{ sha: COMMIT }]));
     const ref = parts.slice(4).join("/");
     if (ref === "main" || ref === COMMIT) return res.writeHead(200, { "Content-Type": "text/plain" }).end(COMMIT);
     return res.writeHead(404).end();

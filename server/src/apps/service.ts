@@ -55,6 +55,7 @@ export interface AppsConfig {
   publicUrl: string;
   /** Encrypts apps' settings (spec 009). */
   dataKey: string;
+  kitsRepository?: string;
   github?: GithubEndpoints;
   fetch?: typeof fetch;
 }
@@ -329,7 +330,7 @@ export class AppsService {
     try {
       if (typeof from === "string") {
         source = await fetchSource(from, github, fetcher);
-        found = kitText !== undefined ? kitFromFile(kitText, source) : await findKit(source.repo, source.path, kitLink, github, fetcher);
+        found = kitText !== undefined ? kitFromFile(kitText, source) : await findKit(source.repo, source.path, kitLink, this.config.kitsRepository, github, fetcher);
       } else {
         source = localSource(from);
         found = kitText !== undefined ? kitFromFile(kitText, null) : null;

@@ -74,9 +74,8 @@ Compose.
 
 **Installation kits.** Some apps need help to fit: which service is the interface, which values
 must be generated rather than taken from published defaults, which outbound hosts a feature needs.
-App authors can't be expected to add this, so Your Space's project maintains installation kits for
-the apps it supports, in a repository separate from Your Space (for example
-`your-space-ai/your-space-app-kits`). A kit refers to the app's own files by link and exact commit and
+An owner can supply a kit from a local file or a GitHub link. They can configure
+`YS_KITS_REPOSITORY` to discover kits in a GitHub repository of their choice. A kit refers to the app's own files by link and exact commit and
 lists the adjustments; it never copies the app's code or files, so the app's license is untouched.
 A kit can set a setting to a value Your Space works out itself, such as the app's own address (Twenty
 needs it in `SERVER_URL`), so the owner isn't asked for it.
@@ -595,7 +594,7 @@ request after agreement.
 2. **Apps install from their own files, with optional installation kits**: Your Space reads an app's
    own Compose file and applies rules that hold for every app, instead of requiring a Your
    Space-specific deployment file with an `x-your-space` section. Help a particular app needs comes
-   from an installation kit that Your Space's project maintains in a separate repository; the kit
+   from an installation kit supplied directly or found in the operator’s configured directory; the kit
    refers to the app's files without copying them.
 3. **The first app is Sure**, an existing open-source app, instead of a Tasks app written for Your
    Space.

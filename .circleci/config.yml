@@ -34,17 +34,23 @@ commands:
       through the GitHub App pipeline's "PR marked ready for review" trigger.
     steps:
       - run:
-          # CircleCI doesn't say whether a pull request is a draft, so that comes from GitHub's API,
-          # read with a read-only token kept in the project settings.
+          # GitHub supplies draft status. Public pull requests can be read anonymously.
           name: Ready pull request
           command: |
             if [ -z "${CIRCLE_PULL_REQUEST:-}" ]; then
               echo "Not a pull request: running."
               exit 0
             fi
-            api=$(echo "$CIRCLE_PULL_REQUEST" | sed -E 's#https://github.com/([^/]+/[^/]+)/pull/([0-9]+)#https://api.github.com/repos/\1/pulls/\2#')
-            pr=$(curl -fsS -H "Authorization: Bearer $GITHUB_PR_READ_TOKEN" \
-              -H "Accept: application/vnd.github+json" "$api")
+            if [[ ! $CIRCLE_PULL_REQUEST =~ ^https://github[.]com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/([0-9]+)$ ]]; then
+              echo "Unexpected GitHub pull request URL." >&2
+              exit 1
+            fi
+            api="https://api.github.com/repos/${BASH_REMATCH[1]}/pulls/${BASH_REMATCH[2]}"
+            headers=(-H "Accept: application/vnd.github+json")
+            if [[ -n ${GITHUB_PR_READ_TOKEN:-} ]]; then
+              headers+=(-H "Authorization: Bearer $GITHUB_PR_READ_TOKEN")
+            fi
+            pr=$(curl -fsS "${headers[@]}" "$api")
             if [ "$(echo "$pr" | jq -r .draft)" = true ]; then
               echo "It's a draft, so this job waits until it is marked ready for review."
               circleci-agent step halt
@@ -124,6 +130,11 @@ jobs:
           # allowance. main compares its last commit; a pull request, everything since main.
           name: Argos upload
           command: |
+            if [ -z "${ARGOS_TOKEN:-}" ]; then
+              echo "Keeping screenshots in the CI report."
+              echo 'export YS_ARGOS_UPLOAD=0' >> "$BASH_ENV"
+              exit 0
+            fi
             if [ -n "${CIRCLE_PULL_REQUEST:-}" ]; then
               git fetch -q origin main && range=origin/main...HEAD
             else
