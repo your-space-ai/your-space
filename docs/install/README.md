@@ -2,10 +2,9 @@
 
 For the current source preview, start with [Try Your Space from source](from-source.md). It walks through creating an owner and opening a sample app. The [Mac guide](macos-desktop.md) covers building the launcher from source and using a published DMG when one is available.
 
-This guide installs Your Space with the `your-space` command, creates its owner, and keeps it
-running. You need access to the machine's command line: that access, not a web page, is what makes
-you the owner. Installing by hand with Docker Compose is still possible; see
-[Install by Hand](#install-by-hand-advanced).
+The steps below cover the `your-space` command for a tagged release. Creating the owner requires shell access
+to that machine. The [manual Docker Compose steps](#install-by-hand-advanced)
+cover the same setup.
 
 Your Space runs as four containers, after a short step that runs first:
 
@@ -59,32 +58,26 @@ too, and says what is missing.
 
 ## 1. Get the `your-space` Command
 
-It is published with each release, for Linux on Intel/AMD and ARM. Use whichever way you install
-command-line tools:
+The source preview has no published CLI. To run the dashboard today, use the
+[Docker source walkthrough](from-source.md). To exercise the CLI with locally built artifacts,
+follow the [source candidate instructions](agent-setup.md#test-from-reviewed-source).
 
-- **npm**, if Node.js 22.12 or newer is installed: run it with `npx your-space`, or install it with
-  `npm install -g your-space`.
-- **A Linux package**: download the `.deb` or `.rpm` for your machine from the
-  [latest release](https://github.com/your-space-ai/your-space/releases/latest), then install it
-  with `sudo apt install ./your-space_*.deb` or `sudo dnf install ./your-space-*.rpm`.
-- **The standalone command**, which needs nothing else installed. On Intel/AMD (use `arm64` for ARM):
+Once a tagged [Your Space release](https://github.com/your-space-ai/your-space/releases) includes the
+CLI and server images, select that version and follow its installation instructions. For Linux,
+download the file matching your processor (Intel/AMD or ARM) and `SHA256SUMS` from that same release
+into an empty folder. Run `sha256sum -c --ignore-missing SHA256SUMS` there and confirm that it prints
+`OK` for the file you downloaded before installing it.
+
+- For a `.deb` or `.rpm` package, use `sudo apt install ./your-space_*.deb` or `sudo dnf install ./your-space-*.rpm`.
+- For the standalone executable, use the following commands on Intel/AMD. Substitute `arm64` for `x64`
+  on ARM. Make sure `~/.local/bin` is on your `PATH`.
 
   ```sh
-  curl -fsSLO https://github.com/your-space-ai/your-space/releases/latest/download/your-space-linux-x64
-  curl -fsSLO https://github.com/your-space-ai/your-space/releases/latest/download/SHA256SUMS
-  sha256sum -c --ignore-missing SHA256SUMS
+  mkdir -p ~/.local/bin
   install -m 755 your-space-linux-x64 ~/.local/bin/your-space
   ```
 
-  `sha256sum` must print `your-space-linux-x64: OK`.
-
-Check it works:
-
-```sh
-your-space --version
-```
-
-On a Mac, use npm for now. Packages for macOS come later.
+Check that `your-space --version` matches the release you selected.
 
 ## 2. Make a Folder for Your Space
 
@@ -745,12 +738,14 @@ Each step says which `your-space` command does the same.
 
 `your-space init` does this step.
 
-Make a folder for Your Space, download the release into it, and make your settings file. It starts
-with every line commented out:
+For the source preview, use the [Docker source walkthrough](from-source.md). For a published
+[Your Space release](https://github.com/your-space-ai/your-space/releases), save `your-space.tar.gz`
+and `SHA256SUMS` from the same release to a new installation folder. In that folder, run
+`sha256sum your-space.tar.gz` on Linux or `shasum -a 256 your-space.tar.gz` on macOS. Check that
+the digest matches the `your-space.tar.gz` entry in `SHA256SUMS` before unpacking it:
 
 ```sh
-mkdir your-space && cd your-space
-curl -fsSL https://github.com/your-space-ai/your-space/releases/latest/download/your-space.tar.gz | tar -xz
+tar -xzf your-space.tar.gz
 cp env.example .env
 ```
 

@@ -44,7 +44,7 @@ Open the single-use link printed in your terminal, choose a password, and sign i
 2. Read the kit details, including the removed host port and requested outbound access. Choose **Install** and wait for the app to finish starting.
 3. Open **Who Am I**. Its pane shows the hostname and request headers received by the sample app. If your browser offers **Open in its own tab**, follow that link to view it.
 
-The demo resolves GitHub links against the [fixtures in this repository](../../e2e/github/fixtures/). For a workspace that installs kits from real GitHub URLs, use the [installation guide](README.md).
+The demo resolves GitHub links against the [fixtures in this repository](../../e2e/github/fixtures/). To try kits from real GitHub repositories with your own locally built images and CLI, use [operator setup from reviewed source](agent-setup.md#test-from-reviewed-source) to create a separate workspace. The [packaged installation guide](README.md) applies once a matching release is available.
 
 ## Stop and return later
 

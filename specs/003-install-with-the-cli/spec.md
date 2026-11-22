@@ -154,7 +154,7 @@ name and username, open the set-password link from the summary, set a password a
 **Acceptance Scenarios**:
 
 1. **Given** a Linux machine, **When** the person installs the CLI from its `.deb` or `.rpm`
-   package, or runs it with `npx your-space` where Node.js is installed, **Then** the `your-space`
+   package, or runs its official npm package with `npx` as directed by the release, **Then** the `your-space`
    command works, and `your-space --version` prints its version. The standalone executables on each
    release have published checksums.
 2. **Given** an empty folder, **When** they run `your-space init` and accept the defaults, **Then**
@@ -335,7 +335,7 @@ option that is still complete.
 **Getting the CLI**
 
 - **FR-001**: The CLI is published with each release in the ways people already install command-line
-  tools: an npm package (`npx your-space`, or a project or global install), `.deb` and `.rpm`
+  tools: the project's npm package (for use with `npx`, or a project or global install), `.deb` and `.rpm`
   packages for Linux, and a standalone Linux executable for ARM and Intel that needs no language
   runtime. The macOS executables and a Homebrew formula come with the
   [macOS and Windows pass](#changes-to-shared-direction); until then, macOS uses the npm package.
