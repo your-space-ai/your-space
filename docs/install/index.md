@@ -85,7 +85,9 @@ awk -v name="$asset" '$2 == name { print }' SHA256SUMS | sha256sum -c - &&
 
 Proceed only when it prints `OK`, and make sure `~/.local/bin` is on your `PATH`. Check that
 `your-space --version` matches the release you selected. For a quick local installation, use
-`your-space setup`. For a domain or existing reverse proxy, continue below.
+`your-space setup`. For a domain or existing reverse proxy, continue below. The release's
+`your-space-linux-licenses.txt` holds the licenses of Your Space and of the Node runtime and
+packages inside the executable.
 
 ## 2. Make a Folder for Your Space
 

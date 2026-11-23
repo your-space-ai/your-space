@@ -59,6 +59,15 @@ asar_sha=$(shasum -a 256 < "$app/Contents/Resources/app.asar")
 developer_id='anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists'
 "$bin/sign-bundle.sh" "$app" "$MACOS_SIGN_IDENTITY"
 codesign --verify --deep --strict -R="$developer_id" "$app"
+# Run the bundled CLI under its release signature (hardened runtime, JIT allowed) before the first
+# submission, so a signature that stops it from starting fails in minutes, not after Apple's review.
+# cli-version.sh runs it as another user, away from this job's credentials. Only this Mac's own
+# processor runs it: Release macOS app opens the other architecture's notarized app on a Mac of that
+# architecture.
+if [[ $cpu == "$(uname -m)" ]]; then
+  [[ $("$bin/cli-version.sh" "$app") == "$version" ]] ||
+    { echo "The signed CLI didn't report version $version." >&2; exit 1; }
+fi
 # Staple the app itself so its ticket also travels with a copy to Applications.
 ditto -c -k --norsrc --noextattr --noacl --noqtn --keepParent "$app" submit.zip
 notarize submit.zip

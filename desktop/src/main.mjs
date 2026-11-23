@@ -10,7 +10,7 @@ const launcherURL = pathToFileURL(join(desktop, 'renderer/index.html')).href;
 const preferences = { sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false, webSecurity: true, navigateOnDragDrop: false };
 app.setName('Your Space');
 if (!app.commandLine.hasSwitch('user-data-dir')) {
-  app.setPath('userData', join(app.getPath('appData'), 'org.your-space.desktop'));
+  app.setPath('userData', join(app.getPath('appData'), 'ai.your-space.desktop'));
 }
 const local = createLocalSetup({
   folder: join(app.getPath('userData'), 'local'),

@@ -1,8 +1,8 @@
 name: Release CLI
 
 # Builds the CLI downloads for one version: the npm package @your-space-ai/cli as a tarball (your-space-ai-cli-<version>.tgz), the
-# standalone Linux executables for Intel/AMD and ARM, and the Compose bundle (your-space.tar.gz)
-# that `your-space init` downloads. Release draft calls it with the tag's version; Release install
+# standalone Linux executables for Intel/AMD and ARM with their licenses (your-space-linux-licenses.txt),
+# and the Compose bundle (your-space.tar.gz) that `your-space init` downloads. Release draft calls it with the tag's version; Release install
 # test calls it on pull requests with a rehearsal version. It publishes nothing: the files go to
 # the run's `release-cli` artifact, and npm receives the exact tarball only when a draft is
 # published (Release publish).
@@ -31,27 +31,47 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
-      - name: Build the npm package, the Linux executables and the Compose bundle
+      - name: Build the npm package, the Linux executables and their licenses, and the Compose bundle
         run: |
           set -o pipefail
           mkdir release
           deploy/release-files.sh "$VERSION" release
           npm version "$VERSION" --workspace cli --no-git-tag-version --allow-same-version
           (cd cli && node scripts/build.mjs "$VERSION")
+          # npm packs a package's own README and LICENSE; the license lives at the repository root.
+          cp LICENSE cli/LICENSE
           npm pack --workspace cli --pack-destination release
           for arch in x64 arm64; do
             cli/scripts/executable.sh "$arch"
             cp "cli/dist/your-space-linux-$arch" release/
           done
           test "$(release/your-space-linux-x64 --version)" = "$VERSION"
-          # The package holds the bundle and its manifest, at the release's version.
-          tar -tzf "release/your-space-ai-cli-$VERSION.tgz" | grep -x package/dist/your-space.cjs
+          # The executables carry Node, so its license ships with them. It comes from the official Node
+          # download that executable.sh checked against Node's checksums for the other processor; the
+          # same Node version runs on this one, and its license is the same file.
+          node_license=(cli/dist/node-"$(node --version)"-linux-*/LICENSE)
+          test -s "${node_license[0]}"
+          {
+            echo "Licenses for your-space-linux-x64 and your-space-linux-arm64, Your Space $VERSION"
+            printf '\n== Your Space, AGPL-3.0-only\n\n'
+            cat LICENSE
+            printf '\n== Node.js %s, which runs the CLI inside each executable\n\n' "$(node --version)"
+            cat "${node_license[0]}"
+            printf "\n== The CLI's bundled JavaScript packages\n\n"
+            sed -n '/^ \* Bundled packages and their licenses:/,$p' cli/dist/your-space.cjs
+          } > release/your-space-linux-licenses.txt
+          grep -q '^ \* Bundled packages and their licenses:' release/your-space-linux-licenses.txt
+          # The package holds the bundle, its README, the project's license and its manifest, at the
+          # release's version.
+          listing=$(tar -tzf "release/your-space-ai-cli-$VERSION.tgz")
+          for file in dist/your-space.cjs README.md LICENSE; do grep -Fqx "package/$file" <<< "$listing"; done
+          cmp LICENSE <(tar -xOzf "release/your-space-ai-cli-$VERSION.tgz" package/LICENSE)
           test "$(tar -xOzf "release/your-space-ai-cli-$VERSION.tgz" package/package.json | jq -r .version)" = "$VERSION"
           ls -l release
-          test "$(find release -type f | wc -l)" -eq 4
+          test "$(find release -type f | wc -l)" -eq 5
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-cli
           path: release/
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 7

@@ -62,11 +62,12 @@ jobs:
           (cd "$RUNNER_TEMP/packages" && shasum -a 256 -c "$name.sha256")
           ditto -x -k "$RUNNER_TEMP/packages/$name" "$RUNNER_TEMP/open"
           app="$RUNNER_TEMP/open/Your Space.app"
-          test "$("$app/Contents/Resources/bin/your-space" --version)" = "$version"
+          # The same check the release signing job runs on the Developer ID build.
+          test "$(desktop/scripts/cli-version.sh "$app")" = "$version"
           mkdir -p "$RUNNER_TEMP/signing-input"
           dmg="your-space-macos-${{ matrix.arch }}-$version-candidate.dmg"
           desktop/scripts/create-dmg.sh "$app" "$RUNNER_TEMP/signing-input/$dmg"
-          desktop/scripts/test-dmg-install.sh "$RUNNER_TEMP/signing-input/$dmg" "${{ matrix.arch }}"
+          desktop/scripts/test-dmg-install.sh "$RUNNER_TEMP/signing-input/$dmg" "${{ matrix.arch }}" "$version"
           (cd "$RUNNER_TEMP/signing-input" && shasum -a 256 "$dmg" > "$dmg.sha256")
       - name: Offer the private ZIP preview
         if: github.event.repository.private && !inputs.release_tag
@@ -85,4 +86,5 @@ jobs:
           path: ${{ runner.temp }}/signing-input/
           if-no-files-found: error
           compression-level: 0
-          retention-days: 1
+          # Long enough to re-run only the signing job after a slow notarization or a late approval.
+          retention-days: 7

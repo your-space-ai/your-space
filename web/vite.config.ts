@@ -23,6 +23,9 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+    // The license of every package bundled into the client, as MIT and similar terms require,
+    // served at /licenses/THIRD-PARTY.md.
+    license: { fileName: "licenses/THIRD-PARTY.md" },
     rolldownOptions: {
       onLog(level, log, handler) {
         // React libraries mark modules "use client" for server components; it means nothing here.
