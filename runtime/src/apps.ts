@@ -90,6 +90,8 @@ interface Resolved {
   resolved: Record<string, unknown>;
   profiled: string[];
   variables: Variable[];
+  /** The required settings the file was resolved with a placeholder for. */
+  placeheld: string[];
 }
 
 /**
@@ -124,6 +126,7 @@ async function resolve(spec: AppSpec, placeholders: boolean): Promise<Resolved> 
     // Compose lists the file's settings without resolving it, so a required one without a value doesn't stop it.
     const listed = docker([...base, "config", "--variables", "--format", "json"], {}, dir).then(variablesOf);
     const env = placeholders ? withPlaceholders(spec.env, await listed) : spec.env;
+    const placeheld = Object.keys(env).filter((name) => env[name] !== spec.env[name]);
     const [plain, all, vars] = await Promise.all([
       docker([...base, "config", "--format", "json"], env, dir),
       docker([...base, "--profile", "*", "config", "--format", "json"], env, dir),
@@ -136,16 +139,15 @@ async function resolve(spec: AppSpec, placeholders: boolean): Promise<Resolved> 
         .join(" ")
         .slice(0, 600);
       // A placeholder fits a setting used as text, not one used as a port or another typed value.
-      const filled = Object.keys(env).filter((name) => env[name] !== spec.env[name]);
-      const placeheld = filled.length
-        ? ` Your Space read it with a placeholder in place of ${filled.join(", ")}, which the file requires and which ${filled.length === 1 ? "has" : "have"} no value yet.`
+      const named = placeheld.length
+        ? ` Your Space read it with a placeholder in place of ${placeheld.join(", ")}, which the file requires and which ${placeheld.length === 1 ? "has" : "have"} no value yet.`
         : "";
-      throw new SpecError(`The file isn't a Compose file Your Space can read: ${message || "Compose refused it."}${placeheld}`);
+      throw new SpecError(`The file isn't a Compose file Your Space can read: ${message || "Compose refused it."}${named}`);
     }
     const resolved = JSON.parse(plain.stdout) as Record<string, unknown>;
     const allServices = all.code === 0 ? Object.keys((JSON.parse(all.stdout) as { services?: object }).services ?? {}) : [];
     const running = Object.keys((resolved.services as object) ?? {});
-    return { resolved, profiled: allServices.filter((s) => !running.includes(s)), variables: vars };
+    return { resolved, profiled: allServices.filter((s) => !running.includes(s)), variables: vars, placeheld };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -158,7 +160,7 @@ export interface CheckAnswer extends Omit<CheckResult, "adapted"> {
 }
 
 async function checkWithImages(spec: AppSpec, waitForCaddy = 0, placeholders = false): Promise<{ answer: CheckAnswer; adapted: CheckResult["adapted"] }> {
-  const { resolved, profiled, variables } = await resolve(spec, placeholders);
+  const { resolved, profiled, variables, placeheld } = await resolve(spec, placeholders);
   const info = await engineInfo();
   if (!info.reachable) throw new EngineError("The engine can't be reached.", 503);
   const caddy = spec.publish ? await ownCaddy(waitForCaddy) : undefined;
@@ -167,8 +169,9 @@ async function checkWithImages(spec: AppSpec, waitForCaddy = 0, placeholders = f
   const pins: Record<string, string> = { ...(spec.pins ?? {}) };
   const images = await Promise.all(
     refs.map(async (ref) => {
-      // An image named with a placeholder is looked up once the owner gives the setting (the install's check).
-      if (placeholders && ref.includes(PLACEHOLDER)) return { ref, platforms: [], runsHere: true } satisfies ImageCheck;
+      // An image named with a placeholder is looked up once the owner gives the setting: the install
+      // checks the file again whenever its review used one.
+      if (placeheld.length > 0 && ref.includes(PLACEHOLDER)) return { ref, platforms: [], runsHere: true } satisfies ImageCheck;
       if (pins[ref]) {
         if (!spec.verifyPins?.includes(ref)) return { ref, digest: pins[ref], platforms: [], runsHere: true } satisfies ImageCheck;
         const expected = pins[ref]!;

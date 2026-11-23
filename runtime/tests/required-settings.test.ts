@@ -111,6 +111,17 @@ describe("placeholders for required settings", () => {
     expect(installing.images).toContainEqual(expect.objectContaining({ ref: "example/app:2.1", digest: `sha256:${"a".repeat(64)}` }));
   });
 
+  it("leave an image named like one looked up when no setting had one", async () => {
+    vi.mocked(docker).mockImplementation(async (args) => ({
+      code: 0,
+      stdout: args.includes("--variables") ? "{}" : JSON.stringify({ services: { web: { image: `example/app:${PLACEHOLDER}` } } }),
+      stderr: "",
+    }));
+    const answer = await check(spec({ placeholders: true }));
+    expect(inspectImage).toHaveBeenCalledWith(`example/app:${PLACEHOLDER}`, "arm64");
+    expect(answer.images).toContainEqual(expect.objectContaining({ ref: `example/app:${PLACEHOLDER}`, digest: `sha256:${"a".repeat(64)}` }));
+  });
+
   it("are named when the file can't take one, such as for a port", async () => {
     vi.mocked(docker).mockImplementation(async (args) => {
       if (args.includes("--variables")) return { code: 0, stdout: JSON.stringify({ APP_PORT: { Name: "APP_PORT", DefaultValue: "", PresenceValue: "", Required: true } }), stderr: "" };
