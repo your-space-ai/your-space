@@ -9,7 +9,8 @@ services:
       - "127.0.0.1:${YS_PORT:-8080}:8080"
     environment:
       YS_SITE: http://:8080
-      # Every other name forwarded to port 8080 is an app's: <app>.<your proxy's name>.
+      # Every other name forwarded to port 8080 goes to the access gate: <app>.<your proxy's name> is
+      # an app's, and any other name gets 421 with what to fix in the proxy.
       YS_PROXY_URL: ${YS_PROXY_URL}
       YS_ORIGIN: ${YS_PROXY_URL}
       YS_REDIRECT_URL: ${YS_PROXY_URL}

@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { createGate, Handoffs, readCookie, safeReturn, signPass, verifyPass } from "../src/apps/gate.ts";
 import { fetchSource, parseLink, SourceError } from "../src/apps/github.ts";
 import { KitError, parseKit, parseMemory } from "../src/apps/kits.ts";
-import { appNameFromHost, stateFromServices } from "../src/apps/service.ts";
+import { appNameFromHost, stateFromServices, underOwnName } from "../src/apps/service.ts";
 import { buildSettings, decrypt, encrypt, looksSecret, resolveTemplates } from "../src/apps/settings.ts";
 import { session } from "../src/db/auth-schema.ts";
 import { app, appAccessRequest, appSetting, event, installJob } from "../src/db/schema.ts";
@@ -136,6 +136,12 @@ describe("the access gate's parts", () => {
     expect(appNameFromHost("https://space.example.com", "Sure.Space.Example.com")).toBe("sure");
     for (const bad of ["space.localhost", "a.b.space.localhost", "sure.localhost", "evil-space.localhost", "1x.space.localhost"]) {
       expect(appNameFromHost("http://space.localhost", bad), bad).toBeUndefined();
+    }
+    for (const under of ["sure.space.localhost", "Sure.Space.Localhost:8081", "a.b.space.localhost", "1x.space.localhost"]) {
+      expect(underOwnName("http://space.localhost", under), under).toBe(true);
+    }
+    for (const other of ["space.localhost", "evil-space.localhost", "127.0.0.1:8080", "your-space:8080", "", undefined]) {
+      expect(underOwnName("http://space.localhost", other), other).toBe(false);
     }
   });
 
@@ -446,6 +452,40 @@ describe("apps API", () => {
       // Signing out of Your Space closes the app.
       await t.db.delete(session);
       expect((await gate("/gate", { cookie: pass })).status).toBe(302);
+    });
+
+    // Behind the owner's proxy, Caddy sends the gate every name that isn't exactly Your Space's own.
+    it.each(["127.0.0.1:8080", "your-space:8080", "attacker.example", "evilspace.localhost", "", "own"])(
+      "answers the name %j, which is neither Your Space's nor an app's, with the API's wrong_host answer",
+      async (given) => {
+        const host = given === "own" ? new URL(server.publicUrl).host : given;
+        const api = await (await server.request("/api/status", { headers: { host: "127.0.0.1:8080" } })).json() as { error: string; message: string };
+        expect(api.message).toContain(`set up for ${server.publicUrl}`);
+
+        const page = await gate("/gate", { "x-forwarded-host": host, "x-forwarded-uri": "/" });
+        expect(page.status).toBe(421);
+        expect(page.headers.get("content-type")).toMatch(/^text\/plain/);
+        expect(page.headers.get("cache-control")).toBe("no-store");
+        expect(await page.text()).toBe(api.message);
+
+        const call = await gate("/gate", { "x-forwarded-host": host, "x-forwarded-uri": "/api/status" });
+        expect(call.status).toBe(421);
+        expect(await call.json()).toEqual(api);
+
+        const handoff = await gate("/handoff?code=x", { "x-forwarded-host": host });
+        expect(handoff.status).toBe(421);
+        expect(await handoff.text()).toBe(api.message);
+      },
+    );
+
+    it("keeps 'no app' for a name under Your Space's where no app is installed", async () => {
+      const host = new URL(server.publicUrl).host;
+      for (const name of [`nope.${host}`, `a.b.${host}`, `1x.${host}`]) {
+        const response = await gate("/gate", { "x-forwarded-host": name });
+        expect(response.status, name).toBe(404);
+        expect(await response.text()).toBe("There is no app at this address.");
+      }
+      expect((await gate("/handoff?code=x", { "x-forwarded-host": `nope.${host}` })).status).toBe(403);
     });
 
     it("allows certificates only for Your Space and its installed apps", async () => {

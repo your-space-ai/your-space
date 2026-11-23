@@ -86,14 +86,15 @@ for other services.
 
 4. Your proxy must:
 
-   - **pass the original `Host` header.** Your Space answers only to the address in `YS_PROXY_URL`.
-     Requests that arrive under another name get status 421 and a message that says to fix this;
+   - **pass the original `Host` header.** Your Space answers only to the address in `YS_PROXY_URL`
+     and to its apps' names. A request that arrives under any other name, such as `127.0.0.1:8080`,
+     which nginx sends unless told otherwise, gets status 421 and a message that says to fix this;
    - **set `X-Forwarded-For` to the visitor's address,** replacing any value the visitor sent. The
      sign-in limit counts attempts per address;
    - **forward apps' names too.** Each app is at `<app>.<your proxy's name>`, such as
      `sure.space.example.com`, so give the proxy a wildcard name (`*.space.example.com`) with its
-     certificate and forward it to the same place. Every name other than Your Space's own goes to
-     an app.
+     certificate and forward it to the same place. A name under Your Space's own where no app is
+     installed shows "There is no app at this address."
 
    Caddy and Traefik do both by default. In nginx, add:
 

@@ -96,6 +96,15 @@ export function appOrigin(publicUrl: string, row: { name: string; publish: Publi
   return row.publish?.link ?? appAddress(publicUrl, row.name).origin;
 }
 
+/**
+ * Whether a request's host is under Your Space's name, where the apps' addresses are, whether or not
+ * an app is at it. Any other name is neither Your Space's nor an app's.
+ */
+export function underOwnName(publicUrl: string, hostHeader: string | undefined): boolean {
+  const host = (hostHeader ?? "").toLowerCase().replace(/:\d+$/, "");
+  return host.endsWith(`.${new URL(publicUrl).hostname}`);
+}
+
 /** The app named by a request's host, or undefined when the host isn't an app's. */
 export function appNameFromHost(publicUrl: string, hostHeader: string | undefined): string | undefined {
   if (!hostHeader) return undefined;

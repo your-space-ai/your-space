@@ -27,9 +27,15 @@ Errors use journey 001's shape `{ "error": "<code>", "message": "…" }`.
 
 | Path | Answer |
 | --- | --- |
-| `GET /gate` (with `X-Forwarded-Host`, `X-Forwarded-Uri`) | `200` with `X-YS-Upstream: ys-<app>-ui:<port>` for a valid pass; otherwise `302` to `/api/apps/<app>/open` on Your Space's origin |
+| `GET /gate` (with `X-Forwarded-Host`, `X-Forwarded-Uri`) | `200` with `X-YS-Upstream: ys-<app>-ui:<port>` for a valid pass; otherwise `302` to `/api/apps/<app>/open` on Your Space's origin. `404` for a name under Your Space's where no app is installed |
 | `GET /handoff?code=&return=` | Sets the pass cookie on the app's host and redirects to `return`, under the same rule as `/open`, with `Referrer-Policy: no-referrer`. The code works once, for 60 seconds, and isn't logged |
 | `GET /tls-ask?domain=` | `200` for an installed app's name or Your Space's own, else `404` |
+
+Behind the owner's proxy, Caddy sends the gate every name that isn't exactly Your Space's own. `/gate`
+and `/handoff` answer a name that isn't under Your Space's either, such as `127.0.0.1:8080` from a
+proxy that rewrote `Host`, with the API's `421` `wrong_host` answer
+([Host Check](../../001-workspace-owner-access/contracts/http-api.md#host-check)): as JSON when
+`X-Forwarded-Uri` is under `/api`, and as its message in plain text otherwise.
 
 `publish` (decision 2026-11-19) is `{ port, bind, link, frame, inPane }` or null: the app's interface on
 `bind:port` of this machine, for the owner's own proxy or tunnel, outside the gate. `port` defaults to
