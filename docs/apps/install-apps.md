@@ -5,25 +5,38 @@ title: "Install and publish apps"
 Your Space runs existing open-source apps from their own Compose files, on the same Docker engine,
 and opens them inside Your Space.
 
-**Install.** In Apps, paste the GitHub link to the app's Compose file and choose Review. The review
-shows the exact commit and image versions that will run, what Your Space changes or leaves out of
-the file, the settings it reads, and the internet hosts it may reach. Secrets the file gives a
-published default for get generated values instead, and they are never shown. Install runs in the
-background; you can leave the page. From the server, `docker compose exec server install-app <link>`
-does the same. A kit Your Space can't read from GitHub, such as one in a private repository, can come
-from this machine instead: `docker compose exec -T server install-app <link> --kit - < kit.yaml`.
+**Kits.** Every app installs from its kit: a small YAML file, kept outside the app's own repository,
+that is the app's definition in Your Space. It names the app's own Compose file and says what Your
+Space needs to run and show the app: which service is its interface, which settings to generate or
+work out, the internet hosts it needs, and its limits. The app's authors change nothing. See the
+[kit format](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
+
+**Install.** In Apps, paste the GitHub link to the app's kit and choose Review. A link to a Compose
+file isn't enough: Your Space says so and asks for the kit's link. The review shows the kit and the
+Compose file it names, each at its exact commit, the image versions that will run, what Your Space
+changes or leaves out of the file, the settings it reads, and the internet hosts it may reach.
+Secrets the file gives a published default for get generated values instead, and they are never
+shown. Install runs in the background; you can leave the page. If Your Space is set up with a kit
+directory, Apps lists its kits too.
+
+Your Space reads the Compose file a kit names at the kit's own commit when both are in one
+repository, and otherwise at the latest commit of the app's repository when you review it. A kit
+without `source` names the `compose.yaml` beside it.
+
+A kit in a private repository installs through your [GitHub connection](github-connection.md) when
+you connect with private repositories included. If the kit names a Compose file in another private
+repository, import that repository in **Repositories** first.
+
+From the server, `docker compose exec server install-app <kit-link>` does the same. A kit Your Space
+can't read from GitHub, such as one in a private repository, can come from this machine instead,
+and names the app's Compose file on GitHub: `docker compose exec -T server install-app --kit - < kit.yaml`.
 
 When an app's own Compose file doesn't fit Your Space's rules, for example because it builds its
-images or mounts folders of this machine, install it from a Compose file you write instead. Your
-Space checks and adapts it like any other, records its digest, and reads nothing from GitHub for it:
-
-```sh
-docker compose exec -T server install-app --compose - --name notes < compose.yaml
-```
-
-The name comes from `--name`, or from the kit's `name`. A kit for it may leave out `source`, since
-giving both in one command is what binds them. Standard input carries one file, so put the kit in
-the server's container first:
+images or mounts folders of this machine, install it from a Compose file you write instead, with
+its kit. Your Space checks and adapts the file like any other, records its digest, and reads nothing
+from GitHub for it. The name comes from `--name`, or from the kit's `name`. The kit may leave out
+`source`, since giving both in one command is what binds them. Standard input carries one file, so
+put the kit in the server's container first:
 
 ```sh
 docker compose exec -T server sh -c 'cat > /tmp/kit.yaml' < kit.yaml
@@ -91,7 +104,7 @@ docker compose exec server publish-app notes --off
 ```
 
 `--no-frame` opens the app in its own tab instead of inside Your Space, and `--frame` shows it inside
-again. `install-app <link> --publish`, with the same `--port`, `--bind`, `--link` and `--no-frame`,
+again. `install-app <kit-link> --publish`, with the same `--port`, `--bind`, `--link` and `--no-frame`,
 installs an app published.
 
 **Settings.** An app's page shows its settings. Saving restarts the app with the new values and
