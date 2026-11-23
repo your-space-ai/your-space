@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { createGate, Handoffs, readCookie, safeReturn, signPass, verifyPass } from "../src/apps/gate.ts";
 import { fetchSource, parseLink, SourceError } from "../src/apps/github.ts";
-import { KitError, parseKit, parseMemory } from "../src/apps/kits.ts";
+import { composeOf, KitError, kitIdentity, NotAKitError, parseKit, parseMemory } from "../src/apps/kits.ts";
 import { appNameFromHost, stateFromServices, underOwnName } from "../src/apps/service.ts";
 import { buildSettings, decrypt, encrypt, looksSecret, resolveTemplates } from "../src/apps/settings.ts";
 import { session } from "../src/db/auth-schema.ts";
@@ -12,7 +12,7 @@ import { app, appAccessRequest, appSetting, event, installJob } from "../src/db/
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY, TEST_SECRET } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
-import { COMMIT, fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
+import { COMMIT, fakeGithub, FakeRuntime, kitLink, plainKit } from "./helpers/runtime.ts";
 import { cookieHeader, send, startServer, type TestServer } from "./helpers/server.ts";
 
 const WHOAMI = `services:
@@ -39,11 +39,15 @@ outbound: [example.com]
 limits:
   web: { memory: 64M, cpus: 0.5 }
 `;
-const LINK = "https://github.com/ys-fixtures/whoami/blob/main/compose.yaml";
+// Apps install from their kits' links (decision 2026-11-23); the kit names the app's Compose file.
+const LINK = kitLink("whoami");
+const COMPOSE_LINK = "https://github.com/ys-fixtures/whoami/blob/main/compose.yaml";
+// A kit beside its app's Compose file, with no source: it names the compose.yaml next to it.
+const BESIDE = "kit: 1\nname: beside\ninterface: { service: web, port: 80 }\n";
 
 describe("links, kits and settings", () => {
   it("reads GitHub file links and refuses anything else", () => {
-    expect(parseLink(LINK)).toEqual({ repo: "ys-fixtures/whoami", rest: ["main", "compose.yaml"] });
+    expect(parseLink(COMPOSE_LINK)).toEqual({ repo: "ys-fixtures/whoami", rest: ["main", "compose.yaml"] });
     expect(parseLink("https://raw.githubusercontent.com/a/b/main/x/compose.yml").rest).toEqual(["main", "x", "compose.yml"]);
     for (const bad of ["not a link", "http://github.com/a/b/blob/main/c.yml", "https://gitlab.com/a/b/blob/main/c.yml", "https://github.com/a/b", "https://github.com/a/b/tree/main"]) {
       expect(() => parseLink(bad), bad).toThrow(SourceError);
@@ -76,6 +80,29 @@ describe("links, kits and settings", () => {
     expect(() => parseMemory("lots")).toThrow(KitError);
   });
 
+  it("explains kits when it is given a Compose file instead", () => {
+    expect(() => parseKit(WHOAMI)).toThrow(NotAKitError);
+    expect(() => parseKit(WHOAMI)).toThrow(/not a Your Space kit/);
+    // A kit with a field it doesn't know is still a kit.
+    expect(() => parseKit(`${KIT}services: {}\n`)).toThrow(/unknown field services/);
+  });
+
+  it("names the Compose file: the kit's source, at the kit's commit when they share a repository", () => {
+    const at = { repo: "ys-fixtures/Catalog", path: "apps/ys-fixtures/whoami.yaml", commit: COMMIT };
+    expect(composeOf(parseKit(KIT), at)).toEqual({ repo: "ys-fixtures/whoami", path: "compose.yaml", commit: null });
+    expect(composeOf(parseKit(KIT), { ...at, repo: "YS-Fixtures/Whoami" })).toEqual({ repo: "ys-fixtures/whoami", path: "compose.yaml", commit: COMMIT });
+    expect(composeOf(parseKit(KIT), null)).toEqual({ repo: "ys-fixtures/whoami", path: "compose.yaml", commit: null });
+    // Without source: the compose.yaml beside a linked kit, and nothing for a kit file on this machine.
+    expect(composeOf(parseKit(BESIDE), at)).toEqual({ repo: "ys-fixtures/Catalog", path: "apps/ys-fixtures/compose.yaml", commit: COMMIT });
+    expect(composeOf(parseKit(BESIDE), { ...at, path: "kit.yaml" })).toEqual({ repo: "ys-fixtures/Catalog", path: "compose.yaml", commit: COMMIT });
+    expect(composeOf(parseKit(BESIDE), null)).toBeNull();
+  });
+
+  it("identifies a kit by its repository, path and commit, or by its digest", () => {
+    expect(kitIdentity(`https://github.com/a/kits/blob/${COMMIT}/apps/x%20y.yaml`)).toEqual({ source: `https://github.com/a/kits/blob/${COMMIT}/apps/x%20y.yaml`, repo: "a/kits", path: "apps/x y.yaml", commit: COMMIT });
+    expect(kitIdentity(`sha256:${"a".repeat(64)}`)).toEqual({ source: `sha256:${"a".repeat(64)}` });
+  });
+
   it("never uses a published default for a secret", () => {
     const address = { origin: "http://x.space.localhost", host: "x.space.localhost" };
     const variables = [
@@ -90,6 +117,13 @@ describe("links, kits and settings", () => {
     expect(password.value!.length).toBeGreaterThanOrEqual(40);
     expect(withoutKit.find((s) => s.name === "GREETING")).toMatchObject({ secret: false, value: null, publishedDefault: "hello" });
     expect(withoutKit.find((s) => s.name === "OPENAI_ACCESS_TOKEN")).toMatchObject({ secret: true, generated: false, value: null });
+    // With a kit too: a setting it doesn't generate, derive or set still gets a generated value.
+    const silent = buildSettings(variables, parseKit("kit: 1\nsecrets: [OPENAI_ACCESS_TOKEN]\n"), address);
+    expect(silent.find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ secret: true, generated: true, publishedDefault: null });
+    expect(silent.find((s) => s.name === "POSTGRES_PASSWORD")!.value).not.toBe("sure_password");
+    expect(silent.find((s) => s.name === "OPENAI_ACCESS_TOKEN")).toMatchObject({ secret: true, generated: false, value: null });
+    // A value the kit sets is the kit's choice.
+    expect(buildSettings(variables, parseKit("kit: 1\nset: { POSTGRES_PASSWORD: chosen }\n"), address).find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ value: "chosen", generated: false });
 
     const kit = parseKit(`kit: 1\nsource: { repo: a/b, path: c }\ngenerate: { APP_SECRET: { encoding: hex } }\nderive: { SERVER_URL: app_origin }\nset: { STORAGE_TYPE: local }`);
     const withKit = buildSettings([{ name: "SERVER_URL", required: false, default: "http://localhost:3000" }, { name: "STORAGE_TYPE", required: false, default: "" }], kit, address);
@@ -184,6 +218,9 @@ describe("apps API", () => {
           "ys-fixtures/whoami/compose.yaml": WHOAMI,
           "ys-fixtures/catalog/apps/ys-fixtures/whoami.yaml": KIT,
           "ys-fixtures/plain/compose.yaml": WHOAMI,
+          ...plainKit("plain"),
+          "ys-fixtures/beside/kit.yaml": BESIDE,
+          "ys-fixtures/beside/compose.yaml": WHOAMI,
         }),
       },
     });
@@ -210,7 +247,7 @@ describe("apps API", () => {
   }
 
   async function install(link = LINK): Promise<{ name: string; jobId: string }> {
-    const review = await (await post("/api/apps/preview", { link })).json() as any;
+    const review = await (await post("/api/kits/preview", { kitUrl: link })).json() as any;
     const installed = await post("/api/apps", { previewId: review.previewId });
     expect(installed.status).toBe(202);
     const body = await installed.json() as any;
@@ -223,7 +260,7 @@ describe("apps API", () => {
   }
 
   it("refuses everyone but the signed-in owner, and changes nothing", async () => {
-    for (const [method, path] of [["GET", "/api/apps"], ["POST", "/api/apps/preview"], ["POST", "/api/apps"], ["GET", "/api/engine"], ["DELETE", "/api/apps/x/data"]]) {
+    for (const [method, path] of [["GET", "/api/apps"], ["POST", "/api/kits/preview"], ["POST", "/api/apps"], ["GET", "/api/engine"], ["DELETE", "/api/apps/x/data"]]) {
       const response = await server.request(path!, { method, body: method === "GET" ? undefined : "{}" });
       expect(response.status, `${method} ${path}`).toBe(401);
     }
@@ -231,13 +268,13 @@ describe("apps API", () => {
   });
 
   it("reviews an app without showing generated secrets, then installs it", async () => {
-    const response = await post("/api/apps/preview", { link: LINK });
+    const response = await post("/api/kits/preview", { kitUrl: LINK });
     expect(response.status).toBe(200);
     const text = await response.text();
     const review = JSON.parse(text);
     expect(review).toMatchObject({ name: "whoami", title: "Who Am I", ok: true, origin: `http://whoami.${new URL(server.publicUrl).host}`, outbound: ["example.com"], interface: { service: "web", port: 80 } });
     expect(review.source).toMatchObject({ repo: "ys-fixtures/whoami", commit: COMMIT });
-    expect(review.kit.source).toContain(`ys-fixtures/catalog/blob/${COMMIT}/apps/ys-fixtures/whoami.yaml`);
+    expect(review.kit).toEqual({ source: `https://github.com/ys-fixtures/catalog/blob/${COMMIT}/apps/ys-fixtures/whoami.yaml`, repo: "ys-fixtures/catalog", path: "apps/ys-fixtures/whoami.yaml", commit: COMMIT });
     expect(review.settings.find((s: { name: string }) => s.name === "API_TOKEN")).toMatchObject({ secret: true, generated: true, set: true });
     expect(text).not.toContain("published-default-token");
     expect(review.warning).toMatch(/trusts it/);
@@ -281,7 +318,7 @@ describe("apps API", () => {
   });
 
   it("refuses to install an app twice", async () => {
-    const response = await post("/api/apps/preview", { link: LINK });
+    const response = await post("/api/kits/preview", { kitUrl: LINK });
     expect(response.status).toBe(409);
     expect((await response.json() as any).error).toBe("already_installed");
   });
@@ -394,7 +431,7 @@ describe("apps API", () => {
     const [kept] = await t.db.select().from(appSetting).where(eq(appSetting.name, "API_TOKEN"));
     expect(kept!.value).not.toBeNull();
 
-    const review = await (await post("/api/apps/preview", { link: LINK })).json() as any;
+    const review = await (await post("/api/kits/preview", { kitUrl: LINK })).json() as any;
     expect(review.retained).toBe(true);
     expect((await post("/api/apps", { previewId: review.previewId })).status).toBe(409);
     const reused = await post("/api/apps", { previewId: review.previewId, reuseData: true });
@@ -413,10 +450,21 @@ describe("apps API", () => {
     expect(await t.db.select().from(appAccessRequest)).toEqual([]);
   });
 
-  it("guesses the interface of an app without a kit, and generates its secret", async () => {
-    const review = await (await post("/api/apps/preview", { link: "https://github.com/ys-fixtures/plain/blob/main/compose.yaml" })).json() as any;
-    expect(review).toMatchObject({ name: "plain", kit: null, interface: { service: "web", port: 80 }, outbound: [] });
+  it("generates a secret the kit doesn't mention, and takes the interface only from the kit", async () => {
+    const review = await (await post("/api/kits/preview", { kitUrl: kitLink("plain") })).json() as any;
+    expect(review).toMatchObject({ name: "plain", title: "plain", interface: { service: "web", port: 80 }, outbound: [] });
     expect(review.settings.find((s: { name: string }) => s.name === "API_TOKEN")).toMatchObject({ generated: true, secret: true });
+    const beside = await (await post("/api/kits/preview", { kitUrl: "https://github.com/ys-fixtures/beside/blob/main/kit.yaml" })).json() as any;
+    expect(beside).toMatchObject({ name: "beside", source: { repo: "ys-fixtures/beside", path: "compose.yaml", commit: COMMIT }, kit: { repo: "ys-fixtures/beside", path: "kit.yaml" } });
+  });
+
+  it("refuses a bare Compose link, and says what a kit is; the old Compose-link review is gone", async () => {
+    const response = await post("/api/kits/preview", { kitUrl: COMPOSE_LINK });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "kit_required", message: expect.stringMatching(/not a Your Space kit.*Give the link to the app's kit/) });
+    expect((await post("/api/kits/preview", { kitUrl: "https://example.com/kit.yaml" })).status).toBe(400);
+    expect((await post("/api/kits/preview", {})).status).toBe(400);
+    expect((await post("/api/apps/preview", { link: COMPOSE_LINK })).status).toBe(404);
   });
 
   describe("gate", () => {

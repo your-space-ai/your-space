@@ -3,10 +3,10 @@ import { eq } from "drizzle-orm";
 import { app } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
-import { fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
+import { fakeGithub, FakeRuntime, kitLink, plainKit } from "./helpers/runtime.ts";
 import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
 
-// An app without a kit: its interface is the one service that publishes a port.
+// An app whose kit names its interface and nothing else.
 const PLAIN = `services:
   web:
     image: traefik/whoami:latest
@@ -15,7 +15,7 @@ const PLAIN = `services:
       GREETING: \${GREETING:-hello}
       API_TOKEN: \${API_TOKEN:-published-default-token}
 `;
-const LINK = "https://github.com/ys-fixtures/plain/blob/main/compose.yaml";
+const LINK = kitLink("plain");
 
 let t: TestDatabase;
 let server: TestServer;
@@ -24,7 +24,7 @@ let cookie: string;
 function useServer(runtime: FakeRuntime): void {
   beforeAll(async () => {
     t = await createTestDatabase();
-    server = await startServer(t.db, { apps: { runtime, fetch: fakeGithub({ "ys-fixtures/plain/compose.yaml": PLAIN }) } });
+    server = await startServer(t.db, { apps: { runtime, fetch: fakeGithub({ "ys-fixtures/plain/compose.yaml": PLAIN, ...plainKit("plain") }) } });
     await createOwnerWithPassword(t.db, OWNER, server.publicUrl);
     const signedIn = await server.request("/api/auth/sign-in/username", { method: "POST", body: JSON.stringify({ username: OWNER.username, password: OWNER.password }) });
     cookie = cookieHeader(signedIn);
@@ -48,7 +48,7 @@ async function waitForJob(jobId: string): Promise<any> {
 }
 
 async function install(): Promise<void> {
-  const review = (await (await send("/api/apps/preview", { link: LINK })).json()) as any;
+  const review = (await (await send("/api/kits/preview", { kitUrl: LINK })).json()) as any;
   const installed = await send("/api/apps", { previewId: review.previewId });
   expect(installed.status).toBe(202);
   await waitForJob(((await installed.json()) as any).jobId);

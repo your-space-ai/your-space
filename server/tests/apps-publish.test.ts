@@ -9,7 +9,7 @@ import { app, event, installJob } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
-import { fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
+import { fakeGithub, FakeRuntime, kitLink, plainKit } from "./helpers/runtime.ts";
 import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
 
 const COMPOSE = `services:
@@ -39,10 +39,10 @@ title: No pane
 interface: { service: web, port: 80 }
 pane: false
 `;
-const LINKED = "https://github.com/ys-fixtures/linked/blob/main/compose.yaml";
-const OTHER = "https://github.com/ys-fixtures/other/blob/main/compose.yaml";
-const PLAIN = "https://github.com/ys-fixtures/plain/blob/main/compose.yaml";
-const THIRD = "https://github.com/ys-fixtures/third/blob/main/compose.yaml";
+const LINKED = kitLink("linked");
+const OTHER = kitLink("other");
+const PLAIN = kitLink("plain");
+const THIRD = kitLink("third");
 
 describe("publishing choices", () => {
   const current = { port: 8000, bind: "127.0.0.1", link: null, frame: true };
@@ -139,9 +139,13 @@ describe("publishing an app", () => {
       "ys-fixtures/linked/compose.yaml": COMPOSE,
       "ys-fixtures/catalog/apps/ys-fixtures/linked.yaml": KIT,
       "ys-fixtures/other/compose.yaml": COMPOSE,
+      ...plainKit("other"),
       "ys-fixtures/plain/compose.yaml": COMPOSE,
+      ...plainKit("plain"),
       "ys-fixtures/third/compose.yaml": COMPOSE,
+      ...plainKit("third"),
       "ys-fixtures/fourth/compose.yaml": COMPOSE,
+      ...plainKit("fourth"),
       "ys-fixtures/nopane/compose.yaml": COMPOSE,
       "ys-fixtures/catalog/apps/ys-fixtures/nopane.yaml": NOPANE_KIT,
     });
@@ -180,12 +184,12 @@ describe("publishing an app", () => {
   }
 
   async function install(link: string, publish?: unknown): Promise<Response> {
-    const review = (await (await send("/api/apps/preview", { link })).json()) as { previewId: string; publishPort: number };
+    const review = (await (await send("/api/kits/preview", { kitUrl: link })).json()) as { previewId: string; publishPort: number };
     return send("/api/apps", { previewId: review.previewId, ...(publish === undefined ? {} : { publish }) });
   }
 
   it("offers the port the app's file publishes, and installs it published with the owner's link", async () => {
-    const review = (await (await send("/api/apps/preview", { link: LINKED })).json()) as { publishPort: number };
+    const review = (await (await send("/api/kits/preview", { kitUrl: LINKED })).json()) as { publishPort: number };
     expect(review.publishPort).toBe(8000);
 
     const installed = await install(LINKED, { link: "https://linked.tail1234.ts.net" });
@@ -265,7 +269,7 @@ describe("publishing an app", () => {
 
   it("refuses, before saving, a port something else on this machine uses, naming the container when it is one", async () => {
     runtime.portsInUse.set(8100, "the container web-1").set(8101, undefined);
-    const review = (await (await send("/api/apps/preview", { link: THIRD })).json()) as { previewId: string };
+    const review = (await (await send("/api/kits/preview", { kitUrl: THIRD })).json()) as { previewId: string };
     const byContainer = await send("/api/apps", { previewId: review.previewId, publish: { port: 8100 } });
     expect(byContainer.status).toBe(409);
     expect(await byContainer.json()).toMatchObject({ error: "port_in_use", message: "Port 8100 on 127.0.0.1 is already used by the container web-1. Choose another port." });
@@ -346,7 +350,7 @@ describe("publishing an app", () => {
   });
 
   it("installs an app published with the owner's choice not to show it inside Your Space", async () => {
-    const installed = await install("https://github.com/ys-fixtures/fourth/blob/main/compose.yaml", { port: 8104, link: "https://fourth.example.com", frame: false });
+    const installed = await install(kitLink("fourth"), { port: 8104, link: "https://fourth.example.com", frame: false });
     expect(installed.status).toBe(202);
     expect((await waitForJob(((await installed.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
     expect(lastApply().publish).toEqual({ port: 8104, bind: "127.0.0.1", frame: false });
@@ -357,7 +361,7 @@ describe("publishing an app", () => {
   });
 
   it("keeps the framing rules of an app whose kit says it can't run in a pane", async () => {
-    const installed = await install("https://github.com/ys-fixtures/nopane/blob/main/compose.yaml", { port: 8106, link: "https://nopane.example.com" });
+    const installed = await install(kitLink("nopane"), { port: 8106, link: "https://nopane.example.com" });
     expect((await waitForJob(((await installed.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
     expect(lastApply().publish).toEqual({ port: 8106, bind: "127.0.0.1", frame: false });
     // The setting stays on, but Your Space opens it in its own tab.

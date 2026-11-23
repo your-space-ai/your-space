@@ -8,6 +8,7 @@ import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { encrypt } from "../src/apps/settings.ts";
 import { transaction } from "../src/agents/store.ts";
 import { createAgent, manageKey } from "../src/agents/owner.ts";
+import { previewSnapshot } from "../src/repositories/sources.ts";
 
 let db: TestDatabase, server: TestServer, cookie: string, actor: string, agent: string, authorization: string;
 const commit = "a".repeat(40);
@@ -257,4 +258,9 @@ it("requires an explicit import before following a linked kit to a different pri
     (await call("/api/kits/preview", "POST", { kitUrl: "https://github.com/owner/kits/blob/main/kit.yaml" })).status,
   ).toBe(403);
   expect(calls.some((path) => path.includes("contents/compose.yaml"))).toBe(false);
+});
+
+it("installs from a managed repository only with a kit in it", () => {
+  const snapshot = { repo: "owner/app", repoId: "10", ref: "main", commit, composePath: "compose.yaml", composeText: "services: {}", kitPath: null, kitText: null };
+  expect(() => previewSnapshot(server.apps!, snapshot)).toThrow(expect.objectContaining({ code: "kit_required", message: expect.stringMatching(/Every app installs with a kit/) }));
 });

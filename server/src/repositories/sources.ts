@@ -1,8 +1,7 @@
-import { posix } from "node:path";
 import { createHash } from "node:crypto";
 import type { Db } from "../db/client.ts";
 import { parseLink, type SourceFile } from "../apps/github.ts";
-import { kitFromFile, KitError, matchesKitReview, type FoundKit } from "../apps/kits.ts";
+import { composeOf, kitFromFile, KitError, matchesKitReview, NotAKitError, type FoundKit } from "../apps/kits.ts";
 import type { ReplacementSnapshot } from "../apps/replacement.ts";
 import { AppError, type AppsService } from "../apps/service.ts";
 import { publicGithubClient, type GithubClient, type GithubRepo } from "./github.ts";
@@ -10,6 +9,8 @@ import { publicGithubClient, type GithubClient, type GithubRepo } from "./github
 export type Reader = Pick<GithubClient, "repo" | "resolve" | "file" | "kitPaths">;
 type Snapshot = ReplacementSnapshot & { ref: string };
 const invalid = () => new AppError(400, "invalid_kit_source", "Choose a GitHub kit file and a valid Compose path.");
+const notKitLink = () =>
+  new AppError(400, "invalid_kit_source", "Paste the GitHub link to the app's kit, like https://github.com/owner/repo/blob/main/kit.yaml.");
 const link = (repo: string, commit: string, path: string) =>
   "https://github.com/" + repo + "/blob/" + commit + "/" + path.split("/").map(encodeURIComponent).join("/");
 
@@ -24,6 +25,7 @@ function kitFile(text: string, source?: { repo: string; path: string }): FoundKi
     const file = kitFromFile(text, null);
     return source && file.kit.source ? kitFromFile(text, source) : file;
   } catch (error) {
+    if (error instanceof NotAKitError) throw new AppError(400, "kit_required", error.message);
     if (error instanceof KitError) throw new AppError(400, "invalid_kit", error.message);
     throw error;
   }
@@ -51,7 +53,7 @@ export async function loadSnapshot(reader: Reader, id: string, body: Record<stri
   };
 }
 
-function preview(apps: AppsService, snap: Snapshot, found: FoundKit | null) {
+function preview(apps: AppsService, snap: Snapshot, found: FoundKit) {
   const pinnedLink = link(snap.repo, snap.commit, snap.composePath);
   const source: SourceFile = {
     repo: snap.repo,
@@ -65,10 +67,13 @@ function preview(apps: AppsService, snap: Snapshot, found: FoundKit | null) {
   return apps.previewResolved(source, found);
 }
 
+/** Every app installs with a kit (decision 2026-11-23), so an install from a repository names one. */
 export function previewSnapshot(apps: AppsService, snap: Snapshot) {
-  const found =
-    snap.kitText !== null && snap.kitPath ? kitFile(snap.kitText, { repo: snap.repo, path: snap.composePath }) : null;
-  if (found && snap.kitPath) found.source = link(snap.repo, snap.commit, snap.kitPath);
+  if (snap.kitText === null || !snap.kitPath) {
+    throw new AppError(400, "kit_required", "Give the path of the app's kit in this repository, such as kit.yaml. Every app installs with a kit.");
+  }
+  const found = kitFile(snap.kitText, { repo: snap.repo, path: snap.composePath });
+  found.source = link(snap.repo, snap.commit, snap.kitPath);
   return preview(apps, snap, found);
 }
 
@@ -93,9 +98,21 @@ async function linkedKit(reader: Reader, input: unknown) {
     if (url.username || url.password || url.port || url.search || url.hash) throw invalid();
     parsed = parseLink(url.href);
   } catch {
-    throw invalid();
+    throw notKitLink();
   }
-  const repo = await reader.repo(parsed.repo);
+  let repo: GithubRepo;
+  try {
+    repo = await reader.repo(parsed.repo);
+  } catch (error) {
+    if (error instanceof AppError && error.code === "github_not_found") {
+      throw new AppError(
+        404,
+        "kit_not_found",
+        "GitHub can't find the repository of that kit. If it is private, connect GitHub with private access in Repositories first.",
+      );
+    }
+    throw error;
+  }
   for (let i = 1; i < Math.min(parsed.rest.length, 17); i++) {
     const ref = parsed.rest.slice(0, i).join("/");
     let commit: string;
@@ -109,7 +126,7 @@ async function linkedKit(reader: Reader, input: unknown) {
     const file = await reader.file(repo.id, path, commit);
     return { repo, ref, commit, path, content: file.content };
   }
-  throw invalid();
+  throw notKitLink();
 }
 
 /** A kit may point to a different public upstream. A connected private upstream
@@ -163,14 +180,15 @@ export async function previewKitUrl(
   const reader = connected ?? publicReader;
   const kit = await linkedKit(reader, url);
   const found = kitFile(kit.content);
-  const declared = found.kit.source;
+  // The kit names the Compose file, as for the server command (composeOf).
+  const file = composeOf(found.kit, { repo: kit.repo.fullName, path: kit.path, commit: kit.commit })!;
   let sourceRepo: GithubRepo = kit.repo;
   let sourceReader: Reader = reader;
   let ref = kit.ref;
   let commit = kit.commit;
-  const composePath = declared?.path ?? posix.join(posix.dirname(kit.path), "compose.yaml");
-  if (declared && declared.repo.toLowerCase() !== kit.repo.fullName.toLowerCase()) {
-    const target = await targetRepo(db, owner, connected, declared.repo, publicReader);
+  const composePath = file.path;
+  if (file.commit === null) {
+    const target = await targetRepo(db, owner, connected, file.repo, publicReader);
     sourceRepo = target.repo;
     sourceReader = target.reader;
     ref = sourceRepo.defaultBranch;

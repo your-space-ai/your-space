@@ -1,7 +1,7 @@
-// install-app <github-link> [--kit <link | file | folder | ->] | --compose <file | -> [--kit <file | ->]
-// [--name <name>], then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]
-// [--no-frame]] [--json] (FR-009, contracts/http-api.md). Reviews the app, installs it as the
-// operator, and waits until it runs or the install fails.
+// install-app <kit-link> | --kit <file | -> | --compose <file | -> --kit <file | -> [--name <name>],
+// then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
+// (FR-009, contracts/http-api.md). Every app installs with a kit (decision 2026-11-23). Reviews the
+// app, installs it as the operator, and waits until it runs or the install fails.
 import { parseArgs } from "node:util";
 import { operatorActorId } from "../actors.ts";
 import { errorFields, log } from "../log.ts";
@@ -13,7 +13,7 @@ import { AppError, AppsService } from "../apps/service.ts";
 import { EXIT, localFileLine, openForCommand, output, publishedLine } from "./output.ts";
 
 const USAGE =
-  "Usage: install-app --files-stdin | <github-link-to-compose-file> [--kit <link | file | folder | ->] | --compose <file | -> [--kit <file | ->] [--name <name>], then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]";
+  "Usage: install-app --files-stdin | <github-link-to-kit> | --kit <file | -> | --compose <file | -> --kit <file | -> [--name <name>], then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]";
 
 async function readPairedFiles(input: NodeJS.ReadableStream): Promise<{compose:string; kit:string}> {
   const chunks: Buffer[] = [];
@@ -99,14 +99,13 @@ async function main(argv: string[]): Promise<number> {
   const { config, database } = opened;
   const apps = new AppsService(database.db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey, kitsRepository: config.kitsRepository });
   try {
-    // A kit link is read from GitHub; anything else is a kit on this machine.
-    const kitLink = values.kit !== undefined && /^https?:\/\//i.test(values.kit) ? values.kit : undefined;
     // The command runs in the server's container, so standard input (`--kit -` or `--compose -`) is
-    // how a file on the host reaches it.
+    // how a file on the host reaches it. A kit's link is read from GitHub, and the kit names the
+    // app's Compose file there; a kit file on this machine names it too, unless --compose gives it.
     const files = bundled ? await readPairedFiles(process.stdin) : undefined;
-    const kitText = files ? files.kit : values.kit !== undefined && !kitLink ? readLocalKit(values.kit, link ?? null) : undefined;
-    const from = files ? {name:"compose.yaml", text:files.compose} : values.compose !== undefined ? readLocalCompose(values.compose) : link!;
-    const review = await apps.preview(from, kitLink, kitText, values.name);
+    const compose = files ? { name: "compose.yaml", text: files.compose } : values.compose !== undefined ? readLocalCompose(values.compose) : undefined;
+    const kitText = files ? files.kit : values.kit !== undefined ? readLocalKit(values.kit) : undefined;
+    const review = await apps.preview(kitText !== undefined ? { text: kitText } : { link: link! }, compose, values.name);
     if (!review.ok) {
       const reasons = review.refusals.map((r) => `  - ${r.service ? `${r.service}: ` : ""}${r.reason}`);
       out.failure({ ok: false, error: "refused", name: review.name, refusals: review.refusals }, [`Your Space can't run ${review.title} as it is:`, ...reasons].join("\n"));
@@ -115,7 +114,7 @@ async function main(argv: string[]): Promise<number> {
     if (!out.json) {
       process.stderr.write(
         [
-          `${review.title} from ${isLocalSource(review.source) ? localFileLine(review.source) : `${review.source.repo} at ${review.source.commit.slice(0, 12)}`}${review.kit ? (kitText !== undefined ? ", with the kit file you gave" : ", with its installation kit") : ""}`,
+          `${review.title} from ${isLocalSource(review.source) ? localFileLine(review.source) : `${review.source.repo} at ${review.source.commit.slice(0, 12)}`}${review.kit.repo ? `, with its kit ${review.kit.repo}/${review.kit.path} at ${review.kit.commit!.slice(0, 12)}` : ", with the kit file you gave"}`,
           ...review.services.map((s) => `  ${s.name}: ${s.image}${s.interface ? " (interface)" : ""}`),
           ...review.adaptations.map((a) => `  ${a.service}: ${a.detail}`),
           review.warning,
@@ -149,6 +148,7 @@ async function main(argv: string[]): Promise<number> {
         publish: detail.publish,
         // A Compose file on this machine has no commit; its digest identifies it.
         ...(isLocalSource(review.source) ? { source: review.source.link } : { commit: review.source.commit }),
+        kit: review.kit.source,
       },
       [
         `Installed ${review.title} (${detail.state}). Open it from Your Space, or at ${detail.origin}`,

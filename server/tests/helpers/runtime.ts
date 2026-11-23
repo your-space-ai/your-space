@@ -105,6 +105,21 @@ export class FakeRuntime implements Runtime {
 export const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 
 /** GitHub's commits API and raw files for a few fixture repositories. */
+/** The link to an app's kit in the stand-in kits repository that `plainKit` fills. */
+export function kitLink(name: string): string {
+  return `https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/${name}.yaml`;
+}
+
+/**
+ * A kit for ys-fixtures/<name>'s compose.yaml, for `fakeGithub`: every app installs with one. Its
+ * interface is the fixture's web service; `more` adds kit fields.
+ */
+export function plainKit(name: string, more = ""): Record<string, string> {
+  return {
+    [`ys-fixtures/catalog/apps/ys-fixtures/${name}.yaml`]: `kit: 1\nsource: { repo: ys-fixtures/${name}, path: compose.yaml }\ninterface: { service: web, port: 80 }\n${more}`,
+  };
+}
+
 export function fakeGithub(files: Record<string, string>): typeof fetch {
   return (async (input: string | URL | Request) => {
     const url = new URL(String(input));
