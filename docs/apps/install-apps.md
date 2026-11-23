@@ -12,7 +12,7 @@ the file, the settings it reads, and the internet hosts it may reach. Secrets th
 published default for get generated values instead, and they are never shown. Install runs in the
 background; you can leave the page.
 
-Your Space keeps an app's settings itself, encrypted, and never writes them to a file. Many apps'
+Your Space keeps an app's settings itself, encrypted, and writes no settings file. Many apps'
 Compose files load their settings from a `.env` file next to them, with `env_file: .env`; such a
 service gets the app's settings from Your Space instead, which the review reports. An installation
 kit names the settings that file would hold, since the Compose file doesn't, and the review asks you

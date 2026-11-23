@@ -108,6 +108,13 @@ describe("a service that loads .env", () => {
     expect(result.refusals).toEqual(refusals);
     expect(result.adapted).toBeNull();
   });
+
+  it("runs when only a service left out with its profile names another file, which Compose still doesn't read", () => {
+    const refusals = [{ service: "worker", setting: "env_file", reason: "Settings file backup.env can't be read." }];
+    const result = adapt(spec, resolved, ["worker"], undefined, { ...files, refusals });
+    expect(result.refusals).toEqual([]);
+    expect(result.adapted).not.toBeNull();
+  });
 });
 
 describe("checking and applying a file that names settings files", () => {

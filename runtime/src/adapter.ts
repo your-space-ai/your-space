@@ -445,9 +445,10 @@ export function egressConfig(hosts: string[]): string {
  * environment its file sets, as Compose puts a settings file's values under it.
  */
 export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] = [], caddy?: OwnCaddy, files: EnvFiles = NO_ENV_FILES): CheckResult {
-  const refusals: Refusal[] = [...files.refusals];
-  const adaptations: Adaptation[] = [];
   const services = isObject(resolved.services) ? resolved.services : {};
+  // A service left out with its profile doesn't run, so the files it names don't matter.
+  const refusals: Refusal[] = files.refusals.filter((r) => r.service in services);
+  const adaptations: Adaptation[] = [];
   const settings = files.settings.filter((name) => name in services);
   // Escaped as Compose escapes the values it resolved, so `up` takes each `$` as it is.
   const settingValues = Object.fromEntries(Object.entries(spec.env).map(([name, value]) => [name, value.split("$").join("$$")]));

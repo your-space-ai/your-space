@@ -48,8 +48,8 @@ Compose to read none of them, with a second Compose file that resets each, and w
 file. A service whose `env_file` names only `.env` (or `./.env`), required or not, gets every `env`
 value as its environment, under the environment its file sets, and `adaptations` reports it. Any
 other `env_file`, such as an absolute path, `../x` or a second file, and any `label_file`, is a
-refusal naming the file. A file Compose can't read as written is refused with Compose's error, as an
-unreadable file always was.
+refusal naming the file, unless its service is left out with its profile. A file Compose can't read
+as written is refused with Compose's error, as an unreadable file always was.
 
 | Method and path | Body | Answer |
 | --- | --- | --- |
