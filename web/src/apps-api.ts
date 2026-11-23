@@ -155,7 +155,8 @@ export interface Review {
   title: string;
   origin: string;
   source: { link: string; repo: string; path: string; ref: string; commit: string; pinnedLink: string };
-  kit: { source: string } | null;
+  /** The kit the app installs with; a kit on GitHub also gives its repository, path and commit. */
+  kit: { source: string; repo?: string; path?: string; commit?: string };
   ok: boolean;
   services: { name: string; image: string; interface: boolean; ports: number[]; published: { target: number; host: number }[]; volumes: string[]; dependsOn: string[] }[];
   images: { ref: string; digest?: string; runsHere: boolean }[];

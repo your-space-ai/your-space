@@ -2,9 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, errorMessage } from "../apps-api.ts";
 
+/** The kits in the directory this Your Space is set up with (YS_KITS_REPOSITORY), each reviewed from its link. */
 export function KitDirectory({ busy, onPreview }: { busy: boolean; onPreview: (url: string) => void }) {
   const [open, setOpen] = useState(false);
-  const [url, setUrl] = useState("");
   const catalog = useQuery({
     queryKey: ["kit-directory"],
     queryFn: () =>
@@ -19,7 +19,7 @@ export function KitDirectory({ busy, onPreview }: { busy: boolean; onPreview: (u
   return (
     <details className="kit-directory" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>Kit directory</summary>
-      <p className="muted">Choose a published installation kit, or paste a GitHub kit link to review it.</p>
+      <p className="muted">Choose a kit from the directory this Your Space is set up with.</p>
       {open &&
         (catalog.isError ? (
           <p role="alert" className="notice error">
@@ -47,29 +47,8 @@ export function KitDirectory({ busy, onPreview }: { busy: boolean; onPreview: (u
             ))}
           </ul>
         ) : (
-          <p>{catalog.data.commit ? "No kits are listed in this directory." : "No kit directory is configured. Paste a GitHub kit URL below."}</p>
+          <p>{catalog.data.commit ? "No kits are listed in this directory." : "No kit directory is set up. Paste a kit's link above."}</p>
         ))}
-      <form
-        className="inline"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onPreview(url.trim());
-        }}
-      >
-        <label>
-          GitHub kit URL
-          <input
-            type="url"
-            value={url}
-            required
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://github.com/…"
-          />
-        </label>
-        <button type="submit" className="secondary" disabled={busy}>
-          Review kit URL
-        </button>
-      </form>
     </details>
   );
 }
