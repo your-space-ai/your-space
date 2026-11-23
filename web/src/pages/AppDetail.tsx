@@ -10,7 +10,7 @@ import { Notice, StatusPill, type Tone } from "../ui/index.ts";
 
 const MIB = 1024 * 1024;
 const STATE_TONE: Record<AppState, Tone> = {
-  installing: "info", starting: "info", running: "success", degraded: "warning", stopped: "neutral", failed: "danger", removed: "neutral",
+  installing: "info", starting: "info", running: "success", degraded: "danger", stopped: "neutral", failed: "danger", removed: "neutral",
 };
 
 export function AppDetail({ name }: { name: string }) {

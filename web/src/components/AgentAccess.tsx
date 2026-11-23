@@ -76,6 +76,7 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
   const reviewUrl = app.reviewedBy?.startsWith("https://github.com/") ? app.reviewedBy : null;
   const path = agentPath + "/installations/" + encodeURIComponent(app.id);
   return (
+    <>
     <details className="agent-details">
       <summary>
         {app.title || app.name} · {app.bound ? "Credential saved" : "No credential"}
@@ -145,9 +146,10 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
           )}
         </div>
       </form>
-      {confirmation}
       <ActionFeedback action={action} />
     </details>
+    {confirmation}
+    </>
   );
 }
 

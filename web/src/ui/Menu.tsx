@@ -1,7 +1,7 @@
 // An actions menu behind a "⋯" button, following the WAI-ARIA menu button pattern: the arrow keys,
 // Home and End move between items, Escape closes it and returns focus to the button, and a click
-// outside or a scroll closes it. It opens in the top layer of the page, so a pane or panel that
-// clips its content doesn't cut it off.
+// outside or a scroll closes it. It renders at the end of the page, placed at its button, so a pane
+// or panel that clips its content doesn't cut it off.
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "./Button.tsx";

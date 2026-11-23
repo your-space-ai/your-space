@@ -2,7 +2,9 @@
 // theme, light and dark: 4.5:1 for text and 3:1 for the edges and marks of controls. The gallery's
 // browser check measures the same pairs as rendered.
 import { describe, expect, it } from "vitest";
-import { builtInThemes, contrastRatio, themeStyles, themeVariables, type Palette, type ThemeStyle } from "../../../shared/appearance/theme.mjs";
+import {
+  builtInThemes, contrastRatio, retiredStarterThemes, themeStyles, themeVariables, validateTheme, type Palette, type ThemeStyle,
+} from "../../../shared/appearance/theme.mjs";
 
 const channels = (hex: string) => [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
 
@@ -62,6 +64,15 @@ describe("component contrast", () => {
       });
     }
   }
+
+  // Workspaces that used Canopy, Tide or Ember keep them, converted from version 1 with the Crisp style.
+  it("the retired starters, as workspaces keep them", () => {
+    for (const { theme: original } of retiredStarterThemes) {
+      const theme = validateTheme(original);
+      const { text, edges } = pairs(theme.light, theme.style);
+      expect([...failures(text, 4.5), ...failures(edges, 3)], theme.name).toEqual([]);
+    }
+  });
 
   // An owner can save a built-in palette with another style, so every style stays readable too.
   it("every built-in palette in every style", () => {
