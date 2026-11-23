@@ -27,7 +27,8 @@ jobs:
     needs: build
     runs-on: macos-15
     environment: macos-release
-    timeout-minutes: 90
+    # A new team's first submissions can wait hours in Apple's review; 360 is GitHub's maximum.
+    timeout-minutes: 360
     permissions:
       contents: read
     steps:

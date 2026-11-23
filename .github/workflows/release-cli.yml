@@ -54,4 +54,4 @@ jobs:
           name: release-cli
           path: release/
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 7
