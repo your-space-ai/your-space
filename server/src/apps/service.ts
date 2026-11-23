@@ -98,7 +98,7 @@ export function appOrigin(publicUrl: string, row: { name: string; publish: Publi
 
 /**
  * Whether a request's host is under Your Space's name, where the apps' addresses are, whether or not
- * an app is at it. Any other name is neither Your Space's nor an app's.
+ * an app is at it. Your Space's own name isn't under it.
  */
 export function underOwnName(publicUrl: string, hostHeader: string | undefined): boolean {
   const host = (hostHeader ?? "").toLowerCase().replace(/:\d+$/, "");
