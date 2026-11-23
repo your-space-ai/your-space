@@ -103,7 +103,8 @@ server's container first, for example with `docker compose exec -T server sh -c 
 < kit.yaml`. Data kept under the name can be reused with `--reuse-data` whichever source it came
 from, since a file on this machine has no repository to compare. With `--json`, the result has
 `source: "sha256:<digest>"` in place of `commit`, and `list-apps --json` gives each app's `source`:
-the link as given, or the digest.
+the link to its Compose file, or the digest; its `commit` is the exact commit read. Which branch a
+later update of an app installed from a kit follows is left to journey 006.
 
 `publish-app` publishes an installed app, changes how (an option left out keeps its value),
 or stops publishing it with `--off`, and waits until the change is applied: it restarts the app's
