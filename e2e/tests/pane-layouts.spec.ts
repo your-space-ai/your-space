@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { SavedView, ViewComposition } from "../../shared/workspace-layout/model.mjs";
-import { starterThemes } from "../../shared/appearance/theme.mjs";
+import { builtInThemes } from "../../shared/appearance/theme.mjs";
 
 // Isolate layout behavior from the app installer. Each fixture app is a distinct document and origin.
 async function fixture(page: Page) {
@@ -18,8 +18,10 @@ async function fixture(page: Page) {
         user: { id: owner, name: "Owner", email: "fixture@example.test" },
       };
     else if (pathname === "/api/auth/organization/list") json = [{ id, name: "Test", slug: "test" }];
-    else if (pathname === "/api/appearance/active") json = starterThemes[0]!.theme;
-    else if (pathname === "/api/apps")
+    else if (pathname === "/api/appearance/active") {
+      const { style, fonts, light, dark } = builtInThemes[0]!.theme;
+      json = { mode: "light", style, fonts, light, dark };
+    } else if (pathname === "/api/apps")
       json = {
         apps: apps.map((name) => ({
           name,

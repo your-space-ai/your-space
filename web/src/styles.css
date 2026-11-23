@@ -1,33 +1,45 @@
-/* Base colors follow the OS until the workspace's validated palette is available. */
+/* Base values follow the OS until the workspace's validated look is available: Cerulean, the
+   default theme, in its light and dark palettes (shared/appearance/theme.mjs). */
 :root {
   color-scheme: light dark;
-  --fg: #1d1d1f;
-  --muted: #5f6368;
-  --bg: #f6f6f4;
+  --fg: #0a1218;
+  --muted: #52606a;
+  --bg: #f4f8fa;
   --panel: #ffffff;
-  --border: #d5d5d0;
+  --border: #d9e3e8;
   --control-border: color-mix(in srgb, var(--border), var(--fg) 42%);
-  --accent: #2f5bd3;
+  --accent: #0a6fb0;
   --danger: #b3261e;
-  --success: #276238;
+  --success: #1d8248;
+  --warning: #a15c00;
   --accent-ink: #ffffff;
-  --font-body: system-ui, -apple-system, sans-serif;
-  --font-heading: Georgia, serif;
+  --font-body: "Instrument Sans", system-ui, sans-serif;
+  --font-heading: "Instrument Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  /* Component shape for the Bold style. Every theme sets these with its palette. */
+  --theme-style: bold;
+  --radius: 0px;
+  --radius-control: 0px;
+  --border-width: 2px;
+  --rule-width: 3px;
+  --surface-tint: 0%;
+  --control-tint: 0%;
   font-family: var(--font-body);
   line-height: 1.5;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --fg: #ececec;
-    --muted: #a0a0a0;
-    --bg: #161616;
-    --panel: #202020;
-    --border: #3a3a3a;
-    --accent: #8ab0ff;
+    --fg: #eaf2f6;
+    --muted: #94a6b0;
+    --bg: #0a1218;
+    --panel: #111c22;
+    --border: #22313a;
+    --accent: #55c1ff;
     --danger: #ff8a80;
-    --success: #9cdaa3;
-    --accent-ink: #161616;
+    --success: #5bd38a;
+    --warning: #f2b24c;
+    --accent-ink: #0a1218;
   }
 }
 
@@ -126,7 +138,7 @@ button.secondary {
 
 code,
 pre {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.9em;
   background: var(--bg);
   border-radius: 4px;

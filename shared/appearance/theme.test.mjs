@@ -1,43 +1,99 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {fontSuggestions, starterThemes, themeVariables, validateTheme} from './theme.mjs';
+import {
+  builtInThemes, colorKeys, contrastRatio, defaultThemeId, fontSuggestions, modeScheme, paletteScheme,
+  retiredStarterThemes, themeVariables, validateTheme,
+} from './theme.mjs';
 
-function luminance(hex) {
-  const channels = hex.slice(1).match(/../g).map(c => Number.parseInt(c, 16) / 255)
-    .map(c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
-}
-function contrast(first, second) {
-  const a = luminance(first), b = luminance(second);
-  return (Math.max(a,b) + 0.05) / (Math.min(a,b) + 0.05);
+const textColors = ['fg', 'muted', 'accent', 'danger', 'success', 'warning'];
+function unreadable(colors) {
+  const issues = [];
+  for (const surface of ['bg', 'panel']) {
+    for (const ink of textColors) {
+      if (contrastRatio(colors[ink], colors[surface]) < 4.5) issues.push(ink + ' on ' + surface);
+    }
+  }
+  if (contrastRatio(colors.accentInk, colors.accent) < 4.5) issues.push('accentInk on accent');
+  return issues;
 }
 
-test('three portable starters have readable text, action labels and links', () => {
-  assert.deepEqual(starterThemes.map(row => row.id), ['canopy', 'tide', 'ember']);
-  for (const {theme} of starterThemes) {
+test('the built-in themes are Cerulean, Cinder and Fern, readable in light and dark', () => {
+  assert.deepEqual(builtInThemes.map(row => row.id), ['cerulean', 'cinder', 'fern']);
+  assert.equal(defaultThemeId, 'cerulean');
+  assert.deepEqual(builtInThemes.map(row => row.theme.style), ['bold', 'crisp', 'soft']);
+  assert.deepEqual(builtInThemes.map(row => row.theme.fonts.heading), ['Instrument Sans', 'Space Grotesk', 'Fraunces']);
+  for (const {theme} of builtInThemes) {
     assert.deepEqual(validateTheme(JSON.parse(JSON.stringify(theme))), theme);
-    const {tokens} = theme;
-    for (const background of ['bg','panel']) {
-      for (const foreground of ['fg','muted','accent','danger','success']) {
-        assert.ok(contrast(tokens[background], tokens[foreground]) >= 4.5, theme.name + ': ' + background + '/' + foreground);
+    assert.equal(theme.fonts.mono, 'IBM Plex Mono');
+    for (const scheme of ['light', 'dark']) {
+      assert.deepEqual(unreadable(theme[scheme]), [], theme.name + ' ' + scheme);
+      assert.equal(paletteScheme(theme[scheme]), scheme);
+      const variables = themeVariables(theme, scheme);
+      assert.equal(variables['--bg'], theme[scheme].bg);
+      assert.equal(variables['--warning'], theme[scheme].warning);
+      assert.equal(variables['--accent-ink'], theme[scheme].accentInk);
+      assert.equal(variables['--theme-style'], theme.style);
+      for (const name of ['--panel', '--fg', '--muted', '--accent', '--border', '--danger', '--success',
+        '--font-body', '--font-heading', '--font-mono', '--radius', '--radius-control', '--border-width', '--rule-width']) {
+        assert.ok(variables[name], theme.name + ' ' + name);
       }
     }
-    assert.ok(contrast(tokens.accentInk,tokens.accent) >= 4.5);
-    assert.equal(Object.keys(themeVariables(theme)).length, 11);
   }
+  const cerulean = themeVariables(builtInThemes[0].theme, 'light');
+  assert.equal(cerulean['--font-mono'], '"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace');
+  assert.equal(themeVariables(builtInThemes[2].theme, 'dark')['--font-heading'], '"Fraunces", ui-serif, Georgia, serif');
+  assert.deepEqual([cerulean['--radius'], cerulean['--border-width']], ['0px', '2px']);
 });
 
-test('import accepts installed Unicode families and rejects unknown fields or CSS', () => {
-  const {theme} = starterThemes[0];
+test('a version 1 file converts: one palette in both modes, a readable warning, Crisp and monospace', () => {
+  for (const {id, theme: original} of retiredStarterThemes) {
+    const theme = validateTheme(original);
+    assert.equal(theme.version, 2);
+    assert.equal(theme.name, original.name);
+    assert.equal(theme.style, 'crisp');
+    assert.deepEqual(theme.fonts, {heading: original.tokens.fontHeading, body: original.tokens.fontBody, mono: 'monospace'});
+    assert.deepEqual(theme.light, theme.dark);
+    for (const key of colorKeys.filter(key => key !== 'warning')) assert.equal(theme.light[key], original.tokens[key]);
+    assert.deepEqual(unreadable(theme.light), [], id);
+    assert.equal(paletteScheme(theme.light), original.scheme);
+    assert.deepEqual(validateTheme(JSON.parse(JSON.stringify(theme))), theme);
+  }
+  // Amber blends toward the text color when it would be hard to read on the palette.
+  const {theme: canopy} = retiredStarterThemes[0];
+  const dim = validateTheme({...canopy, tokens: {...canopy.tokens, bg: '#c8c8c8', panel: '#d0d0d0', fg: '#000000'}});
+  assert.notEqual(dim.light.warning, '#a15c00');
+  assert.ok(contrastRatio(dim.light.warning, '#c8c8c8') >= 4.5);
+});
+
+test('import accepts installed Unicode families and rejects unknown fields, versions or CSS', () => {
+  const {theme} = builtInThemes[1];
   for (const font of [...fontSuggestions, '黑体', "L'Archivo"]) {
-    const custom = {...theme,tokens:{...theme.tokens,fontBody:font}};
-    assert.equal(validateTheme(custom).tokens.fontBody,font);
+    for (const key of ['heading', 'body', 'mono']) {
+      assert.equal(validateTheme({...theme, fonts: {...theme.fonts, [key]: font}}).fonts[key], font);
+    }
   }
-  for (const font of ['url(https://example.test/font)', 'x; color: red','foo, serif',' inherited ', 'a'.repeat(65)]) {
-    assert.throws(() => themeVariables({...theme,tokens:{...theme.tokens,fontBody:font}}));
+  for (const font of ['url(https://example.test/font)', 'x; color: red', 'foo, serif', ' inherited ', 'a'.repeat(65)]) {
+    assert.throws(() => themeVariables({...theme, fonts: {...theme.fonts, body: font}}, 'light'));
+    assert.throws(() => validateTheme({...theme, fonts: {...theme.fonts, mono: font}}));
   }
-  for (const input of [{...theme,version:2}, {...theme,name:'a\nb'}, {...theme,uri:'https://example.test/'},
-    {...theme,tokens:{...theme.tokens,accent:'red'}}, {...theme,tokens:{...theme.tokens,url:'https://example.test/logo'}}, {name:'incomplete'}]) {
-    assert.throws(() => validateTheme(input));
+  const version1 = retiredStarterThemes[2].theme;
+  for (const input of [
+    {...theme, version: 3}, {...theme, version: '2'}, {...theme, version: 0}, {...version1, version: 2}, {...theme, version: 1},
+    {...theme, name: 'a\nb'}, {...theme, name: ' '}, {...theme, name: 'a'.repeat(61)}, {...theme, uri: 'https://example.test/'},
+    {...theme, style: 'sharp'}, {...theme, scheme: 'dark'}, {...theme, fonts: {...theme.fonts, display: 'serif'}},
+    {...theme, fonts: {heading: 'serif', body: 'serif'}}, {...theme, light: {...theme.light, accent: 'red'}},
+    {...theme, dark: {...theme.dark, bg: '#fff'}}, {...theme, dark: {...theme.dark, url: 'https://example.test/logo'}},
+    {...theme, light: {...theme.light, warning: undefined}}, {...theme, dark: undefined},
+    {...version1, tokens: {...version1.tokens, warning: '#ffaa00'}}, {...version1, scheme: 'dim'}, {name: 'incomplete'}, null, [],
+  ]) {
+    assert.throws(() => validateTheme(input), JSON.stringify(input)?.slice(0, 80));
   }
+  assert.throws(() => validateTheme({...theme, version: 3}), /version 1 or 2/);
+});
+
+test('a mode picks a palette, and Match my device follows the preference', () => {
+  assert.equal(modeScheme('light', true), 'light');
+  assert.equal(modeScheme('dark', false), 'dark');
+  assert.equal(modeScheme('system', true), 'dark');
+  assert.equal(modeScheme('system', false), 'light');
 });

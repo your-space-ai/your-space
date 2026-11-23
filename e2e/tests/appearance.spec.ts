@@ -1,48 +1,84 @@
 import { readFile } from "node:fs/promises";
-import { expect, test } from "@playwright/test";
-import { starterThemes } from "../../shared/appearance/theme.mjs";
+import { expect, test, type Page } from "@playwright/test";
+import { builtInThemes, retiredStarterThemes } from "../../shared/appearance/theme.mjs";
 import { evidence } from "./helpers/evidence.ts";
 import { createOwner, resetStack } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
 
-test("the owner previews, shares and applies workspace themes", async ({ page, browser }, testInfo) => {
+const [cerulean, cinder] = builtInThemes.map((entry) => entry.theme);
+const background = (page: Page) => page.evaluate(() => getComputedStyle(document.body).getPropertyValue("--bg").trim());
+const colorScheme = (page: Page) => page.evaluate(() => document.documentElement.style.colorScheme);
+const loadedFaces = (page: Page, family: string) => page.evaluate(async (font) => (await document.fonts.load(font)).length, `600 16px "${family}"`);
+
+async function chooseMode(page: Page, label: string) {
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/appearance/mode") && response.ok()),
+    page.getByRole("radio", { name: label, exact: true }).check(),
+  ]);
+}
+
+test("the owner previews, shares and applies workspace themes in light and dark", async ({ page, browser }, testInfo) => {
   test.setTimeout(180_000);
+  const fonts: string[] = [];
+  page.on("request", (request) => { if (request.resourceType() === "font") fonts.push(request.url()); });
+  await page.emulateMedia({ colorScheme: "light" });
   await resetStack();
   const owner = await createOwner();
   await setPassword(page, owner.url);
   await signIn(page, owner.username);
   await page.getByRole("link", { name: "Appearance" }).click();
-  await expect(page.getByRole("button", { name: "Canopy is current" })).toBeDisabled();
-  await expect(page.locator(".starter-cover img")).toHaveCount(3);
-  await expect.poll(() => page.locator(".starter-cover img").evaluateAll((images) =>
-    images.every((image) => (image as HTMLImageElement).naturalWidth > 0))).toBeTruthy();
+  await expect(page.getByRole("button", { name: "Cerulean is current" })).toBeDisabled();
+  await expect(page.getByRole("radio", { name: "Match my device" })).toBeChecked();
+  await expect(page.locator(".starter-card .theme-sample")).toHaveCount(6);
+  // The four bundled families load from the dashboard itself.
+  for (const family of ["Instrument Sans", "Space Grotesk", "Fraunces", "IBM Plex Mono"]) {
+    await expect.poll(() => loadedFaces(page, family)).toBeGreaterThan(0);
+  }
+  const origin = new URL(page.url()).origin;
+  expect(fonts.length).toBeGreaterThan(0);
+  expect(fonts.filter((url) => new URL(url).origin !== origin)).toEqual([]);
+  await expect.poll(() => background(page)).toBe(cerulean.light.bg);
   await evidence(page, testInfo, "appearance-light-library");
 
-  const ember = starterThemes.find((entry) => entry.id === "ember")!.theme;
-  await page.getByRole("button", { name: "Use Ember", exact: true }).focus();
+  await chooseMode(page, "Dark");
+  await expect.poll(() => colorScheme(page)).toBe("dark");
+  await expect.poll(() => background(page)).toBe(cerulean.dark.bg);
+  await evidence(page, testInfo, "appearance-dark-library");
+  await chooseMode(page, "Light");
+  await expect.poll(() => background(page)).toBe(cerulean.light.bg);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect.poll(() => background(page)).toBe(cerulean.light.bg);
+  // Match my device follows the browser's preference as it changes.
+  await chooseMode(page, "Match my device");
+  await expect.poll(() => background(page)).toBe(cerulean.dark.bg);
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect.poll(() => background(page)).toBe(cerulean.light.bg);
+  await expect.poll(() => colorScheme(page)).toBe("light");
+
+  await page.getByRole("button", { name: "Use Cinder", exact: true }).focus();
   await Promise.all([
     page.waitForResponse((response) => response.url().endsWith("/api/appearance/selection") && response.ok()),
     page.keyboard.press("Enter"),
   ]);
-  await expect(page.getByRole("button", { name: "Ember is current" })).toBeDisabled();
-  await expect.poll(() => page.evaluate(() => document.documentElement.style.colorScheme)).toBe("dark");
+  await expect(page.getByRole("button", { name: "Cinder is current" })).toBeDisabled();
   await page.getByRole("link", { name: "Apps", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Apps", exact: true })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).getPropertyValue("--bg").trim())).toBe(ember.tokens.bg);
+  await expect.poll(() => background(page)).toBe(cinder.light.bg);
   await page.getByRole("link", { name: "Appearance" }).click();
   await page.reload();
-  await expect(page.getByRole("button", { name: "Ember is current" })).toBeDisabled();
-  await evidence(page, testInfo, "appearance-dark-library");
+  await expect(page.getByRole("button", { name: "Cinder is current" })).toBeDisabled();
+  await expect(page.getByRole("radio", { name: "Match my device" })).toBeChecked();
 
-  await page.getByRole("button", { name: "Customize Ember" }).click();
+  await page.getByRole("button", { name: "Customize Cinder" }).click();
   await expect(page.getByRole("heading", { name: "Create a theme" })).toBeFocused();
   await page.getByLabel("Theme name", { exact: true }).fill("Night study");
+  await page.getByRole("combobox", { name: "Style", exact: true }).selectOption("soft");
   await page.getByLabel("Heading font", { exact: true }).fill("Georgia");
-  await page.getByLabel("Text", { exact: true }).fill(ember.tokens.bg);
-  await expect(page.getByText(/Low contrast for/)).toBeVisible();
-  await page.getByLabel("Text", { exact: true }).fill("#fff2e1");
-  await expect(page.getByText(/Low contrast for/)).toHaveCount(0);
-  await expect(page.locator(".preview-title")).toHaveCSS("font-family", /Georgia/);
+  await page.getByLabel("Dark Text", { exact: true }).fill(cinder.dark.bg);
+  await expect(page.getByText(/Low contrast in Dark for/)).toBeVisible();
+  await page.getByLabel("Dark Text", { exact: true }).fill("#fff2e1");
+  await expect(page.getByText(/Low contrast in/)).toHaveCount(0);
+  await expect(page.locator(".preview-title").first()).toHaveCSS("font-family", /Georgia/);
   await evidence(page, testInfo, "appearance-theme-editor");
   await page.getByRole("checkbox", { name: "Use this theme after saving" }).check();
   await page.getByRole("button", { name: "Save theme" }).click();
@@ -54,11 +90,14 @@ test("the owner previews, shares and applies workspace themes", async ({ page, b
   await row.getByRole("button", { name: "Export JSON" }).click();
   const download = await downloaded;
   const file = JSON.parse(await readFile((await download.path())!, "utf8"));
-  expect(file).toMatchObject({ version: 1, name: "Night study", tokens: { fontHeading: "Georgia" } });
+  expect(file).toMatchObject({ version: 2, name: "Night study", style: "soft", fonts: { heading: "Georgia", mono: "IBM Plex Mono" },
+    dark: { fg: "#fff2e1" }, light: { bg: cinder.light.bg } });
   expect(file).not.toHaveProperty("id");
   const input = page.locator('input[type="file"]');
   await input.setInputFiles({ name: "invalid.json", mimeType: "application/json", buffer: Buffer.from('{"arbitrary":"style"}') });
-  await expect(page.getByRole("alert")).toContainText("version 1");
+  await expect(page.getByRole("alert")).toContainText("version 1 or 2");
+  await input.setInputFiles({ name: "future.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ ...file, version: 3 })) });
+  await expect(page.getByRole("alert")).toContainText("version 1 or 2");
   await input.setInputFiles({ name: "copy.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(file)) });
   await expect(page.getByLabel("Theme name", { exact: true })).toHaveValue("Night study");
   await page.getByLabel("Theme name", { exact: true }).fill("Imported theme");
@@ -73,13 +112,28 @@ test("the owner previews, shares and applies workspace themes", async ({ page, b
   await renamed.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(renamed).toHaveCount(0);
 
-  const signedOut = await browser.newContext({ baseURL: new URL(page.url()).origin });
-  try {
-    const visitor = await signedOut.newPage();
-    await visitor.goto("/sign-in");
-    await expect(visitor.getByRole("heading", { name: "Sign in to Your Space" })).toBeVisible();
-    await expect(visitor.locator("html")).toHaveCSS("color-scheme", "dark");
-    await expect(visitor.getByRole("heading")).toHaveCSS("font-family", /Georgia/);
-    expect((await signedOut.request.get("/api/appearance")).status()).toBe(401);
-  } finally { await signedOut.close(); }
+  // A version 1 file opens as version 2: its one palette in both modes, in the Crisp style.
+  const ember = retiredStarterThemes.find((entry) => entry.id === "ember")!.theme;
+  await input.setInputFiles({ name: "ember.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ ...ember, name: "Old favorite" })) });
+  await expect(page.getByLabel("Theme name", { exact: true })).toHaveValue("Old favorite");
+  await expect(page.getByRole("combobox", { name: "Style", exact: true })).toHaveValue("crisp");
+  await expect(page.getByLabel("Light Background", { exact: true })).toHaveValue(ember.tokens.bg);
+  await expect(page.getByLabel("Dark Background", { exact: true })).toHaveValue(ember.tokens.bg);
+  await expect(page.getByLabel("Monospace font", { exact: true })).toHaveValue("monospace");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("button", { name: "Night study is current" })).toBeDisabled();
+
+  // The sign-in page shows the workspace's theme in the visitor's own mode.
+  for (const scheme of ["light", "dark"] as const) {
+    const signedOut = await browser.newContext({ baseURL: origin, colorScheme: scheme });
+    try {
+      const visitor = await signedOut.newPage();
+      await visitor.goto("/sign-in");
+      await expect(visitor.getByRole("heading", { name: "Sign in to Your Space" })).toBeVisible();
+      await expect(visitor.locator("html")).toHaveCSS("color-scheme", scheme);
+      await expect.poll(() => background(visitor)).toBe(scheme === "dark" ? cinder.dark.bg : cinder.light.bg);
+      await expect(visitor.getByRole("heading")).toHaveCSS("font-family", /Georgia/);
+      expect((await signedOut.request.get("/api/appearance")).status()).toBe(401);
+    } finally { await signedOut.close(); }
+  }
 });

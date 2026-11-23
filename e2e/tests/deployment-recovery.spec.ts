@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { starterThemes } from "../../shared/appearance/theme.mjs";
+import { builtInThemes } from "../../shared/appearance/theme.mjs";
 
 async function recoveryFixture(page: Page, response: "received" | "lost-applied" | "lost-pending" | "truncated" | "rollback") {
   const appId = "d1234567-1234-4123-8123-123456789abc";
@@ -46,8 +46,10 @@ async function recoveryFixture(page: Page, response: "received" | "lost-applied"
         session: { id: previewId, userId: appId, expiresAt: "2099-01-01" },
       };
     } else if (pathname === "/api/auth/organization/list") json = [{ id: appId, name: "Fixture", slug: "fixture" }];
-    else if (pathname === "/api/appearance/active") json = starterThemes[0]!.theme;
-    else if (pathname === "/api/status") json = { owner: true };
+    else if (pathname === "/api/appearance/active") {
+      const { style, fonts, light, dark } = builtInThemes[0]!.theme;
+      json = { mode: "light", style, fonts, light, dark };
+    } else if (pathname === "/api/status") json = { owner: true };
     else if (pathname === "/api/workspace-layout") json = { revision: 1, appOrder: [app.name], views: [] };
     else if (pathname === "/api/apps") json = { apps: [app] };
     else if (pathname === "/api/apps/desk") json = app;

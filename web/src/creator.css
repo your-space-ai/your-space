@@ -84,7 +84,7 @@
   margin-top: 1rem;
 }
 .file-editor textarea {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   padding: 0.6rem;
   border-radius: 6px;
 }

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { fromNodeHeaders } from "better-auth/node";
 import { and, eq } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { defaultThemeId, starterThemes, validateTheme, type Theme } from "../../shared/appearance/theme.mjs";
+import { builtInThemes, defaultThemeId, themeModes, validateTheme, type Theme, type ThemeMode } from "../../shared/appearance/theme.mjs";
 import type { Auth } from "./auth.ts";
 import { member } from "./db/auth-schema.ts";
 import type { Db } from "./db/client.ts";
@@ -11,10 +11,11 @@ import { installation, workspaceAppearance } from "./db/schema.ts";
 interface Catalog {
   revision: number;
   activeId: string;
+  mode: ThemeMode;
   themes: { id: string; theme: Theme }[];
 }
-const defaults = (): Catalog => ({ revision: 0, activeId: defaultThemeId, themes: [] });
-const preset = (id: string) => starterThemes.find(entry => entry.id === id)?.theme;
+const defaults = (): Catalog => ({ revision: 0, activeId: defaultThemeId, mode: "system", themes: [] });
+const preset = (id: string) => builtInThemes.find(entry => entry.id === id)?.theme;
 const MAX_THEMES = 32;
 
 class AppearanceError extends Error {
@@ -38,9 +39,13 @@ function unknownTheme(): never {
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 async function catalog(db: Db | Tx, workspaceId: string): Promise<Catalog> {
   const [row] = await db.select({
-    revision: workspaceAppearance.revision, activeId: workspaceAppearance.activeId, themes: workspaceAppearance.themes,
+    revision: workspaceAppearance.revision, activeId: workspaceAppearance.activeId, mode: workspaceAppearance.mode,
+    themes: workspaceAppearance.themes,
   }).from(workspaceAppearance).where(eq(workspaceAppearance.workspaceId, workspaceId));
-  return row ?? defaults();
+  if (!row) return defaults();
+  // Every saved theme was validated when it was written. A version 1 theme reads as version 2, and
+  // is stored that way with the catalog's next change.
+  return { ...row, themes: row.themes.map(({ id, theme }) => ({ id, theme: validateTheme(theme) })) };
 }
 
 type Change = (current: Catalog, body: Record<string, unknown>, req: Request) => void;
@@ -54,9 +59,9 @@ export function appearanceRoutes(auth: Auth, db: Db) {
       .where(and(eq(installation.id, 1), eq(installation.state, "claimed")));
     const current = workspace?.id ? await catalog(db, workspace.id) : defaults();
     const entry = current.themes.find(item => item.id === current.activeId)?.theme ?? preset(current.activeId);
-    // Select only portable appearance values. Names and the custom catalog belong to the owner.
-    const { scheme, tokens } = validateTheme(entry ?? preset(defaultThemeId));
-    res.json({ scheme, tokens });
+    // Select only portable appearance values and the mode. Names and the custom catalog belong to the owner.
+    const { style, fonts, light, dark } = validateTheme(entry ?? preset(defaultThemeId));
+    res.json({ mode: current.mode, style, fonts, light, dark });
   });
 
   const manage = (fields: string[], change?: Change) => async (req: Request, res: Response, next: NextFunction) => {
@@ -101,6 +106,10 @@ export function appearanceRoutes(auth: Auth, db: Db) {
     if (typeof body.id !== "string") invalid();
     if (!preset(body.id) && !current.themes.some(item => item.id === body.id)) unknownTheme();
     current.activeId = body.id;
+  }));
+  router.put("/mode", manage(["mode"], (current, body) => {
+    if (!themeModes.includes(body.mode as ThemeMode)) invalid("Choose Match my device, Light or Dark.");
+    current.mode = body.mode as ThemeMode;
   }));
 
   const save = manage(["theme", "activate"], (current, body, req) => {
