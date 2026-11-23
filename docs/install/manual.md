@@ -1,4 +1,6 @@
-# Install by hand (advanced)
+---
+title: "Install by hand (advanced)"
+---
 
 These are the steps the `your-space` command takes for you: download the release, configure `.env`,
 and run Docker Compose and the server's commands. Use them if you'd rather not install the command.
@@ -48,7 +50,7 @@ misspelled. Caddy waits for the server, so a wrong line never opens a port.
 
 Your Space needs three secrets: the auth secret that signs sessions, the database password, and the
 data key that encrypts installed apps' settings (see
-[What Your Space Encrypts](../operate/README.md#what-your-space-encrypts)). On the first start it generates each one, 32
+[What Your Space Encrypts](../operate/index.md#what-your-space-encrypts)). On the first start it generates each one, 32
 random bytes, and keeps it in the `ys-secrets` volume. It never generates them again, and it never
 logs them. The log only notes that they were generated (`docker compose logs secrets`).
 
@@ -93,7 +95,7 @@ all four services running (`caddy`, `server`, `runtime` and `postgres`), with `s
 | `Set YS_DOMAIN (your own domain) or YS_PROXY_URL (your own proxy or Tailscale) in .env, not both` | Remove one of the two lines. Every `docker compose` command stops with this message until you do |
 | `address already in use` or `port is already allocated`, for port 80 or 8080 | Another program uses the port. Add `YS_PORT=8081` (or any free port) to `.env` |
 | The same, for port 443 with your own domain | Another program uses the port, such as another web server. Stop it, or put Your Space behind it as [your own proxy](other-devices.md#use-your-own-reverse-proxy) |
-| `server` is `unhealthy` after it was running | Run `docker compose logs server postgres` and see [When the Database Is Down](../operate/README.md#when-the-database-is-down) |
+| `server` is `unhealthy` after it was running | Run `docker compose logs server postgres` and see [When the Database Is Down](../operate/index.md#when-the-database-is-down) |
 
 Open your address (for example `http://space.localhost`). It says Your Space has no owner yet and shows
 the command to create one. There is no sign-up form: nobody can make an account from the web.
@@ -141,7 +143,7 @@ exit status says what happened:
 | 3 | The database could not be read. No owner was created; once the database is back, run the same command again |
 | 4 | Something unexpected went wrong; nothing was reported as done |
 
-The [command contract](../../specs/001-workspace-owner-access/contracts/operator-commands.md) lists
+The [command contract](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/contracts/operator-commands.md) lists
 the exact output.
 
 ## 5. Set Your Password and Sign In

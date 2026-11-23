@@ -1,4 +1,6 @@
-# Your Space Architecture and Product Decisions
+---
+title: "Your Space Architecture and Product Decisions"
+---
 
 **Status**: Accepted direction with implementation choices explicitly left open
 
@@ -8,11 +10,11 @@
 
 **Scope**: Project-wide direction, independent of any feature specification
 
-**Delivery view**: [Roadmap](../roadmap.md), derived from this record, and the [spec map](../../specs/README.md)
+**Delivery view**: [Roadmap](../roadmap.md), derived from this record, and the [spec map](https://github.com/your-space-ai/your-space/blob/main/specs/README.md)
 
-**Related features**: [Workspace Setup and Owner Access specification](../../specs/001-workspace-owner-access/spec.md) and [Install an App and Use It specification](../../specs/002-install-an-app/spec.md)
+**Related features**: [Workspace Setup and Owner Access specification](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/spec.md) and [Install an App and Use It specification](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/spec.md)
 
-**Governing document**: [Your Space Constitution](../../.specify/memory/constitution.md)
+**Governing document**: [Your Space Constitution](https://github.com/your-space-ai/your-space/blob/main/.specify/memory/constitution.md)
 
 ## Personal dashboard release boundary
 
@@ -20,19 +22,19 @@
 
 One useful action in a real connected app, with attribution, denial, and revocation, is the finish for journey 005. That requires a small working app integration. Team administration, general-purpose SDKs, desktop distribution and automated lifecycle management can each ship independently after this personal workflow works. Preserve their journey numbers and the detailed decisions below as future direction. This boundary supersedes earlier release timing and the eight-journey pre-public sequence throughout this record. The [roadmap](../roadmap.md) defines current sequencing.
 
-**Owner update (2026-11-21).** The first public release also requires a downloadable macOS Electron app. On first launch the owner chooses between setting up a local workspace and connecting to an existing server by URL. Local setup detects a Docker engine, lets the owner override that choice, guides them through installation or startup if needed, and drives the existing Your Space CLI and owner setup. Connecting to a server works on a Mac without Docker. Both paths open the selected server's dashboard, where the owner can review and apply installation kits. The headless Docker and browser paths still ship. Journey [008](../../specs/008-desktop-entry/spec.md) owns desktop entry and packaging. Journey 005 still owns agent identity, grants and approvals. Windows and Linux desktop downloads, a bundled engine or VM, and the remaining desktop lifecycle features follow publication.
+**Owner update (2026-11-21).** The first public release also requires a downloadable macOS Electron app. On first launch the owner chooses between setting up a local workspace and connecting to an existing server by URL. Local setup detects a Docker engine, lets the owner override that choice, guides them through installation or startup if needed, and drives the existing Your Space CLI and owner setup. Connecting to a server works on a Mac without Docker. Both paths open the selected server's dashboard, where the owner can review and apply installation kits. The headless Docker and browser paths still ship. Journey [008](https://github.com/your-space-ai/your-space/blob/main/specs/008-desktop-entry/spec.md) owns desktop entry and packaging. Journey 005 still owns agent identity, grants and approvals. Windows and Linux desktop downloads, a bundled engine or VM, and the remaining desktop lifecycle features follow publication.
 
 **Source preview (2026-11-21).** Prepare a quiet source preview with a Docker quickstart before the first tagged product release. The owner reviews exposure before changing repository visibility. The Mac download, clean-install checks and marketing launch follow separately. Public pull requests use ordinary CI without the maintainer’s subscription-backed reviewer.
 
 ### Portable workspace appearance
 
-The owner chooses from three starters, customizes colors and local font families, and imports or exports versioned theme files. The dashboard uses its selected server’s appearance. The disconnected Mac launcher stores its own device preference and reads the same file format. Theme data controls visual presentation. The server keeps roles, approvals, installed apps and their permissions independent of theme selection. [Journey 010](../../specs/010-personal-themes/spec.md)
+The owner chooses from three starters, customizes colors and local font families, and imports or exports versioned theme files. The dashboard uses its selected server’s appearance. The disconnected Mac launcher stores its own device preference and reads the same file format. Theme data controls visual presentation. The server keeps roles, approvals, installed apps and their permissions independent of theme selection. [Journey 010](https://github.com/your-space-ai/your-space/blob/main/specs/010-personal-themes/spec.md)
 
 ### Kit-defined roles, server-held credentials and approvals
 
-**Owner decision, 2026-11-21.** Extend installation kits to define app roles as sets of allowed HTTP method/route pairs. An agent may hold any number of roles per installation. The delegable subset is drawn from kit roles the owner enables in Your Space for that installation. The bound credential’s native app scope is an independent ceiling. Your Space checks the union of current grants and injects the bound app credential server-side. The agent uses only its Your Space key. Owners choose when to approve requests, with route-level controls, an all-writes setting and recommended defaults from vetted community kits. This settles the gateway’s route-level responsibility left open below. Native app authorization still applies. [Journey 005](../../specs/005-owner-agent/spec.md) specifies the exact-request approval flow. The owner confirmed that Ask for all writes overrides any per-route Allow.
+**Owner decision, 2026-11-21.** Extend installation kits to define app roles as sets of allowed HTTP method/route pairs. An agent may hold any number of roles per installation. The delegable subset is drawn from kit roles the owner enables in Your Space for that installation. The bound credential’s native app scope is an independent ceiling. Your Space checks the union of current grants and injects the bound app credential server-side. The agent uses only its Your Space key. Owners choose when to approve requests, with route-level controls, an all-writes setting and recommended defaults from vetted community kits. This settles the gateway’s route-level responsibility left open below. Native app authorization still applies. [Journey 005](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/spec.md) specifies the exact-request approval flow. The owner confirmed that Ask for all writes overrides any per-route Allow.
 
-**Creator workflow (2026-11-21).** The first release includes host-authorized agent setup, portable app scaffolding and a selectable Home with owner-chosen app read roles. GitHub is the first source provider for managed public and private repos, agent forks and edits, and the kit directory. The server retains the GitHub credential. A workspace agent can edit only explicitly delegated sources or its own authorized creations. Only the owner confirms a replacement of a running installation at a specific commit with compatible storage. This brings the kit directory, private installs and compatible manual replacement ahead of the broader publishing, SDK and lifecycle work. [Journey 011](../../specs/011-agent-workspace/spec.md)
+**Creator workflow (2026-11-21).** The first release includes host-authorized agent setup, portable app scaffolding and a selectable Home with owner-chosen app read roles. GitHub is the first source provider for managed public and private repos, agent forks and edits, and the kit directory. The server retains the GitHub credential. A workspace agent can edit only explicitly delegated sources or its own authorized creations. Only the owner confirms a replacement of a running installation at a specific commit with compatible storage. This brings the kit directory, private installs and compatible manual replacement ahead of the broader publishing, SDK and lifecycle work. [Journey 011](https://github.com/your-space-ai/your-space/blob/main/specs/011-agent-workspace/spec.md)
 
 ## Purpose and Scope
 
@@ -89,7 +91,7 @@ Exact supported OS versions, prerequisites, networking, and proxy configuration 
 
 **Decision update (2026-11-03):** The built-in proxy moves from the CLI specification into the
 owner-access feature (spec 001), and Caddy is selected. Caddy obtains and renews certificates
-natively, so HTTPS needs configuration rather than custom code ([constitution principle VII](../../.specify/memory/constitution.md#vii-reuse-before-building-with-few-trusted-dependencies)).
+natively, so HTTPS needs configuration rather than custom code ([constitution principle VII](https://github.com/your-space-ai/your-space/blob/main/.specify/memory/constitution.md#vii-reuse-before-building-with-few-trusted-dependencies)).
 Shipping it with the first Compose stack means remote access is HTTPS from the first install instead
 of relying only on the owner's own proxy or tunnel. Spec 002 adds app routing to the same proxy,
 and the CLI asks for the domain during installation. This supersedes the 2026-11-02 note that the
@@ -109,7 +111,7 @@ rather than computed or left to Docker's defaults, and the server refuses a wron
 misspelled setting before any port opens. The alternative most projects use, one address setting
 with ports open on every interface, was rejected because a fresh local install on a Linux server
 would put its sign-in page on the network. The research and the designs
-considered are summarized in [research R9](../../specs/001-workspace-owner-access/research.md#r9-https-and-the-caddy-configuration).
+considered are summarized in [research R9](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/research.md#r9-https-and-the-caddy-configuration).
 The CLI (spec 003) writes the same lines.
 
 **Decision update (2026-11-08):** Your Space generates its own platform secrets. A secret the owner
@@ -122,7 +124,7 @@ dedicated secret manager was rejected for now, because on one machine its unseal
 same disk and it adds a container and bootstrap secrets of its own; OpenBao (MPL-2.0) is the
 upgrade path.
 The research and alternatives are summarized in
-[research R16](../../specs/001-workspace-owner-access/research.md#r16-platform-secrets).
+[research R16](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/research.md#r16-platform-secrets).
 
 **Decision update (2026-11-14):** Your Space needs a Docker-compatible engine, not Docker Desktop.
 On Linux servers the host's Docker Engine is the default. On macOS, and later Windows, Your Space
@@ -133,7 +135,7 @@ only for personal use, education, non-commercial open source and small businesse
 tools such as Colima and Lima run the same engine in a VM on macOS. This supersedes the statements
 that the local audience installs Docker Desktop and that a Windows local workspace runs through
 Docker Desktop. See the
-[002 research](../../specs/002-install-an-app/research.md#docker-desktop-is-not-a-dependency).
+[002 research](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/research.md#docker-desktop-is-not-a-dependency).
 
 **Decision update (2026-11-14):** On this machine Your Space's address is `http://space.localhost`,
 and `http://localhost` redirects to it. This supersedes `http://localhost` in the 2026-11-08 update
@@ -142,7 +144,7 @@ browsers treat `localhost` and `sure.localhost` as different sites, so an app in
 `localhost` can't keep its own session. `space.localhost` and `sure.space.localhost` are one site in
 Chromium and Firefox, and every `*.localhost` name reaches the machine itself with no setup
 (RFC 6761). Plain HTTP is still supported only on this machine. See
-[research R2](../../specs/002-install-an-app/research.md#r2-apps-in-panes-framing-cookies-and-app-addresses).
+[research R2](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/research.md#r2-apps-in-panes-framing-cookies-and-app-addresses).
 
 ### CLI Delivery Sequence
 
@@ -175,7 +177,7 @@ Guided installation remains the product direction. The initial guide and browser
 **Decision update (2026-11-02):** The CLI provides an uninstall command before publication instead of documented manual removal. Apps run in containers Your Space starts outside the main Compose file, so `docker compose down` alone would leave app containers and data behind; only Your Space knows what it started.
 
 **Decision update (2026-11-17):** Journey 003 specifies the CLI
-([spec 003](../../specs/003-install-with-the-cli/spec.md)). At the owner's request it follows the
+([spec 003](https://github.com/your-space-ai/your-space/blob/main/specs/003-install-with-the-cli/spec.md)). At the owner's request it follows the
 Supabase CLI's shape: the `your-space` command comes from package managers (an npm package, `.deb`
 and `.rpm` packages built with the distributions' own tools, and standalone executables built with
 Node's own single-executable feature), works on the installation in the current folder, and
@@ -210,7 +212,7 @@ pass before release, after the journeys, so they aren't repeated after each one.
 
 **Decision update (2026-11-17):** Your Space encrypts the secrets it stores, today installed apps'
 settings, with a data key of its own: a third platform secret generated into `ys-secrets`, or set in
-`.env` as `YS_DATA_KEY` ([spec 009](../../specs/009-encrypt-stored-data/spec.md)). It replaces the key
+`.env` as `YS_DATA_KEY` ([spec 009](https://github.com/your-space-ai/your-space/blob/main/specs/009-encrypt-stored-data/spec.md)). It replaces the key
 derived from the auth secret, which tied the two together, and existing installations move onto it
 when the server starts. Standard PostgreSQL doesn't encrypt what it stores, and the only
 whole-database option, Percona's `pg_tde`, needs Percona's own PostgreSQL build rather than the
@@ -230,14 +232,14 @@ PostgreSQL provides one persistence foundation across local and hosted server de
 This choice does not require every independently developed app to use PostgreSQL.
 Exact runtime and database versions, migration execution and recovery strategy, and connection configuration remain open.
 
-**Decision update (2026-11-03):** The [001 technical plan](../../specs/001-workspace-owner-access/plan.md) selects Node.js 26 LTS and PostgreSQL 18, with Drizzle and `pg`, and applies Drizzle Kit migrations at server startup. Recovery from a failed migration belongs with update rollback in spec 006.
+**Decision update (2026-11-03):** The [001 technical plan](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/plan.md) selects Node.js 26 LTS and PostgreSQL 18, with Drizzle and `pg`, and applies Drizzle Kit migrations at server startup. Recovery from a failed migration belongs with update rollback in spec 006.
 
 ### Web Client
 
 - Use React, TypeScript, and Vite for the initial web client.
 - Router, query/state tooling, styling, and component library remain implementation planning choices.
 
-**Decision update (2026-11-03):** The [001 technical plan](../../specs/001-workspace-owner-access/plan.md) selects TanStack Router and TanStack Query, with Better Auth's React client for session calls, plain CSS, native form validation, and no component library. Caddy serves the built web client as static files and forwards `/api` to the Express server, so the client and API share one origin. A server-rendered frontend was considered and deferred until a spec needs public, logged-out pages.
+**Decision update (2026-11-03):** The [001 technical plan](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/plan.md) selects TanStack Router and TanStack Query, with Better Auth's React client for session calls, plain CSS, native form validation, and no component library. Caddy serves the built web client as static files and forwards `/api` to the Express server, so the client and API share one origin. A server-rendered frontend was considered and deferred until a spec needs public, logged-out pages.
 
 ### Owner and Workspace Model
 
@@ -272,7 +274,7 @@ Every installation uses the same owner command. In desktop local mode, the deskt
 The same account model serves local and remote installations; deployment configuration may govern email delivery and verification policy.
 Separate local-only and hosted authentication implementations are not part of the direction.
 
-**Decision update (2026-11-03):** The [001 technical plan](../../specs/001-workspace-owner-access/plan.md) uses Better Auth's organization plugin for the workspace, membership, and owner role, and settles password rules, session and link lifetimes, and sign-in limits in its [settled values](../../specs/001-workspace-owner-access/plan.md#settled-values).
+**Decision update (2026-11-03):** The [001 technical plan](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/plan.md) uses Better Auth's organization plugin for the workspace, membership, and owner role, and settles password rules, session and link lifetimes, and sign-in limits in its [settled values](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/plan.md#settled-values).
 
 **Decision update (2026-11-11):** The owner signs in with a username instead of an email address, superseding email as the login identifier. An email address is optional at owner creation and only for verification and recovery links once owner-configured email delivery exists (still post-open-source); it never signs in. Most self-hosted installations have no email delivery, so an address the owner can't verify adds a field without a use, and a username is shorter to type on every device. Better Auth's username plugin provides the sign-in; email sign-in and the username-availability check are turned off, so the network can't use either to probe for accounts. Better Auth's user table requires an email, so an owner who gives none holds a reserved `@users.invalid` address (RFC 2606), which can't receive mail and is never shown. Usernames are 3 to 30 letters, digits, `_` or `.` (each `.` between other characters), compared without case. Whether invited members (spec 004) sign in the same way is settled in the members specification.
 
@@ -324,7 +326,7 @@ What counts as a failed Your Space update, snapshot contents and storage, how th
 
 ### Reuse Before Building
 
-Governed by [constitution principle VII](../../.specify/memory/constitution.md#vii-reuse-before-building-with-few-trusted-dependencies).
+Governed by [constitution principle VII](https://github.com/your-space-ai/your-space/blob/main/.specify/memory/constitution.md#vii-reuse-before-building-with-few-trusted-dependencies).
 
 - Prefer established open-source libraries and tools over custom code. Before building something,
   check whether a selected library already provides it.
@@ -354,7 +356,7 @@ custom code are added only when a requirement needs them.
 
 ### Concepts and Adapters
 
-Governed by [constitution principle VIII](../../.specify/memory/constitution.md#viii-build-around-concepts-not-technologies).
+Governed by [constitution principle VIII](https://github.com/your-space-ai/your-space/blob/main/.specify/memory/constitution.md#viii-build-around-concepts-not-technologies).
 
 - Your Space implements against concepts, such as an engine connection, an app endpoint or a secret
   store, that different technologies can sit behind. It never implements against one specific tool.
@@ -369,7 +371,7 @@ another machine, and apps someone already runs elsewhere. Written against the co
 those is a new adapter rather than a change through Your Space. Journey 002's concepts are the app
 description, the runtime, the runtime connection, the app endpoint and the installation kit; its
 first adapters are the Compose importer and the Docker adapter, which is the runtime manager. See
-[concepts and adapters](../../specs/002-install-an-app/spec.md#concepts-and-adapters) in spec 002.
+[concepts and adapters](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/spec.md#concepts-and-adapters) in spec 002.
 
 ## Accepted Product and Repository Direction
 
@@ -413,7 +415,7 @@ installable, while level 0 lets any app with a published image and a Compose fil
 This refines the intended developer experience below: adapting an app is needed only for levels 1
 and 2. The TypeScript SDK, app roles and verified identity for apps move out of journey 002; both
 SDKs remain required before publication. See
-[later: deeper integration](../../specs/002-install-an-app/spec.md#later---deeper-integration).
+[later: deeper integration](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/spec.md#later---deeper-integration).
 
 **Decision update (2026-11-14):** An app someone already runs elsewhere is added through a connector
 that runs next to it and connects out to Your Space, so the app needs no open port and its authors
@@ -521,7 +523,7 @@ packaged product release follows the [maintainer release guide](../maintainers/r
 
 **Decision update (2026-11-02):** Simplicity by default is a product principle for every client and feature. New settings, logs, and configuration go behind advanced controls unless most users need them.
 
-**Decision update (2026-11-08):** Configuration is optional, part of [constitution principle II](../../.specify/memory/constitution.md#ii-preserve-user-control-and-hosting-choice) since version 1.2.0 (2026-11-07). Required settings are each a chance to get an install wrong, and they freeze today's choice into every owner's file, so a better default later reaches nobody. Plans name each setting's default and how it is derived, and the documentation lists the defaults so an owner can see what a line would change. Where a tool can't derive a value, the setting stays and the CLI (spec 003) derives it; in the manual Compose install, the one line the owner writes picks the port bindings (see [Installation and Hosting](#installation-and-hosting)).
+**Decision update (2026-11-08):** Configuration is optional, part of [constitution principle II](https://github.com/your-space-ai/your-space/blob/main/.specify/memory/constitution.md#ii-preserve-user-control-and-hosting-choice) since version 1.2.0 (2026-11-07). Required settings are each a chance to get an install wrong, and they freeze today's choice into every owner's file, so a better default later reaches nobody. Plans name each setting's default and how it is derived, and the documentation lists the defaults so an owner can see what a line would change. Where a tool can't derive a value, the setting stays and the CLI (spec 003) derives it; in the manual Compose install, the one line the owner writes picks the port bindings (see [Installation and Hosting](#installation-and-hosting)).
 
 **Decision update (2026-11-14):** Names follow one picture: Your Space is the home, apps are its
 appliances and furniture, providers such as LLM services are its utilities, and installation kits
@@ -626,9 +628,9 @@ app's files by link and exact commit and never copies them, so the app's license
 Space contains no logic for a particular app, and an app with no kit installs if its own files are
 enough. App authors can't be expected to add a section for Your Space, and requiring one would leave
 almost no existing app installable. The format is in the
-[kit contract](../../specs/002-install-an-app/contracts/kit-format.md).
+[kit contract](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
 
-**Decision update (2026-11-14):** The [002 plan](../../specs/002-install-an-app/plan.md#runtime-manager-docker-adapter)
+**Decision update (2026-11-14):** The [002 plan](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/plan.md#runtime-manager-docker-adapter)
 sets the approved list of Compose settings for every app, checked against Sure's and Twenty's
 files, refining the plan to grow it from the first app alone. It is checked against the fully
 resolved file (`docker compose config`, after `include`, `extends`, anchors and placeholders), never
@@ -658,7 +660,7 @@ to 1.5 GB of memory, and loses Compose features apps rely on; it stays possible 
 adapter. Socket proxies, Docker-in-Docker, gVisor, Kata and Docker Desktop's Enhanced Container
 Isolation were also considered; optional hardening for servers (Sysbox, rootless Docker) is later
 work. Engines reached over `ssh://` or `tcp://` wait until an engine on another machine is in scope.
-See [research R1](../../specs/002-install-an-app/research.md#r1-how-your-space-runs-app-containers).
+See [research R1](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/research.md#r1-how-your-space-runs-app-containers).
 
 **Decision update (2026-11-14):** Each app is one Compose project with its own named volumes and its
 own sealed network: `internal`, in Docker 28's isolated gateway mode, so it has no route to the host
@@ -668,7 +670,7 @@ only through it: it allows the approved host names, denies private and link-loca
 everything else, and its log of denials becomes access requests. An app that ignores proxy settings
 has no route out at all. Smokescreen was rejected because it publishes no image and identifies
 clients by TLS certificate, and a custom proxy because it is security code to maintain. Squid uses
-about 16 MB of memory per app. See [research R3](../../specs/002-install-an-app/research.md#r3-what-building-the-journey-showed).
+about 16 MB of memory per app. See [research R3](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/research.md#r3-what-building-the-journey-showed).
 
 **Decision update (2026-11-14):** An app reaches only the internet hosts approved for it. Its
 installation kit names starter hosts, the ones it needs to work at all; the install review lists
@@ -740,7 +742,7 @@ either: an app on another port of Your Space's host receives the platform sessio
 CasaOS and Runtipi show, while a host name per app is what Codespaces, Gitpod, Coder, OrbStack and
 JupyterHub use. This supersedes the port-per-app fallback for hosts without wildcard DNS. The owner
 creates Tailscale Services for now; whether Your Space can create them is left for journey 003. See
-[research R2](../../specs/002-install-an-app/research.md#r2-apps-in-panes-framing-cookies-and-app-addresses).
+[research R2](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/research.md#r2-apps-in-panes-framing-cookies-and-app-addresses).
 (2026-11-19: Tailscale names can't hold `<app>.<Your Space's address>`; on Tailscale an app is
 published on a port and gets a Tailscale Service of its own; see
 [running apps and reaching them](#running-apps-and-reaching-them).)
@@ -774,7 +776,7 @@ its pass and the gate's redirects loop. Your Space detects the loop and offers t
 tab, behind the same gate. Chromium and Firefox run apps in panes on that setup, and with HTTPS on a
 real domain, Your Space and its apps are one site in WebKit too. Safari on macOS uses a different
 cookie stack and is still to check. See
-[research R3](../../specs/002-install-an-app/research.md#cookies-and-panes-on-the-local-setup).
+[research R3](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/research.md#cookies-and-panes-on-the-local-setup).
 
 #### Running Apps and Reaching Them
 
@@ -1033,9 +1035,9 @@ This is a developing release roadmap, not a complete acceptance specification or
 
 **Current scope (2026-11-21).** 001–003 supply the foundation. Both 005 agent access and 008 macOS desktop entry must pass before release. Journeys 004, 006, 007 and the rest of 008 follow publication. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
 
-**Decision update (2026-11-02):** Pre-public work is specified as eight user journeys rather than one specification per roadmap capability. Each journey follows a person from where they start to a result they can see, so one specification covers many roadmap items and is tested the way people will use it. The [spec map](../../specs/README.md) lists the journeys, what each covers, and the build order.
+**Decision update (2026-11-02):** Pre-public work is specified as eight user journeys rather than one specification per roadmap capability. Each journey follows a person from where they start to a result they can see, so one specification covers many roadmap items and is tested the way people will use it. The [spec map](https://github.com/your-space-ai/your-space/blob/main/specs/README.md) lists the journeys, what each covers, and the build order.
 
-- The build order is 001 set up my space ([spec](../../specs/001-workspace-owner-access/spec.md)), 002 install an app and use it, 003 install and run with the CLI, 004 invite my team, 005 let my agent work for me, 006 keep my space safe over time, then 007 build my own app and 008 use Your Space as an app on my computer in parallel.
+- The build order is 001 set up my space ([spec](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/spec.md)), 002 install an app and use it, 003 install and run with the CLI, 004 invite my team, 005 let my agent work for me, 006 keep my space safe over time, then 007 build my own app and 008 use Your Space as an app on my computer in parallel.
 - The app UI and sign-in specification becomes part of 002, which ends with the Tasks app working inside Your Space. It still comes before the CLI, so app origins are settled before the CLI sets up HTTPS. If 002 proves too large, it can split into opening an app inside Your Space and installing an app from a URL. (2026-11-14: 002 ends with Sure working inside Your Space, and is delivered in slices instead of split; see below.)
 - The app contract defines app roles in 002, although only the owner exists then, so 004 adds role assignment without changing the contract. (Superseded 2026-11-14: app roles come with level 2 integration in a later journey; see [identity and app-owned roles](#identity-and-app-owned-roles).)
 - The activity log arrives with agents in 005, since reviewing what agents did is its main purpose. App installs and member changes are logged from then on.
@@ -1084,7 +1086,7 @@ working, tested end to end in the browser, and later slices build on it without 
 spec orders its slices by what each needs. This refines the 2026-11-08 stack rule, whose later pull
 requests each added a layer that passed its own checks, so that a reviewer sees each piece
 working. Journey 002's ten slices are listed in its
-[spec](../../specs/002-install-an-app/spec.md#slices-and-their-dependencies).
+[spec](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/spec.md#slices-and-their-dependencies).
 
 **Decision update (2026-11-14):** At the owner's request on 2026-11-14, a journey is built end to end
 on one branch first, then split into its stack of pull requests in slice order. This refines the
@@ -1099,18 +1101,18 @@ kits, settings and secrets, outbound access requests, isolation, limits, status 
 with retained data, and an Engine page showing the engine connection and its resources. App roles,
 verified identity for apps and the TypeScript SDK move to the journeys that bring levels 1 and 2
 (004, 005 and 007). This supersedes the bullets above that 002 ends with the Tasks app and defines
-app roles. The [spec map](../../specs/README.md) and [roadmap](../roadmap.md) follow it.
+app roles. The [spec map](https://github.com/your-space-ai/your-space/blob/main/specs/README.md) and [roadmap](../roadmap.md) follow it.
 
 ## Choices Still Open
 
 | Area | Current status |
 | --- | --- |
-| Client supporting libraries | TanStack Router, TanStack Query, plain CSS, and no component library are selected in the [001 plan](../../specs/001-workspace-owner-access/plan.md). A design system is open for the later interface design spec. |
-| Database configuration | PostgreSQL 18 with Drizzle and `pg`; Drizzle Kit migrations applied at server startup. Settled in the [001 plan](../../specs/001-workspace-owner-access/plan.md). Recovery from a failed migration belongs with update rollback in spec 006. |
-| Authentication configuration | Better Auth with its organization plugin; password rules, lifetimes, attempt limits, and adapter configuration are settled in the [001 plan](../../specs/001-workspace-owner-access/plan.md). |
-| Initial deployment details | macOS and Linux with manual Docker Compose are selected. HTTPS comes from a Caddy reverse proxy in the Compose stack, delivered in the owner-access feature, with automatic certificates for an owner-provided domain, a bring-your-own-proxy option, and documented tunnel guidance; plain HTTP is supported only on this machine, at `space.localhost` since 2026-11-14. Host versions (Docker Engine 28.3.3 and Compose 2.26.0 or newer), the one-line setups, and generated platform secrets are settled in the [001 plan](../../specs/001-workspace-owner-access/plan.md); support claims wait for verification on real hosts. |
-| Desktop app | [008](../../specs/008-desktop-entry/spec.md) ships signed, notarized Electron disk images for Apple Silicon and Intel on GitHub Releases. Owners drag the app into Applications. Private previews use ZIP archives. For a local workspace it drives the CLI with the chosen Docker engine. For an existing server it opens the dashboard at the owner's URL. The later desktop scope covers Windows and Linux, the bundled VM, version compatibility, lifecycle tools and self-update. |
-| CLI delivery | Specified in [spec 003](../../specs/003-install-with-the-cli/spec.md) (2026-11-17): the `your-space` command, `init` then `start` in a folder, from npm, Linux packages and standalone executables; Linux first, the CLI used by the Mac desktop in 008, standalone macOS packaging after publication, and Windows with the later desktop work. Update, backup, restore and uninstall come with journey 006; uninstall removes managed app containers and keeps data unless the owner confirms deletion. Agent commands come with journey 005. |
+| Client supporting libraries | TanStack Router, TanStack Query, plain CSS, and no component library are selected in the [001 plan](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/plan.md). A design system is open for the later interface design spec. |
+| Database configuration | PostgreSQL 18 with Drizzle and `pg`; Drizzle Kit migrations applied at server startup. Settled in the [001 plan](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/plan.md). Recovery from a failed migration belongs with update rollback in spec 006. |
+| Authentication configuration | Better Auth with its organization plugin; password rules, lifetimes, attempt limits, and adapter configuration are settled in the [001 plan](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/plan.md). |
+| Initial deployment details | macOS and Linux with manual Docker Compose are selected. HTTPS comes from a Caddy reverse proxy in the Compose stack, delivered in the owner-access feature, with automatic certificates for an owner-provided domain, a bring-your-own-proxy option, and documented tunnel guidance; plain HTTP is supported only on this machine, at `space.localhost` since 2026-11-14. Host versions (Docker Engine 28.3.3 and Compose 2.26.0 or newer), the one-line setups, and generated platform secrets are settled in the [001 plan](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/plan.md); support claims wait for verification on real hosts. |
+| Desktop app | [008](https://github.com/your-space-ai/your-space/blob/main/specs/008-desktop-entry/spec.md) ships signed, notarized Electron disk images for Apple Silicon and Intel on GitHub Releases. Owners drag the app into Applications. Private previews use ZIP archives. For a local workspace it drives the CLI with the chosen Docker engine. For an existing server it opens the dashboard at the owner's URL. The later desktop scope covers Windows and Linux, the bundled VM, version compatibility, lifecycle tools and self-update. |
+| CLI delivery | Specified in [spec 003](https://github.com/your-space-ai/your-space/blob/main/specs/003-install-with-the-cli/spec.md) (2026-11-17): the `your-space` command, `init` then `start` in a folder, from npm, Linux packages and standalone executables; Linux first, the CLI used by the Mac desktop in 008, standalone macOS packaging after publication, and Windows with the later desktop work. Update, backup, restore and uninstall come with journey 006; uninstall removes managed app containers and keeps data unless the owner confirms deletion. Agent commands come with journey 005. |
 | Your Space updates and backup | Failed Your Space updates roll back automatically using the pre-update snapshot mechanism shared with app updates. Failed-update detection and snapshot details need definition. Backup and restore are scheduled after publication, and moving between installations is a backup and restore the person does (2026-11-14); whether a remote backup goes through the client or a credential issued there (2026-11-17), restore into a broken or fresh installation, and backup format and protection remain open. |
 | Member and agent removal | Removal revokes the member's and their agents' access, disables their agents, and keeps former members and deleted agents traceable in past activity. Removal flow, retained record contents, and re-invitation need definition in the members specification. |
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
@@ -1119,14 +1121,14 @@ app roles. The [spec map](../../specs/README.md) and [roadmap](../roadmap.md) fo
 | Project license | AGPL-3.0-only for the platform and MIT for future SDKs. The quiet source preview uses the DCO without counsel review. Trademark filing remains open. |
 | Telemetry | None; update checks to GitHub are the only automatic outbound requests and can be turned off, apart from the built-in proxy's certificate requests for an owner-configured domain, which are part of HTTPS setup (2026-11-03). Future reporting must be opt-in; opt-out is prohibited. |
 | External apps | Apps can be managed or hosted elsewhere. An app someone already runs is added through a connector that connects out to Your Space and plugs into the app endpoint (2026-11-14). The connector, and whether such an app must also verify Your Space identity, need definition in a later specification. |
-| App settings, egress, and limits | Settled in the [002 plan](../../specs/002-install-an-app/plan.md) (2026-11-14): settings encrypted in the server's database; outbound access through a Squid proxy per app, with kits' starter hosts and owner-approved access requests; fixed default limits a kit or the owner can change. What the owner sees and sets for generated secrets in the review, limits that scale with the space's resources, and an "all internet" option remain open. |
+| App settings, egress, and limits | Settled in the [002 plan](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/plan.md) (2026-11-14): settings encrypted in the server's database; outbound access through a Squid proxy per app, with kits' starter hosts and owner-approved access requests; fixed default limits a kit or the owner can change. What the owner sees and sets for generated secrets in the review, limits that scale with the space's resources, and an "all internet" option remain open. |
 | Activity log | Records installs, role and member changes, delegations, and agent requests. Retention, detail, and viewers need definition. |
 | Version compatibility | Supported desktop app, CLI, and server version combinations and the mismatch message need definition. |
-| Agent access | Agents reach apps only through the Your Space gateway, using the CLI in the first release; a workspace MCP endpoint is post-open-source. Journey 005 defines [gateway requests](../../specs/005-owner-agent/contracts/gateway.md) and [kit-declared routes and roles](../../specs/005-owner-agent/contracts/kit-agent-access.md). |
+| Agent access | Agents reach apps only through the Your Space gateway, using the CLI in the first release; a workspace MCP endpoint is post-open-source. Journey 005 defines [gateway requests](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/contracts/gateway.md) and [kit-declared routes and roles](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/contracts/kit-agent-access.md). |
 | App identity protocol | Apps keep their own sign-in in journey 002 (level 0). Level 1 is OpenID Connect with Your Space as the provider, likely through Better Auth's OAuth provider plugin; the protocol for level 2 and where each level lands are settled with journeys 004, 005 and 007. |
 | App integration | TypeScript and Python SDKs are planned for post-public journey 007, for apps that opt into level 2; other languages are post-open-source. Neither is part of journey 002 (2026-11-14). Role registration, authorization compatibility, and revocation mechanics need a later specification. |
-| App deployment file | The app's own Compose file, with an optional installation kit from a separate repository, replaces a Your Space-specific file with an `x-your-space` section (2026-11-14). The owner installs by pasting the file's GitHub URL. The approved settings list and the kit format are set in the [002 plan](../../specs/002-install-an-app/plan.md) and its contracts. Source builds and alternative formats are post-open-source. |
-| App runtime and data | Designed in the [002 plan](../../specs/002-install-an-app/plan.md) (2026-11-14): a runtime manager with no network alone holds the engine socket; each app is a Compose project on a sealed network with its own egress proxy and named volumes; removal keeps data until the owner deletes it. Verification is journey 002's delivery. Engines on other machines, apps someone already runs, and server hardening (Sysbox, rootless Docker) are later work. Found in journey 003 (2026-11-17), and settled by [spec 009](../../specs/009-encrypt-stored-data/spec.md): apps' settings are encrypted with a data key of their own, a third generated secret, so replacing the auth secret only signs people out. Encrypting the whole database or its disk stays the owner's responsibility for now; the guide recommends disk encryption on the host. |
+| App deployment file | The app's own Compose file, with an optional installation kit from a separate repository, replaces a Your Space-specific file with an `x-your-space` section (2026-11-14). The owner installs by pasting the file's GitHub URL. The approved settings list and the kit format are set in the [002 plan](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/plan.md) and its contracts. Source builds and alternative formats are post-open-source. |
+| App runtime and data | Designed in the [002 plan](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/plan.md) (2026-11-14): a runtime manager with no network alone holds the engine socket; each app is a Compose project on a sealed network with its own egress proxy and named volumes; removal keeps data until the owner deletes it. Verification is journey 002's delivery. Engines on other machines, apps someone already runs, and server hardening (Sysbox, rootless Docker) are later work. Found in journey 003 (2026-11-17), and settled by [spec 009](https://github.com/your-space-ai/your-space/blob/main/specs/009-encrypt-stored-data/spec.md): apps' settings are encrypted with a data key of their own, a third generated secret, so replacing the auth secret only signs people out. Encrypting the whole database or its disk stays the owner's responsibility for now; the guide recommends disk encryption on the host. |
 | App distribution | Installation from the app's own Compose file's GitHub URL, exact commit recording (with the kit's commit), and images pinned by digest are accepted for initial installation. 011 pins compatible owner-confirmed replacements, retains the existing volumes and restores previous artifacts on startup failure. General upstream and automatic updates, backup-based data recovery, and multiple catalogs remain future work. |
 
 These open choices do not erase the accepted requirements above.
@@ -1137,4 +1139,4 @@ Resolve implementation-critical choices in the relevant technical plan and futur
 
 On November 21, 2026 the owner selected columns, rows, a grid and a main app with companions. The dashboard accepts pointer, touch and keyboard input on the interior dividers. Resizing preserves the embedded app documents. Narrow screens show one member of the open composition at a time.
 
-The workspace server owns named views and the owner's app shortcut order. A saved view identifies its apps in order and includes the arrangement and the proportions along both axes. Updating its contents is an explicit action. A composition URL may carry those same values directly. The dashboard resolves app names against the selected server's installed apps and uses their current pane or link rules. [Layout journey](../../specs/012-multi-app-layouts/spec.md)
+The workspace server owns named views and the owner's app shortcut order. A saved view identifies its apps in order and includes the arrangement and the proportions along both axes. Updating its contents is an explicit action. A composition URL may carry those same values directly. The dashboard resolves app names against the selected server's installed apps and uses their current pane or link rules. [Layout journey](https://github.com/your-space-ai/your-space/blob/main/specs/012-multi-app-layouts/spec.md)

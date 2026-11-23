@@ -1,4 +1,6 @@
-# Install and publish apps
+---
+title: "Install and publish apps"
+---
 
 Your Space runs existing open-source apps from their own Compose files, on the same Docker engine,
 and opens them inside Your Space.

@@ -1,4 +1,6 @@
-# Install Your Space
+---
+title: "Install Your Space"
+---
 
 For the current source preview, start with [Try Your Space from source](from-source.md). It walks through creating an owner and opening a sample app. The [Mac guide](macos-desktop.md) covers building the launcher from source and using a published DMG when one is available.
 
@@ -42,7 +44,7 @@ manual steps 2 to 5 and the later sections were checked only with locally built 
 Intel/AMD (x86_64) with Docker Engine 29 and Compose 5.6, in Chromium, Firefox, and WebKit. Each setup's published ports and the generated secrets were checked on Compose 5.6 and
 2.26.0, and the this-machine and own-proxy setups also with a running stack. Downloading from
 a release, the published images, macOS, ARM machines such as Apple Silicon, IPv6, and HTTPS with a
-real domain or Tailscale have not been checked yet. [The verification record](../../specs/001-workspace-owner-access/verification.md) lists
+real domain or Tailscale have not been checked yet. [The verification record](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/verification.md) lists
 exactly what was tested, with versions.
 
 Check Docker before you go on:
@@ -123,6 +125,6 @@ The link works once. If it expires or you lose it, `your-space owner reset-link`
 
 - [Use Your Space from other devices](other-devices.md): your own domain, your own reverse proxy, or Tailscale.
 - [Install and publish apps](../apps/install-apps.md), and [give an agent access to one app](../apps/agent-access.md).
-- [Run Your Space](../operate/README.md): everyday commands, sessions, restarts and your data, and what Your Space encrypts.
+- [Run Your Space](../operate/index.md): everyday commands, sessions, restarts and your data, and what Your Space encrypts.
 - [Recover secrets and the owner account](../operate/recovery.md).
 - [Install by hand](manual.md) with Docker Compose instead of the `your-space` command.

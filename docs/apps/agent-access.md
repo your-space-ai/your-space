@@ -1,4 +1,6 @@
-# Give an external agent access to one app
+---
+title: "Give an external agent access to one app"
+---
 
 Install an app with a version 2 kit that declares agent routes. Open **Agents**, choose the installation, and inspect its kit source, roles, and allowed methods and routes. Bind a scoped app credential and select the roles available for delegation. The app checks that credential when it receives a request. An installed app without agent routes remains available through its usual web interface.
 

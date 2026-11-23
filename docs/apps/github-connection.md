@@ -1,4 +1,6 @@
-# Connect a GitHub account to Your Space
+---
+title: "Connect a GitHub account to Your Space"
+---
 
 The operator registers an OAuth app for their own Your Space installation in GitHub's Developer settings. Give it a recognizable name and the workspace's homepage URL. GitHub also asks for an authorization callback URL when registering an OAuth app. Use the workspace's HTTPS URL. This integration uses the device flow and does not direct GitHub to that callback. Enable **Device Flow** in the GitHub app settings. See [GitHub's OAuth app registration guide](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app) and [device authorization instructions](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow).
 

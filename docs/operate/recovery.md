@@ -1,4 +1,6 @@
-# Recover secrets and the owner account
+---
+title: "Recover secrets and the owner account"
+---
 
 ## Lost Secrets
 
@@ -133,11 +135,11 @@ docker compose exec -T server reset-link --json
 | 0 | Done |
 | 1 | Invalid usage, such as an unknown option or an extra argument |
 | 2 | There is no owner yet. Run `create-owner` first |
-| 3 | The database could not be read; nothing was changed. See [When the Database Is Down](README.md#when-the-database-is-down) |
+| 3 | The database could not be read; nothing was changed. See [When the Database Is Down](index.md#when-the-database-is-down) |
 | 4 | Something unexpected went wrong; nothing was reported as done |
 
 If `docker compose exec` itself fails, for example because the server isn't running, the exit status
 is Docker's own and there is no JSON. Start Your Space with `docker compose up -d` and run
 `reset-link` again. The
-[command contract](../../specs/001-workspace-owner-access/contracts/operator-commands.md) lists the
+[command contract](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/contracts/operator-commands.md) lists the
 exact output.

@@ -1,4 +1,6 @@
-# Your Space Architecture Overview
+---
+title: "Your Space Architecture Overview"
+---
 
 **Current release view · 2026-11-21**
 
@@ -48,7 +50,7 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
    [Your Space updates, backup, and restore](decisions.md#your-space-updates-backup-and-restore), and
    [activity log](decisions.md#activity-log).
 5. **Platform data.** PostgreSQL through Drizzle, app settings and secrets encrypted in the database
-   (see [data-key management](../../specs/009-encrypt-stored-data/spec.md)). The platform's secrets (auth secret, data key and database password) are
+   (see [data-key management](https://github.com/your-space-ai/your-space/blob/main/specs/009-encrypt-stored-data/spec.md)). The platform's secrets (auth secret, data key and database password) are
    generated into a separate `ys-secrets` volume by a one-shot step that runs before the database
    and the server, unless the owner sets them
    ([2026-11-08 decision](decisions.md#installation-and-hosting)). See
@@ -64,7 +66,7 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
 
 The dashboard reads presentation tokens from its workspace server. The Mac launcher uses the same portable theme format with a local device preference before connection. [Appearance](../appearance.md)
 
-The signed-in dashboard arranges installed app panes in a resizable grid. A named view stores app names, arrangement and divider percentages on the selected workspace server. Shortcut order is a separate owner preference. Each app continues through its own existing pane or published link. [Multi-app layouts](../../specs/012-multi-app-layouts/spec.md)
+The signed-in dashboard arranges installed app panes in a resizable grid. A named view stores app names, arrangement and divider percentages on the selected workspace server. Shortcut order is a separate owner preference. Each app continues through its own existing pane or published link. [Multi-app layouts](https://github.com/your-space-ai/your-space/blob/main/specs/012-multi-app-layouts/spec.md)
 
 ## Request Paths
 

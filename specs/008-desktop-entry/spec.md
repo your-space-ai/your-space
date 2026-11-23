@@ -6,7 +6,7 @@ This slice uses an owner-installed Docker-compatible engine for local workspaces
 
 ## What the owner does
 
-**Run on this Mac.** The app shows which Docker engine it detected. If Docker or Compose is missing, stopped, inaccessible or too old, explain the specific problem, show the supported Mac engine choices and link to setup guidance and offer **Check again**. The owner installs or starts their chosen engine. The owner can return to the server path while Docker detection runs. [Installation guide](../../docs/install/README.md)
+**Run on this Mac.** The app shows which Docker engine it detected. If Docker or Compose is missing, stopped, inaccessible or too old, explain the specific problem, show the supported Mac engine choices and link to setup guidance and offer **Check again**. The owner installs or starts their chosen engine. The owner can return to the server path while Docker detection runs. [Installation guide](../../docs/install/index.md)
 
 The owner can accept the detected engine or select a different local Docker context or absolute Unix socket. Show the resolved endpoint before saving. Resolve the selected context to its local socket and pass `DOCKER_HOST=unix:///…` only to the installation's child processes. Save the selection and local daemon identity. Revalidate before resuming the installation. If a saved context changes or its engine disappears, show the problem and keep existing data on its original engine. Preserve Docker’s global current context. Reuse 003’s engine and Compose checks, including the refusal of TCP and SSH engine endpoints. On macOS the runtime manager keeps its socket inside the engine VM. [Engine implementation](../../cli/src/engine.ts)
 

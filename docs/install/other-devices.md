@@ -1,4 +1,6 @@
-# Use Your Space from other devices
+---
+title: "Use Your Space from other devices"
+---
 
 By default Your Space answers only on this machine, at `http://space.localhost`. To use it from a phone or
 another computer, give it an HTTPS address in one of three ways:

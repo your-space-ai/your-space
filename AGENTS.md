@@ -34,6 +34,13 @@ its history or marking it complete.
 When a feature specification referenced through an in-review PR is merged, replace its PR links
 in the roadmap and release guide with links to the maintained specification.
 
+The documentation in `docs/` is published with Mintlify from `docs/docs.json`. Give each page a
+`title` in front matter instead of a `#` heading, add new pages to the navigation in `docs/docs.json`,
+and link to files outside `docs/` with full `https://github.com/your-space-ai/your-space/blob/main/...`
+URLs, because the site only serves `docs/`. Name a folder's landing page `index.md`, not `README.md`,
+which Mintlify doesn't publish. Check changes with `npx mint@4 validate` and
+`npx mint@4 broken-links --check-anchors` from `docs/`.
+
 Write pull request descriptions with the [template](.github/pull_request_template.md). Its visible
 part answers three questions in a minute: what the PR changes and why (Summary), where to look
 (Review focus), and what the reviewer must decide (Decisions needed). Keep it to about a screen.

@@ -1,11 +1,13 @@
-# Your Space documentation
+---
+title: "Your Space documentation"
+---
 
 ## Run a workspace
 
 - [Try the dashboard from source](install/from-source.md) with Docker and a sample app.
-- [Install Your Space](install/README.md) with the `your-space` command, or [by hand](install/manual.md) with Docker Compose.
+- [Install Your Space](install/index.md) with the `your-space` command, or [by hand](install/manual.md) with Docker Compose.
 - [Use it from other devices](install/other-devices.md): your own domain, your own reverse proxy, or Tailscale.
-- [Run Your Space](operate/README.md): everyday commands, sessions, restarts and your data, and what it encrypts.
+- [Run Your Space](operate/index.md): everyday commands, sessions, restarts and your data, and what it encrypts.
 - [Recover secrets and the owner account](operate/recovery.md).
 - [Run the Mac launcher](install/macos-desktop.md) to set up a local workspace or connect to a server.
 - [Set up with an agent](install/agent-setup.md) from an authorized shell.
@@ -20,8 +22,8 @@
 
 ## Work on Your Space
 
-- [Contributor guide and repository layout](../CONTRIBUTING.md)
-- [Roadmap](roadmap.md) and [feature specifications](../specs/README.md)
+- [Contributor guide and repository layout](https://github.com/your-space-ai/your-space/blob/main/CONTRIBUTING.md)
+- [Roadmap](roadmap.md) and [feature specifications](https://github.com/your-space-ai/your-space/blob/main/specs/README.md)
 - [Architecture overview](architecture/overview.md), [design decisions](architecture/decisions.md), and [glossary](glossary.md)
-- [Project constitution](../.specify/memory/constitution.md) and [pane library decision](dependency-decisions/resizable-panels.md)
+- [Project constitution](https://github.com/your-space-ai/your-space/blob/main/.specify/memory/constitution.md) and [pane library decision](dependency-decisions/resizable-panels.md)
 - [Release checklist for maintainers](maintainers/releasing.md)

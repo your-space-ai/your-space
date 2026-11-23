@@ -1,4 +1,6 @@
-# Create and share a theme
+---
+title: "Create and share a theme"
+---
 
 Open **Appearance** in the dashboard. Choose Canopy for forest greens and serif headings, Tide for cool blues and sans-serif type, or Ember for charcoal, copper and monospaced headings. Make a copy to start designing. Preview your changes and save the theme to this workspace.
 

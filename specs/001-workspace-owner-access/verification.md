@@ -1,7 +1,7 @@
 # Verification Record: Workspace Setup and Owner Access
 
 This records what was checked for [spec 001](spec.md), where,
-with which versions, and what was not checked. The [installation guide](../../docs/install/README.md) claims support only
+with which versions, and what was not checked. The [installation guide](../../docs/install/index.md) claims support only
 for what is listed here as verified (SC-010).
 
 **Date:** 2026-11-08 · **Pull request:** [#15](https://github.com/your-space-ai/your-space/pull/15)

@@ -1,4 +1,6 @@
-# Manage app source and installation kits
+---
+title: "Manage app source and installation kits"
+---
 
 Connect a GitHub account in **Repositories**. Choose public access or opt into private access. The workspace lists repositories it created, forked or imported under that connected account. Enter an existing repository's owner and name to import it. From an installed GitHub-backed app, choose **Customize** to start from its source. GitHub applies the parent network's visibility and the organization's fork policy. A fork of a private upstream can stay private where GitHub permits it. A fork of a public upstream belongs to its public fork network. [Connect GitHub](github-connection.md) · [GitHub fork permissions and visibility](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/about-permissions-and-visibility-of-forks)
 

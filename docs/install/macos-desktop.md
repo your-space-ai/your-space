@@ -1,4 +1,6 @@
-# Download and run Your Space on a Mac
+---
+title: "Download and run Your Space on a Mac"
+---
 
 The first tagged desktop release is in preparation. For the current source preview, [build the Mac launcher](#build-and-verify-a-private-candidate). Once disk images are published, use the steps below.
 
@@ -16,7 +18,7 @@ The public release includes a single `SHA256SUMS` manifest. To verify a download
 
 Choose **local setup** to run the server on this Mac. Set up or start a Docker-compatible engine and Docker Compose if prompted, or select a different local engine. Complete owner setup, then open the workspace dashboard. While the Mac is asleep or off, its workspace is unavailable to other devices and agents. Owners who choose Docker Desktop should check its [installation and licensing terms](https://docs.docker.com/desktop/setup/install/mac-install/).
 
-Choose **connect to a server** to use an existing workspace without installing Docker on this Mac. Enter the HTTPS address supplied by its operator and sign in as usual. In either workspace, review and confirm an app's installation kit in the dashboard. The selected server runs the app. The [CLI and headless installation guide](README.md) covers server setup, owner recovery and proxies.
+Choose **connect to a server** to use an existing workspace without installing Docker on this Mac. Enter the HTTPS address supplied by its operator and sign in as usual. In either workspace, review and confirm an app's installation kit in the dashboard. The selected server runs the app. The [CLI and headless installation guide](index.md) covers server setup, owner recovery and proxies.
 
 ## Build and verify a private candidate
 
@@ -30,4 +32,4 @@ The macOS desktop workflow builds an Apple Silicon and an Intel candidate. Priva
 
 A maintainer starts the **Release draft** workflow on main before publication; see the [release guide](../maintainers/releasing.md). The protected `macos-release` environment uses a dedicated macOS runner labelled `your-space-release-signing`. Configure its pre-authorized Developer ID Application identity and notarytool keychain profile through `MACOS_SIGN_IDENTITY` and `MACOS_NOTARY_PROFILE` in GitHub environment variables. Restrict the runner group to the reviewed release workflow on protected release refs.
 
-The release job signs the app and its nested code with Developer ID and hardened runtime, then notarizes and staples the app. It packages the stapled app and an Applications shortcut in a read-only DMG, signs the image, and submits the image to Apple for notarization. After stapling and assessing the final image and checking the app it contains, the workflow attaches both DMGs to the draft release. The CLI inside each app is the one the app uses for local setup; for a standalone CLI on a Mac, use the npm package. See the [distribution notices](../../desktop/THIRD-PARTY.md) for pinned upstream artifacts and source.
+The release job signs the app and its nested code with Developer ID and hardened runtime, then notarizes and staples the app. It packages the stapled app and an Applications shortcut in a read-only DMG, signs the image, and submits the image to Apple for notarization. After stapling and assessing the final image and checking the app it contains, the workflow attaches both DMGs to the draft release. The CLI inside each app is the one the app uses for local setup; for a standalone CLI on a Mac, use the npm package. See the [distribution notices](https://github.com/your-space-ai/your-space/blob/main/desktop/THIRD-PARTY.md) for pinned upstream artifacts and source.

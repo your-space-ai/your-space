@@ -1,6 +1,8 @@
-# Run Your Space
+---
+title: "Run Your Space"
+---
 
-How to run, restart and look after an installed workspace. To install one, see the [installation guide](../install/README.md).
+How to run, restart and look after an installed workspace. To install one, see the [installation guide](../install/index.md).
 
 ## Run It
 
@@ -27,7 +29,7 @@ your-space start --owner-name "Sam Rivera" --owner-username sam --json
 
 The exit status says what happened: 0 done, 1 an invalid option or answer, 2 something in the way
 (the message says what), 3 Docker or the database couldn't be reached, 4 something unexpected. The
-[command contract](../../specs/003-install-with-the-cli/contracts/cli-commands.md) lists every
+[command contract](https://github.com/your-space-ai/your-space/blob/main/specs/003-install-with-the-cli/contracts/cli-commands.md) lists every
 option and field.
 
 The `your-space` command runs `docker compose` in this folder, so every `docker compose` command in
