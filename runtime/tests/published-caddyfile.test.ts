@@ -1,6 +1,7 @@
 // The Caddyfile a published app's Caddy runs (deploy/published.caddyfile): that it reads what the
 // runtime manager sets, and what it does to the app's responses, with and without the owner showing
-// the app inside Your Space (decision 2026-11-20). The browser tests check the same with Caddy itself.
+// the app inside Your Space (decision 2026-11-20). Also who may frame Your Space's own pages, which
+// its own Caddy (deploy/Caddyfile) sets. The browser tests check the same with Caddy itself.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { adapt, PUBLISH_TARGET } from "../src/adapter.ts";
@@ -29,6 +30,18 @@ function block(text: string, opening: string): string[] {
   const lines = directives(text);
   const [start, end] = span(lines, opening);
   return lines.slice(start + 1, end);
+}
+
+/** The directives inside a top-level block that holds blocks of its own, such as `(app) {`. */
+function nested(text: string, opening: string): string[] {
+  const lines = directives(text);
+  const start = lines.indexOf(opening);
+  if (start === -1) throw new Error(`No ${opening} block.`);
+  for (let i = start + 1, depth = 1; i < lines.length; i++) {
+    depth += lines[i]!.endsWith("{") ? 1 : lines[i] === "}" ? -1 : 0;
+    if (depth === 0) return lines.slice(start + 1, i);
+  }
+  throw new Error(`${opening} doesn't close.`);
 }
 
 /** The directives without a top-level block. */
@@ -177,5 +190,21 @@ describe("a published app's Caddyfile", () => {
 
   it("streams responses, and has no admin API or certificates", () => {
     expect(directives(published)).toEqual(expect.arrayContaining(["flush_interval -1", "admin off", "persist_config off", "auto_https off"]));
+  });
+});
+
+describe("Your Space's own pages", () => {
+  it("can be framed only by Your Space itself, as a pane's own-tab page is", () => {
+    const own = nested(builtIn, "(app) {");
+    const at = own.indexOf("header {");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(own.slice(at, at + 4)).toEqual(["header {", `Content-Security-Policy "frame-ancestors 'self'"`, "X-Frame-Options SAMEORIGIN", "}"]);
+    // At the snippet's top level, not inside a handle, so the web client and every API answer carry it.
+    expect(own.slice(0, at).reduce((depth, l) => depth + (l.endsWith("{") ? 1 : l === "}" ? -1 : 0), 0)).toBe(0);
+  });
+
+  it("are the only answers that carry it: an app's keep the apps' rule", () => {
+    const apps = [...nested(builtIn, "(apps) {"), ...directives(published)];
+    expect(apps.filter((l) => /'self'|SAMEORIGIN|^header\b/.test(l))).toEqual([]);
   });
 });

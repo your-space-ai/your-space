@@ -38,6 +38,15 @@
 (app) {
 	encode
 
+	# Only Your Space's own pages can frame its pages. Apps are on names under Your Space's, so a
+	# frame of Your Space on an app's page would carry the owner's session, and the app could steer
+	# the owner's clicks in it. The page a pane shows when the browser blocks an app's cookies comes
+	# from Your Space, inside Your Space, so 'self' allows it. An app's answers go through (apps).
+	header {
+		Content-Security-Policy "frame-ancestors 'self'"
+		X-Frame-Options SAMEORIGIN
+	}
+
 	handle /api/* {
 		# API requests are small. The server reads auth request bodies whole, so cap them here.
 		request_body {
