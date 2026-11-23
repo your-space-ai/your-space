@@ -10,8 +10,49 @@ permissions:
   security-events: write
 
 jobs:
-  scan:
+  accepted:
+    name: Every accepted finding has a reason and a date
     if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Trivy drops an expired entry without a word, so the finding would come back unexplained.
+      # Fail instead, so the entry is renewed after a fresh check or removed.
+      - name: Check .github/accepted-findings.yaml
+        run: |
+          yq -o=json .github/accepted-findings.yaml | python3 -c "$(cat <<'PY'
+          import datetime, json, sys
+          entries = json.load(sys.stdin)["vulnerabilities"]
+          today = datetime.date.today()
+          problems = []
+          for e in entries:
+              who = f"{e.get('id')} in {', '.join(e.get('paths') or ['?'])}"
+              if not e.get("paths"):
+                  problems.append(f"{who}: needs paths, so the same finding elsewhere is still reported")
+              if not str(e.get("statement") or "").strip():
+                  problems.append(f"{who}: needs a statement saying why it's accepted")
+              try:
+                  expires = datetime.date.fromisoformat(str(e.get("expired_at")))
+              except ValueError:
+                  expires = None
+              if expires is None:
+                  problems.append(f"{who}: needs expired_at as a date (YYYY-MM-DD)")
+              elif expires <= today:
+                  problems.append(f"{who}: expired on {expires}; check it again, then renew or remove it")
+              elif expires > today + datetime.timedelta(days=366):
+                  problems.append(f"{who}: expired_at {expires} is more than a year away")
+          for p in problems:
+              print(f"::error file=.github/accepted-findings.yaml::{p}")
+          print(f"{len(entries)} accepted findings, {len(problems)} problems")
+          sys.exit(1 if problems else 0)
+          PY
+          )"
+
+  scan:
+    needs: accepted
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -35,10 +76,10 @@ jobs:
             docker build --pull -f "$COMPONENT/Dockerfile" -t "$image" .
           fi
           echo "name=$image" >> "$GITHUB_OUTPUT"
-      # Only findings with a fix to take: an unfixed one has nothing to act on, and comes back once
-      # its distribution or module ships a fix. Findings in upstream Go binaries that govulncheck
-      # shows are never reached are listed, with their reasons, in .trivyignore.yaml.
-      - name: Scan installed OS packages and bundled libraries
+      # Alerts: only findings with a fix to take. One with no fix yet comes back as an alert once its
+      # distribution or module ships one; until then the inventory below lists it. Findings we accept
+      # instead of fixing are in .github/accepted-findings.yaml, each with a reason and a date.
+      - name: Scan for fixable findings
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: v0.76.2
@@ -46,10 +87,44 @@ jobs:
           scanners: vuln
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          trivyignores: .trivyignore.yaml
+          trivyignores: .github/accepted-findings.yaml
           limit-severities-for-sarif: true
           format: sarif
           output: container.sarif
+      # Inventory: every finding at every severity, fixed or not, with the accepted ones listed as
+      # suppressed. It raises no alerts; it's kept with the run, and the run's summary counts it.
+      - name: List every finding
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+        run: |
+          trivy image --cache-dir "$GITHUB_WORKSPACE/.cache/trivy" --skip-db-update --quiet \
+            --scanners vuln --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --ignore-unfixed=false \
+            --ignorefile .github/accepted-findings.yaml --show-suppressed \
+            --format json --output "inventory-$COMPONENT.json" "$IMAGE"
+          {
+            echo "### $COMPONENT ($IMAGE)"
+            echo
+            echo '| Severity | Fix available | No fix yet |'
+            echo '| --- | --- | --- |'
+            jq -r '[.Results[]?.Vulnerabilities[]?] as $v
+              | ["CRITICAL","HIGH","MEDIUM","LOW","UNKNOWN"][] as $s
+              | [$v[] | select(.Severity == $s)] as $f
+              | "| \($s) | \([$f[] | select(.Status == "fixed")] | length) | \([$f[] | select(.Status != "fixed")] | length) |"' \
+              "inventory-$COMPONENT.json"
+            echo
+            jq -r '[.Results[]?.ExperimentalModifiedFindings[]?] as $a
+              | "Accepted in .github/accepted-findings.yaml: \($a | length)"
+                + ([$a[] | select(.Finding.FixedVersion // "" | length > 0)] | length
+                   | if . > 0 then " (\(.) of them now have a fixed version)" else "" end)' \
+              "inventory-$COMPONENT.json"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: inventory-${{ matrix.component }}
+          path: inventory-${{ matrix.component }}.json
+          if-no-files-found: error
+          retention-days: 90
       - name: Report findings to GitHub Security
         uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
         with:
