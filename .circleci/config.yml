@@ -40,12 +40,13 @@ commands:
 
   failed-journeys:
     description: >-
-      Keeps what explains a failed browser journey: its screenshot at the failure and the page's
-      accessibility snapshot (error-context.md). Passing journeys keep nothing.
+      Keeps what explains a failed browser journey: its screenshot at the failure and Playwright's
+      error context (error-context.md: the error, the page's accessibility snapshot and the test's
+      source). Passing journeys keep nothing.
     steps:
       - run:
-          # Only the failed tests' files, which hold the test stack's synthetic data. No HTML report,
-          # videos or other test results.
+          # Only the failed tests' files, which hold the test stack's synthetic data and this
+          # repository's test code. No HTML report, videos or other test results.
           name: Failed journeys
           when: on_fail
           command: |

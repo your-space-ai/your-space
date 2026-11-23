@@ -27,7 +27,7 @@ export default defineConfig({
     baseURL,
     viewport: { width: 1280, height: 720 },
     // Off: tracing slows every action enough to hide timing races in the app. A failed test's
-    // screenshot and page snapshot (error-context.md) are kept, and CircleCI stores them.
+    // screenshot and error context (error-context.md) are kept, and CircleCI stores them.
     trace: "off",
     screenshot: "only-on-failure",
     // A local evidence run can record video. Hosted checks report results in the job log.

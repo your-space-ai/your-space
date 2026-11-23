@@ -1081,15 +1081,16 @@ Chromium on a GitHub-hosted runner. This gives forks a browser check without Cir
 credentials. CircleCI retains the broader browser matrix for first-party development. Hosted
 checks report test results in job logs. CircleCI omits automatic HTML reports, raw test-result
 artifacts and videos. Its configured Argos project receives the selected synthetic screenshots.
-(Superseded in part 2026-11-23: CircleCI keeps a failed journey's screenshot and page snapshot;
+(Superseded in part 2026-11-23: CircleCI keeps a failed journey's screenshot and error context;
 see the next entry.)
 
 **Decision update (2026-11-23):** CircleCI keeps what explains a failed browser journey. A failure
 that shows only on CircleCI, such as one in WebKit on `main`, otherwise left only the error in the
 job log, and the screenshot Playwright took at the failure was lost with the machine. Both browser
-jobs now store, for each failed test, that screenshot and the page's accessibility snapshot
-(`error-context.md`) as job artifacts. They hold only the test stack's synthetic data. Passing tests
-store nothing, and CircleCI still keeps no HTML report, no videos and no other test results.
+jobs now store, for each failed test, that screenshot and Playwright's error context
+(`error-context.md`: the error, the page's accessibility snapshot and the test's source) as job
+artifacts. They hold only the test stack's synthetic data and this repository's test code. Passing
+tests store nothing, and CircleCI still keeps no HTML report, no videos and no other test results.
 Playwright traces stay off, because recording one slows every action enough to hide timing races
 in the app. The WebKit theme import failure that showed in 3 of 29 untraced runs passed all 61
 traced ones.
