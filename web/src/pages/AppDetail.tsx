@@ -78,7 +78,7 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
   return (
     <section className="card" aria-label="Status">
       <p>
-        <StatusPill tone={STATE_TONE[d.state]} data-field="state">
+        <StatusPill tone={STATE_TONE[d.state]} data-field="state" role="status">
           {STATE_LABEL[d.state]}
         </StatusPill>
         {d.stateReason ? <span className="muted"> {d.stateReason}</span> : null}

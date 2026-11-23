@@ -1,7 +1,8 @@
 // An actions menu behind a "⋯" button, following the WAI-ARIA menu button pattern: the arrow keys,
-// Home and End move between items, Escape closes it and returns focus to the button, and a click
-// outside or a scroll closes it. It renders at the end of the page, placed at its button, so a pane
-// or panel that clips its content doesn't cut it off.
+// Home and End move between items, Escape closes it and returns focus to the button, Tab closes it and
+// moves on from the button, and a click outside or a scroll closes it. It renders at the end of the
+// page, or of the dialog that holds its button, placed at the button, so a pane or panel that clips
+// its content doesn't cut it off and a modal dialog doesn't make it inert.
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "./Button.tsx";
@@ -15,11 +16,16 @@ const margin = 8;
 
 export function Menu({ label, items, className }: { label: string; items: (MenuAction | "separator")[]; className?: string }) {
   const [open, setOpen] = useState<false | "first" | "last">(false);
+  const [host, setHost] = useState<Element | null>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const id = useId();
 
   const entries = () => Array.from(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])') ?? []);
+  const show = (focus: "first" | "last") => {
+    setHost(button.current?.closest("dialog") ?? document.body);
+    setOpen(focus);
+  };
   const close = (returnFocus: boolean) => {
     setOpen(false);
     if (returnFocus) button.current?.focus();
@@ -67,8 +73,11 @@ export function Menu({ label, items, className }: { label: string; items: (MenuA
     if (target !== undefined) {
       event.preventDefault();
       list[(target + list.length) % list.length]?.focus({ preventScroll: true });
-    } else if (event.key === "Escape" || event.key === "Tab") {
+    } else if (event.key === "Escape") {
       event.preventDefault();
+      close(true);
+    } else if (event.key === "Tab") {
+      // Focus goes back to the button first, so the browser's own Tab or Shift+Tab moves on from it.
       close(true);
     }
   };
@@ -76,7 +85,7 @@ export function Menu({ label, items, className }: { label: string; items: (MenuA
   const onButtonKey = (event: KeyboardEvent) => {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      setOpen(event.key === "ArrowUp" ? "last" : "first");
+      show(event.key === "ArrowUp" ? "last" : "first");
     }
   };
 
@@ -90,10 +99,10 @@ export function Menu({ label, items, className }: { label: string; items: (MenuA
         aria-haspopup="menu"
         aria-expanded={!!open}
         aria-controls={open ? id : undefined}
-        onClick={() => (open ? close(false) : setOpen("first"))}
+        onClick={() => (open ? close(false) : show("first"))}
         onKeyDown={onButtonKey}
       />
-      {open
+      {open && host
         ? createPortal(
             <div ref={menu} id={id} role="menu" aria-label={label} className="ui-menu" onKeyDown={onMenuKey}>
               {items.map((item, index) =>
@@ -119,7 +128,7 @@ export function Menu({ label, items, className }: { label: string; items: (MenuA
                 ),
               )}
             </div>,
-            document.body,
+            host,
           )
         : null}
     </>

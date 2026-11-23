@@ -28,12 +28,16 @@ describe("ListDetail", () => {
     const layout = container.firstElementChild as HTMLElement;
     expect(screen.getByRole("region", { name: "Apps" })).toBeTruthy();
     expect(layout.dataset.view).toBe("list");
-    await userEvent.click(screen.getByRole("button", { name: "Notes Version 1.4" }));
-    expect(screen.getByRole("button", { name: "Notes Version 1.4" }).getAttribute("aria-current")).toBe("true");
+    const notes = screen.getByRole("button", { name: "Notes Version 1.4" });
+    await userEvent.click(notes);
+    expect(notes.getAttribute("aria-current")).toBe("true");
     expect(screen.getByRole("button", { name: "Calendar Version 2.1" }).hasAttribute("aria-current")).toBe(false);
     expect(screen.getByText("notes details")).toBeTruthy();
     expect(layout.dataset.view).toBe("detail");
+    // jsdom lays nothing out, so each side counts as hidden, as on a narrow container.
+    expect(document.activeElement).toBe(screen.getByText("notes details").parentElement);
     await userEvent.click(screen.getByRole("button", { name: "Apps" }));
     expect(layout.dataset.view).toBe("list");
+    expect(document.activeElement).toBe(notes);
   });
 });

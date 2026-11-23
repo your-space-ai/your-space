@@ -56,7 +56,9 @@ async function contrastProblems(page: Page) {
     const problems: string[] = [];
     const name = (element: Element) => `${element.tagName.toLowerCase()}.${[...element.classList].join(".")} "${(element.textContent ?? "").trim().slice(0, 40)}"`;
     for (const element of document.querySelectorAll("body *")) {
-      const own = [...element.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && node.textContent!.trim());
+      // Text of its own, or a field's value, which isn't a text node.
+      const own = [...element.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && node.textContent!.trim()) ||
+        (element.matches("input:not([type=checkbox], [type=radio], [type=file]), select, textarea") && !!(element as HTMLInputElement).value);
       if (!own || exempt(element) || element.closest("svg")) continue;
       const ground = behind(element, true);
       const value = ratio(over(rgba(getComputedStyle(element).color), ground), ground);
@@ -92,6 +94,11 @@ for (const [theme, heading] of themes) {
       await page.screenshot({ path: join(folder, `${theme}-${scheme}-2-menu-and-toasts.png`), animations: "disabled" });
       await page.keyboard.press("Escape");
       await expect(menuButton).toBeFocused();
+      // Tab closes the menu and moves on from its button.
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("Tab");
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Save view…" })).toBeFocused();
 
       await page.getByRole("button", { name: "Save view…" }).click();
       await expect(page.getByRole("dialog", { name: "Save this view" })).toBeVisible();

@@ -1,7 +1,8 @@
 // A list beside the selected item's details. On a narrow container it shows one at a time: the list,
 // or the details with a way back to the list. Each side scrolls on its own, so choosing an item keeps
-// the list where it was.
-import { useId, type ReactNode } from "react";
+// the list where it was. When a narrow container swaps sides, focus goes to the details, and back to
+// the item that opened them.
+import { useId, useLayoutEffect, useRef, type ReactNode } from "react";
 import { Button } from "./Button.tsx";
 import { cx } from "./cx.ts";
 
@@ -18,16 +19,32 @@ export function ListDetail({
   className?: string;
 }) {
   const id = useId();
+  const listPane = useRef<HTMLElement>(null);
+  const detailPane = useRef<HTMLDivElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const shown = useRef(view);
+  useLayoutEffect(() => {
+    if (shown.current === view) return;
+    shown.current = view;
+    const hidden = (element: HTMLElement | null) => !element || element.getClientRects().length === 0;
+    const focused = document.activeElement;
+    if (view === "detail" && hidden(listPane.current)) {
+      opener.current = focused instanceof HTMLElement && listPane.current?.contains(focused) ? focused : null;
+      detailPane.current?.focus({ preventScroll: true });
+    } else if (view === "list" && hidden(detailPane.current) && opener.current?.isConnected) {
+      opener.current.focus({ preventScroll: true });
+    }
+  }, [view]);
   return (
     <div className={cx("ui-list-detail", className)} data-view={view}>
-      <section className="ui-list-detail__list" aria-labelledby={id}>
+      <section ref={listPane} className="ui-list-detail__list" aria-labelledby={id}>
         <header className="ui-list-detail__header">
           <h2 id={id} className="ui-list-detail__title">{label}</h2>
           {actions}
         </header>
         <div className="ui-list-detail__scroll">{list}</div>
       </section>
-      <div className="ui-list-detail__detail">
+      <div ref={detailPane} className="ui-list-detail__detail" tabIndex={-1}>
         {onBack ? <Button variant="quiet" size="small" icon="chevronLeft" className="ui-list-detail__back" onClick={onBack}>{label}</Button> : null}
         {detail}
       </div>

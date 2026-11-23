@@ -23,6 +23,12 @@ describe("fields", () => {
     expect(description(input)).toEqual(["Shown on sign-in."]);
   });
 
+  it("keeps a caller's invalid marking when it shows no error itself", () => {
+    render(<><TextField label="Code" aria-invalid /><Toggle label="Agree" aria-invalid /></>);
+    expect(screen.getByLabelText("Code").getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByRole("switch", { name: "Agree" }).getAttribute("aria-invalid")).toBe("true");
+  });
+
   it("labels a select", async () => {
     render(<SelectField label="Role" defaultValue="viewer"><option value="viewer">Viewer</option><option value="editor">Editor</option></SelectField>);
     const select = screen.getByLabelText("Role") as HTMLSelectElement;

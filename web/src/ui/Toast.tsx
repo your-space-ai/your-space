@@ -53,10 +53,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// Its timer restarts only when it is let go, not when another toast arrives.
+// Its timer waits while the pointer is over it or focus is in it, and restarts when both have left;
+// another toast arriving doesn't restart it.
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) => void }) {
   const { id, tone = "info", message, action, duration = 6000 } = toast;
-  const [held, setHeld] = useState(false);
+  const [pointer, setPointer] = useState(false);
+  const [focus, setFocus] = useState(false);
+  const held = pointer || focus;
   useEffect(() => {
     if (held || !Number.isFinite(duration)) return;
     const timer = setTimeout(() => onDismiss(id), duration);
@@ -65,10 +68,12 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
   return (
     <li
       className={cx("ui-toast", `ui-tone--${tone}`)}
-      onPointerEnter={() => setHeld(true)}
-      onPointerLeave={() => setHeld(false)}
-      onFocus={() => setHeld(true)}
-      onBlur={() => setHeld(false)}
+      onPointerEnter={() => setPointer(true)}
+      onPointerLeave={() => setPointer(false)}
+      onFocus={() => setFocus(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setFocus(false);
+      }}
     >
       <Icon name={icons[tone]} />
       <div className="ui-toast__message">{message}</div>

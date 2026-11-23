@@ -6,13 +6,16 @@ import { Icon } from "./Icon.tsx";
 
 type FieldText = { label: ReactNode; hint?: ReactNode; error?: ReactNode };
 
-function useField(id: string | undefined, { hint, error }: Omit<FieldText, "label">, describedBy?: string) {
+type Described = { "aria-describedby"?: string; "aria-invalid"?: boolean | "true" | "false" | "grammar" | "spelling" };
+
+function useField(id: string | undefined, { hint, error }: Omit<FieldText, "label">, given: Described) {
   const generated = useId();
   const control = id ?? generated;
-  const ids = [hint ? control + "-hint" : "", error ? control + "-error" : "", describedBy ?? ""].filter(Boolean);
+  const ids = [hint ? control + "-hint" : "", error ? control + "-error" : "", given["aria-describedby"] ?? ""].filter(Boolean);
   return {
     control,
-    controlProps: { id: control, "aria-invalid": error ? true : undefined, "aria-describedby": ids.join(" ") || undefined },
+    // An error shown here marks the control invalid; otherwise the caller's own marking stays.
+    controlProps: { id: control, "aria-invalid": error ? true : given["aria-invalid"], "aria-describedby": ids.join(" ") || undefined },
     hint: hint ? <p className="ui-field__hint" id={control + "-hint"}>{hint}</p> : null,
     error: error ? <p className="ui-field__error" id={control + "-error"}><Icon name="alert" />{error}</p> : null,
   };
@@ -20,7 +23,7 @@ function useField(id: string | undefined, { hint, error }: Omit<FieldText, "labe
 
 /** A text input with its label, an optional hint and an error. */
 export function TextField({ label, hint, error, id, className, ...input }: FieldText & Omit<ComponentPropsWithRef<"input">, "children">) {
-  const field = useField(id, { hint, error }, input["aria-describedby"]);
+  const field = useField(id, { hint, error }, input);
   return (
     <div className={cx("ui-field", className)}>
       <label className="ui-field__label" htmlFor={field.control}>{label}</label>
@@ -33,7 +36,7 @@ export function TextField({ label, hint, error, id, className, ...input }: Field
 
 /** A select with its label, an optional hint and an error. */
 export function SelectField({ label, hint, error, id, className, children, ...select }: FieldText & ComponentPropsWithRef<"select">) {
-  const field = useField(id, { hint, error }, select["aria-describedby"]);
+  const field = useField(id, { hint, error }, select);
   return (
     <div className={cx("ui-field", className)}>
       <label className="ui-field__label" htmlFor={field.control}>{label}</label>
@@ -49,7 +52,7 @@ export function SelectField({ label, hint, error, id, className, children, ...se
 
 /** An on/off switch: a checkbox with the switch role, so it works in forms and with the keyboard. */
 export function Toggle({ label, hint, id, className, ...input }: Omit<FieldText, "error"> & Omit<ComponentPropsWithRef<"input">, "type" | "role" | "children">) {
-  const field = useField(id, { hint }, input["aria-describedby"]);
+  const field = useField(id, { hint }, input);
   return (
     <div className={cx("ui-toggle-field", className)}>
       <input {...input} {...field.controlProps} type="checkbox" role="switch" className="ui-toggle" />

@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { Dialog } from "./Dialog.tsx";
 import { Menu } from "./Menu.tsx";
 
 function setup() {
@@ -64,14 +65,29 @@ describe("Menu", () => {
     expect(document.activeElement).toBe(button);
   });
 
-  it("closes on Tab and on a click outside", async () => {
-    const { button } = setup();
+  it("closes on Tab and moves on from its button, either way", async () => {
+    render(<><button type="button">Before</button><Menu label="Actions" items={[{ label: "Reload", onSelect: () => {} }]} /><button type="button">After</button></>);
+    const button = screen.getByRole("button", { name: "Actions" });
     await userEvent.click(button);
     await userEvent.tab();
     expect(screen.queryByRole("menu")).toBeNull();
-    expect(document.activeElement).toBe(button);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "After" }));
+    await userEvent.click(button);
+    await userEvent.tab({ shift: true });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Before" }));
+  });
+
+  it("closes on a click outside", async () => {
+    const { button } = setup();
     await userEvent.click(button);
     await userEvent.click(screen.getByText("Outside"));
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("opens inside the dialog that holds its button, so a modal dialog doesn't make it inert", async () => {
+    render(<Dialog open onClose={() => {}} title="Pane"><Menu label="Pane actions" items={[{ label: "Reload", onSelect: () => {} }]} /></Dialog>);
+    await userEvent.click(screen.getByRole("button", { name: "Pane actions" }));
+    expect(screen.getByRole("dialog").contains(screen.getByRole("menu"))).toBe(true);
   });
 });

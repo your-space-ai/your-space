@@ -50,8 +50,10 @@ function pairs(c: Palette, style: ThemeStyle) {
   return { text, edges };
 }
 
+// Compares the exact ratio, as WCAG does; rounds only what a failure shows.
 function failures(list: [string, string, string][], minimum: number) {
-  return list.map(([label, ink, ground]) => [label, Math.round(contrastRatio(ink, ground) * 100) / 100] as const).filter(([, ratio]) => ratio < minimum);
+  return list.map(([label, ink, ground]) => [label, contrastRatio(ink, ground)] as const)
+    .filter(([, ratio]) => ratio < minimum).map(([label, ratio]) => [label, Math.round(ratio * 100) / 100] as const);
 }
 
 describe("component contrast", () => {

@@ -49,6 +49,30 @@ describe("toasts", () => {
     expect(region().queryByText("Calendar restarted.")).toBeNull();
   });
 
+  it("waits while focus is in it even after the pointer leaves, and the other way round", () => {
+    vi.useFakeTimers();
+    render(<ToastProvider><Example toasts={[{ message: "Moved.", duration: 1000, action: { label: "Undo", onSelect: () => {} } }]} /></ToastProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    const toast = region().getByRole("listitem");
+    const undo = region().getByRole("button", { name: "Undo" });
+    const dismiss = region().getByRole("button", { name: "Dismiss" });
+    fireEvent.pointerEnter(toast);
+    fireEvent.focus(undo);
+    fireEvent.pointerLeave(toast);
+    act(() => vi.advanceTimersByTime(5000));
+    expect(region().queryByText("Moved.")).toBeTruthy();
+    // Focus moving within the toast keeps it; the pointer still holds it after focus leaves.
+    fireEvent.blur(undo, { relatedTarget: dismiss });
+    fireEvent.focus(dismiss);
+    fireEvent.pointerEnter(toast);
+    fireEvent.blur(dismiss, { relatedTarget: document.body });
+    act(() => vi.advanceTimersByTime(5000));
+    expect(region().queryByText("Moved.")).toBeTruthy();
+    fireEvent.pointerLeave(toast);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(region().queryByText("Moved.")).toBeNull();
+  });
+
   it("runs its action, closes on Dismiss and shows at most three", () => {
     const undo = vi.fn();
     render(

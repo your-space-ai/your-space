@@ -458,10 +458,12 @@
   .ui-menu__item:hover,
   .ui-menu__item:focus-visible {
     background: color-mix(in srgb, var(--fg) 8%, var(--panel));
-    outline: none;
   }
 
+  /* The outline is transparent unless forced colors replace the shadow with it. */
   .ui-menu__item:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: -2px;
     box-shadow: inset 0 0 0 2px var(--accent);
   }
 
@@ -761,6 +763,15 @@
     min-height: 0;
     overflow-y: auto;
     padding: 1.25rem 1.5rem;
+  }
+
+  .ui-list-detail__detail:focus {
+    outline: none;
+  }
+
+  .ui-list-detail__detail:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
   }
 
   .ui-list-detail__back {

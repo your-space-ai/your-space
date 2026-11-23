@@ -25,6 +25,7 @@ function Section({ id, title, children }: { id: string; title: string; children:
 export function Gallery({ themeId, scheme }: { themeId: string; scheme: "light" | "dark" }) {
   const [tab, setTab] = useState("access");
   const [selected, setSelected] = useState("calendar");
+  const [view, setView] = useState<"list" | "detail">("list");
   const [dialog, setDialog] = useState<"save" | "remove" | null>(null);
   const [internet, setInternet] = useState(true);
   const [updates, setUpdates] = useState(false);
@@ -213,9 +214,9 @@ export function Gallery({ themeId, scheme }: { themeId: string; scheme: "light" 
           className="gallery-list-detail"
           label="Apps"
           actions={<Button size="small" icon="plus">Install</Button>}
-          view="detail"
-          onBack={() => {}}
-          list={<SelectList label="Installed apps" value={selected} onChange={setSelected} items={apps.map((item) => ({
+          view={view}
+          onBack={() => setView("list")}
+          list={<SelectList label="Installed apps" value={selected} onChange={(id) => { setSelected(id); setView("detail"); }} items={apps.map((item) => ({
             id: item.id, title: item.name, meta: item.meta, icon: <AppIcon name={item.name} size="small" />,
             status: <StatusDot tone={item.tone} label={item.status} hideLabel />,
           }))} />}
