@@ -133,7 +133,7 @@ docker compose exec -T server reset-link --json
 | 0 | Done |
 | 1 | Invalid usage, such as an unknown option or an extra argument |
 | 2 | There is no owner yet. Run `create-owner` first |
-| 3 | The database could not be read; nothing was changed. See [When the Database Is Down](README.md#when-the-database-is-down) |
+| 3 | The database could not be read. No link is printed, and an earlier unused link may no longer work: run `reset-link` again once the database is back. See [When the Database Is Down](README.md#when-the-database-is-down) |
 | 4 | Something unexpected went wrong; nothing was reported as done |
 
 If `docker compose exec` itself fails, for example because the server isn't running, the exit status
