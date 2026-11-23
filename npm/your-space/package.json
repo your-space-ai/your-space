@@ -1,0 +1,26 @@
+{
+  "name": "your-space",
+  "version": "0.0.1",
+  "description": "Use @your-space-ai/cli — Your Space's command-line tool",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://docs.getyourspace.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-space-ai/your-space.git",
+    "directory": "npm/your-space"
+  },
+  "bugs": {
+    "url": "https://github.com/your-space-ai/your-space/issues"
+  },
+  "bin": {
+    "your-space": "bin.js"
+  },
+  "files": [
+    "bin.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "prepack": "cp ../../LICENSE LICENSE"
+  }
+}
