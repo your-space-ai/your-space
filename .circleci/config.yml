@@ -202,7 +202,7 @@ jobs:
             done
             # A single Playwright worker runs the selected browsers in sequence.
             budget_minutes=$((30 * ${#projects[@]}))
-            timeout 80m npx playwright test tests/appearance.spec.ts --project=webkit --repeat-each 30 --max-failures 3
+            timeout 80m npx playwright test tests/appearance.spec.ts --project=webkit --repeat-each 30 --max-failures 3 --trace off
           working_directory: e2e
       - run:
           name: Stack status
