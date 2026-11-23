@@ -154,6 +154,12 @@ it("detects a stale preview, unchanged code, new mutable tags and incompatible v
     });
   }
   const fixed = compose("new", "sample/ui:1@" + afterPin);
+  // A kit that names its Compose file without the exact commit is refused, naming the field.
+  const unpinned = "kit: 1\nname: dashboard\nsource: {repo: sample/mine, path: compose.yaml}\ninterface: {service: web, port: 8080}\n";
+  await expect(previewReplacement(service, id, owner, { ...source(fixed), kitText: unpinned }, "456")).rejects.toMatchObject({
+    code: "invalid_kit",
+    message: expect.stringMatching(/source has no commit\. Add source\.commit/),
+  });
   const p = await previewReplacement(service, id, owner, source(fixed), "456");
   expect(engine.calls.at(-1)?.spec).toMatchObject({ pins: { "sample/ui:1": afterPin }, verifyPins: ["sample/ui:1"] });
   await t.pool.query("update app_setting set value=$1", [encrypt(TEST_DATA_KEY, "updated")]);

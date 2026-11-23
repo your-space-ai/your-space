@@ -4,7 +4,7 @@ import { parse } from "yaml";
 import type { Db } from "../db/client.ts";
 import { app, appOutbound, appReplacement, appSetting, installJob, type Kit } from "../db/schema.ts";
 import { MAX_FILE_BYTES } from "./github.ts";
-import { kitFromFile } from "./kits.ts";
+import { KitError, kitFromFile } from "./kits.ts";
 import { AppError, AppsService, stateFromServices, type AppRow } from "./service.ts";
 import { installedGeneration } from "./upgrade-agent-kit.ts";
 
@@ -166,7 +166,9 @@ function checkedKit(row: AppRow, snapshot: ReplacementSnapshot) {
         incompatible();
       proposed = found.kit;
       kitSource = found.source;
-    } catch {
+    } catch (error) {
+      // A kit that can't be used says why, such as a source without its commit.
+      if (error instanceof KitError) throw new AppError(400, "invalid_kit", error.message);
       incompatible();
     }
   }
