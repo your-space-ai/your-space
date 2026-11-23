@@ -2,7 +2,7 @@
 title: "Your Space documentation"
 ---
 
-These pages are the maintained reference: how to install and run Your Space, what each release ships, and what has been decided and planned. For an in-depth tour of the code, subsystem by subsystem, read the generated [DeepWiki](https://deepwiki.com/your-space-ai/your-space). It is built from this repository and steered by [`.devin/wiki.json`](https://github.com/your-space-ai/your-space/blob/main/.devin/wiki.json); where it differs from these pages, these pages are correct.
+These pages are the maintained reference: how to install and run Your Space, how a release is prepared, and what has been decided and planned. For an in-depth tour of the code, subsystem by subsystem, read the generated [DeepWiki](https://deepwiki.com/your-space-ai/your-space). It is generated from this repository, and [`.devin/wiki.json`](https://github.com/your-space-ai/your-space/blob/main/.devin/wiki.json) holds its page plan and notes; where it differs from these pages, these pages are correct.
 
 ## Run a workspace
 
@@ -11,7 +11,7 @@ These pages are the maintained reference: how to install and run Your Space, wha
 - [Use it from other devices](install/other-devices.md): your own domain, your own reverse proxy, or Tailscale.
 - [Run Your Space](operate/index.md): everyday commands, sessions, restarts and your data, and what it encrypts.
 - [Recover secrets and the owner account](operate/recovery.md).
-- [Run the Mac launcher](install/macos-desktop.md) to set up a local workspace or connect to a server.
+- [Build and run the Mac launcher](install/macos-desktop.md) from source to set up a local workspace or connect to a server.
 - [Set up with an agent](install/agent-setup.md) from an authorized shell.
 - [Customize the appearance](appearance.md) and share a theme file.
 

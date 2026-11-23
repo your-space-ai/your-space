@@ -15,7 +15,7 @@ clean checkout to signing in, installing a sample app, and opening it in the das
 It uses a local demo environment and the sample kits included here.
 
 The current preview runs from source. To try the Mac launcher, follow the
-[Mac build instructions](docs/install/macos-desktop.md#build-and-verify-a-private-candidate).
+[Mac build instructions](docs/install/macos-desktop.md#build-from-source).
 Apple Silicon and Intel disk images will be published on [GitHub Releases](https://github.com/your-space-ai/your-space/releases).
 
 ## Explore Your Space

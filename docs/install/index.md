@@ -69,7 +69,7 @@ CLI and server images, select that version and get the CLI one of these ways:
 
 | Machine | How to get `your-space` |
 | --- | --- |
-| Any Mac or Linux machine with Node 22.12 or newer | The npm package [`@your-space-ai/cli`](https://www.npmjs.com/package/@your-space-ai/cli): `npx @your-space-ai/cli@<version>`, or `npm install -g @your-space-ai/cli@<version>` to get the `your-space` command |
+| Any Mac or Linux machine with Node 22.12 or newer | The npm package `@your-space-ai/cli`: `npx @your-space-ai/cli@<version>`, or `npm install -g @your-space-ai/cli@<version>` to get the `your-space` command |
 | Linux Intel/AMD or ARM64 without Node | The standalone executable `your-space-linux-x64` or `your-space-linux-arm64` |
 | Mac with the desktop app | The CLI bundled in the app, at `Your Space.app/Contents/Resources/bin/your-space` |
 
@@ -96,7 +96,9 @@ your-space init
 
 `init` asks how you'll reach Your Space; press Enter for **This machine**, the default. It downloads
 the release that matches the `your-space` command's version, checks it against the release's
-checksums, and writes `.env`. With this machine, `.env` has no settings at all.
+checksums, and writes `.env`. With this machine, `.env` has no settings, unless Docker on Linux
+uses a socket other than `/var/run/docker.sock`, such as rootless Docker's: then `init` adds it as
+`YS_ENGINE_SOCKET`.
 
 Run every later `your-space` command in this folder, or name it with `--workdir <folder>`.
 

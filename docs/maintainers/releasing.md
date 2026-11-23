@@ -36,7 +36,27 @@ Each piece has its own workflow:
 5. **Publish the draft.** Publishing runs Release publish, which checks the npm tarball against `SHA256SUMS`, publishes that exact file to npm (`next` for prereleases, otherwise `latest`) and points the images' `latest` tag at the version (not for prereleases). It needs the `NPM_TOKEN` repository secret. An npm version can never be reused, so publishing is one-way.
 6. **Check the result from a clean machine:** install with `npx @your-space-ai/cli@<version>`, with a Linux executable and with a DMG, and confirm each reports the version.
 
-Signing needs the protected `macos-release` environment and its five secrets, described in the [desktop guide](../install/macos-desktop.md#build-and-verify-a-private-candidate). The environment requires the owner's approval and only accepts deployments from `main`, so a draft waits for that approval before it signs.
+## Sign the Mac app
+
+Signing runs on a GitHub-hosted macOS runner, never on a maintainer's machine, in a job bound to the protected `macos-release` environment. Only Release draft reaches it, and nothing in the signing workflow runs on pull requests, so code from a fork never sees its secrets. The environment requires the owner's approval and only accepts deployments from `main`, so a draft waits for that approval before it signs. It holds five secrets:
+
+| Secret | Contents |
+| --- | --- |
+| `MACOS_CERT_P12_BASE64` | The Developer ID Application certificate and its private key, as a base64-encoded `.p12` |
+| `MACOS_CERT_PASSWORD` | The `.p12` export password |
+| `APPLE_API_KEY_P8_BASE64` | An App Store Connect Team API key with the Developer role, as a base64-encoded `.p8` |
+| `APPLE_API_KEY_ID` | That key's ID |
+| `APPLE_API_ISSUER` | Its issuer ID |
+
+Protect the environment with the owner as required reviewer and deployments limited to `main`, and store the secrets on the environment only, not on the repository. The job imports the certificate into a temporary keychain with a random password, decodes the API key to the runner's temporary folder, and deletes both when it ends, whether it succeeds or not.
+
+If a secret leaks, revoke what it exposes and replace every secret that belongs to it. For the certificate, ask Apple to revoke it by emailing product-security@apple.com (Developer ID certificates can't be revoked from the developer account), create a new Developer ID Application certificate, and replace `MACOS_CERT_P12_BASE64` and `MACOS_CERT_PASSWORD`. Revoking it means DMGs signed with it can no longer be installed, and copies already installed may stop opening. Recover by publishing a new release, signed and notarized with the new certificate, with its own `SHA256SUMS`; remove the old DMGs from earlier releases, and tell people to download and reinstall the new version. For the API key, revoke it in App Store Connect under Users and Access › Integrations, create a new one, and replace `APPLE_API_KEY_P8_BASE64` and `APPLE_API_KEY_ID`; `APPLE_API_ISSUER` stays the same.
+
+The release job signs the app and its nested code with Developer ID and hardened runtime, then notarizes and staples the app. It packages the stapled app and an Applications shortcut in a read-only DMG, signs the image, and submits the image to Apple for notarization. After stapling and assessing the final image and checking the app it contains, the workflow attaches both DMGs to the draft release.
+
+The packager puts the launcher in `Contents/Resources/app.asar` and records its SHA-256 header digest in the app’s signed property list. Electron requires this archive and checks its integrity. The build disables Electron’s RunAsNode mode, Node environment options and Node inspector command-line switches. After extracting a candidate built with the [Mac source steps](../install/macos-desktop.md#build-from-source), run `node desktop/scripts/seal-macos.mjs verify "/path/to/Your Space.app"` from the same checkout to verify the five fuses, the header digest and each bundled launcher file. The packaged native smoke opens a test workspace through the browser debugging protocol on loopback.
+
+The **Build macOS app** workflow builds, packs and install-tests an Apple Silicon and an Intel candidate on pull requests that touch the desktop app or what it bundles; those runs keep no download. To exercise installation on the target architecture with a local candidate, extract the preview app, run `desktop/scripts/create-dmg.sh "/path/to/Your Space.app" candidate.dmg`, then run `desktop/scripts/test-dmg-install.sh candidate.dmg arm64` (or `x64`). The install test uses a disposable destination and launches the copy after ejecting the image.
 
 ## Install the candidate
 
@@ -53,7 +73,7 @@ Signing needs the protected `macos-release` environment and its five secrets, de
 
 ## Review and publish
 
-- Run the automated build and behavior checks for the candidate. Review security boundaries for setup, recovery, app isolation and credentials. Check the default network exposure, outbound requests, update opt-out, dependencies and images. Inspect the distributable files and logs for secrets or private data.
+- Run the automated build and behavior checks for the candidate. Review security boundaries for setup, recovery, app isolation and credentials. Check the default network exposure, outbound requests, dependencies and images. Inspect the distributable files and logs for secrets or private data.
 - Test and document supported upgrades and rollback with existing data, including what to preserve before a migration. Check that the installation, recovery and troubleshooting instructions match the tested paths.
 - Confirm distribution rights and notices for the code, binaries, images and other assets that ship. Review the [desktop notices](https://github.com/your-space-ai/your-space/blob/main/desktop/THIRD-PARTY.md) and [license and trademark decision](../architecture/decisions.md#project-license-and-business-model), including the legal review for the packaged release.
 - Give the owner the candidate reference, checks performed, open blockers and limitations for a release decision. With approval, publish the reviewed draft. [Release draft](https://github.com/your-space-ai/your-space/blob/main/.github/workflows/release-draft.yml) prepares the draft before publication. Verify that GitHub Releases serves the matching install files, DMGs and checksums, and that npm serves the matching package. Record the release URL, tested versions and unsupported configurations in the release notes.

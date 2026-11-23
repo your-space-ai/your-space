@@ -27,10 +27,11 @@ your-space init --yes --json
 your-space start --owner-name "Sam Rivera" --owner-username sam --json
 ```
 
-The exit status says what happened: 0 done, 1 an invalid option or answer, 2 something in the way
-(the message says what), 3 Docker or the database couldn't be reached, 4 something unexpected. The
-[command contract](https://github.com/your-space-ai/your-space/blob/main/specs/003-install-with-the-cli/contracts/cli-commands.md) lists every
-option and field.
+The exit status says what happened: 0 done, 1 an invalid option or answer, 2 something in the way,
+such as Docker not running (the message says what), 3 something Your Space needs couldn't be
+reached, such as a release download or the database, 4 something unexpected. The
+[command contract](https://github.com/your-space-ai/your-space/blob/main/specs/003-install-with-the-cli/contracts/cli-commands.md) describes the
+main commands, their options, JSON fields and errors.
 
 The `your-space` command runs `docker compose` in this folder, so every `docker compose` command in
 this guide still works here, and a folder you set up by hand works with `your-space` as it is.
@@ -60,13 +61,13 @@ folder, since both would share the same volumes.
 
 ## Restarts and Your Data
 
-Everything Your Space itself keeps is in three Docker volumes (a fourth, `ys-runtime`, holds
-nothing durable):
+Everything Your Space itself keeps is in three Docker volumes (two more, `ys-runtime` and
+`ys-agent-edge`, hold only sockets and nothing durable):
 
 | Volume | What it holds |
 | --- | --- |
 | `ys-postgres` | The database: your account, password hash, workspace, and sessions |
-| `ys-secrets` | The generated auth secret and database password. Keep it with `ys-postgres` |
+| `ys-secrets` | The generated auth secret, database password and data key. Keep it with `ys-postgres` |
 | `ys-caddy-data` | Caddy's HTTPS certificates |
 
 `docker volume ls` lists them as `your-space_ys-postgres`, `your-space_ys-secrets`, and
@@ -97,10 +98,10 @@ Apps keep their data in their own volumes, named after the app, such as `ys-sure
 `docker compose exec runtime stop-apps`.
 
 > [!WARNING]
-> `docker compose down -v` is not a restart. `-v` (`--volumes`) deletes all three volumes, and your
-> account and workspace with them: the next start has no owner. `docker volume rm` on these
-> volumes, or `docker volume prune --all` while Your Space is down, does the same. There is no
-> undo.
+> `docker compose down -v` is not a restart. `-v` (`--volumes`) deletes all of Your Space's volumes,
+> these three included, and your account and workspace with them: the next start has no owner.
+> `docker volume rm` on these volumes, or `docker volume prune --all` while Your Space is down, does
+> the same. There is no undo.
 
 Updating Your Space and backing it up aren't covered yet; they come in a later release.
 

@@ -44,8 +44,8 @@ the proxy at the new port. `YS_PORT` doesn't apply to your own domain, which nee
 
 Which line you write decides which ports open: only `YS_DOMAIN` opens any to the network. The
 server checks every line when it starts and refuses to start, with a message that says what to fix,
-if a value is wrong, if both `YS_DOMAIN` and `YS_PROXY_URL` are set, or if a setting's name is
-misspelled. Caddy waits for the server, so a wrong line never opens a port.
+if a value is wrong, if both `YS_DOMAIN` and `YS_PROXY_URL` are set, or if the name of a `YS_`
+setting is misspelled. Caddy waits for the server, so a wrong line never opens a port.
 
 ### Secrets
 
@@ -72,8 +72,8 @@ To see the secrets in use and where each comes from:
 docker compose exec server show-secrets
 ```
 
-Every line it prints is valid in `.env`, so to manage a generated secret yourself, copy its line
-there. To replace a secret later, see [Replace a Secret](../operate/recovery.md#replace-a-secret).
+A generated secret's line is valid in `.env` as printed, so to manage a generated secret yourself,
+copy its line there. To replace a secret later, see [Replace a Secret](../operate/recovery.md#replace-a-secret).
 
 ## 3. Start
 
