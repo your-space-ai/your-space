@@ -1,5 +1,7 @@
 # Your Space documentation
 
+These pages are the maintained reference: how to install and run Your Space, what each release ships, and what has been decided and planned. For an in-depth tour of the code, subsystem by subsystem, read the generated [DeepWiki](https://deepwiki.com/your-space-ai/your-space). It is built from this repository and steered by [`.devin/wiki.json`](../.devin/wiki.json); where it differs from these pages, these pages are correct.
+
 ## Run a workspace
 
 - [Try the dashboard from source](install/from-source.md) with Docker and a sample app.

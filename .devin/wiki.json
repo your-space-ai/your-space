@@ -1,0 +1,168 @@
+{
+  "repo_notes": [
+    {
+      "content": "Treat the repository's own docs as the source of truth and link to them instead of restating them: docs/architecture/decisions.md (decisions), docs/roadmap.md (what is delivered vs planned), specs/ (journey requirements), docs/install/ (installation steps), docs/maintainers/releasing.md (what a release ships and the release steps). Where an exact command, version or file name matters, cite the canonical doc."
+    },
+    {
+      "content": "Describe what exists on the default branch. The roadmap and decision record separate delivered work from planned, deferred and candidate work; never present planned or deferred work as implemented."
+    },
+    {
+      "content": "Names: the product is Your Space; the command is your-space; the npm package is @your-space-ai/cli; the release images are your-space-server, your-space-web and your-space-runtime on GHCR."
+    },
+    {
+      "content": "Never include secret values, tokens or private keys, and do not describe a maintainer's personal machines or accounts. Signing secrets are referenced only by name."
+    }
+  ],
+  "pages": [
+    {
+      "title": "Overview",
+      "purpose": "What Your Space is, its main components (CLI, Caddy edge, platform server, runtime manager, PostgreSQL, web client, macOS launcher) and how they fit together; link to the child pages.",
+      "parent": null
+    },
+    {
+      "title": "Architecture and Design Decisions",
+      "purpose": "Summarize docs/architecture/overview.md and the accepted decisions in docs/architecture/decisions.md: control plane vs execution plane, trust boundaries, and how decisions are recorded.",
+      "parent": "Overview"
+    },
+    {
+      "title": "Repository Layout and Workspaces",
+      "purpose": "The npm workspaces (cli, server, runtime, web, desktop, shared, e2e) and the deploy/, specs/ and docs/ folders.",
+      "parent": "Overview"
+    },
+    {
+      "title": "Spec-Driven Development Process",
+      "purpose": "How specs/ and .specify/ drive a journey from specification to plan, tasks and verification, and how the roadmap and decision record stay in step (AGENTS.md).",
+      "parent": "Overview"
+    },
+    {
+      "title": "Installation and Operations",
+      "purpose": "How a workspace is installed and run: the CLI, the Compose stack and the macOS launcher. Point to docs/install/ for exact steps.",
+      "parent": null
+    },
+    {
+      "title": "The your-space CLI",
+      "purpose": "Structure of cli/: command parsing, release-file download and checksum checks, engine detection, and how it drives Docker Compose.",
+      "parent": "Installation and Operations"
+    },
+    {
+      "title": "Setup, Init and Start Flows",
+      "purpose": "setup, init and start: guided terminal setup, headless JSON setup, owner creation and resume behaviour.",
+      "parent": "The your-space CLI"
+    },
+    {
+      "title": "Operator Commands",
+      "purpose": "status, logs, stop, configure, secrets and owner recovery commands.",
+      "parent": "The your-space CLI"
+    },
+    {
+      "title": "App Authoring Commands and Scaffolding",
+      "purpose": "CLI commands for building and scaffolding apps and kits.",
+      "parent": "The your-space CLI"
+    },
+    {
+      "title": "Deployment Stack: Compose, Caddy and Modes",
+      "purpose": "deploy/: compose.yaml, stack.yaml, the setup modes, the Caddyfile and how release files pin image versions.",
+      "parent": "Installation and Operations"
+    },
+    {
+      "title": "macOS Desktop Launcher",
+      "purpose": "desktop/: the Electron launcher, local engine discovery, local vs server setup, the bundled CLI, and packaging.",
+      "parent": "Installation and Operations"
+    },
+    {
+      "title": "Platform Server",
+      "purpose": "server/: the Express control plane and how its parts are wired.",
+      "parent": null
+    },
+    {
+      "title": "Server Bootstrap, Config and Secrets",
+      "purpose": "Startup, configuration, and how secrets are created and held.",
+      "parent": "Platform Server"
+    },
+    {
+      "title": "Data Model and Migrations",
+      "purpose": "Drizzle schema, PostgreSQL tables and migrations.",
+      "parent": "Platform Server"
+    },
+    {
+      "title": "Owner Access and Authentication",
+      "purpose": "Owner claim, username sign-in with Better Auth, sessions and recovery.",
+      "parent": "Platform Server"
+    },
+    {
+      "title": "Apps Subsystem",
+      "purpose": "How apps are installed, run, published and opened.",
+      "parent": null
+    },
+    {
+      "title": "AppsService and Install Pipeline",
+      "purpose": "The install pipeline from kit to running app.",
+      "parent": "Apps Subsystem"
+    },
+    {
+      "title": "Installation Kits and Sources",
+      "purpose": "Kit format, sources (direct URL, GitHub) and pinned images.",
+      "parent": "Apps Subsystem"
+    },
+    {
+      "title": "Runtime Manager and Docker Adapter",
+      "purpose": "runtime/: the Unix-socket API, the Docker Compose adapter and network isolation.",
+      "parent": "Apps Subsystem"
+    },
+    {
+      "title": "Publishing, Panes and Access Gate",
+      "purpose": "How an app is published behind Caddy, opened in panes, and protected by the access gate.",
+      "parent": "Apps Subsystem"
+    },
+    {
+      "title": "Managed Repositories and Kit Directory",
+      "purpose": "Managed repositories, forks with edits, and the kit directory.",
+      "parent": "Apps Subsystem"
+    },
+    {
+      "title": "Agent Delegation",
+      "purpose": "How external agents get scoped access to apps.",
+      "parent": null
+    },
+    {
+      "title": "Agent Store, Grants and Gateway",
+      "purpose": "Kit-defined roles, grants, approvals, the gateway and attribution.",
+      "parent": "Agent Delegation"
+    },
+    {
+      "title": "Agent Setup and Agent UI",
+      "purpose": "Agent-led setup and the owner's agent management UI.",
+      "parent": "Agent Delegation"
+    },
+    {
+      "title": "Web Client",
+      "purpose": "web/: the React dashboard.",
+      "parent": null
+    },
+    {
+      "title": "Routing, Layout and Query Layer",
+      "purpose": "Routing, layouts, named multi-app views and data fetching.",
+      "parent": "Web Client"
+    },
+    {
+      "title": "Home, Sign-in and App Pages",
+      "purpose": "Home (including the first-kit guidance), sign-in and session lifecycle, and app pages with panes.",
+      "parent": "Web Client"
+    },
+    {
+      "title": "Appearance and Themes",
+      "purpose": "Themes, shared appearance tokens and theme files.",
+      "parent": "Web Client"
+    },
+    {
+      "title": "Testing and Quality",
+      "purpose": "Unit and integration tests, the Playwright end-to-end suite, and the Contribution checks gate.",
+      "parent": null
+    },
+    {
+      "title": "CI, Release and Packaging",
+      "purpose": "The CI workflows and the release workflows (Release draft, images, CLI, install test, macOS build and signing, publish). Point to docs/maintainers/releasing.md for what a release ships and the release steps.",
+      "parent": "Testing and Quality"
+    }
+  ]
+}

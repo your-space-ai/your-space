@@ -20,6 +20,13 @@ The [architecture overview](docs/architecture/overview.md) diagrams the running 
 layer. When a decision adds, removes, or moves a component, layer, or request path, update the
 overview in the same change.
 
+Keep the maintained documentation to the reference set: the README, `docs/install/`, `docs/apps/`,
+`docs/maintainers/`, the decision record, roadmap, architecture overview, glossary and `specs/`.
+In-depth explanations of how the code works come from the generated
+[DeepWiki](https://deepwiki.com/your-space-ai/your-space). Don't add hand-written walkthroughs of
+internals; steer DeepWiki instead by editing its page plan and notes in `.devin/wiki.json`
+(at most 30 pages). When a change adds, removes or renames a subsystem, update that file in the same PR.
+
 The [spec map](specs/README.md) records journey numbers, dependencies and build order.
 Keep each roadmap outcome under the product area it belongs to. Record its delivery stage there
 and link its journey when one exists. When a change in scope or timing affects a journey,

@@ -538,6 +538,10 @@ of technical parts. The [glossary](../glossary.md) records the terms.
 
 **Decision update (2026-11-03):** Certificate requests the built-in proxy makes for an owner-configured domain are part of HTTPS setup, not reporting. This qualifies the bullet above on automatic outbound requests: with a domain configured, these certificate requests are the only automatic outbound requests besides update checks.
 
+### Documentation
+
+**Decision (2026-11-23).** The repository maintains a reference set of documents: installation and operation guides, app-building guides, maintainer guides, this decision record, the roadmap, the architecture overview, the glossary and the specifications. In-depth explanations of how the code works come from the generated [DeepWiki](https://deepwiki.com/your-space-ai/your-space), steered by its page plan and notes in `.devin/wiki.json`, instead of hand-written walkthroughs. Generated pages can lag the code or paraphrase it, so the reference set stays authoritative wherever exact steps, versions or commitments matter, and DeepWiki is told to cite it.
+
 ## Accepted Future App Distribution Direction
 
 **Current scope (2026-11-21).** Journey 011 includes direct kit URLs, an optional operator-selected GitHub kit directory, private GitHub sources, and owner-confirmed compatible replacements. Journey 006 covers broader updates and backup-based data rollback after publication. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).

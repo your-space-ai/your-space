@@ -26,6 +26,7 @@ Apple Silicon and Intel disk images will be published on [GitHub Releases](https
 - [Create and share a theme](docs/appearance.md)
 
 For setup on a server, contributor guides, and design decisions, browse the [documentation](docs/README.md).
+For an in-depth tour of how the code works, read the generated [DeepWiki](https://deepwiki.com/your-space-ai/your-space).
 The [roadmap](docs/roadmap.md) tracks what’s implemented and what’s planned.
 
 ## Current limits
