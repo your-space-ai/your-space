@@ -497,7 +497,7 @@ Dependency selection must consider actual licenses, including bundled components
 - The project uses the name Your Space and the domain getyourspace.ai. Trademark filing and a policy for forks remain open.
 - Outside contributions are accepted under the Developer Certificate of Origin (DCO): contributors sign off each commit and keep their copyright, and the code they contribute is licensed under the license of the part it changes. (Contributor license agreement superseded 2026-11-16; see below.)
 - Code specific to the managed service, such as billing, provisioning, and multi-tenant operations, lives in a separate private repository and integrates with the core through its APIs.
-- The license, trademark, and contributor agreement are in place before publication, after review by a lawyer. (Lawyer review superseded 2026-11-21 for the source preview and 2026-11-23 for packaged prereleases; see below.)
+- The license, trademark, and contributor agreement are in place before publication, after review by a lawyer. (Lawyer review superseded: the source preview went without one on 2026-11-21, and since 2026-11-23 no release requires one; see below.)
 
 **Decision update (2026-11-02):** AGPL-3.0 for Your Space and Apache-2.0 for the SDKs replace the earlier MIT preference. AGPL keeps the core open source while preventing closed hosted forks; the trademark and maintainership protect the managed offering. Source-available licenses such as FSL were considered and rejected because the business depends on an open-source core.
 
@@ -508,7 +508,7 @@ Dependency selection must consider actual licenses, including bundled components
 - **`AGPL-3.0-only`, not "or later".** The project decides on any future license version itself; under the DCO this can't easily be changed later.
 - **Copyright holder.** Code is published under the owner's name; the owner assigns it to the company when it is incorporated. Incorporation isn't required for publication.
 - **Trademark: open.** A 2026-11-16 screening found no live US registration for YOUR SPACE in software classes, but the name is descriptive and may be hard to register, and MYSPACE registrations exist in related classes. Whether and when to file, and the trademark policy for forks, are open.
-- **Lawyer review before publication remains as stated above** and now covers the DCO in place of a contributor agreement. (Superseded 2026-11-21 for the source preview and 2026-11-23 for packaged prereleases; see below.)
+- **Lawyer review before publication remains as stated above** and now covers the DCO in place of a contributor agreement. (Superseded: the source preview went without one on 2026-11-21, and since 2026-11-23 no release requires one; see below.)
 
 **Decision update (2026-11-21, quiet source preview).** The owner chose to publish the developer
 preview under AGPL-3.0-only and accept outside contributions under the DCO without a counsel
@@ -519,9 +519,10 @@ packaged product release follows the [maintainer release guide](../maintainers/r
 alpha, also ship without a counsel review, because the project can't afford one before the alpha.
 This extends the 2026-11-21 decision from the source preview to the packaged prereleases that the
 [maintainer release guide](../maintainers/releasing.md) produces, under the same AGPL-3.0-only
-license and DCO. Maintainers still confirm distribution rights and notices for everything that
-ships, as the guide describes. Trademark filing, the policy for forks, and whether counsel reviews
-the license, contributor and trademark terms before a later release remain open.
+license and DCO. It supersedes the lawyer review before publication above: the guide no longer
+asks for one for any release. Maintainers still confirm distribution rights and notices for
+everything that ships, as the guide describes. Trademark filing, the policy for forks, and whether
+counsel reviews the license, contributor and trademark terms before a later release remain open.
 
 ### Product Experience Principles
 
@@ -1067,7 +1068,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 - The app contract defines app roles in 002, although only the owner exists then, so 004 adds role assignment without changing the contract. (Superseded 2026-11-14: app roles come with level 2 integration in a later journey; see [identity and app-owned roles](#identity-and-app-owned-roles).)
 - The activity log arrives with agents in 005, since reviewing what agents did is its main purpose. App installs and member changes are logged from then on.
 - The app database moves from Medium to High, because the Tasks app in 002 needs one. (2026-11-14: Sure, which replaces Tasks, needs one too, so it stays High.)
-- Maintainers review security, privacy and legal requirements across the finished journeys using the [packaged release guide](../maintainers/releasing.md). (2026-11-23: for packaged prereleases, the legal part is the guide's distribution-rights and notices check, without a counsel review; see [project license and business model](#project-license-and-business-model).)
+- Maintainers review security, privacy and legal requirements across the finished journeys using the [packaged release guide](../maintainers/releasing.md). (2026-11-23: the legal part is the guide's distribution-rights and notices check, without a counsel review; see [project license and business model](#project-license-and-business-model).)
 - Every specification follows shared rules from the start: simple by default, no telemetry, ARM and Intel images, all durable state in the database or named volumes, the actual actor credited from the first schema, and its own docs and security tests. (2026-11-14: ARM and Intel applies to Your Space's own images; apps need only the engine's processor type.)
 
 This refines the sequence above without changing scope: it groups existing pre-public items into journeys and orders the work after the CLI.
