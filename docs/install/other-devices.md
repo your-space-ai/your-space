@@ -146,7 +146,9 @@ own address, and Tailscale gives one name per service. For Sure published on por
 
 1. Make sure the server joined your tailnet as a tagged device, for example `tag:server`: a
    [Tailscale Service](https://tailscale.com/kb/1552/tailscale-services) can only be hosted by a device
-   with a tag, not one signed in as a user.
+   with a tag, not one signed in as a user. Tagging a device replaces its user identity, so first
+   make sure your [access rules](https://tailscale.com/kb/1068/tags) still let you reach a
+   `tag:server` device, for example over SSH; the rule for the service doesn't cover the server itself.
 2. In Tailscale's admin console, under Services, define a service named `sure`.
 3. On the server, run (on Linux, with `sudo`):
 
