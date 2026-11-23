@@ -16,6 +16,7 @@ import {
   listContainers,
   pullImage,
   scrub,
+  type CliResult,
   type ContainerSummary,
   type ImageCheck,
 } from "./engine.ts";
@@ -54,6 +55,7 @@ export function validateSpec(body: unknown): AppSpec {
     const { frame } = spec.publish as { frame?: unknown };
     if (frame !== undefined && typeof frame !== "boolean") throw new SpecError("Whether Your Space frames the published app must be true or false.");
   }
+  if (spec.placeholders !== undefined && typeof spec.placeholders !== "boolean") throw new SpecError("Whether the check uses placeholders must be true or false.");
   return { ...spec, installation: INSTALLATION, env } as AppSpec;
 }
 
@@ -78,21 +80,54 @@ export function isStopping(): boolean {
   return stopping;
 }
 
+interface Variable {
+  name: string;
+  required: boolean;
+  default: string;
+}
+
 interface Resolved {
   resolved: Record<string, unknown>;
   profiled: string[];
-  variables: { name: string; required: boolean; default: string }[];
+  variables: Variable[];
 }
 
-async function resolve(spec: AppSpec): Promise<Resolved> {
+/**
+ * What a check gives a setting the file requires, with `${NAME:?…}` or `${NAME?…}`, when the spec
+ * has no value for it, so the owner can review the file before filling the setting in. Only a check
+ * that asks for placeholders uses it; an apply never does, so it never reaches a running app.
+ */
+export const PLACEHOLDER = "ys-placeholder";
+
+/** The settings, with the placeholder for each required one that has no value. */
+export function withPlaceholders(env: Record<string, string>, variables: Variable[]): Record<string, string> {
+  const filled = { ...env };
+  for (const { name, required } of variables) if (required && !(Object.hasOwn(filled, name) && filled[name])) filled[name] = PLACEHOLDER;
+  return filled;
+}
+
+/** `docker compose config --variables --format json`, or none when Compose couldn't list them. */
+function variablesOf(listed: CliResult): Variable[] {
+  if (listed.code !== 0) return [];
+  return Object.values(JSON.parse(listed.stdout) as Record<string, { Name: string; DefaultValue: string; Required: boolean }>).map((v) => ({
+    name: v.Name,
+    required: v.Required,
+    default: v.DefaultValue,
+  }));
+}
+
+async function resolve(spec: AppSpec, placeholders: boolean): Promise<Resolved> {
   const dir = mkdtempSync("/tmp/ys-check-");
   try {
     writeFileSync(join(dir, "compose.yaml"), spec.compose, { mode: 0o600 });
     const base = ["compose", "-p", spec.project, "--project-directory", dir, "-f", join(dir, "compose.yaml")];
-    const [plain, all, variables] = await Promise.all([
-      docker([...base, "config", "--format", "json"], spec.env, dir),
-      docker([...base, "--profile", "*", "config", "--format", "json"], spec.env, dir),
-      docker([...base, "config", "--variables", "--format", "json"], {}, dir),
+    // Compose lists the file's settings without resolving it, so a required one without a value doesn't stop it.
+    const listed = docker([...base, "config", "--variables", "--format", "json"], {}, dir).then(variablesOf);
+    const env = placeholders ? withPlaceholders(spec.env, await listed) : spec.env;
+    const [plain, all, vars] = await Promise.all([
+      docker([...base, "config", "--format", "json"], env, dir),
+      docker([...base, "--profile", "*", "config", "--format", "json"], env, dir),
+      listed,
     ]);
     if (plain.code !== 0) {
       const message = scrub(plain.stderr, spec.env)
@@ -105,14 +140,6 @@ async function resolve(spec: AppSpec): Promise<Resolved> {
     const resolved = JSON.parse(plain.stdout) as Record<string, unknown>;
     const allServices = all.code === 0 ? Object.keys((JSON.parse(all.stdout) as { services?: object }).services ?? {}) : [];
     const running = Object.keys((resolved.services as object) ?? {});
-    const vars =
-      variables.code === 0
-        ? Object.values(JSON.parse(variables.stdout) as Record<string, { Name: string; DefaultValue: string; Required: boolean }>).map((v) => ({
-            name: v.Name,
-            required: v.Required,
-            default: v.DefaultValue,
-          }))
-        : [];
     return { resolved, profiled: allServices.filter((s) => !running.includes(s)), variables: vars };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -125,8 +152,8 @@ export interface CheckAnswer extends Omit<CheckResult, "adapted"> {
   images: ImageCheck[];
 }
 
-async function checkWithImages(spec: AppSpec, waitForCaddy = 0): Promise<{ answer: CheckAnswer; adapted: CheckResult["adapted"] }> {
-  const { resolved, profiled, variables } = await resolve(spec);
+async function checkWithImages(spec: AppSpec, waitForCaddy = 0, placeholders = false): Promise<{ answer: CheckAnswer; adapted: CheckResult["adapted"] }> {
+  const { resolved, profiled, variables } = await resolve(spec, placeholders);
   const info = await engineInfo();
   if (!info.reachable) throw new EngineError("The engine can't be reached.", 503);
   const caddy = spec.publish ? await ownCaddy(waitForCaddy) : undefined;
@@ -162,7 +189,7 @@ async function checkWithImages(spec: AppSpec, waitForCaddy = 0): Promise<{ answe
 }
 
 export async function check(spec: AppSpec): Promise<CheckAnswer> {
-  return (await checkWithImages(spec)).answer;
+  return (await checkWithImages(spec, 0, spec.placeholders === true)).answer;
 }
 
 async function installationContainer(service: string): Promise<string | undefined> {

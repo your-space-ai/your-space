@@ -25,6 +25,11 @@ export class FakeRuntime implements Runtime {
 
   async check(spec: AppSpec): Promise<CheckAnswer> {
     this.calls.push({ method: "check", spec });
+    // Like Compose, a setting the file requires refuses the file without a value, unless the check gives it a placeholder.
+    const missing = this.variables.find((v) => v.required && !spec.env[v.name]);
+    if (missing && !spec.placeholders) {
+      throw new RuntimeError(`The file isn't a Compose file Your Space can read: required variable ${missing.name} is missing a value`, 400, "refused");
+    }
     return {
       ok: true,
       services: [
@@ -44,6 +49,9 @@ export class FakeRuntime implements Runtime {
     this.calls.push({ method: "apply", spec });
     onEvent({ step: "check" });
     if (this.failApply) throw new Error(this.failApply);
+    // An apply never gives a required setting a placeholder.
+    const missing = this.variables.find((v) => v.required && !spec.env[v.name]);
+    if (missing) throw new Error(`The file isn't a Compose file Your Space can read: required variable ${missing.name} is missing a value`);
     onEvent({ step: "start" });
     this.running.set(spec.project, [
       { name: "web", role: "app", state: "running" },

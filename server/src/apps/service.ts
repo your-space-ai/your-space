@@ -363,8 +363,10 @@ export class AppsService {
     const previous = existing ? await this.storedValues(existing.id) : new Map<string, string | null>();
     const address = this.address(name);
 
-    // A first check reads the settings the file uses; the second resolves the file with them.
-    const spec: AppSpec = { project: `ys-${name}`, app: name, compose: source.text, env: {}, interface: kit?.interface ?? null };
+    // A first check reads the settings the file uses; the second resolves the file with them. A
+    // setting the file requires and nothing fills gets a placeholder in both, so the review shows
+    // the file and the owner fills the setting in; installing needs a real value (install).
+    const spec: AppSpec = { project: `ys-${name}`, app: name, compose: source.text, env: {}, interface: kit?.interface ?? null, placeholders: true };
     const first = await this.check(spec);
     const settings = buildSettings(first.variables, kit, address, previous);
     const check = await this.check({ ...spec, env: this.envOf(settings) });

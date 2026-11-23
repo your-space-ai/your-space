@@ -29,6 +29,11 @@ export interface AppSpec {
   egress?: string[];
   /** `frame`: the app's Caddy lets only Your Space's origin frame it (decision 2026-11-20). */
   publish?: { port: number; bind: string; frame: boolean } | null;
+  /**
+   * A check gives each setting the file requires and `env` has no value for a placeholder, so the
+   * owner can review the file before filling those settings in. An apply ignores it.
+   */
+  placeholders?: boolean;
 }
 
 export interface CheckAnswer {

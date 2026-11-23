@@ -12,6 +12,7 @@ test.describe.configure({ mode: "serial" });
 const WHOAMI = "https://github.com/ys-fixtures/whoami/blob/main/compose.yaml";
 const PROBE = "https://github.com/ys-fixtures/probe/blob/main/compose.yaml";
 const NOFRAME = "https://github.com/ys-fixtures/noframe/blob/main/compose.yaml";
+const REQUIRED = "https://github.com/ys-fixtures/required/blob/main/compose.yaml";
 const LINK_LABEL = "Link to the app's Compose file";
 
 // The owner signs in once: sign-in allows three attempts per address in 10 seconds (journey 001).
@@ -428,4 +429,41 @@ test("removing an app keeps its data, which a reinstall reuses or the owner dele
   await dialog.getByRole("button", { name: "Delete data" }).click();
   await expect(page.getByRole("heading", { name: "Kept data" })).toHaveCount(0);
   expect((await docker(["volume", "ls", "-q", "--filter", "name=ys-probe_data"])).stdout.trim()).toBe("");
+});
+
+test("an app whose file requires settings is reviewed, and installs once the owner fills them in", async ({ page }) => {
+  // The command gives no values, so the install it reviews is refused.
+  const refused = await serverCommand("install-app", [REQUIRED]);
+  expect(refused.code, refused.stderr).not.toBe(0);
+  expect(refused.json).toMatchObject({ ok: false, error: "settings_required", message: "These settings need a value: ADMIN_EMAIL, SECRET_KEY_BASE." });
+
+  await asOwner(page);
+  await page.goto("/apps");
+  await page.getByLabel(LINK_LABEL).fill(REQUIRED);
+  await page.getByRole("button", { name: "Review" }).click();
+  await expect(page.getByRole("heading", { name: "Review" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Refusals" })).toHaveCount(0);
+  const install = page.getByRole("button", { name: "Install" });
+  await expect(install).toBeDisabled();
+  await page.getByLabel("SECRET_KEY_BASE").fill("a-real-secret-value");
+  await expect(install).toBeDisabled();
+  await page.getByLabel("ADMIN_EMAIL").fill("owner@example.com");
+  await install.click();
+  await waitForJob(page);
+  // The app runs with the owner's values, never the placeholders its review used.
+  const env = await inspect("ys-required-web-1", "{{json .Config.Env}}");
+  expect(env).toContain("SECRET_KEY_BASE=a-real-secret-value");
+  expect(env).toContain("ADMIN_EMAIL=owner@example.com");
+  expect(env).not.toContain("ys-placeholder");
+
+  await page.goto("/apps/required");
+  await page.getByRole("button", { name: "Remove app", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remove app", exact: true }).click();
+  await waitForJob(page);
+  await page.goto("/apps");
+  await page.getByRole("button", { name: "Delete data of required" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await dialog.getByLabel("Type required to confirm").fill("required");
+  await dialog.getByRole("button", { name: "Delete data" }).click();
+  await expect(page.getByRole("heading", { name: "Kept data" })).toHaveCount(0);
 });
