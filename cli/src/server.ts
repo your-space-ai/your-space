@@ -66,6 +66,7 @@ export function expectOk(result: ServerResult): Record<string, unknown> {
   if (typeof error === "string" && SERVER_CODE.test(error)) {
     throw new ServerFailure(error, result.status >= EXIT.usage && result.status <= EXIT.unexpected ? result.status : EXIT.unexpected, said, fields);
   }
+  // Without one, the exit status still says what kind of failure it was: 2 the state, 3 storage.
   throw new CliError(result.status === EXIT.state ? "app_failed" : result.status === EXIT.unreachable ? "storage_unavailable" : "unexpected", said, fields);
 }
 
