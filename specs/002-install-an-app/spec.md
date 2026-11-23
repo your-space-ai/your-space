@@ -155,14 +155,17 @@ safely. Controlling Docker is the most security-sensitive part of the journey, s
 on its own.
 
 **Independent Test**: In a running stack, run the install command with the link to a small fixture
-app's Compose file, check its status, restart the stack, and check it again.
+app's Compose file (2026-11-23: to its kit, which names that file), check its status, restart the
+stack, and check it again.
 
 **Acceptance Scenarios**:
 
 1. **Given** a running Your Space with an owner, **When** the operator runs the install command with
-   the GitHub link to a public repository's Compose file, **Then** Your Space records the file at the
-   exact commit the link resolves to, pins each image to an exact version, starts the app's
-   containers, and reports the app as running.
+   the GitHub link to a public repository's Compose file, **Then** Your Space records the file at
+   the exact commit the link resolves to, pins each image to an exact version, starts the app's
+   containers, and reports the app as running. (2026-11-23: the command takes the link to the app's
+   kit, and Your Space records the kit at the commit its link resolves to and the Compose file it
+   names at the commit the [kit format](contracts/kit-format.md) gives.)
 2. **Given** an installed app, **When** the operator lists apps, **Then** each app's name, source,
    commit and state are shown, and the state matches what is running.
 3. **Given** an installed app, **When** Your Space is restarted or the stack is recreated with
@@ -190,16 +193,16 @@ and Your Space adapts it, generates its secrets and runs every service.
 one unchanged is the point of the journey.
 
 **Independent Test**: Run the install command with the link to the finance app's example Compose
-file and check that its web, worker, database and Redis services are running and healthy. The
-runtime manager's tests keep the file's resolved form, and the
-[README of those fixtures](../../runtime/tests/README.md) records its source and commit.
+file (2026-11-23: to its kit, which names that file) and check that its web, worker, database and
+Redis services are running and healthy. The runtime manager's tests keep the file's resolved form,
+and the [README of those fixtures](../../runtime/tests/README.md) records its source and commit.
 
 **Acceptance Scenarios**:
 
-1. **Given** the link to the finance app's Compose file, **When** the operator installs it, **Then**
-   Your Space reports what it changed (for example the published port, moving image tags and the
-   fixed DNS servers) and what it left out (for example the backup services behind profiles, which
-   mount host folders), and runs the rest.
+1. **Given** the link to the finance app's Compose file (2026-11-23: to its kit, which names that
+   file), **When** the operator installs it, **Then** Your Space reports what it changed (for
+   example the published port, moving image tags and the fixed DNS servers) and what it left out
+   (for example the backup services behind profiles, which mount host folders), and runs the rest.
 2. **Given** the file sets a secret's default in plain text (the finance app's `SECRET_KEY_BASE` and
    `POSTGRES_PASSWORD`), **When** Your Space installs it, **Then** it generates a new value for each,
    as the finance app's installation kit says, and never uses the published default.
