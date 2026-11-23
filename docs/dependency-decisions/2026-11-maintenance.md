@@ -17,6 +17,11 @@ The rate limiter uses its in-process store on the workspace's single server. It 
 
 The scheduled image scan uses Aqua Security's Apache-2.0 Trivy 0.76.2 and trivy-action 0.36.0 to inspect local images. GitHub's MIT codeql-action 4.39.4 sends the SARIF findings to this repository's security dashboard. These tools run only in CI. They do not publish images or require a new hosted service.
 
-The scan reports only findings with a fix available, so the dashboard lists what can be acted on; an unfixed finding returns once its distribution or module ships a fix. Upstream Go binaries are checked with `govulncheck -mode=binary`, which looks at the code a binary can reach rather than its module versions alone. Findings it shows are never reached are listed with their reasons and an expiry date in `.trivyignore.yaml`: gosu in the official PostgreSQL image, and Docker Compose's HTML parser in the runtime image.
+The scan produces three things for each image:
+- **Alerts:** the Security tab shows HIGH and CRITICAL findings that have a fix to take. A finding with no fix yet becomes an alert once its distribution or module ships one.
+- **Inventory:** every finding at every severity, fixed or not, including accepted ones. It's kept with each run for 90 days, and the run's summary counts what has a fix and what doesn't.
+- **Accepted findings:** `.github/accepted-findings.yaml` lists the findings we accept instead of fixing, each limited to one binary's path, with a reason and a date to look again. The scan fails on an entry without a reason or date, or one that has expired.
+
+Accept a finding only when `govulncheck -mode=binary` shows a Go binary never reaches the vulnerable code, or an upstream policy covers it. Today that's gosu in the official PostgreSQL image, and Docker Compose's HTML parser in the runtime image.
 
 The web image builds Caddy 2.11.9 from its Apache-2.0 source with the official `caddy:2.11-builder` toolchain, raising golang.org/x/net (BSD-3-Clause) to 0.62.0 and github.com/klauspost/compress (BSD-3-Clause and Apache-2.0) to 1.20.2. Caddy's own release reaches vulnerabilities fixed in those versions and in the newer Go standard library. The build uses Caddy's standard modules only, the same set the official image lists, and keeps the image's file capability. Remove that build stage once a `caddy:2.11` release includes the fixes.

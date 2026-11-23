@@ -115,7 +115,7 @@ jobs:
             jq -r '[.Results[]?.ExperimentalModifiedFindings[]?] as $a
               | "Accepted in .github/accepted-findings.yaml: \($a | length)"
                 + ([$a[] | select(.Finding.FixedVersion // "" | length > 0)] | length
-                   | if . > 0 then " (\(.) of them now have a fixed version)" else "" end)' \
+                   | if . > 0 then " (\(.) of them fixed in a newer version of the vulnerable package)" else "" end)' \
               "inventory-$COMPONENT.json"
             echo
           } >> "$GITHUB_STEP_SUMMARY"
