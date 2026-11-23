@@ -71,8 +71,13 @@ export function Appearance() {
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) {
         setError(cause.code === "theme_in_use" ? "Choose another theme before deleting the current one." : "Your theme library changed. Review the latest version and try again.");
-        // Another browser changed the library: show its latest themes and the look it applied.
-        await Promise.all([catalog.refetch(), client.invalidateQueries({ queryKey: activePaletteQuery.queryKey })]);
+        // Another browser changed the library: show its latest themes, and apply the look from that
+        // same snapshot, as a successful change does, so the mode controls and the page agree.
+        const latest = await catalog.refetch();
+        await client.cancelQueries({ queryKey: activePaletteQuery.queryKey });
+        const active = latest.isSuccess ? selectedTheme(latest.data) : undefined;
+        if (latest.isSuccess && active) client.setQueryData(activePaletteQuery.queryKey, workspaceLook(active, latest.data.mode));
+        else await client.invalidateQueries({ queryKey: activePaletteQuery.queryKey });
         setDeleting(null);
       } else setError(errorMessage(cause));
       return false;
