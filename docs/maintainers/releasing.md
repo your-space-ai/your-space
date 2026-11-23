@@ -20,7 +20,8 @@ Each piece has its own workflow:
 | [Release draft](../../.github/workflows/release-draft.yml) | Checks the tag, runs the workflows below and creates the draft release with `SHA256SUMS` |
 | [Release images](../../.github/workflows/release-images.yml) | Builds and pushes the versioned images to GHCR |
 | [Release CLI](../../.github/workflows/release-cli.yml) | Builds the npm package, the Linux executables and the Compose bundle |
-| [Release macOS app](../../.github/workflows/release-macos-app.yml) | Builds both DMGs, then signs and notarizes them on the protected runner |
+| [Release macOS app](../../.github/workflows/release-macos-app.yml) | Calls Build macOS app, then signs and notarizes both DMGs on a GitHub-hosted runner in the protected `macos-release` environment |
+| [Build macOS app](../../.github/workflows/macos-app-build.yml) | Builds and install-tests both DMGs without signing; also runs on pull requests that touch the desktop app |
 | [Release install test](../../.github/workflows/release-install-test.yml) | Installs from the built files on fresh Linux x64 and ARM64 runners and installs the npm package |
 | [Release publish](../../.github/workflows/release-publish.yml) | When the draft is published, publishes the npm package and moves the images' `latest` tag |
 
@@ -33,7 +34,7 @@ Each piece has its own workflow:
 5. **Publish the draft.** Publishing runs Release publish, which checks the npm tarball against `SHA256SUMS`, publishes that exact file to npm (`next` for prereleases, otherwise `latest`) and points the images' `latest` tag at the version (not for prereleases). It needs the `NPM_TOKEN` repository secret. An npm version can never be reused, so publishing is one-way.
 6. **Check the result from a clean machine:** install with `npx @your-space-ai/cli@<version>`, with a Linux executable and with a DMG, and confirm each reports the version.
 
-The protected macOS signing runner requires an approved Developer ID Application identity, a notarytool profile, and the `macos-release` environment variables described in the [desktop guide](../install/macos-desktop.md). Limit the signing environment and runner group to the reviewed workflow on main.
+Signing needs the protected `macos-release` environment and its five secrets, described in the [desktop guide](../install/macos-desktop.md#build-and-verify-a-private-candidate). The environment requires the owner's approval and only accepts deployments from `main`, so a draft waits for that approval before it signs.
 
 ## Install the candidate
 
