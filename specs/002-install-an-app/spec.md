@@ -11,14 +11,14 @@
 
 **Input**: The owner installs an existing open-source app from its public GitHub repository and
 uses it inside Your Space, without the app's authors changing anything. The first app is
-[Sure](https://github.com/we-promise/sure), a personal finance app.
+an existing open-source personal finance app, called the finance app below.
 
 ## At a Glance
 
 - **Who:** the owner of a Your Space installation from journey 001.
-- **Done when:** the owner pastes the link to Sure's Compose file, reviews what will run, confirms,
-  and uses Sure in a pane inside Your Space. Sure keeps its data across restarts, reaches only the
-  internet hosts the owner approved, and can be removed without losing its data.
+- **Done when:** the owner pastes the link to the finance app's Compose file, reviews what will run,
+  confirms, and uses it in a pane inside Your Space. The app keeps its data across restarts, reaches
+  only the internet hosts the owner approved, and can be removed without losing its data.
 - **Covers:** running apps' containers, installing from a GitHub link, adapting an app's own
   Compose file to Your Space's rules, generated secrets and settings, opening apps in panes on their
   own origins, access only through Your Space, outbound access approval, isolation, limits, status
@@ -76,8 +76,8 @@ must be generated rather than taken from published defaults, which outbound host
 An owner can supply a kit from a local file or a GitHub link. They can configure
 `YS_KITS_REPOSITORY` to discover kits in a GitHub repository of their choice. A kit refers to the app's own files by link and exact commit and
 lists the adjustments; it never copies the app's code or files, so the app's license is untouched.
-A kit can set a setting to a value Your Space works out itself, such as the app's own address (Twenty
-needs it in `SERVER_URL`), so the owner isn't asked for it.
+A kit can set a setting to a value Your Space works out itself, such as the app's own address (the
+second app, a CRM, needs it in a setting), so the owner isn't asked for it.
 Your Space reads a kit as another input, and contains no app-specific logic. An app with no kit
 installs if its own files are enough.
 
@@ -118,7 +118,7 @@ C, D and E feed the install.
 | Pull request | Slices | Brings in | What the owner can see |
 | --- | --- | --- | --- |
 | Base | Spec and plan | | This specification, its plan and research, the decision record and the constitution changes |
-| 1 | 1, 2: Run an app from a link | A, B, C, D, E, F, G | A server command installs an app from a GitHub link, Sure included, with its kit and generated secrets; it runs on its sealed network and comes back after a restart |
+| 1 | 1, 2: Run an app from a link | A, B, C, D, E, F, G | A server command installs an app from a GitHub link, the finance app included, with its kit and generated secrets; it runs on its sealed network and comes back after a restart |
 | 2 | 3: Apps in Your Space | H, I, J | An Apps area lists apps and their state; installing from the UI with a review and trust warning; the Engine page |
 | 3 | 4: Open an app | K, L, M | Apps open in a pane on their own origin, reachable only through Your Space, at `space.localhost` |
 | 4 | 5, 6: Settings and outbound access | F, N | The owner changes an app's settings; apps reach only approved hosts, and other attempts become access requests |
@@ -163,28 +163,31 @@ app's Compose file, check its status, restart the stack, and check it again.
 7. **Given** two installs of apps with the same service names, **When** both run, **Then** their
    containers, networks and volumes don't collide.
 
-### User Story 2 - Run Sure (Priority: P1)
+### User Story 2 - Run the Finance App (Priority: P1)
 
-As the operator, I can install Sure from the link to its own `compose.example.yml`, which its authors
-wrote for running by hand, and Your Space adapts it, generates its secrets and runs every service.
+As the operator, I can install the finance app from the link to its own example Compose file, which
+its authors wrote for running by hand, and Your Space adapts it, generates its secrets and runs
+every service.
 
 **Why this priority**: Real apps' Compose files are written for people, not for Your Space. Running
 one unchanged is the point of the journey.
 
-**Independent Test**: Run the install command with the link to Sure's `compose.example.yml` and
-check that its web, worker, database and Redis services are running and healthy.
+**Independent Test**: Run the install command with the link to the finance app's example Compose
+file and check that its web, worker, database and Redis services are running and healthy. The
+runtime manager's tests keep the file's resolved form, and the
+[README of those fixtures](../../runtime/tests/README.md) records its source and commit.
 
 **Acceptance Scenarios**:
 
-1. **Given** the link to Sure's Compose file, **When** the operator installs it, **Then** Your Space
-   reports what it changed (for example the published port, moving image tags and the fixed DNS
-   servers) and what it left out (for example the backup services behind profiles, which mount host
-   folders), and runs the rest.
-2. **Given** the file sets a secret's default in plain text (Sure's `SECRET_KEY_BASE` and
+1. **Given** the link to the finance app's Compose file, **When** the operator installs it, **Then**
+   Your Space reports what it changed (for example the published port, moving image tags and the
+   fixed DNS servers) and what it left out (for example the backup services behind profiles, which
+   mount host folders), and runs the rest.
+2. **Given** the file sets a secret's default in plain text (the finance app's `SECRET_KEY_BASE` and
    `POSTGRES_PASSWORD`), **When** Your Space installs it, **Then** it generates a new value for each,
-   as Sure's installation kit says, and never uses the published default.
-3. **Given** a running Sure, **When** its services start, **Then** they start in the order the file's
-   health conditions require, and its database and Redis data live in named volumes.
+   as the finance app's installation kit says, and never uses the published default.
+3. **Given** the finance app running, **When** its services start, **Then** they start in the order
+   the file's health conditions require, and its database and Redis data live in named volumes.
 4. **Given** the install output and Your Space's logs, **When** they are read, **Then** no generated
    secret appears in them.
 5. **Given** a Compose file with a setting Your Space can neither allow nor adapt, such as a
@@ -198,8 +201,8 @@ will run, and confirming after a clear trust warning.
 
 **Why this priority**: The owner manages apps in Your Space, not on the command line.
 
-**Independent Test**: Sign in, open Apps, paste Sure's link, review and confirm, and watch it reach
-running.
+**Independent Test**: Sign in, open Apps, paste the finance app's link, review and confirm, and
+watch it reach running.
 
 **Acceptance Scenarios**:
 
@@ -228,28 +231,28 @@ around it, and only people signed in to Your Space can reach the app.
 
 **Why this priority**: This is where the owner actually uses the app.
 
-**Independent Test**: Install Sure, open it from Apps, sign up in Sure inside the pane, and use it;
-then try to reach Sure's address while signed out of Your Space.
+**Independent Test**: Install the finance app, open it from Apps, sign up in it inside the pane, and
+use it; then try to reach its address while signed out of Your Space.
 
 **Acceptance Scenarios**:
 
 1. **Given** a running app, **When** the owner opens it, **Then** it loads in a pane on its own
    origin, separate from Your Space's and from other apps', with Your Space's navigation still
    available.
-2. **Given** Sure in a pane, **When** the owner signs up or signs in to Sure there, **Then** Sure's
-   own accounts and sessions work inside the pane.
+2. **Given** the finance app in a pane, **When** the owner signs up or signs in to it there, **Then**
+   the app's own accounts and sessions work inside the pane.
 3. **Given** someone not signed in to Your Space, **When** they open an app's address directly,
    **Then** they are sent to Your Space's sign-in and reach no part of the app.
 4. **Given** an app whose interface can't run in a pane, **When** the owner opens it, **Then** it
    opens in its own tab, behind the same access check.
 5. **Given** each setup from journey 001, **When** the owner opens an app, **Then** it is at
-   `<app>.<Your Space's address>`: `sure.space.localhost` on this machine with no setup,
-   `sure.space.example.com` on your own domain after one wildcard DNS record, a Tailscale Service
+   `<app>.<Your Space's address>`: `finance.space.localhost` on this machine with no setup,
+   `finance.space.example.com` on your own domain after one wildcard DNS record, a Tailscale Service
    name on Tailscale, and the forwarded wildcard name behind your own proxy. (2026-11-19: Tailscale
    names can't hold these; there the owner publishes the app on a port, with a Tailscale Service
    per app; see the decision record's "Running Apps and Reaching Them".)
-6. **Given** Sure in a pane, **When** its requests reach Sure, **Then** none of them carries Your
-   Space's sign-in cookie, and no cookie Sure sets reaches Your Space or another app.
+6. **Given** the finance app in a pane, **When** its requests reach the app, **Then** none of them
+   carries Your Space's sign-in cookie, and no cookie the app sets reaches Your Space or another app.
 7. **Given** an app that sends a header forbidding framing, **When** it opens in a pane, **Then** it
    shows, and no other site can frame it.
 8. **Given** an app published on a port with a link (2026-11-20), **When** the owner opens it, **Then**
@@ -259,11 +262,11 @@ then try to reach Sure's address while signed out of Your Space.
 
 ### User Story 5 - Change an App's Settings (Priority: P2)
 
-As the owner, I can see and change an app's settings, such as adding an AI provider's key to Sure,
-and Your Space applies them by restarting the app.
+As the owner, I can see and change an app's settings, such as adding an AI provider's key to the
+finance app, and Your Space applies them by restarting the app.
 
-**Independent Test**: Add a value to one of Sure's optional settings, and check that Sure restarted
-with it while generated secrets stayed hidden.
+**Independent Test**: Add a value to one of the finance app's optional settings, and check that the
+app restarted with it while generated secrets stayed hidden.
 
 **Acceptance Scenarios**:
 
@@ -279,9 +282,9 @@ with it while generated secrets stayed hidden.
 As the owner, I decide which internet hosts an app can reach. An app starts with only the hosts it
 needs to work, and asks for more as I use more of its features.
 
-**Independent Test**: Install Sure with its installation kit and check that only the kit's starter
-hosts are reachable; use a feature that needs another host, see the access request, approve it, and
-check that the host is now reachable and every other host still isn't.
+**Independent Test**: Install the finance app with its installation kit and check that only the
+kit's starter hosts are reachable; use a feature that needs another host, see the access request,
+approve it, and check that the host is now reachable and every other host still isn't.
 
 **Acceptance Scenarios**:
 
@@ -372,7 +375,7 @@ Not part of this journey's delivery, which stops at level 0. Integration with ap
 | Level | What the owner gets | What the app needs |
 | --- | --- | --- |
 | 0. Gate only (this journey) | Only people signed in to Your Space reach the app; the app's own login still appears | Nothing |
-| 1. Your Space as an identity provider | Opening an app signs the person in as themselves | OpenID Connect support, set through the app's own settings by its installation kit (Sure has `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_ISSUER`, `OIDC_REDIRECT_URI`) |
+| 1. Your Space as an identity provider | Opening an app signs the person in as themselves | OpenID Connect support, set through the app's own settings by its installation kit (the finance app reads a client ID, client secret, issuer and redirect address) |
 | 2. Built for Your Space | Verified identity and app roles from Your Space, and agents through the gateway | The TypeScript or Python SDK |
 
 Level 1 matters most once there are members (journey 004); level 2 is for developers' own apps
@@ -450,7 +453,7 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
   apps, at `<app>.<Your Space's address>` in every setup. Ports and paths are not used for apps,
   because browsers don't keep cookies apart by either. On this machine Your Space's address is
   `space.localhost` rather than `localhost`, because browsers treat `localhost` and
-  `sure.localhost` as different sites; every `*.localhost` name reaches the machine itself with no
+  `finance.localhost` as different sites; every `*.localhost` name reaches the machine itself with no
   setup (RFC 6761).
 - **FR-013a**: Your Space reaches each app's interface through an app endpoint. Routing, the app
   origin, the access gate and panes must depend only on the endpoint, not on how it is reached. In
@@ -563,9 +566,9 @@ What is specific to the first runtime adapter. The research behind it is
 
 ## Success Criteria
 
-- **SC-001**: An owner installs Sure from the link to its own Compose file, unchanged, and uses it in
-  a pane, with no command line after journey 001's setup.
-- **SC-002**: Sure keeps its data across a restart and a `docker compose down` and `up`.
+- **SC-001**: An owner installs the finance app from the link to its own Compose file, unchanged,
+  and uses it in a pane, with no command line after journey 001's setup.
+- **SC-002**: The finance app keeps its data across a restart and a `docker compose down` and `up`.
 - **SC-003**: No generated secret appears in any output, log or review screen.
 - **SC-004**: An installed app can't reach the platform, other apps, the host or unapproved internet
   hosts, shown by tests.
@@ -595,8 +598,8 @@ request after agreement.
    Space-specific deployment file with an `x-your-space` section. Help a particular app needs comes
    from an installation kit supplied directly or found in the operator’s configured directory; the kit
    refers to the app's files without copying them.
-3. **The first app is Sure**, an existing open-source app, instead of a Tasks app written for Your
-   Space.
+3. **The first app is an existing open-source app**, a personal finance app, instead of a Tasks app
+   written for Your Space.
 4. **No Docker Desktop dependency**: Your Space needs a Docker-compatible engine, not Docker Desktop.
    On macOS (and later Windows), Your Space provides its own virtual machine with Docker Engine by
    default, and an engine the owner already runs is an advanced option; on Linux servers the host's
@@ -639,8 +642,8 @@ request after agreement.
    sealed network (Docker 28's isolated gateway mode), outbound access goes through an allowlisting
    proxy, and limits are set per app. Nothing is configured by the owner. Kubernetes (k3s) was
    considered and not chosen for the default: on macOS it runs inside the same kind of VM, adds about
-   1 to 1.5 GB of memory, and loses Compose features Sure relies on; TrueNAS moved from k3s to
-   Compose for similar reasons. It stays possible later behind the engine-connection concept.
+   1 to 1.5 GB of memory, and loses Compose features the finance app relies on; TrueNAS moved from
+   k3s to Compose for similar reasons. It stays possible later behind the engine-connection concept.
    Socket proxies, Docker-in-Docker, gVisor, Kata and Docker Desktop's Enhanced Container Isolation
    were considered; optional hardening for servers (Sysbox, rootless Docker) is later work. The
    research behind this goes in `research.md`.
@@ -658,7 +661,7 @@ request after agreement.
 4. **Q4, processor types (decided 2026-11-14)**: an app installs if its images run on the runtime's
    processor type; nothing more is required.
 5. **Q5, app addresses (decided 2026-11-14)**: every app is at `<app>.<Your Space's address>` in
-   every setup (FR-013): `space.localhost` with `sure.space.localhost` on this machine, a wildcard
+   every setup (FR-013): `space.localhost` with `finance.space.localhost` on this machine, a wildcard
    DNS record on your own domain, Tailscale Services on Tailscale, a forwarded wildcard behind your
    own proxy. Ports and paths share cookies between apps, as Umbrel, CasaOS, Runtipi and Home
    Assistant's add-ons show; a host name per app is what Codespaces, Gitpod, Coder, OrbStack and
@@ -668,32 +671,31 @@ request after agreement.
 6. **Q6, panes and cookies (decided 2026-11-14)**: the proxy replaces framing headers so only Your
    Space can frame an app, keeps Your Space's cookies away from apps and apps' cookies away from
    Your Space and each other (FR-014, FR-014a, FR-017), and leaves apps' own cookies alone. Tested
-   with Sure in Chromium, Firefox and WebKit; rewriting apps' cookies to `SameSite=None;
+   with the finance app in Chromium, Firefox and WebKit; rewriting apps' cookies to `SameSite=None;
    Partitioned` was tested and rejected (it splits the pane's session from the app's own tab and
    weakens the app's CSRF protection). See research R2.
 7. **Q7, outbound hosts (decided 2026-11-14)**: the installation kit opens the starter hosts an app
    needs to work, shown in the install review; every other host an app tries is blocked and shown to
    the owner as an access request to approve or dismiss (FR-019). Owners widen access as they use
-   more features, instead of exposing everything at install. Sure has 103 provider integrations
-   (bank sync, market data, AI, and optional usage feedback to PostHog), so a fixed list at install
-   wouldn't fit. An "all internet" option for apps such as feed readers is left for later.
+   more features, instead of exposing everything at install. The finance app integrates with more
+   than a hundred providers (bank sync, market data, AI, and optional usage feedback to an analytics
+   service), so a fixed list at install wouldn't fit. An "all internet" option for apps such as feed
+   readers is left for later.
 8. **Q8, test apps (decided 2026-11-12)**: `traefik/whoami` (MIT) as the small web app for fast
    checks, and `alpine` or `busybox` as the app that probes the isolation boundaries, each pinned to
-   an exact version; Sure for the full journey test. Tests serve fixture Compose files from a local
-   stand-in for GitHub, plus one real check against Sure's public repository.
+   an exact version; the finance app for the full journey test. Tests serve fixture Compose files from
+   a local stand-in for GitHub, plus one real check against the finance app's public repository.
 9. **Q9, limits (decided 2026-11-14)**: fixed default limits per service, which an installation kit
    can override and the owner can change behind an advanced control (FR-021). Resources belong to
    the whole space first: they are whatever the engine's machine provides, so a managed tier's VM, a
    local VM and a server are the same thing to Your Space (FR-021a). Limits that scale with the
    workspace's resources are worth exploring; the default numbers are set in the plan after
-   measuring Sure.
-10. **Q10, the second app (decided 2026-11-14)**: [Twenty](https://github.com/twentyhq/twenty), a CRM
-    the owner uses. Its Compose file (`packages/twenty-docker/docker-compose.yml`) has `server`,
-    `worker`, `db` (`postgres:16`) and `redis`, published for ARM and Intel/AMD, so with Sure it shows
-    two apps with the same service names kept apart. Its kit has to generate `APP_SECRET` and
-    `ENCRYPTION_KEY` and set `SERVER_URL` to the app's own address. Twenty is AGPL-3.0, except its
-    single sign-on code, which is under a commercial license, so level 1 sign-in would need Twenty's
-    enterprise license.
+   measuring the finance app.
+10. **Q10, the second app (decided 2026-11-14)**: an existing open-source CRM. Its Compose file has
+    `server`, `worker`, `db` (`postgres:16`) and `redis`, published for ARM and Intel/AMD, so with the
+    finance app it shows two apps with the same service names kept apart. Its kit has to generate two
+    secrets and set a setting to the app's own address. It is AGPL-3.0, except its single sign-on
+    code, which is under a commercial license, so level 1 sign-in would need its enterprise license.
 11. **Q11, deeper integration (decided 2026-11-14)**: journey 002 is gate only (level 0). Your Space
     as an OpenID Connect provider (level 1, likely through Better Auth's OAuth provider plugin) and
     the SDK (level 2) come later, placed with journeys 004, 005 and 007.

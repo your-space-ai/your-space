@@ -9,10 +9,10 @@ one command is what binds them.
 ```yaml
 kit: 1                        # format version
 source:
-  repo: we-promise/sure       # the app's repository
-  path: compose.example.yml   # the file this kit fits
-name: sure                    # the app's short name and address
-title: Sure
+  repo: <owner>/<repo>        # the app's repository
+  path: compose.yaml          # the file this kit fits
+name: finance                 # the app's short name and address
+title: Finance
 interface:
   service: web
   port: 3000
@@ -21,12 +21,12 @@ generate:                     # values Your Space generates; the published defau
   SECRET_KEY_BASE: { bytes: 64, encoding: hex }
   POSTGRES_PASSWORD: {}       # default: 32 bytes, base64url
 derive:                       # values Your Space works out
-  APP_URL: app_origin         # the app's own address, e.g. http://sure.space.localhost
+  APP_URL: app_origin         # the app's own address, e.g. http://finance.space.localhost
   DATABASE_URL:               # built from other settings, so a generated password reaches it
-    template: "postgresql://sure:${POSTGRES_PASSWORD}@db/sure"
+    template: "postgresql://finance:${POSTGRES_PASSWORD}@db/finance"
 set:                          # values from the app's own example settings; the owner can change them
   STORAGE_TYPE: local
-secrets: [OPENAI_ACCESS_TOKEN]  # settings shown only as set or not set
+secrets: [OPENAI_API_KEY]     # settings shown only as set or not set
 outbound:                     # starter hosts, approved when the install is confirmed
   - api.openai.com
 limits:

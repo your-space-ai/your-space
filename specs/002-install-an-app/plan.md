@@ -139,11 +139,11 @@ corrected.
 
 ### The access gate (FR-014, FR-014a)
 
-1. The pane loads `http://sure.space.localhost/`. Caddy asks the gate, which finds no pass and
-   answers with a redirect to `http://space.localhost/api/apps/sure/open?return=/`.
+1. The pane loads `http://finance.space.localhost/`. Caddy asks the gate, which finds no pass and
+   answers with a redirect to `http://space.localhost/api/apps/finance/open?return=/`.
 2. That request carries Your Space's session (the pane is same-site). The server checks the owner,
    makes a one-time code valid for 60 seconds, and redirects to
-   `http://sure.space.localhost/__ys/handoff?code=…&return=/`.
+   `http://finance.space.localhost/__ys/handoff?code=…&return=/`.
 3. The gate exchanges the code for a pass cookie on the app's own host (`HttpOnly`, `SameSite=Lax`,
    no `Domain`), valid for 12 hours, and redirects to the return path. The pass is signed with the
    auth secret and names the app and the session; the gate checks that the session still exists, so
@@ -222,8 +222,9 @@ pane says the app shows there once its published port is ready.
 ### Limits and resources (FR-021, FR-021a)
 
 Defaults per service: 1 GiB memory and 1 CPU; the egress proxy 64 MiB and 0.25 CPU. A kit can set
-others; the owner can change them in the app's advanced settings. Sure's services use at most
-449 MiB; Twenty's server 706 MiB, so its kit sets 2 GiB (research R3). The Engine page reads the engine's CPUs and memory and each app's use from the engine.
+others; the owner can change them in the app's advanced settings. The finance app's services use at
+most 449 MiB; the CRM's server 706 MiB, so its kit sets 2 GiB (research R3). The Engine page reads
+the engine's CPUs and memory and each app's use from the engine.
 
 ### Removal (FR-023)
 
@@ -268,9 +269,10 @@ See [data-model.md](data-model.md): `app`, `app_setting`, `app_outbound`, `app_a
 - **Server (Vitest, PostgreSQL)**: link parsing, kit validation, settings generation and
   encryption, the pass and handoff, owner-only routes, reconcile against a fake runtime.
 - **Runtime manager (Vitest, no Docker)**: the allowlist and the adapted file, from resolved JSON
-  fixtures, including Sure's; that a published app's Caddyfile reads what the runtime manager sets
-  and, shown in Your Space or not, what it does to apps' framing headers: none, `X-Frame-Options`
-  `DENY` or `SAMEORIGIN`, a policy without `frame-ancestors`, and `frame-ancestors 'none'`.
+  fixtures, including the finance app's; that a published app's Caddyfile reads what the runtime
+  manager sets and, shown in Your Space or not, what it does to apps' framing headers: none,
+  `X-Frame-Options` `DENY` or `SAMEORIGIN`, a policy without `frame-ancestors`, and
+  `frame-ancestors 'none'`.
 - **Browser (Playwright, Compose stack)**: a stand-in for GitHub serves fixture Compose files and
   kits (`YS_E2E_GITHUB_API`, `YS_E2E_GITHUB_RAW`, `YS_KITS_REPOSITORY`). Install whoami from the UI, open it
   in a pane (in WebKit, its own tab), sign out and be refused, isolation probes with busybox, egress
@@ -280,8 +282,8 @@ See [data-model.md](data-model.md): `app`, `app_setting`, `app_outbound`, `app_a
   with it off, and whose kept-alive connection survives a pause), two apps side by side, the phone
   layout. Test machines add the test names to `/etc/hosts`, because Node and so
   Playwright's API requests don't resolve `*.localhost`; browsers resolve them themselves.
-- **Real apps**: Sure and Twenty installed from their real files through the stand-in, run by hand
-  and recorded in research R3. Their kits go to the kits repository once it exists.
+- **Real apps**: the finance app and the CRM installed from their real files through the stand-in,
+  run by hand and recorded in research R3. Their kits go to the kits repository once it exists.
 
 ## Risks and Open Points
 

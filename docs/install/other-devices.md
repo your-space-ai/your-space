@@ -93,7 +93,7 @@ for other services.
    - **set `X-Forwarded-For` to the visitor's address,** replacing any value the visitor sent. The
      sign-in limit counts attempts per address;
    - **forward apps' names too.** Each app is at `<app>.<your proxy's name>`, such as
-     `sure.space.example.com`, so give the proxy a wildcard name (`*.space.example.com`) with its
+     `notes.space.example.com`, so give the proxy a wildcard name (`*.space.example.com`) with its
      certificate and forward it to the same place. A name under Your Space's own where no app is
      installed shows "There is no app at this address."
 
@@ -142,26 +142,26 @@ reach. You need no domain and no ports open to the internet.
 
 Tailscale passes the original `Host` header and the visitor's tailnet address, so nothing else needs
 setting up for Your Space itself. Apps can't have their built-in names over Tailscale, such as
-`sure.myserver.tail1234.ts.net`, because Tailscale's names can't hold a name under a machine's name.
+`notes.myserver.tail1234.ts.net`, because Tailscale's names can't hold a name under a machine's name.
 Instead, [publish each app on a port](../apps/install-apps.md#publish-an-app-on-a-port) and give it a
 [Tailscale Service](https://tailscale.com/kb/1552/tailscale-services) of its own: each app needs its
-own address, and Tailscale gives one name per service. For Sure published on port 8081:
+own address, and Tailscale gives one name per service. For an app named `notes` published on port 8081:
 
 1. Make sure the server joined your tailnet as a tagged device, for example `tag:server`: a
    [Tailscale Service](https://tailscale.com/kb/1552/tailscale-services) can only be hosted by a device
    with a tag, not one signed in as a user. Tagging a device replaces its user identity, so first
    make sure your [access rules](https://tailscale.com/kb/1068/tags) still let you reach a
    `tag:server` device, for example over SSH; the rule for the service doesn't cover the server itself.
-2. In Tailscale's admin console, under Services, define a service named `sure`.
+2. In Tailscale's admin console, under Services, define a service named `notes`.
 3. On the server, run (on Linux, with `sudo`):
 
    ```sh
-   tailscale serve --service=svc:sure --https=443 http://127.0.0.1:8081
+   tailscale serve --service=svc:notes --https=443 http://127.0.0.1:8081
    ```
 
 4. In the admin console, approve this server as the service's host, and let your devices reach
-   `svc:sure` in your access policy.
-5. Give Your Space the service's address as the app's link, `https://sure.tail1234.ts.net`, in the
+   `svc:notes` in your access policy.
+5. Give Your Space the service's address as the app's link, `https://notes.tail1234.ts.net`, in the
    app's Publishing settings.
 
 ## Plain HTTP on Your Network Is Not Supported

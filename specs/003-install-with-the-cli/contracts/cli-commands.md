@@ -98,7 +98,7 @@ and its message lists them.
   "engine": { "version": "29.1.0", "os": "linux", "arch": "x86_64", "endpoint": "unix:///var/run/docker.sock" },
   "owner": { "username": "sam", "name": "Sam Rivera" },
   "link": { "url": "http://space.localhost/reset-password#token=...", "expiresAt": "2026-11-17T12:30:00Z" },
-  "apps": [{ "name": "sure", "state": "running", "address": "http://sure.space.localhost" }],
+  "apps": [{ "name": "notes", "state": "running", "address": "http://notes.space.localhost" }],
   "forward": null,
   "certificate": null
 }
@@ -107,10 +107,10 @@ and its message lists them.
 - `setup.kind` is `this-machine`, `domain` or `proxy`; `address` is Your Space's address.
 - `link` appears only from the `start` that created the owner.
 - `apps` is `null` when Your Space isn't running. A published app (decision 2026-11-19) also has
-  `"publish": { "port": 8081, "bind": "127.0.0.1", "link": "https://plane.example.com", "frame": true, "inPane": true }`,
+  `"publish": { "port": 8081, "bind": "127.0.0.1", "link": "https://notes.example.com", "frame": true, "inPane": true }`,
   and its `address` is its link when it has one. `frame` is the owner's choice to show it inside Your
   Space, and `inPane` whether Your Space shows it in its pane at its link (decision 2026-11-20).
-- `forward` (proxy setup): `{ "to": "http://127.0.0.1:8080", "network": "your-space_edge", "names": ["space.example.com", "sure.space.example.com"], "wildcard": "*.space.example.com" }`.
+- `forward` (proxy setup): `{ "to": "http://127.0.0.1:8080", "network": "your-space_edge", "names": ["space.example.com", "notes.space.example.com"], "wildcard": "*.space.example.com" }`.
   An app with its own link isn't in `names`: the proxy or tunnel sends its link to its published port.
 - `certificate` (domain setup): `{ "state": "valid" | "waiting" | "failed", "issuer": "...", "message": "..." }`.
 
@@ -132,7 +132,7 @@ and its message lists them.
 | --- | --- |
 | `engine check` | `{ ok, engine: { version, os, arch, endpoint, compose } }` |
 | `init` | `{ ok, folder, version, setup, env: ["YS_DOMAIN=space.example.com"] }`: the lines written |
-| `stop` | `{ ok, stopped: ["sure"] }`: the apps stopped; `null` when Your Space couldn't list its apps, after `--yes` or a yes to the question |
+| `stop` | `{ ok, stopped: ["notes"] }`: the apps stopped; `null` when Your Space couldn't list its apps, after `--yes` or a yes to the question |
 | `owner create`, `owner reset-link` | The server command's own JSON (`username`, `url`, `token`, `expiresAt`) |
 | `secrets show` | `{ ok, secrets: [{ name, source }] }`, with `value` only with `--reveal` |
 | `secrets replace` | `{ ok, replaced: "auth-secret" }` |

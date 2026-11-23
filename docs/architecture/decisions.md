@@ -140,8 +140,8 @@ Docker Desktop. See the
 **Decision update (2026-11-14):** On this machine Your Space's address is `http://space.localhost`,
 and `http://localhost` redirects to it. This supersedes `http://localhost` in the 2026-11-08 update
 above. Apps are at `<app>.<Your Space's address>` (see [UI integration](#ui-integration)), and
-browsers treat `localhost` and `sure.localhost` as different sites, so an app in a pane under bare
-`localhost` can't keep its own session. `space.localhost` and `sure.space.localhost` are one site in
+browsers treat `localhost` and `notes.localhost` as different sites, so an app in a pane under bare
+`localhost` can't keep its own session. `space.localhost` and `notes.space.localhost` are one site in
 Chromium and Firefox, and every `*.localhost` name reaches the machine itself with no setup
 (RFC 6761). Plain HTTP is still supported only on this machine. See
 [research R2](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/research.md#r2-apps-in-panes-framing-cookies-and-app-addresses).
@@ -623,7 +623,7 @@ Deployment-file contents, packaging, release verification, installation executio
 
 **Decision update (2026-10-31):** Your Space accepts only Compose settings on an approved list rather than blocking known-dangerous ones. An approved list fails safe: an unlisted setting is rejected until it is reviewed and added, while a blocked list lets through any setting nobody thought to block. The list is derived from what the first app needs during its implementation instead of being guessed up front.
 
-The deployment file is intended to describe how Your Space launches the app without coupling deployment configuration to application code. It uses Docker Compose. The initial approved list of Compose settings, set when the first app (Tasks) is implemented, the contents of the `x-your-space` section, supported operations, and backend interpretation remain open. (2026-11-14: the app's own Compose file replaces the deployment file, the 002 plan sets the approved list, installation kits replace the `x-your-space` section, and Sure replaces Tasks; see below.) The app contract must define how exact image identity is validated and retained alongside the repository commit. Trust verification, owner-triggered update mechanics, and how a failed update is detected still need decisions.
+The deployment file is intended to describe how Your Space launches the app without coupling deployment configuration to application code. It uses Docker Compose. The initial approved list of Compose settings, set when the first app (Tasks) is implemented, the contents of the `x-your-space` section, supported operations, and backend interpretation remain open. (2026-11-14: the app's own Compose file replaces the deployment file, the 002 plan sets the approved list, installation kits replace the `x-your-space` section, and an existing open-source app replaces Tasks; see below.) The app contract must define how exact image identity is validated and retained alongside the repository commit. Trust verification, owner-triggered update mechanics, and how a failed update is detected still need decisions.
 
 App role authorization controls what users and agents may do within an app. Host isolation is a separate boundary and must not rely on those roles or the SDK alone. The runtime manager's privileges and deployment-file processing must be designed so app-provided configuration cannot bypass the agreed host-access boundary.
 
@@ -644,7 +644,7 @@ almost no existing app installable. The format is in the
 [kit contract](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
 
 **Decision update (2026-11-14):** The [002 plan](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/plan.md#runtime-manager-docker-adapter)
-sets the approved list of Compose settings for every app, checked against Sure's and Twenty's
+sets the approved list of Compose settings for every app, checked against the first two apps'
 files, refining the plan to grow it from the first app alone. It is checked against the fully
 resolved file (`docker compose config`, after `include`, `extends`, anchors and placeholders), never
 the raw text, and an unknown key is refused so a new Compose feature can't slip through. Rules that
@@ -691,10 +691,10 @@ them, and confirming the install approves exactly those. An app without a kit st
 other host an app tries is blocked and shown to the owner as an access request naming the app and
 the host and when and how often it was tried; the owner approves or dismisses it, and can remove an
 approval later. There is no "all internet" option yet. This supersedes declaring outbound access in
-an `x-your-space` section for approval at installation. Sure has 103 provider integrations, so a
-fixed list at install would either expose everything or break features; owners widen access as they
-use more of an app. App updates still must not widen access silently; how a kit's new starter hosts
-are approved on update is settled in journey 006.
+an `x-your-space` section for approval at installation. The first app integrates with more than a
+hundred providers, so a fixed list at install would either expose everything or break features;
+owners widen access as they use more of an app. App updates still must not widen access silently;
+how a kit's new starter hosts are approved on update is settled in journey 006.
 
 **Decision update (2026-11-14):** Settings are the variables an app's file reads. The server stores
 them in its database, encrypted with AES-256-GCM under a key derived from the auth secret, and hands
@@ -747,7 +747,7 @@ separate, confirmed step.
 Spec 002 still defines framing permission, the optional messages between Your Space and an app (such as navigation, deep links, and theme), sign-in inside a pane, and the fallback for hosts without wildcard DNS, such as Tailscale `ts.net` names. Small native pieces drawn by Your Space from app-provided descriptions (such as dashboard cards) were discussed as a possible later developer-kit contract and are not decided. (2026-11-14: spec 002 settles framing, sign-in inside a pane and Tailscale below; the optional messages are not part of it and remain open.)
 
 **Decision update (2026-11-14):** Every app is at `<app>.<Your Space's address>` in every setup:
-`sure.space.localhost` on this machine with no setup, `sure.space.example.com` on the owner's own
+`notes.space.localhost` on this machine with no setup, `notes.space.example.com` on the owner's own
 domain after one wildcard DNS record (with certificates obtained on demand, only for installed
 apps' names), a Tailscale Service per app on Tailscale, and the forwarded wildcard name behind the
 owner's own proxy. Ports and paths are not used, because browsers don't keep cookies apart by
@@ -830,8 +830,8 @@ app:
   below.)
 - A published port is outside Your Space's access gate: whoever reaches it reaches the app, and only
   the app's own sign-in protects it. That is why it listens on this machine only by default.
-- On Tailscale, each published app needs its own Tailscale Service (`svc:plane` for
-  `https://plane.<tailnet>.ts.net`), because each app needs its own origin and Tailscale gives
+- On Tailscale, each published app needs its own Tailscale Service (`svc:notes` for
+  `https://notes.<tailnet>.ts.net`), because each app needs its own origin and Tailscale gives
   one-level names only. The owner creates them; Your Space has no Tailscale code.
 - An app already running elsewhere, such as a self-hosted instance on another machine, will be an
   app with a link that Your Space didn't install: the same record, without running it. The agent
@@ -875,7 +875,7 @@ its own to the app as it needs them.
 
 **Decision update (2026-11-20):** Your Space is the owner's own dashboard, so a published app opens
 inside Your Space's pane, at its link, rather than in a tab of its own. Many apps forbid being
-framed; Plane, for one, sends `X-Frame-Options: DENY`. Each published app therefore has a setting,
+framed; some send `X-Frame-Options: DENY`. Each published app therefore has a setting,
 "Show inside Your Space", on by default, for new and already published apps alike:
 
 - On, for an app with a link whose kit lets it run in a pane, the app's `ys-publish` applies the
@@ -935,12 +935,12 @@ The protocol, credential types, role catalog format, and mapping APIs remain ope
 
 **Decision update (2026-11-14):** Verified identity, app roles and delegation reach apps that opt
 into level 2, built for Your Space with an SDK (see
-[platform and independent apps](#platform-and-independent-apps)). Journey 002 delivers level 0
-only: apps keep their own accounts and sign-in, and Your Space controls who reaches them. Level 1,
-Your Space as an OpenID Connect provider, likely through Better Auth's OAuth provider plugin, and
-level 2 are placed with journeys 004, 005 and 007. Some apps keep single sign-on under a commercial
-license (Twenty's is), so level 1 isn't available for every app. This moves app roles and verified
-identity for apps out of journey 002.
+[platform and independent apps](#platform-and-independent-apps)). Journey 002 delivers level 0 only:
+apps keep their own accounts and sign-in, and Your Space controls who reaches them. Level 1, Your
+Space as an OpenID Connect provider, likely through Better Auth's OAuth provider plugin, and level 2
+are placed with journeys 004, 005 and 007. Some apps keep single sign-on under a commercial license
+(the second app, a CRM, does), so level 1 isn't available for every app. This moves app roles and
+verified identity for apps out of journey 002.
 
 ### Delegation by Exact Role Subsets
 
@@ -1030,17 +1030,17 @@ That journey would install the independent app, create and view a task, retain i
 Verification would cover identity attribution, denied operations, and revocation across UI and programmatic access.
 It follows the app UI and sign-in specification, the CLI, and an agreed app contract, and is not an app implementation included in the current feature.
 
-**Decision update (2026-10-31):** The small Tasks app is selected as the first app, replacing its candidate status. It is small, needs a database, and exercises roles (viewing and editing tasks) and agent access (an agent creating tasks), covering each part of the first-release app journey. Its needs set the initial approved list of Compose settings. (Superseded 2026-11-14 by Sure; see below.)
+**Decision update (2026-10-31):** The small Tasks app is selected as the first app, replacing its candidate status. It is small, needs a database, and exercises roles (viewing and editing tasks) and agent access (an agent creating tasks), covering each part of the first-release app journey. Its needs set the initial approved list of Compose settings. (Superseded 2026-11-14 by an existing open-source app; see below.)
 
-**Decision update (2026-11-14):** The first app is [Sure](https://github.com/we-promise/sure), an
-existing open-source personal finance app, installed unchanged from its own `compose.example.yml`.
-This supersedes the Tasks app written for Your Space as the first app. Real apps' Compose files are
-written for people, not for Your Space, and running one unchanged is the point of journey 002. Sure
-has web, worker, database and Redis services and plain-text secret defaults, so it exercises start
-order, volumes and generated secrets. The second app is [Twenty](https://github.com/twentyhq/twenty),
-a CRM, whose Compose file uses the same service names as Sure's, so the two show apps kept apart.
-The Tasks app moves out of journey 002 with app roles and the TypeScript SDK; whether a later
-journey still builds it, for example to show roles and agent access in journey 005, is open.
+**Decision update (2026-11-14):** The first app is an existing open-source personal finance app,
+installed unchanged from its own example Compose file. This supersedes the Tasks app written for
+Your Space as the first app. Real apps' Compose files are written for people, not for Your Space,
+and running one unchanged is the point of journey 002. The first app has web, worker, database and
+Redis services and plain-text secret defaults, so it exercises start order, volumes and generated
+secrets. The second app is an existing open-source CRM, whose Compose file uses the same service
+names as the first app's, so the two show apps kept apart. The Tasks app moves out of journey 002
+with app roles and the TypeScript SDK; whether a later journey still builds it, for example to show
+roles and agent access in journey 005, is open.
 
 External agents come before platform-hosted agent execution.
 Later hosted agents could run workflows such as daily triage through the same identity and authorization contracts.
@@ -1064,10 +1064,10 @@ This is a developing release roadmap, not a complete acceptance specification or
 **Decision update (2026-11-02):** Pre-public work is specified as eight user journeys rather than one specification per roadmap capability. Each journey follows a person from where they start to a result they can see, so one specification covers many roadmap items and is tested the way people will use it. The [spec map](https://github.com/your-space-ai/your-space/blob/main/specs/README.md) lists the journeys, what each covers, and the build order.
 
 - The build order is 001 set up my space ([spec](https://github.com/your-space-ai/your-space/blob/main/specs/001-workspace-owner-access/spec.md)), 002 install an app and use it, 003 install and run with the CLI, 004 invite my team, 005 let my agent work for me, 006 keep my space safe over time, then 007 build my own app and 008 use Your Space as an app on my computer in parallel.
-- The app UI and sign-in specification becomes part of 002, which ends with the Tasks app working inside Your Space. It still comes before the CLI, so app origins are settled before the CLI sets up HTTPS. If 002 proves too large, it can split into opening an app inside Your Space and installing an app from a URL. (2026-11-14: 002 ends with Sure working inside Your Space, and is delivered in slices instead of split; see below.)
+- The app UI and sign-in specification becomes part of 002, which ends with the Tasks app working inside Your Space. It still comes before the CLI, so app origins are settled before the CLI sets up HTTPS. If 002 proves too large, it can split into opening an app inside Your Space and installing an app from a URL. (2026-11-14: 002 ends with an existing open-source app working inside Your Space, and is delivered in slices instead of split; see below.)
 - The app contract defines app roles in 002, although only the owner exists then, so 004 adds role assignment without changing the contract. (Superseded 2026-11-14: app roles come with level 2 integration in a later journey; see [identity and app-owned roles](#identity-and-app-owned-roles).)
 - The activity log arrives with agents in 005, since reviewing what agents did is its main purpose. App installs and member changes are logged from then on.
-- The app database moves from Medium to High, because the Tasks app in 002 needs one. (2026-11-14: Sure, which replaces Tasks, needs one too, so it stays High.)
+- The app database moves from Medium to High, because the Tasks app in 002 needs one. (2026-11-14: the existing app that replaces Tasks needs one too, so it stays High.)
 - Maintainers review security, privacy and legal requirements across the finished journeys using the [packaged release guide](../maintainers/releasing.md). (2026-11-23: the legal part is the guide's distribution-rights and notices check, without a counsel review; see [project license and business model](#project-license-and-business-model).)
 - Every specification follows shared rules from the start: simple by default, no telemetry, ARM and Intel images, all durable state in the database or named volumes, the actual actor credited from the first schema, and its own docs and security tests. (2026-11-14: ARM and Intel applies to Your Space's own images; apps need only the engine's processor type.)
 
@@ -1133,13 +1133,14 @@ slices decision above for how the stack is produced; each pull request in the st
 the slice and code-lands-with-first-use rules. The request gave no further rationale; journey 002
 is the first built this way.
 
-**Decision update (2026-11-14):** Journey 002 ends with Sure working inside Your Space: installed
-from its own Compose file, opened in a pane on its own origin behind the access gate, with Twenty
-beside it. It covers running apps' containers, installing from a GitHub link with installation
-kits, settings and secrets, outbound access requests, isolation, limits, status and logs, removal
-with retained data, and an Engine page showing the engine connection and its resources. App roles,
-verified identity for apps and the TypeScript SDK move to the journeys that bring levels 1 and 2
-(004, 005 and 007). This supersedes the bullets above that 002 ends with the Tasks app and defines
+**Decision update (2026-11-14):** Journey 002 ends with an existing open-source personal finance app
+working inside Your Space: installed from its own Compose file, opened in a pane on its own origin
+behind the access gate, with a second app, a CRM, beside it. It covers running apps' containers,
+installing from a GitHub link with installation kits, settings and secrets, outbound access
+requests, isolation, limits, status and logs, removal with retained data, and an Engine page showing
+the engine connection and its resources. App roles, verified identity for apps and the TypeScript
+SDK move to the journeys that bring levels 1 and 2 (004, 005 and 007). This supersedes the bullets
+above that 002 ends with the Tasks app and defines
 app roles. The [spec map](https://github.com/your-space-ai/your-space/blob/main/specs/README.md) and [roadmap](../roadmap.md) follow it.
 
 ## Choices Still Open

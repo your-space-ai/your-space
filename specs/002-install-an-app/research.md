@@ -23,7 +23,7 @@ checked again before anyone relies on them.
 
 | Platform | Runtime | How it controls the runtime | Isolation between apps | Packaging | License |
 | --- | --- | --- | --- | --- | --- |
-| umbrelOS | Docker Compose | Host daemon runs `docker compose` as root (`umbreld/source/modules/apps/app.ts`) | One shared network for all apps (`legacy-compat/docker-compose.common.yml`); in its store, 15 apps are privileged and 24 use host networking | Rewritten Compose plus `umbrel-app.yml`; Sure is packaged (`umbrel-apps/sure/`) | PolyForm Noncommercial |
+| umbrelOS | Docker Compose | Host daemon runs `docker compose` as root (`umbreld/source/modules/apps/app.ts`) | One shared network for all apps (`legacy-compat/docker-compose.common.yml`); in its store, 15 apps are privileged and 24 use host networking | Rewritten Compose plus `umbrel-app.yml` | PolyForm Noncommercial |
 | CasaOS | Docker Compose | Root systemd service using the Docker SDK (`pkg/docker/image.go`) | Compose defaults | Upstream-style Compose with `x-casaos` | Apache-2.0 |
 | Runtipi | Docker Compose | Platform and Traefik mount `docker.sock:ro`, which doesn't limit the API (`docker-compose.prod.yml`) | Per-app network, but app front-ends share a network with the platform (`compose.builder.ts`) | Its own "dynamic compose" | GPL-3.0 |
 | Coolify | Docker Compose | Container SSHes to its own host as root (`scripts/install.sh`) | Network per resource, joined to the proxy | Arbitrary Compose, rewritten; generated `SERVICE_PASSWORD_*` | Apache-2.0 |
@@ -50,8 +50,9 @@ checked again before anyone relies on them.
   OrbStack), so k3s adds a layer to the VM a Docker engine already needs, at roughly 1 to 1.5 GB more
   memory. k3d runs k3s in privileged containers (k3d `pkg/runtimes/docker/translate.go`).
 - Apps arrive as Compose files. Kompose doesn't convert `depends_on`, so health-gated start order is
-  lost, and has no equivalent for `dns`, `network_mode` or internal networks
-  (kubernetes/kompose `docs/conversion.md`). Sure's file uses health-gated `depends_on` and `dns`.
+  lost, and has no equivalent for `dns`, `network_mode` or internal networks (kubernetes/kompose
+  `docs/conversion.md`). The first app, a personal finance app, uses health-gated `depends_on`
+  and `dns` in its file.
 - k3s enforces standard NetworkPolicy, which works by IP and port. Approving outbound hosts by name
   still needs Cilium's DNS-aware policies or an egress proxy, and a proxy works the same on Docker.
 - TrueNAS SCALE moved from k3s to Docker Compose in 24.10 (Electric Eel), citing simpler
@@ -109,26 +110,26 @@ checked again before anyone relies on them.
 
 ## R2. Apps in Panes: Framing, Cookies and App Addresses
 
-- **Test (2026-11-14):** Sure (`ghcr.io/we-promise/sure:stable`, with its own Postgres and Redis)
+- **Test (2026-11-14):** the finance app (its published `stable` image, with its own Postgres and Redis)
   behind a Caddy proxy, framed by a stand-in for Your Space that sets a host-only platform cookie
   (`ys_session`). Playwright 1.64 drove Chromium, Firefox and WebKit on Linux. In each setup the
-  test signed up to Sure inside the pane, reloaded the page, opened Sure in its own tab, and checked
-  whether Sure ever received the platform cookie. The proxy used Caddy's internal CA, and the
+  test signed up to the app inside the pane, reloaded the page, opened the app in its own tab, and
+  checked whether the app ever received the platform cookie. The proxy used Caddy's internal CA, and the
   browsers ignored certificate errors.
-- **Framing:** Sure sends `X-Frame-Options: SAMEORIGIN` (Rails' default). Without changes every
-  browser refused to show it in the pane. With the proxy removing that header and sending
+- **Framing:** the finance app sends `X-Frame-Options: SAMEORIGIN` (Rails' default). Without
+  changes every browser refused to show it in the pane. With the proxy removing that header and sending
   `Content-Security-Policy: frame-ancestors <Your Space's origin>`, every browser showed it in every
   setup. So framing is solved at the proxy, without changing the app, and the app stays protected
   from being framed by anyone else.
-- **Cookies:** where sign-up failed, Sure's log shows "Can't verify CSRF token authenticity": the
-  browser didn't send Sure's own `SameSite=Lax` session cookie with the form inside the frame,
+- **Cookies:** where sign-up failed, the app's log shows "Can't verify CSRF token authenticity": the
+  browser didn't send the app's own `SameSite=Lax` session cookie with the form inside the frame,
   because it treated the frame as a different site.
 
 | Setup | Your Space | App | Chromium | Firefox | WebKit | Platform cookie reaches the app |
 | --- | --- | --- | --- | --- | --- | --- |
-| Domain, subdomain per app | `https://space.example.com` | `https://sure.space.example.com` | works | works | works | no |
-| This machine, subdomain of localhost | `http://localhost:8080` | `http://sure.localhost:8080` | sign-in fails | not measured (the test hung) | sign-in fails | no |
-| This machine, named | `http://space.localhost:8080` | `http://sure.space.localhost:8080` | works | works | sign-in fails | no |
+| Domain, subdomain per app | `https://space.example.com` | `https://finance.space.example.com` | works | works | works | no |
+| This machine, subdomain of localhost | `http://localhost:8080` | `http://finance.localhost:8080` | sign-in fails | not measured (the test hung) | sign-in fails | no |
+| This machine, named | `http://space.localhost:8080` | `http://finance.space.localhost:8080` | works | works | sign-in fails | no |
 | Port per app, one host name | `https://ports.test:9443` | `https://ports.test:9444` | works | works | works | **yes**, in the pane and in its own tab |
 | Baseline: no header change | | | refused | refused | refused | |
 
@@ -143,19 +144,19 @@ when opened in its own tab.
   A port setup needs the proxy to strip Your Space's cookies from requests to apps and to refuse
   apps' attempts to set them.
 - **Not tested:** Safari on macOS (WebKit on Linux differs from Safari in its domain handling),
-  Tailscale's own names, real certificates, and Firefox with `sure.localhost`.
+  Tailscale's own names, real certificates, and Firefox with `finance.localhost`.
 
 ### Local setups, a second round (2026-11-14)
 
 | Setup | Chromium | Firefox | WebKit (Linux) |
 | --- | --- | --- | --- |
-| `localhost` framing `sure.localhost` | sign-in fails | sign-in fails | sign-in fails |
-| Same, with the proxy rewriting Sure's cookie to `SameSite=None; Secure; Partitioned` | signs up, but loses the session on reload and in its own tab | same as Chromium | sign-up fails |
-| `space.localtest.me` framing `sure.space.localtest.me` (a real ending, simulated with the hosts file) | works | not measured (the test hung) | works |
+| `localhost` framing `finance.localhost` | sign-in fails | sign-in fails | sign-in fails |
+| Same, with the proxy rewriting the app's cookie to `SameSite=None; Secure; Partitioned` | signs up, but loses the session on reload and in its own tab | same as Chromium | sign-up fails |
+| `space.localtest.me` framing `finance.space.localtest.me` (a real ending, simulated with the hosts file) | works | not measured (the test hung) | works |
 
 - **Why `localhost` fails:** with the Public Suffix List's default rule, `localhost` is itself an
-  ending, so `sure.localhost` is its own site and bare `localhost` is another; the frame is a third
-  party. `space.localhost` and `sure.space.localhost` share the site `space.localhost` in Chromium
+  ending, so `finance.localhost` is its own site and bare `localhost` is another; the frame is a third
+  party. `space.localhost` and `finance.space.localhost` share the site `space.localhost` in Chromium
   and Firefox (Chromium `net/base/registry_controlled_domains`). WebKit on Linux fails there because
   libsoup can't find a base domain for `.localhost` and compares whole host names
   (`libsoup/cookies/soup-cookie-jar.c`); Safari on macOS uses a different cookie stack and is
@@ -186,11 +187,11 @@ when opened in its own tab.
   for Your Space or other apps.
 
 - **No setup needed for `*.localhost` (rechecked 2026-11-14):** with the hosts-file entries for
-  `space.localhost` removed, so that the machine's own resolver didn't know the name, Chromium framed
-  Sure at `sure.space.localhost` inside `space.localhost`, signed up, and kept the session after a
-  reload and in its own tab. Firefox showed Sure in the pane and signed up through to Sure's
-  onboarding page. Both browsers resolve `*.localhost` to the machine itself, as RFC 6761 reserves
-  `.localhost` for loopback names.
+  `space.localhost` removed, so that the machine's own resolver didn't know the name, Chromium
+  framed the finance app at `finance.space.localhost` inside `space.localhost`, signed up, and kept
+  the session after a reload and in its own tab. Firefox showed the app in the pane and signed up
+  through to its onboarding page. Both browsers resolve `*.localhost` to the machine itself, as RFC
+  6761 reserves `.localhost` for loopback names.
 
 ## R3. What Building the Journey Showed
 
@@ -242,21 +243,21 @@ access for app containers.
   `*.localhost`; browsers resolve those names themselves. Test machines add the test names to
   `/etc/hosts`; owners need nothing.
 
-### Sure and Twenty from their own files
+### The first two apps from their own files
 
-- **Sure** (`compose.example.yml` at 70647cb):
+- **The finance app** (its example Compose file):
   - installed unchanged with its kit in 10 seconds once its images were on the machine;
   - backups behind profiles left out; published port, fixed DNS servers and network replaced;
   - memory once started: web 449 MiB, worker 426 MiB, PostgreSQL 60 MiB, Redis 8 MiB;
-  - sign-up in a pane worked in Chromium and Firefox and reached Sure's onboarding;
-  - its only blocked outbound attempts went to `us.i.posthog.com` (usage feedback), which became
+  - sign-up in a pane worked in Chromium and Firefox and reached its onboarding;
+  - its only blocked outbound attempts went to an analytics host (usage feedback), which became
     an access request.
-- **Twenty** (`packages/twenty-docker/docker-compose.yml` at 1dd1c249):
-  - its file passes `STORAGE_TYPE` through empty when unset, which Twenty refuses; its own
+- **The CRM** (its Docker Compose file):
+  - its file passes `STORAGE_TYPE` through empty when unset, which the CRM refuses; its own
     `.env.example` sets `local`, so kits can now set plain values (`set:`);
   - its entrypoint runs first-time setup only when the `core` schema is missing, so a first start
     that fails after creating the schema leaves later starts broken until its data is deleted and
     it is installed again;
   - memory: server 706 MiB, worker 629 MiB, PostgreSQL 24 MiB, Redis 7 MiB;
   - it tried `registry.npmjs.org`;
-  - it ran beside Sure, both with `db`, `redis` and `worker` services, without colliding.
+  - it ran beside the finance app, both with `db`, `redis` and `worker` services, without colliding.

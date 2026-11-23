@@ -9,11 +9,11 @@ An **app spec**, sent with every request that resolves or applies an app:
 
 ```json
 {
-  "project": "ys-sure",
-  "app": "sure",
+  "project": "ys-finance",
+  "app": "finance",
   "compose": "<the app's file, unchanged>",
   "env": { "SECRET_KEY_BASE": "…" },
-  "pins": { "ghcr.io/we-promise/sure:stable": "sha256:…" },
+  "pins": { "registry.example.com/finance:stable": "sha256:…" },
   "interface": { "service": "web", "port": 3000 },
   "limits": { "web": { "memory": 1073741824, "cpus": 1 } },
   "egress": ["api.openai.com"],

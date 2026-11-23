@@ -128,7 +128,7 @@ that settled each question.
     client only explains how to run the command.
 - **Rationale:**
   - **The proven risk:** bots watch public Certificate Transparency logs and complete the setup
-    pages of newly certified sites within minutes. This was demonstrated against WordPress and other
+    pages of newly certified sites within minutes. This was demonstrated against popular web
     installers at DEF CON 25 (Hanno Böck, 2017). Caddy requests a certificate as soon as the stack
     starts, so a new install is announced right away. With no setup page, the network has nothing
     to claim.
@@ -260,7 +260,7 @@ that settled each question.
   the project's research notes outside this repository):
   - A public-address setting with a separate bind-address setting: two lines that must agree, and a
     forgotten one breaks silently.
-  - One URL with ports published on every interface, as most projects do (GitLab, Immich, Ghost):
+  - One URL with ports published on every interface, as most self-hosted projects do:
     a fresh local install on a Linux server would put the plain-HTTP sign-in API on the network,
     Docker bypasses ufw, and it collides with any web server on ports 80 and 443.
   - Docker's `host_binding_ipv4` network option to make loopback the default: relies on an implied
@@ -435,11 +435,11 @@ that settled each question.
   - Constitution principle II: a local install's `.env` is empty, and nobody runs `openssl` before
     the first start.
   - A generated secret is random and unique to the installation. Sample values that still run
-    (Supabase's `.env.example`, Dokploy's hardcoded auth secret, CVE-2026-45631) leave a weak
+    (a sample `.env.example`, Dokploy's hardcoded auth secret, CVE-2026-45631) leave a weak
     secret to replace later; a generated one never needs replacing.
   - Owners who keep secrets elsewhere supply them through `.env`, and Your Space keeps no copy.
   - Stopping when a secret is missing next to an existing database avoids the silent new keys seen
-    in n8n and Discourse, and a database password PostgreSQL would refuse.
+    in other self-hosted apps, and a database password PostgreSQL would refuse.
   - Keeping the auth secret out of the database means a copy of the database alone can't forge
     sessions. This keeps the sign-in key out of the database; it doesn't protect against root or
     Docker access on the host, which can read every volume.
@@ -447,7 +447,7 @@ that settled each question.
   research notes outside this repository):
   - Requiring both secrets in `.env`: an extra step for every owner, and principle II would need
     amending.
-  - Sample values in `.env.example`, as Supabase ships: they run until someone changes them.
+  - Sample values in `.env.example`, as some projects ship: they run until someone changes them.
   - A dedicated secret manager. OpenBao (MPL-2.0) is the only fit, but on one machine its unseal key
     sits on the same disk, and it needs a container and bootstrap secrets of its own. HashiCorp
     Vault (BUSL-1.1) and Infisical (MIT open core, needs Redis, telemetry on by default) were

@@ -9,7 +9,7 @@ product reads as one place rather than a collection of technical parts.
 | --- | --- | --- |
 | Your Space, a space | One installation: the owner's place for their apps and agents | The home |
 | Owner | The person who set up the space and runs it | The homeowner |
-| App | Software installed in the space, such as Sure | Appliances and furniture |
+| App | Software installed in the space, such as a personal finance app | Appliances and furniture |
 | Provider | An outside service the space or its apps draw on, such as an LLM service | Utilities |
 | Installation kit | What makes a particular app fit the space without changing it: which part is its interface, which values to generate, which outbound hosts it needs. Maintained outside Your Space. | The parts and instructions in the box |
 | Agent | Software that acts for a person in the space (journey 005) | Help in the home |

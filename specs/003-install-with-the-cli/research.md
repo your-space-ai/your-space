@@ -146,7 +146,7 @@ Your Space knows its own address and, behind a proxy, which names reach it: its 
 `<app>.<host>` for each app, or a wildcard. The summary lists them with where to forward:
 `http://127.0.0.1:<port>`, or `http://your-space:8080` on the `your-space_edge` network for a proxy in
 a container. A proxy that can't forward a wildcard needs one name per app, which the summary lists.
-Tailscale can't hold names under a machine's name (`sure.myserver.tail1234.ts.net`), and a Tailscale
+Tailscale can't hold names under a machine's name (`notes.myserver.tail1234.ts.net`), and a Tailscale
 Service's name sits beside the machine's, not under it, so apps over Tailscale stay unsupported
 until the hosting review settles a way (journey 002's T035). Your Space has no code for any product
 (spec, Change 2).
