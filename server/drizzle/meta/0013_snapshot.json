@@ -1,5 +1,5 @@
 {
-  "id": "30df8b2f-7f7f-4e70-b45f-cf524607042a",
+  "id": "3571a5fa-8123-4bc5-b615-79d6884ba656",
   "prevId": "f0187c30-cb3b-4182-b286-a7af0dd5af97",
   "version": "7",
   "dialect": "postgresql",
@@ -2554,7 +2554,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "workspace_appearance_mode_valid": {
+          "name": "workspace_appearance_mode_valid",
+          "value": "\"workspace_appearance\".\"mode\" in ('system', 'light', 'dark')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.workspace_home": {

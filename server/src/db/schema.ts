@@ -309,7 +309,7 @@ export const workspaceAppearance = pgTable("workspace_appearance", {
   activeId: text("active_id").notNull(),
   mode: text("mode", { enum: ["system", "light", "dark"] }).notNull().default("system"),
   themes: jsonb("themes").$type<{ id: string; theme: Theme | Version1Theme }[]>().notNull(),
-});
+}, (t) => [check("workspace_appearance_mode_valid", sql`${t.mode} in ('system', 'light', 'dark')`)]);
 
 /** An absent selection always opens the built-in Home. Grants are bound to the installed target's revision. */
 export const workspaceHome = pgTable("workspace_home", {

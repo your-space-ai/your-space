@@ -1,4 +1,5 @@
 ALTER TABLE "workspace_appearance" ADD COLUMN "mode" text DEFAULT 'system' NOT NULL;--> statement-breakpoint
+ALTER TABLE "workspace_appearance" ADD CONSTRAINT "workspace_appearance_mode_valid" CHECK ("workspace_appearance"."mode" in ('system', 'light', 'dark'));--> statement-breakpoint
 -- Version 2 themes replace the Canopy, Tide and Ember starters, and Cerulean replaces Canopy as the
 -- default. A workspace that never chose a theme was using Canopy, so it gets a row that says so.
 INSERT INTO "workspace_appearance" ("workspace_id", "revision", "active_id", "themes")

@@ -98,6 +98,7 @@ it("leaves a workspace on a custom theme as it was, and a new workspace starts o
     [workspace, JSON.stringify([{ id: "custom-own", theme: own }])]);
   const { catalog } = await upgrade();
   expect(catalog).toEqual({ revision: 2, activeId: "custom-own", mode: "system", themes: [{ id: "custom-own", theme: validateTheme(own) }] });
+  await expect(t.pool.query("update workspace_appearance set mode = 'auto'")).rejects.toThrow(/workspace_appearance_mode_valid/);
 
   await server!.close();
   await t.destroy();
