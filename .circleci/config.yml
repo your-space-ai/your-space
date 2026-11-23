@@ -125,7 +125,11 @@ jobs:
           # merge.
           name: Browsers
           command: |
-            echo 'export YS_E2E_BROWSERS=webkit' >> "$BASH_ENV"
+            if [ "${CIRCLE_BRANCH:-}" = main ]; then
+              echo 'export YS_E2E_BROWSERS="chromium firefox webkit"' >> "$BASH_ENV"
+            else
+              echo 'export YS_E2E_BROWSERS=chromium' >> "$BASH_ENV"
+            fi
       - unless:
           condition:
             equal: [main, << pipeline.git.branch >>]
@@ -156,8 +160,6 @@ jobs:
           # allowance. main compares its last commit; a pull request, everything since main.
           name: Argos upload
           command: |
-            echo 'export YS_ARGOS_UPLOAD=0' >> "$BASH_ENV"
-            exit 0
             if [ -z "${ARGOS_TOKEN:-}" ]; then
               echo "Skipping external visual comparisons because there is no Argos token."
               echo 'export YS_ARGOS_UPLOAD=0' >> "$BASH_ENV"
@@ -192,6 +194,9 @@ jobs:
           command: timeout 10m npx playwright install --with-deps $YS_E2E_BROWSERS
           working_directory: e2e
       - run:
+          name: Desktop launcher choices in Chromium
+          command: node --test desktop/tests/launcher.browser.mjs
+      - run:
           # Builds the images, then runs the journeys against deploy/compose.yaml in the browsers
           # above.
           name: Browser journeys
@@ -202,7 +207,7 @@ jobs:
             done
             # A single Playwright worker runs the selected browsers in sequence.
             budget_minutes=$((30 * ${#projects[@]}))
-            timeout 80m npx playwright test tests/appearance.spec.ts --project=webkit --repeat-each 30 --max-failures 3 --trace off
+            timeout "${budget_minutes}m" npx playwright test "${projects[@]}"
           working_directory: e2e
       - run:
           name: Stack status
@@ -262,6 +267,9 @@ workflows:
   e2e:
     jobs:
       - e2e
+  arm64:
+    jobs:
+      - check-arm64
   # The Arm browser tests are slow, so they run after a merge to main rather than on every pull
   # request. Start them on a branch by triggering a pipeline with arm-e2e set to true.
   arm64-e2e:
