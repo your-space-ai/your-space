@@ -48,7 +48,12 @@ export function kitRoutes(auth: Auth, db: Db, dataKey: string, apps: AppsService
           ? await catalog(connected ?? publicGithubClient(), apps.config.kitsRepository)
           : connected
             ? await previewKitUrl(db, owner.actorId, connected, apps, kitUrl)
-            : await apps.preview({ link: kitLink(kitUrl) }),
+            : await apps.preview({ link: kitLink(kitUrl) }).catch((error: unknown) => {
+                if (error instanceof AppError && error.code === "kit_not_found") {
+                  throw new AppError(404, error.code, `${error.message} If the kit is in a private repository, connect GitHub with private repositories included in Repositories, then paste its link again.`);
+                }
+                throw error;
+              }),
       );
     } catch (error) {
       if (error instanceof AppError) res.status(error.status).json({ error: error.code, message: error.message });

@@ -108,7 +108,7 @@ async function linkedKit(reader: Reader, input: unknown) {
       throw new AppError(
         404,
         "kit_not_found",
-        "GitHub can't find the repository of that kit. If it is private, connect GitHub with private access in Repositories first.",
+        "GitHub can't find the repository of that kit for your GitHub connection. If it is private, connect GitHub with private access in Repositories, with an account that can read it.",
       );
     }
     throw error;

@@ -264,3 +264,22 @@ it("installs from a managed repository only with a kit in it", () => {
   const snapshot = { repo: "owner/app", repoId: "10", ref: "main", commit, composePath: "compose.yaml", composeText: "services: {}", kitPath: null, kitText: null };
   expect(() => previewSnapshot(server.apps!, snapshot)).toThrow(expect.objectContaining({ code: "kit_required", message: expect.stringMatching(/Every app installs with a kit/) }));
 });
+
+it("reads a linked kit through the connection, refusing a Compose file and naming a kit it can't see", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn<typeof fetch>(async (url) => {
+      const path = new URL(String(url)).pathname;
+      if (path === "/repos/owner/app") return fixture(meta(11, "owner/app", true));
+      if (path.includes("/commits/")) return fixture({ sha: commit });
+      if (path.endsWith("/contents/compose.yaml")) return fixture(file("services:\n  web: { image: example/web:1 }\n"));
+      return fixture({}, 404);
+    }),
+  );
+  const compose = await call("/api/kits/preview", "POST", { kitUrl: "https://github.com/owner/app/blob/main/compose.yaml" });
+  expect(compose.status).toBe(400);
+  expect(await compose.json()).toMatchObject({ error: "kit_required", message: expect.stringMatching(/not a Your Space kit/) });
+  const hidden = await call("/api/kits/preview", "POST", { kitUrl: "https://github.com/owner/hidden/blob/main/kit.yaml" });
+  expect(hidden.status).toBe(404);
+  expect(await hidden.json()).toMatchObject({ error: "kit_not_found", message: expect.stringMatching(/connect GitHub with private access/) });
+});

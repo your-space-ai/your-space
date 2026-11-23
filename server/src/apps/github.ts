@@ -2,9 +2,12 @@
 // and the Compose file the kit names. Only public repositories; GitHub answers 404 for private ones.
 
 export class SourceError extends Error {
-  constructor(message: string) {
+  /** GitHub has no such repository, ref or file for this machine, as for a private repository. */
+  readonly missing: boolean;
+  constructor(message: string, missing = false) {
     super(message);
     this.name = "SourceError";
+    this.missing = missing;
   }
 }
 
@@ -95,7 +98,7 @@ async function resolveRef(fetcher: Fetch, endpoints: GithubEndpoints, link: File
     if (rateLimited(res)) throw new SourceError("GitHub is limiting requests from this machine. Try again in a few minutes.");
     if (res.status !== 404 && res.status !== 422) throw new SourceError(`GitHub answered ${res.status}. Try again later.`);
   }
-  throw new SourceError(`Your Space can't find that branch, tag or commit in ${link.repo}. The repository must be public.`);
+  throw new SourceError(`Your Space can't find that branch, tag or commit in ${link.repo}. The repository must be public.`, true);
 }
 
 export async function fetchSource(link: string, endpoints: GithubEndpoints = githubEndpoints(), fetcher: Fetch = fetch): Promise<SourceFile> {
@@ -125,7 +128,7 @@ export function fetchPinnedFile(repo: string, path: string, commit: string, endp
 
 async function readResolvedFile(repo: string, ref: string, path: string, commit: string, link: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
   const res = await get(fetcher, `${endpoints.raw}/${repo}/${commit}/${path.split("/").map(encodeURIComponent).join("/")}`, "text/plain");
-  if (res.status === 404) throw new SourceError(`There is no file ${path} in ${repo} at ${ref}.`);
+  if (res.status === 404) throw new SourceError(`There is no file ${path} in ${repo} at ${ref}.`, true);
   if (!res.ok) throw new SourceError(`GitHub answered ${res.status} for the file. Try again later.`);
   const length = Number(res.headers.get("content-length") ?? 0);
   if (length > MAX_FILE_BYTES) throw new SourceError(`${path} is larger than a kit or Compose file should be.`);

@@ -166,7 +166,9 @@ async function main(argv: string[]): Promise<number> {
       return EXIT.notApplicable;
     }
     if (error instanceof AppError) {
-      out.failure({ ok: false, error: error.code, message: error.message }, error.message);
+      // A kit Your Space can't read from GitHub, as in a private repository, can come from this machine.
+      const message = error.code === "kit_not_found" ? `${error.message} If the kit is in a private repository, give the kit file instead: install-app --kit - < kit.yaml` : error.message;
+      out.failure({ ok: false, error: error.code, message }, message);
       return error.status >= 500 ? EXIT.storage : EXIT.notApplicable;
     }
     log("error", "install_app.failed", errorFields(error));

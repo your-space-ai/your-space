@@ -466,6 +466,9 @@ test("an app whose file requires settings is reviewed, and installs once the own
   const bare = await serverCommand("install-app", [WHOAMI_COMPOSE]);
   expect(bare.code, bare.stderr).not.toBe(0);
   expect(bare.json).toMatchObject({ ok: false, error: "kit_required", message: expect.stringMatching(/not a Your Space kit/) });
+  // A kit it can't read from GitHub, as in a private repository, can come from this machine instead.
+  const missing = await serverCommand("install-app", [kit("nope")]);
+  expect(missing.json).toMatchObject({ ok: false, error: "kit_not_found", message: expect.stringMatching(/install-app --kit - < kit\.yaml/) });
   // The command gives no values, so the install it reviews is refused.
   const refused = await serverCommand("install-app", [REQUIRED]);
   expect(refused.code, refused.stderr).not.toBe(0);

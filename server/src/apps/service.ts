@@ -344,7 +344,14 @@ export class AppsService {
       } else {
         let file;
         if ("link" in kit) {
-          const linked = await kitFromLink(kit.link, this.config.kitsRepository, github, fetcher);
+          let linked;
+          try {
+            linked = await kitFromLink(kit.link, this.config.kitsRepository, github, fetcher);
+          } catch (error) {
+            // Its caller says how to reach a kit in a private repository instead.
+            if (error instanceof SourceError && error.missing) throw new AppError(404, "kit_not_found", error.message);
+            throw error;
+          }
           found = linked;
           file = composeOf(linked.kit, linked.file);
         } else {
