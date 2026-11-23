@@ -12,7 +12,7 @@ Errors use journey 001's shape `{ "error": "<code>", "message": "…" }`.
 | Method and path | Body | Answer |
 | --- | --- | --- |
 | `GET /api/apps` | | `{ apps: [{ name, title, state, stateReason, origin, pane, hasInterface, pendingRequests, publish, framing }], retained: [{ name, title, removedAt }] }` |
-| `POST /api/kits/preview` | `{ kitUrl }` | The review of the app the kit at `kitUrl`, a GitHub link, defines: `{ previewId, name, title, source: { repo, path, commit }, kit: { source, repo, path, commit }, services, images, adaptations, settings: [{ name, secret, generated, value? }], outbound, publishPort, retained }`. Secret values are never included. `publishPort` is the port publishing uses by default, or null without an interface. `400 kit_required` when the link is to a Compose file rather than a kit. With the owner's GitHub connection, the kit is read through it (journey 011) |
+| `POST /api/kits/preview` | `{ kitUrl }` | The review of the app the kit at `kitUrl`, a GitHub link, defines: `{ previewId, name, title, source: { repo, path, commit }, kit: { source, repo, path, commit }, services, images, adaptations, settings: [{ name, secret, generated, value? }], outbound, publishPort, retained }`. Secret values are never included. `publishPort` is the port publishing uses by default, or null without an interface. The kit is read at the commit `kitUrl` resolves to now, even a branch link such as `blob/main/kit.yaml`, and the Compose file at exactly the commit the kit's `source.commit` pins ([kit format](kit-format.md)); `kit.commit` and `source.commit` are those commits, and the install uses them. `400 kit_required` when the link is to a Compose file rather than a kit; `400 source` when the kit doesn't pin its Compose file: no `source`, or a `source` without its full `commit`. With the owner's GitHub connection, the kit is read through it (journey 011) |
 | `GET /api/kits/catalog` | | `{ commit, kits: [{ title, repo, path, kitUrl }] }`: the kits in the directory `YS_KITS_REPOSITORY` names, pinned to its commit; `{ commit: null, kits: [] }` without one |
 | `POST /api/apps` | `{ previewId, settings?: { NAME: value }, reuseData?: boolean, publish?: { port?, bind?, link?, frame? } }` | `202 { name, jobId }`; `409 port_in_use` when another published app, a container or another program on this machine uses the port |
 | `GET /api/apps/{name}` | | The app: state, services with state, settings (secrets as set or not set), outbound hosts, access requests, limits, the latest job |
@@ -81,13 +81,13 @@ docker compose exec runtime stop-apps
 ```
 
 `install-app` prints the review, installs, and waits until the app is running or failed; exit status
-0 or 1. Every app installs with a kit, and the kit names the app's Compose file on GitHub
-([kit format](kit-format.md)). The command takes the kit's GitHub link, or `--kit` with a kit on this
+0 or 1. Every app installs with a kit, and the kit names the app's Compose file on GitHub at an
+exact commit, where the command reads it ([kit format](kit-format.md)). The command takes the kit's GitHub link, or `--kit` with a kit on this
 machine, which Your Space can't read from GitHub when its repository is private: `-` reads it from
 standard input (`--kit - < kit.yaml`), and any other value is the kit file. The command runs in the
 server's container, so a path is one inside it; standard input is how a file on the host gets
 there. A kit on this machine is checked like one from GitHub and recorded as `sha256:<digest>`; it
-must have `source`. Given a Compose file's link, or a Compose file as `--kit`, the command installs
+must have `source`, with its `commit`. Given a Compose file's link, or a Compose file as `--kit`, the command installs
 nothing and says that installs need a kit. With `--json`, the result has the kit's `kit` source: its
 link at its commit, or its digest.
 
@@ -103,8 +103,9 @@ server's container first, for example with `docker compose exec -T server sh -c 
 < kit.yaml`. Data kept under the name can be reused with `--reuse-data` whichever source it came
 from, since a file on this machine has no repository to compare. With `--json`, the result has
 `source: "sha256:<digest>"` in place of `commit`, and `list-apps --json` gives each app's `source`:
-the link to its Compose file, or the digest; its `commit` is the exact commit read. Which branch a
-later update of an app installed from a kit follows is left to journey 006.
+the link to its Compose file, or the digest; its `commit` is the exact commit read. An installed app
+follows no branch: a newer kit, or the newer Compose commit it pins, reaches it only when the owner
+chooses to install it. Offering a newer kit as an update is left to journey 006.
 
 `publish-app` publishes an installed app, changes how (an option left out keeps its value),
 or stops publishing it with `--off`, and waits until the change is applied: it restarts the app's

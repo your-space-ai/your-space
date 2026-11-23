@@ -7,10 +7,13 @@
 **Implementation**: The [task record](tasks.md) lists the delivered slices and outstanding real-source installation checks.
 
 **Updated 2026-11-23**: Apps install only from the link to their kit, which names the app's Compose
-file ([Kits define apps](../../docs/architecture/decisions.md#kits-define-apps)). Where this
+file and pins it to an exact commit
+([Kits define apps](../../docs/architecture/decisions.md#kits-define-apps)). Where this
 specification has the owner or operator give the link to an app's Compose file, they now give the
 link to the app's kit; a bare Compose link is refused with an explanation of kits. Every installed
-app has a kit, a Compose file given on this machine included.
+app has a kit, a Compose file given on this machine included. The kit's link resolves to the kit's
+commit at review, and Your Space reads the Compose file at exactly the commit the kit's
+`source.commit` names, never at a branch's latest commit; both commits are recorded.
 
 **Journey**: 002 "Install an app and use it" in the
 [spec map](../README.md)
@@ -89,11 +92,12 @@ second app, a CRM, needs it in a setting), so the owner isn't asked for it.
 Your Space reads a kit as another input, and contains no app-specific logic. An app with no kit
 installs if its own files are enough. (Superseded 2026-11-23: a kit is the app's definition, and
 every app installs with one: from the kit's link, or, with the server command, a kit file on this
-machine, alone or with a Compose file given there. The kit's `source` names the Compose file;
-without one, a linked kit names the `compose.yaml` beside it, and a kit given with a Compose file on
-this machine goes with that file. The [kit format](contracts/kit-format.md) says at which commit
-Your Space reads it. The configured directory lists kits and holds review evidence; it no longer
-finds a kit from a Compose link.)
+machine, alone or with a Compose file given there. The kit's `source` names the Compose file by
+repository, path and exact commit, and is required; only a kit given with a Compose file on this
+machine leaves it out and goes with that file. A kit can live anywhere, apart from the app's
+repository or in it, and never names "the file beside it" by default. See the
+[kit format](contracts/kit-format.md). The configured directory lists kits and holds review evidence;
+it no longer finds a kit from a Compose link.)
 
 ## Slices and Their Dependencies
 
@@ -165,7 +169,7 @@ stack, and check it again.
    the exact commit the link resolves to, pins each image to an exact version, starts the app's
    containers, and reports the app as running. (2026-11-23: the command takes the link to the app's
    kit, and Your Space records the kit at the commit its link resolves to and the Compose file it
-   names at the commit the [kit format](contracts/kit-format.md) gives.)
+   names at exactly the commit the kit pins; see the [kit format](contracts/kit-format.md).)
 2. **Given** an installed app, **When** the operator lists apps, **Then** each app's name, source,
    commit and state are shown, and the state matches what is running.
 3. **Given** an installed app, **When** Your Space is restarted or the stack is recreated with
@@ -231,8 +235,10 @@ watch it reach running.
 2. **Given** the owner pastes a link, **When** Your Space has read the file, **Then** it shows the
    app's services, the images and versions it will run, what it changed and left out, the settings it
    needs, and the warning that installing an app trusts it with its own data. (2026-11-23: the link
-   is the kit's; the review also shows the kit's repository, path and commit. A pasted Compose file's
-   link gets a message that explains kits and that installs need a kit's link.)
+   is the kit's; the review also shows the kit's repository, path and commit, and the Compose file at
+   the commit the kit pins. A pasted Compose file's link gets a message that explains kits and that
+   installs need a kit's link, and a kit that doesn't pin its Compose file's commit is refused with
+   a message naming `source.commit`.)
 3. **Given** the review, **When** the owner confirms, **Then** the install runs in the background and
    the page shows its progress, including image downloads, until the app is running or the install
    fails with a reason.
@@ -407,7 +413,9 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
 ### Edge Cases
 
 - The GitHub link points to a branch that moves after install; the install keeps the exact commit
-  it read.
+  it read. (2026-11-23: the kit's link resolves to the kit's commit at review, and the kit pins the
+  Compose file's commit, so a branch that moves after the review changes nothing until the owner
+  chooses to install a newer kit.)
 - GitHub or the image registry is unreachable or rate-limits the request during install.
 - An image's tag exists only for one architecture, or its digest changes between preview and
   install.
@@ -438,7 +446,9 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
 - **FR-002a**: App-specific adjustments come only from installation kits, kept outside Your Space.
   Your Space contains no logic for a particular app.
 - **FR-003**: An install must record the source link, the exact commit it resolved to, the adapted
-  Compose file, each image's exact version, and the actor who installed it.
+  Compose file, each image's exact version, and the actor who installed it. (2026-11-23: the kit's
+  link at the commit it resolved to at review, and the Compose file at the commit the kit's
+  `source.commit` pins; nothing is read at a branch's latest commit.)
 - **FR-004**: Every image must be pinned to an exact version. An app installs if its images run on
   the runtime's processor type (ARM or Intel/AMD); if not, the install stops with a clear message.
 - **FR-005**: Your Space runs only what its rules allow. It may adapt an app's file only by a
