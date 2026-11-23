@@ -1,0 +1,11 @@
+# An app whose file requires two settings, for the browser tests: one in each of Compose's forms,
+# `:?`, which needs a value that isn't empty, and `?`, which needs any value.
+services:
+  web:
+    image: busybox:1.37
+    command: ["sh", "-c", "mkdir -p /www && echo ok > /www/index.html && exec httpd -f -p 8080 -h /www"]
+    ports:
+      - "8080:8080"
+    environment:
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?Set SECRET_KEY_BASE}
+      ADMIN_EMAIL: ${ADMIN_EMAIL?Set ADMIN_EMAIL}

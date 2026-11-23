@@ -372,8 +372,10 @@ export class AppsService {
     const previous = existing ? await this.storedValues(existing.id) : new Map<string, string | null>();
     const address = this.address(name);
 
-    // A first check reads the settings the file uses; the second resolves the file with them.
-    const spec: AppSpec = { project: `ys-${name}`, app: name, compose: source.text, env: {}, interface: kit?.interface ?? null };
+    // A first check reads the settings the file uses; the second resolves the file with them. A
+    // setting the file requires and nothing fills gets a placeholder in both, so the review shows
+    // the file and the owner fills the setting in; installing needs a real value (install).
+    const spec: AppSpec = { project: `ys-${name}`, app: name, compose: source.text, env: {}, interface: kit?.interface ?? null, placeholders: true };
     const first = await this.check(spec);
     const settings = buildSettings(first.variables, kit, address, previous);
     const check = await this.check({ ...spec, env: this.envOf(settings) });
@@ -458,6 +460,8 @@ export class AppsService {
     if (p.retained && !reuseData) {
       throw new AppError(409, "retained_data", `Data kept from ${p.name} exists. Reuse it, or delete it first.`);
     }
+    // The review gave each required setting without a value a placeholder (previewResolved).
+    const placeheld = p.settings.some((s) => s.required && !s.value);
     const settings = p.settings.map((s) => ({ ...s }));
     for (const [name, value] of Object.entries(values ?? {})) {
       const setting = settings.find((s) => s.name === name);
@@ -470,8 +474,17 @@ export class AppsService {
     for (const setting of settings) setting.value = filled.get(setting.name) ?? null;
     const missing = settings.filter((s) => s.required && !s.value).map((s) => s.name);
     if (missing.length) throw new AppError(400, "settings_required", `These settings need a value: ${missing.join(", ")}.`);
+    // Then the file is checked again with the owner's values, so its images and changes are the real ones.
+    let check = p.check;
+    if (placeheld) {
+      check = await this.check({ project: `ys-${p.name}`, app: p.name, compose: p.source.text, env: this.envOf(settings), interface: p.kit?.interface ?? null });
+      if (!check.ok) {
+        const reasons = check.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`).join(" ");
+        throw new AppError(400, "refused", `Your Space can't run this app with these settings: ${reasons}`, check.refusals);
+      }
+    }
 
-    const images = Object.fromEntries(p.check.images.filter((i) => i.digest).map((i) => [i.ref, { digest: i.digest! }]));
+    const images = Object.fromEntries(check.images.filter((i) => i.digest).map((i) => [i.ref, { digest: i.digest! }]));
     let publish: PublishChoices | null = null;
     if (publishWith !== null && publishWith !== undefined) {
       if (!p.interface || p.publishPort === null) throw new AppError(400, "no_interface", `${p.title} has no interface to publish.`);
@@ -492,7 +505,7 @@ export class AppsService {
         kit: p.kit,
         kitSource: p.kitSource,
         images,
-        adaptations: p.check.adaptations,
+        adaptations: check.adaptations,
         interface: p.interface,
         pane: p.pane,
         publish: publish && { port: publish.port, bind: publish.bind, link: publish.link },

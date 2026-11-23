@@ -25,6 +25,11 @@ export interface AppSpec {
    * `frame`, the app's Caddy lets only Your Space's origin frame it, so Your Space shows it in its pane.
    */
   publish?: { port: number; bind: string; frame?: boolean } | null;
+  /**
+   * A check gives each setting the file requires and `env` has no value for a placeholder, so the
+   * owner can review the file before filling those settings in. An apply ignores it.
+   */
+  placeholders?: boolean;
 }
 
 export interface Adaptation {

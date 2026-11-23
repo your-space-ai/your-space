@@ -33,10 +33,17 @@ policy's `frame-ancestors`, or a policy of its own, to that origin; it is labell
 `ai.your-space.frame-origin` with the origin. Without `frame`, or with `false`, it gets
 `YS_FRAME=off` and changes nothing. `frame: true` while Your Space's Caddy has no origin is refused.
 
+`placeholders` (optional, for `/check`): with `true`, each setting the file requires, with
+`${NAME:?…}` or `${NAME?…}`, that `env` has no value for gets a placeholder, so the server can
+review the file before the owner fills those settings in; `variables` marks them `required`. An
+image named with a placeholder isn't looked up and has no digest; the server checks the file again
+with the owner's values before installing it. `/apply` ignores `placeholders` and refuses a file
+whose required settings have no value, so a placeholder never reaches a running app.
+
 | Method and path | Body | Answer |
 | --- | --- | --- |
 | `GET /engine` | | `{ reachable, version, os, arch, cpus, memory, connection, stopping }`; `stopping` is true after `/stop-all` |
-| `POST /check` | app spec, `pins` optional | `{ ok, services: [{ name, image, interface, ports, published: [{ target, host }], volumes, dependsOn }], variables: [{ name, required, default }], adaptations: [...], refusals: [{ service, setting, reason }], images: [{ ref, digest, runsHere, platforms }] }` |
+| `POST /check` | app spec, `pins` and `placeholders` optional | `{ ok, services: [{ name, image, interface, ports, published: [{ target, host }], volumes, dependsOn }], variables: [{ name, required, default }], adaptations: [...], refusals: [{ service, setting, reason }], images: [{ ref, digest, runsHere, platforms }] }` |
 | `POST /apply` | app spec | NDJSON stream: `{ "step": "pull", "image" }`, `{ "step": "start" }`, …, then `{ "done": true }` or `{ "error": "…" }`; a published port something else took since it was checked gives an error naming it. While the app runs, a one-time service that finished and is unchanged isn't started again |
 | `POST /apps/{project}/down` | | Removes containers, networks and the anonymous volumes the containers mounted; keeps named volumes |
 | `DELETE /apps/{project}/volumes` | | Removes the app's volumes |
