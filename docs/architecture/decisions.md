@@ -695,6 +695,24 @@ says which values to generate, and without a kit a variable whose name suggests 
 published default is generated. Generated values never appear in output, logs or the review. What
 the owner sees and sets for them in the review is still open and is designed with the review screen.
 
+**Decision update (2026-11-23):** Your Space manages an app's environment itself and never writes a
+settings file for it. Many apps' own Compose files load their settings with `env_file: .env`, the
+file next to the Compose file that self-hosters fill in from an example. A service that loads only
+`.env` gets the app's settings as its environment instead: every setting with a value, under the
+environment its file sets, as Compose puts `.env`'s values under it. Settings are therefore the
+variables an app's file reads and every setting its installation kit names, and a kit can name
+settings the file never reads, including `required` ones the owner gives, which the install needs.
+They stay encrypted in the server's database and reach Compose only as its environment, as before.
+Compose reads no settings or label file an app's file names: the runtime manager has Compose read
+the file as written, before it resolves anything, refuses every other `env_file` and every
+`label_file`, and tells Compose to read none of them. Resolving a file inlines those files and drops
+the key, so the check of the resolved file alone could never refuse them. Writing a `.env` was
+considered and rejected: it would put settings on disk, in a second place, and Compose would still
+read whatever other files a file names. An app whose file loads `.env` installs without a kit, and
+then gets only the settings its file reads; the review reports the change for each such service.
+This refines the 2026-11-14 decisions that settings are the variables an app's file reads and that
+the check uses the fully resolved file: that check stays, after a first look at the file as written.
+
 **Decision update (2026-11-14):** Each app service runs with a fixed default memory and CPU limit,
 which an installation kit can override and the owner can change behind an advanced control; the
 numbers are in the 002 plan. Your Space's own containers are the last the kernel stops when memory

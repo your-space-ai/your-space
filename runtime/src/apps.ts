@@ -3,7 +3,22 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { join } from "node:path";
-import { adapt, EGRESS_IMAGE, FRAME_ORIGIN_LABEL, imageRef, pinnedImage, PUBLISH_TARGET, runsOnce, type AppSpec, type CheckResult, type OwnCaddy } from "./adapter.ts";
+import {
+  adapt,
+  EGRESS_IMAGE,
+  envFiles,
+  FRAME_ORIGIN_LABEL,
+  imageRef,
+  pinnedImage,
+  PUBLISH_TARGET,
+  resetFiles,
+  runsOnce,
+  UNRESOLVED,
+  type AppSpec,
+  type CheckResult,
+  type EnvFiles,
+  type OwnCaddy,
+} from "./adapter.ts";
 import {
   connectNetwork,
   disconnectNetwork,
@@ -92,6 +107,22 @@ interface Resolved {
   variables: Variable[];
   /** The required settings the file was resolved with a placeholder for. */
   placeheld: string[];
+  /** The settings and label files the file names, none of which Compose read. */
+  files: EnvFiles;
+}
+
+/** Why Compose couldn't read the file, without the settings' values. */
+function unreadable(stderr: string, env: Record<string, string>, placeheld: string[] = []): SpecError {
+  const message = scrub(stderr, env)
+    .split("\n")
+    .filter((l) => l.trim() && !/level=warning/.test(l))
+    .join(" ")
+    .slice(0, 600);
+  // A placeholder fits a setting used as text, not one used as a port or another typed value.
+  const named = placeheld.length
+    ? ` Your Space read it with a placeholder in place of ${placeheld.join(", ")}, which the file requires and which ${placeheld.length === 1 ? "has" : "have"} no value yet.`
+    : "";
+  return new SpecError(`The file isn't a Compose file Your Space can read: ${message || "Compose refused it."}${named}`);
 }
 
 /**
@@ -123,6 +154,17 @@ async function resolve(spec: AppSpec, placeholders: boolean): Promise<Resolved> 
   try {
     writeFileSync(join(dir, "compose.yaml"), spec.compose, { mode: 0o600 });
     const base = ["compose", "-p", spec.project, "--project-directory", dir, "-f", join(dir, "compose.yaml")];
+    // First Compose reads the file as written, every service's included, before it reads any file the
+    // file names, so a settings or label file can be checked before Compose would read it. A file
+    // Compose can't read this way is refused, since its files couldn't be checked.
+    const unresolved = await docker([...base, "--profile", "*", "config", ...UNRESOLVED, "--format", "json"], {}, dir);
+    if (unresolved.code !== 0) throw unreadable(unresolved.stderr, spec.env);
+    const files = envFiles(JSON.parse(unresolved.stdout) as Record<string, unknown>);
+    if (Object.keys(files.reset).length > 0) {
+      // Names only, never a setting's value: the settings reach Compose as its environment, as before.
+      writeFileSync(join(dir, "unread.yaml"), resetFiles(files.reset), { mode: 0o600 });
+      base.push("-f", join(dir, "unread.yaml"));
+    }
     // Compose lists the file's settings without resolving it, so a required one without a value doesn't stop it.
     const listed = docker([...base, "config", "--variables", "--format", "json"], {}, dir).then(variablesOf);
     const env = placeholders ? withPlaceholders(spec.env, await listed) : spec.env;
@@ -132,22 +174,11 @@ async function resolve(spec: AppSpec, placeholders: boolean): Promise<Resolved> 
       docker([...base, "--profile", "*", "config", "--format", "json"], env, dir),
       listed,
     ]);
-    if (plain.code !== 0) {
-      const message = scrub(plain.stderr, spec.env)
-        .split("\n")
-        .filter((l) => l.trim() && !/level=warning/.test(l))
-        .join(" ")
-        .slice(0, 600);
-      // A placeholder fits a setting used as text, not one used as a port or another typed value.
-      const named = placeheld.length
-        ? ` Your Space read it with a placeholder in place of ${placeheld.join(", ")}, which the file requires and which ${placeheld.length === 1 ? "has" : "have"} no value yet.`
-        : "";
-      throw new SpecError(`The file isn't a Compose file Your Space can read: ${message || "Compose refused it."}${named}`);
-    }
+    if (plain.code !== 0) throw unreadable(plain.stderr, spec.env, placeheld);
     const resolved = JSON.parse(plain.stdout) as Record<string, unknown>;
     const allServices = all.code === 0 ? Object.keys((JSON.parse(all.stdout) as { services?: object }).services ?? {}) : [];
     const running = Object.keys((resolved.services as object) ?? {});
-    return { resolved, profiled: allServices.filter((s) => !running.includes(s)), variables: vars, placeheld };
+    return { resolved, profiled: allServices.filter((s) => !running.includes(s)), variables: vars, placeheld, files };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -160,7 +191,7 @@ export interface CheckAnswer extends Omit<CheckResult, "adapted"> {
 }
 
 async function checkWithImages(spec: AppSpec, waitForCaddy = 0, placeholders = false): Promise<{ answer: CheckAnswer; adapted: CheckResult["adapted"] }> {
-  const { resolved, profiled, variables, placeheld } = await resolve(spec, placeholders);
+  const { resolved, profiled, variables, placeheld, files } = await resolve(spec, placeholders);
   const info = await engineInfo();
   if (!info.reachable) throw new EngineError("The engine can't be reached.", 503);
   const caddy = spec.publish ? await ownCaddy(waitForCaddy) : undefined;
@@ -186,7 +217,7 @@ async function checkWithImages(spec: AppSpec, waitForCaddy = 0, placeholders = f
       return image;
     }),
   );
-  const result = adapt({ ...spec, pins }, resolved, profiled, caddy);
+  const result = adapt({ ...spec, pins }, resolved, profiled, caddy, files);
   for (const image of images) {
     if (image.error) result.refusals.push({ service: "", setting: "image", reason: `${image.ref} can't be found in its registry: ${image.error}` });
     else if (!image.runsHere) result.refusals.push({ service: "", setting: "image", reason: `${image.ref} isn't published for this machine's processor (linux/${info.arch}).` });

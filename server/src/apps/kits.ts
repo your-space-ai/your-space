@@ -19,7 +19,7 @@ export class KitError extends Error {
 const NAME = /^[a-z][a-z0-9-]{0,29}$/;
 const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const HOST = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
-const TOP_KEYS = new Set(["kit", "source", "name", "title", "interface", "pane", "generate", "derive", "set", "secrets", "outbound", "limits"]);
+const TOP_KEYS = new Set(["kit", "source", "name", "title", "interface", "pane", "generate", "derive", "set", "required", "secrets", "outbound", "limits"]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -115,11 +115,20 @@ export function parseKit(text: string): Kit {
       kit.set[name] = String(value);
     }
   }
+  if (data.required !== undefined) {
+    if (!Array.isArray(data.required) || !data.required.every((s) => typeof s === "string" && VARIABLE.test(s))) {
+      throw new KitError("required must be a list of setting names.");
+    }
+    // The owner gives these; a value Your Space generates or works out is always there already.
+    const given = data.required.find((name: string) => kit.generate?.[name] !== undefined || kit.derive?.[name] !== undefined);
+    if (given) throw new KitError(`${given} can't be required: the kit ${kit.generate?.[given] !== undefined ? "generates" : "derives"} it.`);
+    kit.required = data.required as string[];
+  }
   for (const [name, value] of Object.entries(kit.derive ?? {})) {
     if (typeof value === "string") continue;
     for (const ref of templateNames(value.template)) {
-      const known = kit.generate?.[ref] !== undefined || kit.set?.[ref] !== undefined || typeof kit.derive?.[ref] === "string";
-      if (!known) throw new KitError(`derive.${name} uses ${ref}, which the kit doesn't generate, set or derive from the app's address.`);
+      const known = kit.generate?.[ref] !== undefined || kit.set?.[ref] !== undefined || Boolean(kit.required?.includes(ref)) || typeof kit.derive?.[ref] === "string";
+      if (!known) throw new KitError(`derive.${name} uses ${ref}, which the kit doesn't generate, set, require or derive from the app's address.`);
     }
     if (value.template.replace(TEMPLATE_REFERENCE, "").includes("${")) throw new KitError(`derive.${name} has a placeholder that isn't \${SETTING_NAME}.`);
   }

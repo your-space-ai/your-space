@@ -40,6 +40,17 @@ image named with a placeholder isn't looked up and has no digest; the server che
 with the owner's values before installing it. `/apply` ignores `placeholders` and refuses a file
 whose required settings have no value, so a placeholder never reaches a running app.
 
+`env` (2026-11-23) is how settings reach the app: Compose resolves the file with them as its
+environment. Before it resolves anything, the runtime manager has Compose read the file as written
+(`config` with interpolation, settings files, normalization and paths turned off, every profile
+included), so it can check every `env_file` and `label_file` before Compose would read one. It tells
+Compose to read none of them, with a second Compose file that resets each, and writes no settings
+file. A service whose `env_file` names only `.env` (or `./.env`), required or not, gets every `env`
+value as its environment, under the environment its file sets, and `adaptations` reports it. Any
+other `env_file`, such as an absolute path, `../x` or a second file, and any `label_file`, is a
+refusal naming the file. A file Compose can't read as written is refused with Compose's error, as an
+unreadable file always was.
+
 | Method and path | Body | Answer |
 | --- | --- | --- |
 | `GET /engine` | | `{ reachable, version, os, arch, cpus, memory, connection, stopping }`; `stopping` is true after `/stop-all` |

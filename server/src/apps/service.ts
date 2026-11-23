@@ -898,7 +898,7 @@ export class AppsService {
           name: s.name,
           secret: s.secret,
           generated: s.generated,
-          required: false,
+          required: Boolean(row.kit?.required?.includes(s.name)),
           publishedDefault: s.publishedDefault,
           value: s.value === null ? null : s.secret ? "set" : (fromLink.get(s.name) ?? this.readOrNull(s.value)),
           derived: Boolean(row.kit?.derive?.[s.name]),
@@ -978,6 +978,10 @@ export class AppsService {
       // A blank secret would let the app fall back to its published default (FR-006).
       if (setting.secret && (value === null || value === "")) {
         throw new AppError(400, "secret_required", `${key} is a secret. Replace it with a new value instead of clearing it.`);
+      }
+      // Nothing else stops the app from starting without a setting its kit requires.
+      if (row.kit?.required?.includes(key) && (value === null || value === "")) {
+        throw new AppError(400, "setting_required", `${key} is required. Replace it with a new value instead of clearing it.`);
       }
     }
     // Template settings that use a changed value are rewritten with it.

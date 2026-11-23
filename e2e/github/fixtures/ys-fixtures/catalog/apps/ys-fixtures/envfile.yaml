@@ -1,0 +1,18 @@
+kit: 1
+source:
+  repo: ys-fixtures/envfile
+  path: compose.yaml
+name: envfile
+title: Settings File
+interface:
+  service: web
+  port: 8080
+generate:
+  SESSION_SECRET: { bytes: 16 }
+set:
+  MODE: production
+  # The file's own environment sets it too, and wins, as it would over .env.
+  GREETING: from-the-kit
+required: [OWNER_NAME]
+limits:
+  web: { memory: 64M, cpus: 0.5 }

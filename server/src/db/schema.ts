@@ -96,6 +96,8 @@ export interface Kit {
   derive?: Record<string, "app_origin" | "app_host" | { template: string }>;
   /** Values the app's own example settings give, which its file leaves empty. The owner can change them. */
   set?: Record<string, string>;
+  /** Settings the owner gives, which the app can't run without; the install needs a value for each. */
+  required?: string[];
   secrets?: string[];
   outbound?: string[];
   /** Memory in bytes, parsed from the kit's 512M or 1G. */

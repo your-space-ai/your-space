@@ -1,0 +1,11 @@
+# A file whose service names other files on the machine to load settings and labels from, for the
+# browser tests. Your Space refuses it without Compose reading any of them: ../x doesn't exist, so
+# a read would stop the review with Compose's own error instead.
+services:
+  web:
+    image: busybox:1.37
+    command: ["sleep", "infinity"]
+    env_file:
+      - /etc/passwd
+      - ../x
+    label_file: /etc/hostname

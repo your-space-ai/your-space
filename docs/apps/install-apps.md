@@ -10,7 +10,14 @@ and opens them inside Your Space.
 shows the exact commit and image versions that will run, what Your Space changes or leaves out of
 the file, the settings it reads, and the internet hosts it may reach. Secrets the file gives a
 published default for get generated values instead, and they are never shown. Install runs in the
-background; you can leave the page. From the server, `docker compose exec server install-app <link>`
+background; you can leave the page.
+
+Your Space keeps an app's settings itself, encrypted, and never writes them to a file. Many apps'
+Compose files load their settings from a `.env` file next to them, with `env_file: .env`; such a
+service gets the app's settings from Your Space instead, which the review reports. An installation
+kit names the settings that file would hold, since the Compose file doesn't, and the review asks you
+for the ones the kit marks required. Your Space refuses a file that loads settings or labels from any
+other file on the machine. From the server, `docker compose exec server install-app <link>`
 does the same. A kit Your Space can't read from GitHub, such as one in a private repository, can come
 from this machine instead: `docker compose exec -T server install-app <link> --kit - < kit.yaml`.
 

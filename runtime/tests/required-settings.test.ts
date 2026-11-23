@@ -32,7 +32,10 @@ const VARIABLES = {
  * resolution's settings.
  */
 let resolutions: Record<string, string>[];
+/** Compose's reading of the file as written, which interpolates nothing, so a required setting doesn't stop it. */
+const AS_WRITTEN: CliResult = { code: 0, stdout: JSON.stringify({ services: { web: { image: "busybox:1.37" } } }), stderr: "" };
 function compose(args: string[], env: Record<string, string> = {}): CliResult {
+  if (args.includes("--no-interpolate")) return AS_WRITTEN;
   if (args.includes("--variables")) return { code: 0, stdout: JSON.stringify(VARIABLES), stderr: "" };
   if (args.includes("up")) throw new Error("Nothing starts in these tests.");
   resolutions.push(env);
@@ -96,6 +99,7 @@ describe("placeholders for required settings", () => {
   it("leave an image named with one for the install's check to look up", async () => {
     // `image: example/app:${TAG:?Set TAG}`
     vi.mocked(docker).mockImplementation(async (args, env = {}) => {
+      if (args.includes("--no-interpolate")) return AS_WRITTEN;
       if (args.includes("--variables")) return { code: 0, stdout: JSON.stringify({ TAG: { Name: "TAG", DefaultValue: "", PresenceValue: "", Required: true } }), stderr: "" };
       if (!env.TAG) return { code: 1, stdout: "", stderr: "required variable TAG is missing a value: Set TAG\n" };
       return { code: 0, stdout: JSON.stringify({ services: { web: { image: `example/app:${env.TAG}` } } }), stderr: "" };
@@ -124,6 +128,7 @@ describe("placeholders for required settings", () => {
 
   it("are named when the file can't take one, such as for a port", async () => {
     vi.mocked(docker).mockImplementation(async (args) => {
+      if (args.includes("--no-interpolate")) return AS_WRITTEN;
       if (args.includes("--variables")) return { code: 0, stdout: JSON.stringify({ APP_PORT: { Name: "APP_PORT", DefaultValue: "", PresenceValue: "", Required: true } }), stderr: "" };
       return { code: 1, stdout: "", stderr: `invalid hostPort: ${PLACEHOLDER}\n` };
     });

@@ -69,8 +69,13 @@ data (image platforms and digests without downloading, engine info, network conn
 **Resolving and checking a file (FR-D03, FR-D04).** `docker compose config --format json`, with the
 settings as its environment, resolves anchors, `extends`, `include`, placeholders and profiles. The
 same command with `--profile '*'` lists services behind profiles, which are left out and reported.
-`config --variables` lists the settings the file reads. The resolved JSON is then checked service by
-service:
+`config --variables` lists the settings the file reads. First, though, Compose reads the file as
+written, with interpolation, settings files, normalization and paths turned off, because resolving
+it would read every `env_file` and `label_file` into the services and drop the key (2026-11-23).
+Every such file is reset in a second Compose file, so Compose reads none of them. A service whose
+`env_file` names only `.env` gets the app's settings as its environment in place of the file, under
+the environment its file sets; any other settings file and every label file is refused. The resolved
+JSON is then checked service by service:
 
 | Setting | Rule |
 | --- | --- |
@@ -80,7 +85,7 @@ service:
 | `dns`, `dns_search`, `extra_hosts`, `container_name`, `logging`, `mem_limit`, `cpus`, `deploy.resources` | Removed or replaced by Your Space's values (reported) |
 | `build` with an `image` | Build removed, image used (reported) |
 | `volumes` of type `volume` (named) or `tmpfs` | Allowed; anonymous volumes allowed, and removed with the app |
-| Bind mounts, `devices`, `privileged`, `cap_add`, `security_opt`, `pid`/`ipc`/`uts`/`userns_mode`/`cgroup` other than private, `network_mode: host` or `service:`/`container:`, `volumes_from`, `sysctls`, `env_file` left after resolution, `secrets`/`configs` from files, `group_add`, `runtime`, `isolation`, `gpus`, `build` without `image`, `external` volumes or networks, volume `driver`/`driver_opts` | Refused with the reason |
+| Bind mounts, `devices`, `privileged`, `cap_add`, `security_opt`, `pid`/`ipc`/`uts`/`userns_mode`/`cgroup` other than private, `network_mode: host` or `service:`/`container:`, `volumes_from`, `sysctls`, `env_file` other than `.env`, `label_file`, `secrets`/`configs` from files, `group_add`, `runtime`, `isolation`, `gpus`, `build` without `image`, `external` volumes or networks, volume `driver`/`driver_opts` | Refused with the reason |
 | Any other key | Refused, so a new Compose feature can't slip through |
 
 **The adapted file.** Built from the checked JSON (not the raw text): images pinned to

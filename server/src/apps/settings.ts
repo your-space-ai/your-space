@@ -105,15 +105,18 @@ export interface AppAddress {
 }
 
 /**
- * The settings an app's file reads, with values Your Space generates or works out. A published
- * default is never used for a secret: the kit says which values to generate, and without a kit any
- * setting that looks secret and has a published default gets a generated value (spec Q3).
+ * The settings an app's file reads and its kit names, with values Your Space generates or works out.
+ * A kit can name settings the file never reads, for a service that loads them from `.env`, which Your
+ * Space gives the app's settings to instead. A published default is never used for a secret: the kit
+ * says which values to generate, and without a kit any setting that looks secret and has a published
+ * default gets a generated value (spec Q3).
  */
 export function buildSettings(variables: Variable[], kit: Kit | null, address: AppAddress, previous: Map<string, string | null> = new Map()): Setting[] {
   const names = new Set(variables.map((v) => v.name));
   for (const name of Object.keys(kit?.generate ?? {})) names.add(name);
   for (const name of Object.keys(kit?.derive ?? {})) names.add(name);
   for (const name of Object.keys(kit?.set ?? {})) names.add(name);
+  for (const name of [...(kit?.required ?? []), ...(kit?.secrets ?? [])]) names.add(name);
   const byName = new Map(variables.map((v) => [v.name, v]));
   const settings: Setting[] = [];
   for (const name of [...names].sort()) {
@@ -147,7 +150,7 @@ export function buildSettings(variables: Variable[], kit: Kit | null, address: A
       secret,
       generated,
       derived: Boolean(derive),
-      required: variable.required,
+      required: variable.required || Boolean(kit?.required?.includes(name)),
       publishedDefault: secret ? null : variable.default || null,
     });
   }

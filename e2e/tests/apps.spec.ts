@@ -13,6 +13,8 @@ const WHOAMI = "https://github.com/ys-fixtures/whoami/blob/main/compose.yaml";
 const PROBE = "https://github.com/ys-fixtures/probe/blob/main/compose.yaml";
 const NOFRAME = "https://github.com/ys-fixtures/noframe/blob/main/compose.yaml";
 const REQUIRED = "https://github.com/ys-fixtures/required/blob/main/compose.yaml";
+const ENVFILE = "https://github.com/ys-fixtures/envfile/blob/main/compose.yaml";
+const HOSTFILES = "https://github.com/ys-fixtures/hostfiles/blob/main/compose.yaml";
 const LINK_LABEL = "Link to the app's Compose file";
 
 // The owner signs in once: sign-in allows three attempts per address in 10 seconds (journey 001).
@@ -479,6 +481,51 @@ test("an app whose file requires settings is reviewed, and installs once the own
   await page.getByRole("button", { name: "Delete data of required" }).click();
   const dialog = page.getByRole("alertdialog");
   await dialog.getByLabel("Type required to confirm").fill("required");
+  await dialog.getByRole("button", { name: "Delete data" }).click();
+  await expect(page.getByRole("heading", { name: "Kept data" })).toHaveCount(0);
+});
+
+test("an app whose file loads its settings from .env gets them from Your Space, and no other file on the machine is read", async ({ page }) => {
+  // Compose reads none of the files the file names: a read of ../x, which isn't there, would have
+  // stopped the review with Compose's own error instead of these refusals.
+  const refused = await serverCommand("install-app", [HOSTFILES]);
+  expect(refused.code, refused.stderr).not.toBe(0);
+  expect(refused.json).toMatchObject({ ok: false, error: "refused" });
+  expect(refused.json.refusals.map((r: { setting: string; reason: string }) => `${r.setting}: ${r.reason.split(" can't")[0]}`)).toEqual([
+    "env_file: Settings file /etc/passwd",
+    "env_file: Settings file ../x",
+    "label_file: Label file /etc/hostname",
+  ]);
+
+  await asOwner(page);
+  await page.goto("/apps");
+  await page.getByLabel(LINK_LABEL).fill(ENVFILE);
+  await page.getByRole("button", { name: "Review" }).click();
+  await expect(page.getByRole("heading", { name: "Review" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Refusals" })).toHaveCount(0);
+  await expect(page.getByText(/Settings file \.env replaced/)).toBeVisible();
+  // The kit requires a setting the file never reads, so the owner gives it before installing.
+  const install = page.getByRole("button", { name: "Install" });
+  await expect(install).toBeDisabled();
+  await page.getByLabel("OWNER_NAME").fill("Sam Rivera");
+  await install.click();
+  await waitForJob(page);
+  const env = await inspect("ys-envfile-web-1", "{{json .Config.Env}}");
+  expect(env).toContain("OWNER_NAME=Sam Rivera");
+  expect(env).toContain("MODE=production");
+  expect(env).toMatch(/"SESSION_SECRET=[\w-]{22}"/);
+  // The file's own environment wins over the settings, as it would over .env.
+  expect(env).toContain("GREETING=from-the-file");
+  expect(env).not.toContain("from-the-kit");
+
+  await page.goto("/apps/envfile");
+  await page.getByRole("button", { name: "Remove app", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remove app", exact: true }).click();
+  await waitForJob(page);
+  await page.goto("/apps");
+  await page.getByRole("button", { name: "Delete data of envfile" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await dialog.getByLabel("Type envfile to confirm").fill("envfile");
   await dialog.getByRole("button", { name: "Delete data" }).click();
   await expect(page.getByRole("heading", { name: "Kept data" })).toHaveCount(0);
 });
