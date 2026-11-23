@@ -22,9 +22,10 @@ an existing open-source personal finance app, called the finance app below.
 ## At a Glance
 
 - **Who:** the owner of a Your Space installation from journey 001.
-- **Done when:** the owner pastes the link to the finance app's Compose file, reviews what will run,
-  confirms, and uses it in a pane inside Your Space. The app keeps its data across restarts, reaches
-  only the internet hosts the owner approved, and can be removed without losing its data.
+- **Done when:** the owner pastes the link to the finance app's Compose file (2026-11-23: to its
+  kit, which names that file), reviews what will run, confirms, and uses it in a pane inside Your
+  Space. The app keeps its data across restarts, reaches only the internet hosts the owner approved,
+  and can be removed without losing its data.
 - **Covers:** running apps' containers, installing from a GitHub link, adapting an app's own
   Compose file to Your Space's rules, generated secrets and settings, opening apps in panes on their
   own origins, access only through Your Space, outbound access approval, isolation, limits, status
@@ -145,8 +146,9 @@ the stack has six pull requests after it. The user stories below are numbered by
 
 ### User Story 1 - Run an App From a Link (Priority: P1)
 
-As the operator, I can give Your Space the GitHub link to an app's Compose file, and Your Space runs
-the app's containers on its runtime and keeps them running across restarts.
+As the operator, I can give Your Space the GitHub link to an app's Compose file (2026-11-23: to its
+kit, which names that file), and Your Space runs the app's containers on its runtime and keeps them
+running across restarts.
 
 **Why this priority**: Everything else in this journey depends on Your Space running containers
 safely. Controlling Docker is the most security-sensitive part of the journey, so it comes first and
@@ -181,8 +183,8 @@ app's Compose file, check its status, restart the stack, and check it again.
 ### User Story 2 - Run the Finance App (Priority: P1)
 
 As the operator, I can install the finance app from the link to its own example Compose file, which
-its authors wrote for running by hand, and Your Space adapts it, generates its secrets and runs
-every service.
+its authors wrote for running by hand (2026-11-23: from the link to its kit, which names that file),
+and Your Space adapts it, generates its secrets and runs every service.
 
 **Why this priority**: Real apps' Compose files are written for people, not for Your Space. Running
 one unchanged is the point of the journey.
