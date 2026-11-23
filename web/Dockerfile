@@ -39,8 +39,10 @@ RUN printf '%s\n' 'package main' \
 # Caddy serves the built web client and forwards /api to the server (research R2, R9).
 FROM caddy:2.11
 COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
-# The same file capability the official image gives its build, which COPY doesn't keep.
-RUN setcap cap_net_bind_service=+ep /usr/bin/caddy
+# The same file capability the official image gives its build, which COPY doesn't keep: permitted
+# only, not effective, so the binary still runs in a container that drops every capability (a
+# published app's Caddy does).
+RUN setcap cap_net_bind_service=p /usr/bin/caddy
 COPY --from=build /app/web/dist /srv
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 # The Caddyfile of a published app's own Caddy, which runs this image too.
