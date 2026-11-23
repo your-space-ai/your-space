@@ -13,7 +13,7 @@ const run = promisify(execFile);
 test.skip(({ browserName }) => browserName !== "chromium", "These checks drive Compose, not a browser; run them once.");
 test.describe.configure({ mode: "serial" });
 
-// The SQL of "Give PostgreSQL the Database Password" in docs/install/README.md, fed on stdin as the
+// The SQL of "Give PostgreSQL the Database Password" in docs/operate/recovery.md, fed on stdin as the
 // guide's heredoc does. Keep the two in step.
 const GIVE_POSTGRES_THE_PASSWORD = `SET log_min_error_statement = panic;
 \\set pw \`if [ -n "$POSTGRES_PASSWORD" ]; then printf '%s' "$POSTGRES_PASSWORD"; else cat /run/ys-secrets/password; fi\`
@@ -26,7 +26,7 @@ ALTER ROLE yourspace PASSWORD :'pw';
 `;
 
 test("the guide prints the same password command these tests run", () => {
-  const guide = readFileSync(new URL("../../docs/install/README.md", import.meta.url), "utf8");
+  const guide = readFileSync(new URL("../../docs/operate/recovery.md", import.meta.url), "utf8");
   const section = guide.slice(guide.indexOf("### Give PostgreSQL the Database Password"));
   const heredoc = section.slice(section.indexOf("<<'EOF'\n") + "<<'EOF'\n".length, section.indexOf("\nEOF\n") + 1);
   expect(heredoc).toBe(GIVE_POSTGRES_THE_PASSWORD);
@@ -82,7 +82,7 @@ test("a lost ys-secrets volume stops start-up, and the guide's steps recover the
   // Nothing was generated over the existing database.
   expect((await compose(["ps", "-a", "--format", "{{.Service}} {{.State}}"])).stdout).not.toMatch(/server running/);
 
-  // "Lost Secrets", option 2, in docs/install/README.md.
+  // "Lost Secrets", option 2, in docs/operate/recovery.md.
   await compose(["run", "--rm", "secrets", "--new", "auth-secret", "--new", "database-password"]);
   await compose(["up", "-d", "--wait", "postgres"], { timeout: 240_000 });
   expect((await givePostgresThePassword()).stdout).toContain("ALTER ROLE");
@@ -111,7 +111,7 @@ test("secrets set in .env are used as given, and a changed password is recovered
   expect(refused.code).not.toBe(0);
   expect(await logs(["server"])).toContain("PostgreSQL refused the database password");
 
-  // "Give PostgreSQL the Database Password" in docs/install/README.md, then start again.
+  // "Give PostgreSQL the Database Password" in docs/operate/recovery.md, then start again.
   expect((await givePostgresThePassword(changed)).stdout).toContain("ALTER ROLE");
   await compose(["restart", "server"], { env: changed });
   await up(changed);

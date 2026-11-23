@@ -15,7 +15,7 @@ an issue first so we can agree on the direction before you write code.
 | [shared/](shared/) | The [theme model](shared/appearance/) and [pane-layout model](shared/workspace-layout/) used by multiple packages. |
 | [deploy/](deploy/) | The Compose stack, edge proxy configuration and release files. |
 | [e2e/](e2e/) | Playwright tests, their disposable Compose stack and sample app fixtures. |
-| [docs/](docs/README.md) and [specs/](specs/README.md) | User and maintainer guides, and the numbered feature specifications with their acceptance criteria. |
+| [docs/](docs/index.md) and [specs/](specs/README.md) | User and maintainer guides, and the numbered feature specifications with their acceptance criteria. |
 
 ## Run the local checks
 

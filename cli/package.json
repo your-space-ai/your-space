@@ -4,7 +4,7 @@
   "description": "Install and run Your Space: init a folder, start it, and manage it.",
   "license": "AGPL-3.0-only",
   "type": "module",
-  "homepage": "https://github.com/your-space-ai/your-space/blob/main/docs/install/README.md",
+  "homepage": "https://github.com/your-space-ai/your-space/blob/main/docs/install/index.md",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/your-space-ai/your-space.git",

@@ -20,12 +20,13 @@ Apple Silicon and Intel disk images will be published on [GitHub Releases](https
 
 ## Explore Your Space
 
-- [Give an agent access to an app](docs/install/README.md#give-an-external-agent-access-to-one-app)
+- [Give an agent access to an app](docs/apps/agent-access.md)
 - [Build your own Home app](docs/apps/build-an-app.md)
 - [Customize an installed app or bring your own kit](docs/apps/managed-repositories.md)
 - [Create and share a theme](docs/appearance.md)
 
-For setup on a server, contributor guides, and design decisions, browse the [documentation](docs/README.md).
+For setup on a server, contributor guides, and design decisions, browse the [documentation](docs/index.md).
+For an in-depth tour of how the code works, read the generated [DeepWiki](https://deepwiki.com/your-space-ai/your-space).
 The [roadmap](docs/roadmap.md) tracks what’s implemented and what’s planned.
 
 ## Current limits

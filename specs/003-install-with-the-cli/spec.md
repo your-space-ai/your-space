@@ -227,7 +227,7 @@ see where my space's secrets come from and replace one, without `docker compose 
    left alone, and the CLI says to change it there.
 5. **Given** the `ys-secrets` volume is lost but the database is kept, **When** the owner runs
    `your-space start`, **Then** the CLI explains the
-   [lost secrets](../../docs/install/README.md#lost-secrets) choices and offers to start with new
+   [lost secrets](../../docs/operate/recovery.md#lost-secrets) choices and offers to start with new
    secrets, running the same steps.
 
 ### User Story 4 - Your Own Domain (Priority: P1)

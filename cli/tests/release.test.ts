@@ -59,7 +59,7 @@ describe("the guide's steps", () => {
   it("give PostgreSQL the database password with the guide's own command", async () => {
     const { readFileSync } = await import("node:fs");
     const { GIVE_POSTGRES_PASSWORD } = await import("../src/secrets.ts");
-    const guide = readFileSync(new URL("../../docs/install/README.md", import.meta.url), "utf8");
+    const guide = readFileSync(new URL("../../docs/operate/recovery.md", import.meta.url), "utf8");
     const section = guide.slice(guide.indexOf("### Give PostgreSQL the Database Password"));
     const heredoc = section.slice(section.indexOf("<<'EOF'\n") + "<<'EOF'\n".length, section.indexOf("\nEOF\n") + 1);
     expect(GIVE_POSTGRES_PASSWORD).toBe(heredoc);

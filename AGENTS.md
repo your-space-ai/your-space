@@ -20,6 +20,13 @@ The [architecture overview](docs/architecture/overview.md) diagrams the running 
 layer. When a decision adds, removes, or moves a component, layer, or request path, update the
 overview in the same change.
 
+Keep the maintained documentation to the reference set: the README, `docs/install/`, `docs/operate/`, `docs/apps/`,
+`docs/maintainers/`, the decision record, roadmap, architecture overview, glossary and `specs/`.
+In-depth explanations of how the code works come from the generated
+[DeepWiki](https://deepwiki.com/your-space-ai/your-space). Don't add hand-written walkthroughs of
+internals; steer DeepWiki instead by editing its page plan and notes in `.devin/wiki.json`
+(at most 30 pages). When a change adds, removes or renames a subsystem, update that file in the same PR.
+
 The [spec map](specs/README.md) records journey numbers, dependencies and build order.
 Keep each roadmap outcome under the product area it belongs to. Record its delivery stage there
 and link its journey when one exists. When a change in scope or timing affects a journey,
@@ -33,6 +40,13 @@ its history or marking it complete.
 
 When a feature specification referenced through an in-review PR is merged, replace its PR links
 in the roadmap and release guide with links to the maintained specification.
+
+The documentation in `docs/` is published with Mintlify from `docs/docs.json`. Give each page a
+`title` in front matter instead of a `#` heading, add new pages to the navigation in `docs/docs.json`,
+and link to files outside `docs/` with full `https://github.com/your-space-ai/your-space/blob/main/...`
+URLs, because the site only serves `docs/`. Name a folder's landing page `index.md`, not `README.md`,
+which Mintlify doesn't publish. Check changes with `npx mint@4 validate` and
+`npx mint@4 broken-links --check-anchors` from `docs/`.
 
 Write pull request descriptions with the [template](.github/pull_request_template.md). Its visible
 part answers three questions in a minute: what the PR changes and why (Summary), where to look

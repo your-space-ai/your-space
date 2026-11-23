@@ -43,7 +43,7 @@ const AFTER_REPLACING: Record<string, string> = {
   BETTER_AUTH_SECRET:
     "Replaced the auth secret. Restart the server to use it, which signs out every device: docker compose restart server",
   POSTGRES_PASSWORD:
-    'Replaced the database password. PostgreSQL still has the old one: follow "Lost Secrets" in the installation guide to give it the new one, then restart the server.',
+    'Replaced the database password. PostgreSQL still has the old one: follow "Give PostgreSQL the Database Password" in the recovery guide (docs/operate/recovery.md), then restart the server.',
   YS_DATA_KEY:
     "Replaced the data key. Restart the server, which re-encrypts apps' settings with it, then: docker compose run --rm secrets --forget previous-data-key",
 };

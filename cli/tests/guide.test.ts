@@ -1,10 +1,13 @@
-// Every `your-space` command and option the installation guide names exists (task T026), so the
+// Every `your-space` command and option the operator documentation names exists (task T026), so the
 // guide can't drift from the CLI. The browser test runs the commands themselves.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const guide = readFileSync(new URL("../../docs/install/README.md", import.meta.url), "utf8");
+// The operator documentation: installing, reaching it from other devices, running it, and recovery.
+const guide = ["install/index.md", "install/other-devices.md", "operate/index.md", "operate/recovery.md"]
+  .map((page) => readFileSync(new URL(`../../docs/${page}`, import.meta.url), "utf8"))
+  .join("\n");
 const cli = (args: string[]) => execFileSync(process.execPath, [new URL("../src/index.ts", import.meta.url).pathname, ...args], { encoding: "utf8" });
 
 /** `your-space <command> [<subcommand>] [--option ...]`, as the guide writes them. */
@@ -25,7 +28,7 @@ function mentions(): { command: string[]; options: string[] }[] {
   return [...found.values()];
 }
 
-describe("the installation guide", () => {
+describe("the operator documentation", () => {
   const all = mentions();
 
   it("names the CLI's commands", () => {
