@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api, ApiError, appsQuery, errorMessage } from "../apps-api.ts";
 import { failureKind } from "../errors.ts";
 import { reposPath, type Repository } from "../repositories-api.ts";
+import { Notice } from "../ui/index.ts";
 
 type Plan = {
   previewId: string;
@@ -119,9 +120,9 @@ export function RepositoryDeployment({
       <h2>Update an installed app</h2>
       <p className="muted">Review the pinned commit for an existing installation before applying it.</p>
       {apps.error ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(apps.error)}
-        </p>
+        </Notice>
       ) : null}
       <form
         className="repo-fields"
@@ -203,12 +204,12 @@ export function RepositoryDeployment({
       ) : null}
       {checkingReceipt ? <p role="status">Checking whether the reviewed deployment finished…</p> : null}
       {preview.error || apply.error ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(preview.error ?? apply.error)}
           {apply.error instanceof ApiError && apply.error.code === "deployment_unconfirmed" && selected ? (
             <> <Link to="/apps/$name" params={{ name: selected.name }}>Check installation status</Link></>
           ) : null}
-        </p>
+        </Notice>
       ) : null}
       {reviewed && selected && reviewed.appId === selected.id && reviewed.repoId === repo.id ? (
         <section className="deploy-review">

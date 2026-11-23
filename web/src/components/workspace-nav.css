@@ -1,3 +1,4 @@
+@layer legacy {
 .workspace-nav-section {
   margin-block-start: 1.35rem;
   min-width: 0;
@@ -93,4 +94,5 @@
   color: var(--muted);
   font-size: 0.8rem;
   overflow-wrap: anywhere;
+}
 }

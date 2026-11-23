@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../apps-api.ts";
 import { connectionQuery, repositoryQuery, reposPath } from "../repositories-api.ts";
+import { Notice } from "../ui/index.ts";
 
 type Attempt = {
   attemptId: string;
@@ -83,9 +84,9 @@ export function GitHubConnection({ ownerId }: { ownerId: string }) {
     <section className="card">
       <h2>GitHub connection</h2>
       {error ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {error}
-        </p>
+        </Notice>
       ) : null}
       {connection.isError ? (
         <p role="alert">

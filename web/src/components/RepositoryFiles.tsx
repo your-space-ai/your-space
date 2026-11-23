@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, errorMessage } from "../apps-api.ts";
 import { reposPath, type Repository } from "../repositories-api.ts";
+import { Notice } from "../ui/index.ts";
 
 type WorkingFile = { branch: string; path: string; sha?: string; base: string };
 export function RepositoryFiles({ repo }: { repo: Repository }) {
@@ -108,9 +109,9 @@ export function RepositoryFiles({ repo }: { repo: Repository }) {
         </div>
       </form>
       {open.error ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(open.error)}
-        </p>
+        </Notice>
       ) : null}
       {file ? (
         <form
@@ -154,9 +155,9 @@ export function RepositoryFiles({ repo }: { repo: Repository }) {
         </form>
       ) : null}
       {save.error ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(save.error)}
-        </p>
+        </Notice>
       ) : null}
       {receipt ? (
         <p role="status">

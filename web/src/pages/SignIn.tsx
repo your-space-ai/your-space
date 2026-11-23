@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import { authClient } from "../auth-client.ts";
 import { renderCode } from "../components/ErrorState.tsx";
 import { WRONG_ADDRESS_FIX } from "../errors.ts";
+import { Notice } from "../ui/index.ts";
 
 export type SignInNotice = "password_set" | "signed_out" | "expired";
 
@@ -63,14 +64,14 @@ export function SignIn() {
     <main className="panel">
       <h1>Sign in to Your Space</h1>
       {notice && !error ? (
-        <p className="notice" role="status">
+        <Notice role="status">
           {NOTICE_TEXT[notice]}
-        </p>
+        </Notice>
       ) : null}
       {error ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {renderCode(error)}
-        </p>
+        </Notice>
       ) : null}
       <form onSubmit={onSubmit}>
         <label>

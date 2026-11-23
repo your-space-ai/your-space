@@ -154,12 +154,14 @@ function fontStack(name) {
 }
 
 // Component shape for each style. Crisp: hairline borders and small corners. Soft: tinted
-// surfaces and larger corners. Bold: heavy rules and square corners. --surface-tint and
-// --control-tint are how much accent to mix into surfaces and secondary controls.
+// surfaces and larger corners. Bold: heavy rules in the text color, square corners and stronger
+// type. --surface-tint and --control-tint are how much accent to mix into surfaces and secondary
+// controls, --rule-ink how much text color to mix into borders and rules, and --weight-strong the
+// weight of headings, labels and buttons.
 const styleVariables = {
-  crisp: {'--radius': '6px', '--radius-control': '4px', '--border-width': '1px', '--rule-width': '1px', '--surface-tint': '0%', '--control-tint': '0%'},
-  soft: {'--radius': '16px', '--radius-control': '10px', '--border-width': '1px', '--rule-width': '1px', '--surface-tint': '6%', '--control-tint': '12%'},
-  bold: {'--radius': '0px', '--radius-control': '0px', '--border-width': '2px', '--rule-width': '3px', '--surface-tint': '0%', '--control-tint': '0%'},
+  crisp: {'--radius': '6px', '--radius-control': '4px', '--border-width': '1px', '--rule-width': '1px', '--surface-tint': '0%', '--control-tint': '0%', '--rule-ink': '0%', '--weight-strong': '600'},
+  soft: {'--radius': '16px', '--radius-control': '10px', '--border-width': '1px', '--rule-width': '1px', '--surface-tint': '6%', '--control-tint': '12%', '--rule-ink': '0%', '--weight-strong': '600'},
+  bold: {'--radius': '0px', '--radius-control': '0px', '--border-width': '2px', '--rule-width': '3px', '--surface-tint': '0%', '--control-tint': '0%', '--rule-ink': '100%', '--weight-strong': '700'},
 };
 
 /** The color panels and cards render with in a style: Soft mixes the accent into the surface color. */

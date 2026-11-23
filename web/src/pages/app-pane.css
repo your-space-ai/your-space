@@ -1,3 +1,4 @@
+@layer legacy {
 .pane-workspace {
   height: 100dvh;
   display: flex;
@@ -136,4 +137,5 @@
     gap: 0.4rem;
     padding: 0.4rem;
   }
+}
 }

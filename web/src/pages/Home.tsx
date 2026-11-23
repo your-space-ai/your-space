@@ -9,6 +9,7 @@ import { authClient } from "../auth-client.ts";
 import { ErrorState } from "../components/ErrorState.tsx";
 import { AppError, failureForStatus, failureKind } from "../errors.ts";
 import { sessionQuery, workspaceQuery } from "../queries.ts";
+import { Notice } from "../ui/index.ts";
 
 // An owner created without an email holds a reserved address that can't receive mail; it isn't
 // the owner's, so it isn't shown. The server's owner rules use the same domain.
@@ -92,7 +93,7 @@ export function BuiltInHome({ unavailable = false }: { unavailable?: boolean }) 
   return (
     <main className="panel" data-state="home">
       <h1>{workspace.data?.name}</h1>
-      {unavailable ? <p className="notice">Your selected Home is unavailable. You can keep using the built-in dashboard.</p> : null}
+      {unavailable ? <Notice>Your selected Home is unavailable. You can keep using the built-in dashboard.</Notice> : null}
       {apps.data ? (apps.data.apps.length ? <p><Link to="/apps">Browse installed apps</Link></p> : <section aria-label="Getting started">
         <p>Choose an app for your workspace. Its kit describes what will run, so you can review it before installing.</p>
         <Link className="button" to="/apps">Install your first kit</Link>
@@ -111,11 +112,11 @@ export function BuiltInHome({ unavailable = false }: { unavailable?: boolean }) 
         ) : null}
       </dl>
       {signOut.isError ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {failureKind(signOut.error) === "server_unreachable"
             ? "Couldn't sign out because Your Space isn't reachable. You are still signed in; try again."
             : "Couldn't sign out. You are still signed in; try again."}
-        </p>
+        </Notice>
       ) : null}
       <button type="button" className="secondary" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
         {signOut.isPending ? "Signing out…" : "Sign out"}

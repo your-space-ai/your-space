@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api, errorMessage } from "../apps-api.ts";
 import { agentPath, useAgentAction, type ActivityEntry, type Agent, type AgentDashboard } from "../agents-api.ts";
 import { ActionFeedback, AppConnection, GrantEditor } from "../components/AgentAccess.tsx";
+import { Notice, useConfirm } from "../ui/index.ts";
 
 export function Agents() {
   const dashboard = useQuery({
@@ -21,12 +22,12 @@ export function Agents() {
     <main className="page agent-page">
       <h1>Agents</h1>
       {dashboard.isError ? (
-        <div className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(dashboard.error)}{" "}
           <button className="secondary" onClick={() => void dashboard.refetch()}>
             Retry
           </button>
-        </div>
+        </Notice>
       ) : !data ? (
         <p>Loading agents…</p>
       ) : (
@@ -97,6 +98,7 @@ export function Agents() {
 
 function AgentSettings({ agent, data }: { agent: Agent; data: AgentDashboard }) {
   const action = useAgentAction();
+  const [confirm, confirmation] = useConfirm();
   const [newName, setNewName] = useState(agent.name);
   const [secret, setSecret] = useState("");
   const [reveal, setReveal] = useState(false);
@@ -110,7 +112,7 @@ function AgentSettings({ agent, data }: { agent: Agent; data: AgentDashboard }) 
       setSecret(result.key);
     }, "Agent key issued.");
   }
-  if (agent.disabled) return <p className="notice">This agent is disabled. Its keys cannot be used.</p>;
+  if (agent.disabled) return <Notice>This agent is disabled. Its keys cannot be used.</Notice>;
   return (
     <>
       <details className="agent-details">
@@ -138,8 +140,8 @@ function AgentSettings({ agent, data }: { agent: Agent; data: AgentDashboard }) 
             type="button"
             className="danger-outline"
             disabled={action.busy}
-            onClick={() => {
-              if (window.confirm("Disable this agent and stop all its keys from working?"))
+            onClick={async () => {
+              if (await confirm({ title: "Disable this agent and stop all its keys from working?", confirmLabel: "Disable agent" }))
                 void action.run(async () => {
                   await api("PATCH", path, { disabled: true });
                   setSecret("");
@@ -163,8 +165,8 @@ function AgentSettings({ agent, data }: { agent: Agent; data: AgentDashboard }) 
                   <button
                     className="secondary"
                     disabled={action.busy}
-                    onClick={() => {
-                      if (window.confirm("Rotate this key? Its current value will stop working.")) issue(key.id);
+                    onClick={async () => {
+                      if (await confirm({ title: "Rotate this key?", body: "Its current value will stop working.", confirmLabel: "Rotate key" })) issue(key.id);
                     }}
                   >
                     Rotate
@@ -172,8 +174,8 @@ function AgentSettings({ agent, data }: { agent: Agent; data: AgentDashboard }) 
                   <button
                     className="danger-outline"
                     disabled={action.busy}
-                    onClick={() => {
-                      if (window.confirm("Revoke this key? Other keys and app grants stay active."))
+                    onClick={async () => {
+                      if (await confirm({ title: "Revoke this key?", body: "Other keys and app grants stay active.", confirmLabel: "Revoke key" }))
                         void action.run(async () => {
                           await api("POST", path + "/keys/" + encodeURIComponent(key.id) + "/revoke", {});
                           setSecret("");
@@ -243,6 +245,7 @@ function AgentSettings({ agent, data }: { agent: Agent; data: AgentDashboard }) 
       ) : (
         <p className="muted">This agent has no app access.</p>
       )}
+      {confirmation}
     </>
   );
 }
@@ -357,12 +360,12 @@ function Activity({ data }: { data: AgentDashboard }) {
     <section className="card" aria-label="Agent activity">
       <h2>Activity</h2>
       {query.isError ? (
-        <p role="alert" className="notice error">
+        <Notice tone="danger" role="alert">
           {errorMessage(query.error)}{" "}
           <button className="secondary" onClick={() => void query.refetch()}>
             Retry
           </button>
-        </p>
+        </Notice>
       ) : query.isPending ? (
         <p>Loading activity…</p>
       ) : !query.data.events.length ? (

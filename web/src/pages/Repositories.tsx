@@ -13,6 +13,7 @@ import {
   type Repository,
 } from "../repositories-api.ts";
 import { Install } from "./Apps.tsx";
+import { Notice } from "../ui/index.ts";
 
 export function Repositories({ appName }: { appName?: string }) {
   const session = useQuery(sessionQuery);
@@ -34,7 +35,7 @@ export function Repositories({ appName }: { appName?: string }) {
       <h1>Repositories</h1>
       <p className="muted">Manage GitHub source for your apps and review what runs in your workspace.</p>
       {appName ? (
-        <div className="notice">
+        <Notice>
           {app.data ? (
             <>
               Customizing <strong>{app.data.title}</strong>.{" "}
@@ -51,16 +52,16 @@ export function Repositories({ appName }: { appName?: string }) {
           ) : (
             "Loading installation…"
           )}
-        </div>
+        </Notice>
       ) : null}
       <GitHubConnection ownerId={owner} />
       {connection.data?.connected && catalog.isError ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(catalog.error)}{" "}
           <button type="button" className="secondary" onClick={() => void catalog.refetch()}>
             Retry repositories
           </button>
-        </p>
+        </Notice>
       ) : null}
       {data ? (
         <>
@@ -206,9 +207,9 @@ function RepoRegistration({
         </button>
       </form>
       {save.error ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(save.error)}
-        </p>
+        </Notice>
       ) : null}
       {save.data ? <p role="status">{save.data.repo.fullName} is in this workspace.</p> : null}
     </details>
@@ -348,17 +349,17 @@ function GrantForm({
         ))}
       </fieldset>
       {save.error ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(save.error)}
-        </p>
+        </Notice>
       ) : null}
       {changed ? (
-        <p className="notice">
+        <Notice>
           The grant changed.{" "}
           <button type="button" className="secondary" onClick={reload}>
             Reload grant
           </button>
-        </p>
+        </Notice>
       ) : null}
       <div>
         <button type="submit" disabled={save.isPending || changed}>

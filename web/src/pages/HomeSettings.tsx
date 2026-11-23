@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api, errorMessage } from "../apps-api.ts";
 import { homeQuery, type HomeState, type ReadGrant } from "../home-api.ts";
 import { sessionQuery } from "../queries.ts";
+import { Notice } from "../ui/index.ts";
 
 type Settings = { revision: number; homeId: string | null; homeGeneration: string | null; grants: ReadGrant[] };
 
@@ -37,9 +38,9 @@ export function HomeSettings() {
         </p>
       ) : null}
       {update.error ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(update.error)}
-        </p>
+        </Notice>
       ) : null}
       {state.data ? (
         <SettingsForm
@@ -56,12 +57,12 @@ export function HomeSettings() {
           }}
         />
       ) : state.isError ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(state.error)}{" "}
           <button type="button" className="secondary" onClick={() => void state.refetch()}>
             Retry
           </button>
-        </p>
+        </Notice>
       ) : (
         <p role="status">Loading settings…</p>
       )}
@@ -125,9 +126,9 @@ function SettingsForm({
       }}
     >
       {baseline.selectedId && !baseline.activeHome ? (
-        <p className="notice">
+        <Notice>
           The previously selected app is unavailable or changed. The built-in dashboard is open.
-        </p>
+        </Notice>
       ) : null}
       <div className="card">
         <label>
@@ -190,12 +191,12 @@ function SettingsForm({
         </section>
       ) : null}
       {stale ? (
-        <div className="notice" role="alert">
+        <Notice role="alert">
           The workspace changed during editing.{" "}
           <button type="button" className="secondary" onClick={onRefresh}>
             Reload settings
           </button>
-        </div>
+        </Notice>
       ) : null}
       <div className="actions">
         <button type="submit" disabled={busy || stale}>

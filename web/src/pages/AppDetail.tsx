@@ -3,11 +3,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import { api, appQuery, errorMessage, ownTabLink, STATE_LABEL, type AppDetail as Detail } from "../apps-api.ts";
+import { api, appQuery, errorMessage, ownTabLink, STATE_LABEL, type AppDetail as Detail, type AppState } from "../apps-api.ts";
 import { JobProgress } from "../components/JobProgress.tsx";
 import { FRAME_NOTE, PUBLISH_NOTE, publishBody, PublishFields, type PublishForm } from "../components/PublishFields.tsx";
+import { Notice, StatusPill, type Tone } from "../ui/index.ts";
 
 const MIB = 1024 * 1024;
+const STATE_TONE: Record<AppState, Tone> = {
+  installing: "info", starting: "info", running: "success", degraded: "warning", stopped: "neutral", failed: "danger", removed: "neutral",
+};
 
 export function AppDetail({ name }: { name: string }) {
   const app = useQuery(appQuery(name));
@@ -16,9 +20,9 @@ export function AppDetail({ name }: { name: string }) {
   if (app.isError) {
     return (
       <main className="page">
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(app.error)}
-        </p>
+        </Notice>
         <Link to="/apps">Back to Apps</Link>
       </main>
     );
@@ -74,9 +78,9 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
   return (
     <section className="card" aria-label="Status">
       <p>
-        <span className={`state state-${d.state}`} data-field="state">
+        <StatusPill tone={STATE_TONE[d.state]} data-field="state">
           {STATE_LABEL[d.state]}
-        </span>
+        </StatusPill>
         {d.stateReason ? <span className="muted"> {d.stateReason}</span> : null}
       </p>
       <dl>
@@ -145,9 +149,9 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
         ) : null}
       </div>
       {start.isError ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(start.error)}
-        </p>
+        </Notice>
       ) : null}
     </section>
   );
@@ -222,9 +226,9 @@ function Settings({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { j
           ),
         )}
         {save.isError ? (
-          <p className="notice error" role="alert">
+          <Notice tone="danger" role="alert">
             {errorMessage(save.error)}
-          </p>
+          </Notice>
         ) : null}
         <div>
           <button type="submit" disabled={save.isPending || Object.keys(values).length === 0}>
@@ -288,9 +292,9 @@ function Publishing({ detail: d, onStarted }: { detail: Detail; onStarted: (r: {
             : "Saving changes only the Caddy that publishes the app; the app itself doesn't restart."}
         </p>
         {save.isError ? (
-          <p className="notice error" role="alert">
+          <Notice tone="danger" role="alert">
             {errorMessage(save.error)}
-          </p>
+          </Notice>
         ) : null}
         <button type="submit" disabled={save.isPending || (!on && !d.publish)}>
           Save publishing
@@ -407,9 +411,9 @@ function Outbound({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { j
         </button>
       </form>
       {failure ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(failure)}
-        </p>
+        </Notice>
       ) : null}
     </section>
   );
@@ -513,9 +517,9 @@ function Advanced({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { j
           </table>
           <p className="muted small">Changing a limit restarts that service.</p>
           {saveLimits.isError ? (
-            <p className="notice error" role="alert">
+            <Notice tone="danger" role="alert">
               {errorMessage(saveLimits.error)}
-            </p>
+            </Notice>
           ) : null}
           <button type="submit" disabled={saveLimits.isPending || Object.keys(limits).length === 0}>
             Save limits
@@ -544,9 +548,9 @@ function Advanced({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { j
           </button>
         </form>
         {loadLogs.isError ? (
-          <p className="notice error" role="alert">
+          <Notice tone="danger" role="alert">
             {errorMessage(loadLogs.error)}
-          </p>
+          </Notice>
         ) : null}
         {lines ? <pre aria-label="Logs" className="logs">{lines.length ? lines.join("\n") : "No log lines."}</pre> : null}
         <h3>Changes Your Space made to the app's file</h3>
@@ -608,9 +612,9 @@ function Remove({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
         </button>
       )}
       {remove.isError ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(remove.error)}
-        </p>
+        </Notice>
       ) : null}
     </section>
   );
@@ -654,9 +658,9 @@ export function DeleteData({ name }: { name: string }) {
         <input type="text" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
       </label>
       {del.isError ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(del.error)}
-        </p>
+        </Notice>
       ) : null}
       <div className="actions">
         <button type="submit" className="danger" disabled={typed !== name || del.isPending}>

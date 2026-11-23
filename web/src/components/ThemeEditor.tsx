@@ -3,6 +3,7 @@ import {
   contrastRatio, fontSuggestions, paletteScheme, surfaceColor, themeStyles, themeVariables, validateTheme,
   type ColorScheme, type Palette, type Theme, type ThemeFonts, type ThemeLook, type ThemeStyle,
 } from "../../../shared/appearance/theme.mjs";
+import { Notice } from "../ui/index.ts";
 
 export type ThemeDraft = { id?: string; initial: Theme; revision: number };
 
@@ -107,7 +108,7 @@ export function ThemeEditor({ draft, busy, stale, error, onCancel, onReload, onS
     <main className="page appearance-page">
       <button type="button" className="text-button back-link" disabled={busy} onClick={onCancel}>‹ Appearance</button>
       <h1 ref={heading} tabIndex={-1}>{draft.id ? "Edit theme" : "Create a theme"}</h1>
-      {error ? <p className="notice error" role="alert">{error}</p> : null}
+      {error ? <Notice tone="danger" role="alert">{error}</Notice> : null}
       <div className="editor-grid">
         <form onSubmit={submit}>
           <fieldset className="editor-fields" disabled={busy}>
@@ -143,14 +144,14 @@ export function ThemeEditor({ draft, busy, stale, error, onCancel, onReload, onS
               </div>
               <datalist id="theme-fonts">{fontSuggestions.map((font) => <option value={font} key={font} />)}</datalist>
             </fieldset>
-            {parsed.message ? <p className="notice error" role="status">{parsed.message} The preview keeps the last valid settings.</p> : null}
+            {parsed.message ? <Notice tone="danger" role="status">{parsed.message} The preview keeps the last valid settings.</Notice> : null}
             {stale ? (
-              <div className="notice" role="status">Your theme library changed while you were editing.
+              <Notice role="status">Your theme library changed while you were editing.
                 <div className="actions">
                   <button type="button" className="secondary" onClick={onReload}>Reload library</button>
                   <button type="button" className="secondary" disabled={!parsed.value} onClick={() => { if (parsed.value) void onSave(parsed.value, false, true); }}>Save as a new copy</button>
                 </div>
-              </div>
+              </Notice>
             ) : null}
             <label className="checkbox"><input type="checkbox" checked={activate} onChange={(e) => setActivate(e.target.checked)} /> Use this theme after saving</label>
             <div className="actions">

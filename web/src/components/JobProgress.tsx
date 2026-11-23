@@ -2,6 +2,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { errorMessage, jobQuery } from "../apps-api.ts";
+import { Notice } from "../ui/index.ts";
 
 export function JobProgress({ jobId, title, onDone }: { jobId: string; title: string; onDone?: (ok: boolean) => void }) {
   const queryClient = useQueryClient();
@@ -19,7 +20,7 @@ export function JobProgress({ jobId, title, onDone }: { jobId: string; title: st
     }
   }, [state, queryClient]);
 
-  if (job.isError) return <p className="notice error" role="alert">{errorMessage(job.error)}</p>;
+  if (job.isError) return <Notice tone="danger" role="alert">{errorMessage(job.error)}</Notice>;
   const steps = job.data?.steps ?? [];
   return (
     <section className="job" aria-live="polite" data-job-state={state ?? "running"}>
@@ -31,11 +32,11 @@ export function JobProgress({ jobId, title, onDone }: { jobId: string; title: st
         {steps.length === 0 ? <li className="muted">Starting…</li> : null}
       </ol>
       {state === "running" || !state ? <p className="muted">Working…</p> : null}
-      {state === "succeeded" ? <p className="notice">Done.</p> : null}
+      {state === "succeeded" ? <Notice tone="success">Done.</Notice> : null}
       {state === "failed" ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {job.data?.error ?? "The change failed."}
-        </p>
+        </Notice>
       ) : null}
     </section>
   );

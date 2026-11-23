@@ -1,3 +1,4 @@
+@layer legacy {
 .custom-home {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -104,4 +105,5 @@
 .repo-page input,
 .repo-page textarea {
   max-width: 100%;
+}
 }

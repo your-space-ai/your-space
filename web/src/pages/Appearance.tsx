@@ -5,6 +5,7 @@ import { activePaletteQuery, catalogQuery, selectedTheme, workspaceLook, type Ap
 import { ApiError, api, errorMessage } from "../apps-api.ts";
 import { schemes, styleNames, ThemeEditor, ThemeSample, themeStyle, type ThemeDraft } from "../components/ThemeEditor.tsx";
 import { sessionQuery } from "../queries.ts";
+import { Notice } from "../ui/index.ts";
 
 const themePath = "/api/appearance/themes";
 type Change = { method: "POST" | "PUT" | "DELETE"; path: string; body: object };
@@ -112,7 +113,7 @@ export function Appearance() {
 
   if (!data) return (
     <main className="page appearance-page"><h1>Appearance</h1>
-      {catalog.isError ? <div className="notice error" role="alert">{errorMessage(catalog.error)} <button type="button" className="secondary" onClick={() => void catalog.refetch()}>Try again</button></div> : <p role="status">Loading themes…</p>}
+      {catalog.isError ? <Notice tone="danger" role="alert">{errorMessage(catalog.error)} <button type="button" className="secondary" onClick={() => void catalog.refetch()}>Try again</button></Notice> : <p role="status">Loading themes…</p>}
     </main>
   );
 
@@ -149,7 +150,7 @@ export function Appearance() {
         </div>
       </header>
       <div role="status" className="theme-feedback">{notice}</div>
-      {error ? <p className="notice error" role="alert">{error}</p> : null}
+      {error ? <Notice tone="danger" role="alert">{error}</Notice> : null}
       <fieldset className="mode-choice">
         <legend className="collection-title">Mode</legend>
         <div className="mode-options">{modes.map(([mode, label]) => (

@@ -8,14 +8,15 @@ import {
   type AgentInstallation,
   type Approval,
 } from "../agents-api.ts";
+import { Notice, useConfirm } from "../ui/index.ts";
 
 export function ActionFeedback({ action }: { action: ReturnType<typeof useAgentAction> }) {
   return (
     <>
       {action.error && (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {action.error}
-        </p>
+        </Notice>
       )}
       {action.message && <p role="status">{action.message}</p>}
     </>
@@ -69,6 +70,7 @@ function RoleChoices({
 /** Installation-level credential and role ceiling, shared across all of its agents. */
 export function AppConnection({ app }: { app: AgentInstallation }) {
   const action = useAgentAction();
+  const [confirm, confirmation] = useConfirm();
   const [credential, setCredential] = useState("");
   const [roles, setRoles] = useState(app.enabledRoles);
   const reviewUrl = app.reviewedBy?.startsWith("https://github.com/") ? app.reviewedBy : null;
@@ -115,9 +117,9 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
           />
         </label>
         {app.bound && credential && (
-          <p className="notice warning">
+          <Notice tone="warning">
             Replacing this credential clears existing agent grants. Review and grant access again after saving.
-          </p>
+          </Notice>
         )}
         <fieldset>
           <legend>Roles available for delegation</legend>
@@ -130,8 +132,8 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
               className="danger-outline"
               type="button"
               disabled={action.busy}
-              onClick={() => {
-                if (window.confirm("Disconnect this app credential for all agents?"))
+              onClick={async () => {
+                if (await confirm({ title: "Disconnect this app credential for all agents?", confirmLabel: "Disconnect" }))
                   void action.run(async () => {
                     await api("PUT", path, { enabledRoles: [], credential: null, revision: app.revision });
                     setCredential("");
@@ -143,6 +145,7 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
           )}
         </div>
       </form>
+      {confirmation}
       <ActionFeedback action={action} />
     </details>
   );

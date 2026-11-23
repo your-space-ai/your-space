@@ -9,6 +9,7 @@ import { activePaletteQuery } from "../appearance.ts";
 import { authClient } from "../auth-client.ts";
 import { renderCode } from "../components/ErrorState.tsx";
 import { WRONG_ADDRESS_FIX } from "../errors.ts";
+import { Notice } from "../ui/index.ts";
 
 const MIN = 12;
 const MAX = 128;
@@ -110,9 +111,9 @@ export function ResetPassword() {
         Use {MIN} to {MAX} characters. A long passphrase is a good choice. Saving it signs out every device.
       </p>
       {error ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {renderCode(error)}
-        </p>
+        </Notice>
       ) : null}
       <form onSubmit={onSubmit}>
         <label>

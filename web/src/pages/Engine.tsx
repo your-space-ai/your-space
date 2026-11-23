@@ -2,6 +2,7 @@
 // on, its resources, and how much of them each app uses, whatever kind of engine it is.
 import { useQuery } from "@tanstack/react-query";
 import { engineQuery, errorMessage, formatBytes } from "../apps-api.ts";
+import { Notice } from "../ui/index.ts";
 
 export function Engine() {
   const engine = useQuery(engineQuery);
@@ -10,9 +11,9 @@ export function Engine() {
       <h1>Engine</h1>
       <p className="muted">Where Your Space runs your apps. Its processors and memory are your workspace's resources.</p>
       {engine.isError ? (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           {errorMessage(engine.error)}
-        </p>
+        </Notice>
       ) : null}
       {engine.isPending ? <p className="muted">Loading…</p> : null}
       {engine.data ? (

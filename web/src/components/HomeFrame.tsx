@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useLayoutEffect, useRef } from "react";
 import { api, ApiError } from "../apps-api.ts";
 import type { HomeCandidate } from "../home-api.ts";
+import { Notice } from "../ui/index.ts";
 
 function frameOrigin(home: HomeCandidate) {
   try {
@@ -131,9 +132,9 @@ export function HomeFrame({ home, revision }: { home: HomeCandidate; revision: n
           referrerPolicy="no-referrer"
         />
       ) : (
-        <p className="notice error" role="alert">
+        <Notice tone="danger" role="alert">
           This app’s address cannot be opened as Home. Choose another Home in settings.
-        </p>
+        </Notice>
       )}
     </main>
   );

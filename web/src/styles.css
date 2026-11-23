@@ -1,5 +1,11 @@
+/* The cascade layers, lowest first. The page styles below and in the other stylesheets predate the
+   component kit (ui/kit.css); the kit's layer comes after them, so their element rules don't reach
+   its components. Screens move to the kit in journey 013. */
+@layer legacy, kit;
+
 /* Base values follow the OS until the workspace's validated look is available: Cerulean, the
    default theme, in its light and dark palettes (shared/appearance/theme.mjs). */
+@layer legacy {
 :root {
   color-scheme: light dark;
   --fg: #0a1218;
@@ -24,6 +30,8 @@
   --rule-width: 3px;
   --surface-tint: 0%;
   --control-tint: 0%;
+  --rule-ink: 100%;
+  --weight-strong: 700;
   font-family: var(--font-body);
   line-height: 1.5;
 }
@@ -587,4 +595,10 @@ form.inline {
   .agent-page .agent-route {
     grid-template-columns: auto;
   }
+}
+
+/* Notices that were paragraphs keep a paragraph's spacing until their screens move to the kit. */
+:is(.page, .panel) .ui-notice {
+  margin: 0 0 1rem;
+}
 }

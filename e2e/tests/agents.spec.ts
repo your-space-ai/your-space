@@ -31,21 +31,21 @@ test("an owner issues, rotates and revokes a zero-grant agent's keys", async ({ 
     ).status();
   try {
     expect(await discovery(original)).toBe(200);
-    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Rotate", exact: true }).click();
+    await page.getByRole("alertdialog", { name: "Rotate this key?" }).getByRole("button", { name: "Rotate key" }).click();
     await expect(key).toHaveAttribute("type", "password");
     const replacement = await key.inputValue();
     expect(await discovery(original)).toBe(401);
     expect(await discovery(replacement)).toBe(200);
     await page.getByRole("button", { name: "Dismiss key" }).click();
-    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Revoke", exact: true }).click();
+    await page.getByRole("alertdialog", { name: "Revoke this key?" }).getByRole("button", { name: "Revoke key" }).click();
     await expect(page.getByText("Key revoked.", { exact: true })).toBeVisible();
     expect(await discovery(replacement)).toBe(401);
 
     await page.getByText("Identity settings", { exact: true }).click();
-    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Disable agent", exact: true }).click();
+    await page.getByRole("alertdialog", { name: "Disable this agent and stop all its keys from working?" }).getByRole("button", { name: "Disable agent" }).click();
     await expect(page.getByText("This agent is disabled. Its keys cannot be used.")).toBeVisible();
   } finally {
     await client.dispose();

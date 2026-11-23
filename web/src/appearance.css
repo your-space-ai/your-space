@@ -1,3 +1,4 @@
+@layer legacy {
 body { font-family: var(--font-body); }
 a { color: var(--accent); text-underline-offset: .15em; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
@@ -116,8 +117,8 @@ button.export-button { margin-left: auto; font-size: 1.2rem; font-weight: 600; l
 .preview-states .state-warning { color: var(--warning); }
 .preview-states .state-danger { color: var(--danger); }
 .editor-fields .checkbox { margin: 0; }
-.editor-fields .notice { margin: 0; }
-.editor-fields .notice .actions { margin-top: .5rem; }
+.editor-fields .ui-notice { margin: 0; }
+.editor-fields .ui-notice .actions { margin-top: .5rem; }
 @media (max-width: 930px) {
   .editor-grid { grid-template-columns: minmax(0,1fr); }
   .editor-preview { position: static; }
@@ -129,4 +130,5 @@ button.export-button { margin-left: auto; font-size: 1.2rem; font-weight: 600; l
 }
 @media (forced-colors: active) {
   .starter-card[data-selected=true] { outline: 2px solid Highlight; }
+}
 }

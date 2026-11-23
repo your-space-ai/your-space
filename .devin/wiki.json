@@ -136,7 +136,7 @@
     },
     {
       "title": "Web Client",
-      "purpose": "web/: the React dashboard.",
+      "purpose": "web/: the React dashboard, its component kit in web/src/ui (built on the theme variables, in its own CSS cascade layer) and the development-only component gallery.",
       "parent": null
     },
     {
@@ -151,7 +151,7 @@
     },
     {
       "title": "Appearance and Themes",
-      "purpose": "Themes, shared appearance tokens and theme files.",
+      "purpose": "Themes, shared appearance tokens and theme files, and how the component styles (crisp, soft, bold) become CSS variables the component kit reads.",
       "parent": "Web Client"
     },
     {

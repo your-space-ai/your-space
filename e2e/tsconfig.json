@@ -6,5 +6,5 @@
     "lib": ["es2024", "dom"],
     "types": ["node"]
   },
-  "include": ["tests", "playwright.config.ts", "global-setup.ts"]
+  "include": ["tests", "gallery", "playwright.config.ts", "gallery.config.ts", "global-setup.ts"]
 }

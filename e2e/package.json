@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "test": "playwright test",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "gallery": "playwright test -c gallery.config.ts"
   },
   "devDependencies": {
     "@argos-ci/playwright": "^7.10.0",

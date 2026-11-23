@@ -34,7 +34,8 @@ test('the built-in themes are Cerulean, Cinder and Fern, readable in light and d
       assert.equal(variables['--accent-ink'], theme[scheme].accentInk);
       assert.equal(variables['--theme-style'], theme.style);
       for (const name of ['--panel', '--fg', '--muted', '--accent', '--border', '--danger', '--success',
-        '--font-body', '--font-heading', '--font-mono', '--radius', '--radius-control', '--border-width', '--rule-width']) {
+        '--font-body', '--font-heading', '--font-mono', '--radius', '--radius-control', '--border-width', '--rule-width',
+        '--surface-tint', '--control-tint', '--rule-ink', '--weight-strong']) {
         assert.ok(variables[name], theme.name + ' ' + name);
       }
     }
@@ -42,7 +43,8 @@ test('the built-in themes are Cerulean, Cinder and Fern, readable in light and d
   const cerulean = themeVariables(builtInThemes[0].theme, 'light');
   assert.equal(cerulean['--font-mono'], '"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace');
   assert.equal(themeVariables(builtInThemes[2].theme, 'dark')['--font-heading'], '"Fraunces", ui-serif, Georgia, serif');
-  assert.deepEqual([cerulean['--radius'], cerulean['--border-width']], ['0px', '2px']);
+  assert.deepEqual([cerulean['--radius'], cerulean['--border-width'], cerulean['--rule-ink'], cerulean['--weight-strong']], ['0px', '2px', '100%', '700']);
+  assert.deepEqual([themeVariables(builtInThemes[1].theme, 'light')['--rule-ink'], themeVariables(builtInThemes[2].theme, 'light')['--surface-tint']], ['0%', '6%']);
 });
 
 test('a version 1 file converts: one palette in both modes, a readable warning, Crisp and monospace', () => {
