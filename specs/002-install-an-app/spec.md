@@ -173,7 +173,9 @@ every service.
 one unchanged is the point of the journey.
 
 **Independent Test**: Run the install command with the link to the finance app's example Compose
-file and check that its web, worker, database and Redis services are running and healthy.
+file and check that its web, worker, database and Redis services are running and healthy. The
+runtime manager's tests keep the file's resolved form, and the
+[README of those fixtures](../../runtime/tests/README.md) records its source and commit.
 
 **Acceptance Scenarios**:
 
