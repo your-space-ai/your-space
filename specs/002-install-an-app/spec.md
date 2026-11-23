@@ -6,6 +6,12 @@
 
 **Implementation**: The [task record](tasks.md) lists the delivered slices and outstanding real-source installation checks.
 
+**Updated 2026-11-23**: Apps install only from the link to their kit, which names the app's Compose
+file ([Kits define apps](../../docs/architecture/decisions.md#kits-define-apps)). Where this
+specification has the owner or operator give the link to an app's Compose file, they now give the
+link to the app's kit; a bare Compose link is refused with an explanation of kits. Every installed
+app has a kit, a Compose file given on this machine included.
+
 **Journey**: 002 "Install an app and use it" in the
 [spec map](../README.md)
 
@@ -79,7 +85,10 @@ lists the adjustments; it never copies the app's code or files, so the app's lic
 A kit can set a setting to a value Your Space works out itself, such as the app's own address (the
 second app, a CRM, needs it in a setting), so the owner isn't asked for it.
 Your Space reads a kit as another input, and contains no app-specific logic. An app with no kit
-installs if its own files are enough.
+installs if its own files are enough. (Superseded 2026-11-23: a kit is the app's definition, and
+apps install only from a kit's link. The kit's `source` names the Compose file; the
+[kit format](contracts/kit-format.md) says at which commit Your Space reads it. The configured
+directory lists kits and holds review evidence; it no longer finds a kit from a Compose link.)
 
 ## Slices and Their Dependencies
 
@@ -159,7 +168,9 @@ app's Compose file, check its status, restart the stack, and check it again.
    running throughout, and Your Space reports its state correctly once it is back.
 6. **Given** a link that isn't a public GitHub file, a file that isn't Compose, or an image missing
    for this machine's architecture, **When** the operator runs the install command, **Then** nothing
-   is installed, nothing runs, and the message says what is wrong.
+   is installed, nothing runs, and the message says what is wrong. (2026-11-23: the command takes the
+   link to the app's kit; given a Compose file's link, it installs nothing and says that installs
+   need a kit's link.)
 7. **Given** two installs of apps with the same service names, **When** both run, **Then** their
    containers, networks and volumes don't collide.
 
@@ -210,7 +221,9 @@ watch it reach running.
    state, or that no app is installed yet.
 2. **Given** the owner pastes a link, **When** Your Space has read the file, **Then** it shows the
    app's services, the images and versions it will run, what it changed and left out, the settings it
-   needs, and the warning that installing an app trusts it with its own data.
+   needs, and the warning that installing an app trusts it with its own data. (2026-11-23: the link
+   is the kit's; the review also shows the kit's repository, path and commit. A pasted Compose file's
+   link gets a message that explains kits and that installs need a kit's link.)
 3. **Given** the review, **When** the owner confirms, **Then** the install runs in the background and
    the page shows its progress, including image downloads, until the app is running or the install
    fails with a reason.
@@ -292,7 +305,8 @@ approve it, and check that the host is now reachable and every other host still 
    review lists the kit's starter hosts, the ones the app needs to work at all, and confirming the
    install approves exactly those.
 2. **Given** an app without a kit, **When** it is installed, **Then** it starts with no outbound
-   access.
+   access. (2026-11-23: every app installs with a kit; one whose kit names no hosts starts with no
+   outbound access.)
 3. **Given** an installed app, **When** it tries to reach a host it hasn't been allowed, **Then** the
    attempt fails, and Your Space shows an access request naming the app, the host, and when and how
    often it was tried.
@@ -557,7 +571,8 @@ What is specific to the first runtime adapter. The research behind it is
 - **Runtime connection**: the one runtime Your Space runs apps on; for the Docker adapter, a Docker
   engine.
 - **Installation kit**: the adjustments that make a particular app fit Your Space, kept outside Your
-  Space and referring to the app's own files.
+  Space and referring to the app's own files. Since 2026-11-23, the app's complete definition in Your
+  Space: what installs it and how it is shown.
 - **Outbound approval**: an internet host an app may reach, from its kit's starter hosts or approved
   by the owner.
 - **Access request**: an attempt by an app to reach a host it isn't allowed, waiting for the owner.
@@ -567,7 +582,8 @@ What is specific to the first runtime adapter. The research behind it is
 ## Success Criteria
 
 - **SC-001**: An owner installs the finance app from the link to its own Compose file, unchanged,
-  and uses it in a pane, with no command line after journey 001's setup.
+  and uses it in a pane, with no command line after journey 001's setup. (2026-11-23: from the link
+  to the app's kit, which names its own Compose file, still unchanged.)
 - **SC-002**: The finance app keeps its data across a restart and a `docker compose down` and `up`.
 - **SC-003**: No generated secret appears in any output, log or review screen.
 - **SC-004**: An installed app can't reach the platform, other apps, the host or unapproved internet
@@ -597,7 +613,8 @@ request after agreement.
    own Compose file and applies rules that hold for every app, instead of requiring a Your
    Space-specific deployment file with an `x-your-space` section. Help a particular app needs comes
    from an installation kit supplied directly or found in the operator’s configured directory; the kit
-   refers to the app's files without copying them.
+   refers to the app's files without copying them. (2026-11-23: the kit is required, and the owner
+   installs from its link; see the update at the top.)
 3. **The first app is an existing open-source app**, a personal finance app, instead of a Tasks app
    written for Your Space.
 4. **No Docker Desktop dependency**: Your Space needs a Docker-compatible engine, not Docker Desktop.
@@ -653,11 +670,12 @@ request after agreement.
 3. **Q3, secrets (decided 2026-11-14)**: published secret defaults are never used, and a kit says
    which values to generate, which to work out (such as the app's own address) and which plain
    values to set from the app's own example settings. Without a kit, any setting whose name says it
-   holds a secret and that has a published default gets a generated value. The review shows each
+   holds a secret and that has a published default gets a generated value (2026-11-23: every app has
+   a kit, and this applies to the settings its kit doesn't generate, derive or set). The review shows each
    setting; secrets show only as set or generated, never their values, and the owner can give a
    value for any setting before installing. How to keep less experienced owners safe with apps that
    have no kit (for example, clearer warnings, or installing only apps with kits by default) is
-   left for later.
+   left for later. (Decided 2026-11-23: Your Space installs only apps with kits.)
 4. **Q4, processor types (decided 2026-11-14)**: an app installs if its images run on the runtime's
    processor type; nothing more is required.
 5. **Q5, app addresses (decided 2026-11-14)**: every app is at `<app>.<Your Space's address>` in

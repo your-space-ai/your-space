@@ -1,10 +1,20 @@
 # Installation Kit Format
 
-A kit is a YAML file in an optional operator-configured directory at `apps/<owner>/<repo>.yaml`, or anywhere on GitHub when
-the owner gives its link, or a file on this machine given to `install-app --kit`, such as one from a
-private kits repository. It refers to the app's own file and never copies it. A kit can also go with
-a Compose file given on this machine (`install-app --compose <file> --kit <file>`); giving both in
-one command is what binds them.
+A kit is an app's complete definition in Your Space: what installs it and how it is shown
+([Kits define apps](../../../docs/architecture/decisions.md#kits-define-apps)). Every installed app
+has one, and Your Space installs only from a kit. A kit is a YAML file anywhere on GitHub, installed
+from its link, such as one listed in an optional operator-configured directory at
+`apps/<owner>/<repo>.yaml`, or a file on this machine given to `install-app --kit`, such as one from
+a private kits repository. It refers to the app's own Compose file and never copies it. A kit can
+also go with a Compose file given on this machine (`install-app --compose <file> --kit <file>`);
+giving both in one command is what binds them.
+
+**Which Compose file.** The kit's `source` names the app's Compose file by repository and path.
+Your Space reads it at an exact commit and records that commit: the kit's own commit when the file is
+in the kit's repository, otherwise the commit at the head of the source repository's default branch
+when the owner reviews the install. A kit installed from its link without `source` names the
+`compose.yaml` in the same folder as the kit, at the kit's commit. A kit file given on this machine
+without a Compose file must have `source`.
 
 ```yaml
 kit: 1                        # format version
@@ -42,8 +52,9 @@ inserted as they are: generated values are hex or base64url and safe in URLs, wh
 owner types is not encoded. Use a template when the app's file reads one setting that contains
 another, such as a database URL with a password the kit generates.
 
-Every field except `kit` and `source` is optional. A kit given with a Compose file on this machine
-may leave out `source`, and its `source` isn't matched; a kit without `source` fits no file on
-GitHub. Unknown fields are refused, so a kit written for a
-newer format doesn't half-apply. A kit can't change the Docker adapter's rules: it can only name
+Every field except `kit` is optional. A kit given with a Compose file on this machine may leave out
+`source`, and its `source` isn't matched; a kit linked from GitHub without `source` fits the
+`compose.yaml` beside it. Unknown fields are refused, so a kit written for a
+newer format doesn't half-apply. A Compose file given where a kit belongs is refused with a message
+that explains kits. A kit can't change the Docker adapter's rules: it can only name
 values, hosts, limits and the interface.

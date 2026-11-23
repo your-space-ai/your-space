@@ -15,7 +15,7 @@ One row per app on this installation, kept after removal as the record of its re
 | repo, path, ref | text | Parsed from the link. For a Compose file on this machine, `path` is its file name (empty from standard input), and `repo` and `ref` are empty |
 | commit | text | The exact commit the link resolved to (FR-003); empty for a Compose file on this machine |
 | compose | text | The app's file at that commit, or as given on this machine, unchanged |
-| kit | jsonb, null | The installation kit used, as parsed |
+| kit | jsonb, null | The installation kit used, as parsed. Every app installed since 2026-11-23 has one; null only for an app installed earlier without a kit |
 | kit_source | text, null | The kit's link at its exact commit, or `sha256:<digest>` for a kit file given on this machine |
 | images | jsonb | `{ "<ref>": { "digest": "sha256:…" } }` (FR-004) |
 | adaptations | jsonb | `[{ "service", "kind": "changed" \| "left_out" \| "added", "detail" }]` |

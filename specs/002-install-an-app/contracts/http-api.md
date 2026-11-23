@@ -1,6 +1,8 @@
 # Apps HTTP API and Commands
 
 Every route below requires the signed-in owner (FR-010); others get 401 or 403 and nothing changes.
+Apps install only from their kits (decision 2026-11-23): `POST /api/apps/preview`, which reviewed an
+app from its Compose file's link, is retired, and a review comes from the kit's link.
 A request with any method but `GET` or `HEAD` must also carry Your Space's exact origin in its
 `Origin` header, which browsers send from Your Space's own pages. Without it, or with another origin
 such as an app's, it gets `403 forbidden` and nothing changes: apps are on names under Your Space's,
@@ -10,7 +12,8 @@ Errors use journey 001's shape `{ "error": "<code>", "message": "…" }`.
 | Method and path | Body | Answer |
 | --- | --- | --- |
 | `GET /api/apps` | | `{ apps: [{ name, title, state, stateReason, origin, pane, hasInterface, pendingRequests, publish, framing }], retained: [{ name, title, removedAt }] }` |
-| `POST /api/apps/preview` | `{ link, kit? }` | The review: `{ previewId, name, title, source: { repo, path, commit }, kit, services, images, adaptations, settings: [{ name, secret, generated, value? }], outbound, publishPort, retained }`. Secret values are never included. `publishPort` is the port publishing uses by default, or null without an interface. |
+| `POST /api/kits/preview` | `{ kitUrl }` | The review of the app the kit at `kitUrl`, a GitHub link, defines: `{ previewId, name, title, source: { repo, path, commit }, kit: { source, repo, path, commit }, services, images, adaptations, settings: [{ name, secret, generated, value? }], outbound, publishPort, retained }`. Secret values are never included. `publishPort` is the port publishing uses by default, or null without an interface. `400 kit_required` when the link is to a Compose file rather than a kit. With the owner's GitHub connection, the kit is read through it (journey 011) |
+| `GET /api/kits/catalog` | | `{ commit, kits: [{ title, repo, path, kitUrl }] }`: the kits in the directory `YS_KITS_REPOSITORY` names, pinned to its commit; `{ commit: null, kits: [] }` without one |
 | `POST /api/apps` | `{ previewId, settings?: { NAME: value }, reuseData?: boolean, publish?: { port?, bind?, link?, frame? } }` | `202 { name, jobId }`; `409 port_in_use` when another published app, a container or another program on this machine uses the port |
 | `GET /api/apps/{name}` | | The app: state, services with state, settings (secrets as set or not set), outbound hosts, access requests, limits, the latest job |
 | `GET /api/apps/{name}/logs?service=` | | `{ lines }` |
@@ -69,28 +72,32 @@ never shown in the pane.
 ## Commands
 
 ```bash
-docker compose exec -T server install-app <github-link> [--kit <link | file | folder | ->] [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
-docker compose exec -T server install-app --compose <file | -> [--kit <file | ->] [--name <name>] [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
+docker compose exec -T server install-app <github-link-to-kit> [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
+docker compose exec -T server install-app --kit <file | -> [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
+docker compose exec -T server install-app --compose <file | -> --kit <file | -> [--name <name>] [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
 docker compose exec server publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--frame | --no-frame] [--off] [--json]
 docker compose exec server list-apps [--json]
 docker compose exec runtime stop-apps
 ```
 
 `install-app` prints the review, installs, and waits until the app is running or failed; exit status
-0 or 1. `--kit` takes a kit's GitHub link, or a kit on this machine, which Your Space can't read
-from GitHub when its repository is private: `-` reads it from standard input (`--kit - < kit.yaml`),
-a folder is a kits repository with the app's kit at `apps/<owner>/<repo>.yaml`, and any other value
-is the kit file. The command runs in the server's container, so a path is one inside it; standard
-input is how a file on the host gets there. A kit on this machine is checked like one from GitHub
-and recorded as `sha256:<digest>`.
+0 or 1. Every app installs with a kit, and the kit names the app's Compose file on GitHub
+([kit format](kit-format.md)). The command takes the kit's GitHub link, or `--kit` with a kit on this
+machine, which Your Space can't read from GitHub when its repository is private: `-` reads it from
+standard input (`--kit - < kit.yaml`), and any other value is the kit file. The command runs in the
+server's container, so a path is one inside it; standard input is how a file on the host gets
+there. A kit on this machine is checked like one from GitHub and recorded as `sha256:<digest>`; it
+must have `source`. Given a Compose file's link, or a Compose file as `--kit`, the command installs
+nothing and says that installs need a kit. With `--json`, the result has the kit's `kit` source: its
+link at its commit, or its digest.
 
-`--compose` installs from a Compose file on this machine instead of a GitHub link, for an app whose
-own file doesn't fit Your Space's rules: `-` reads it from standard input, and any other value is the
-file, at most 256 KB. It is checked and adapted like a file from GitHub, and recorded as
-`sha256:<digest>` with its file name; Your Space reads nothing from GitHub for it, not even the kits
-repository, and later starts use the stored text. Its kit is only the one `--kit <file | ->` gives:
-giving both in one command is what binds them, so the kit's `source` isn't matched and may be left
-out. The app's name is `--name`, else the kit's `name`; with neither, the command refuses. The two
+`--compose` installs from a Compose file on this machine instead of the one a kit names on GitHub,
+for an app whose own file doesn't fit Your Space's rules: `-` reads it from standard input, and any
+other value is the file, at most 256 KB. It is checked and adapted like a file from GitHub, and
+recorded as `sha256:<digest>` with its file name; Your Space reads nothing from GitHub for it, not
+even the kits repository, and later starts use the stored text. It needs a kit, which is only the
+one `--kit <file | ->` gives: giving both in one command is what binds them, so the kit's `source`
+isn't matched and may be left out. The app's name is `--name`, else the kit's `name`; with neither, the command refuses. The two
 share standard input, so only one of `--compose` and `--kit` can be `-`; put the other in the
 server's container first, for example with `docker compose exec -T server sh -c 'cat > /tmp/kit.yaml'
 < kit.yaml`. Data kept under the name can be reused with `--reuse-data` whichever source it came

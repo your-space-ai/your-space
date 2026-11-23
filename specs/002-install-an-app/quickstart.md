@@ -5,7 +5,7 @@ Follow [Try Your Space from source](../../docs/install/from-source.md) to build 
 ## Check the install journey
 
 1. Open **Who Am I** and inspect the headers it echoes. Its host is `whoami.space.localhost` with the demo port, and the request carries none of Your Space's session or app-pass cookies.
-2. In **Apps**, review and install `https://github.com/ys-fixtures/probe/blob/main/compose.yaml`. Open both apps side by side. The [browser tests](../../e2e/tests/apps.spec.ts) exercise the probe's network access and verify that the two apps stay isolated.
+2. In **Apps**, review and install the probe app from its kit's link, `https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/probe.yaml`. Open both apps side by side. The [browser tests](../../e2e/tests/apps.spec.ts) exercise the probe's network access and verify that the two apps stay isolated.
 
 ## Run the browser tests
 
