@@ -109,7 +109,8 @@ export interface AppAddress {
  * default is never used for a secret: the kit says which values to generate, and any other setting
  * that looks secret and has a published default, unless the kit sets it, gets a generated value
  * (spec Q3, decision 2026-11-23). Data kept from a removed app was written with its settings then,
- * so a setting kept from it keeps its value, even an unset one, rather than a new generated one.
+ * so a setting kept from it keeps its value, even an unset one, rather than one the kit generates or
+ * sets now.
  */
 export function buildSettings(variables: Variable[], kit: Kit | null, address: AppAddress, previous: Map<string, string | null> = new Map()): Setting[] {
   const names = new Set(variables.map((v) => v.name));
@@ -135,12 +136,13 @@ export function buildSettings(variables: Variable[], kit: Kit | null, address: A
     } else if (derive) {
       value = derive === "app_origin" ? address.origin : address.host;
     } else if (generate) {
-      value = kept ?? generateValue(generate);
-      generated = true;
-    } else if (kit?.set?.[name] !== undefined && (kept === undefined || kept === null)) {
+      // A kept value, even an unset one, stays: kept data was written with it. Only a new one is generated.
+      value = kept === undefined ? generateValue(generate) : kept;
+      generated = value !== null;
+    } else if (kit?.set?.[name] !== undefined && kept === undefined) {
       value = kit.set[name]!;
-    } else if (secret && variable.default && kit?.set?.[name] === undefined && !previous.has(name)) {
-      value = kept ?? generateValue();
+    } else if (secret && variable.default && kit?.set?.[name] === undefined && kept === undefined) {
+      value = generateValue();
       generated = true;
     }
     settings.push({

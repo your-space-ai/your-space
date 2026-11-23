@@ -47,7 +47,7 @@ The earlier direction let an app with no kit install when its own files were eno
 - The server command takes a kit's link, or a kit file on this machine (`--kit`) for one Your Space can't read from GitHub; that file must name its source. A Compose file given on this machine still installs, only with a kit given with it. `--kit <folder>` and a Compose link with `--kit` are gone.
 - An install from a repository the owner manages uses a kit in that repository: `kit.yaml`, unless the owner names another path.
 - The directory in `YS_KITS_REPOSITORY` stays for listing kits and for review evidence; it no longer finds a kit from a Compose link.
-- The safety rule for secrets stays and now applies with a kit: a setting the kit doesn't generate, derive or set, whose name says it holds a secret and that has a published default, gets a generated value. A setting kept with a removed app's data keeps its kept value, even an unset one, since that data was written with it.
+- The safety rule for secrets stays and now applies with a kit: a setting the kit doesn't generate, derive or set, whose name says it holds a secret and that has a published default, gets a generated value. A setting kept with a removed app's data keeps its kept value, even an unset one, since that data was written with it, rather than one the kit installed now generates or sets.
 
 ### Kit-defined roles, server-held credentials and approvals
 

@@ -131,8 +131,13 @@ describe("links, kits and settings", () => {
     expect(silent.find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ secret: true, generated: true, publishedDefault: null });
     expect(silent.find((s) => s.name === "POSTGRES_PASSWORD")!.value).not.toBe("sure_password");
     expect(silent.find((s) => s.name === "OPENAI_ACCESS_TOKEN")).toMatchObject({ secret: true, generated: false, value: null });
-    // Data kept from a removed app was written with its settings then: a kept unset one stays unset.
-    expect(buildSettings(variables, parseKit("kit: 1\n"), address, new Map([["POSTGRES_PASSWORD", null]])).find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ value: null, generated: false });
+    // Data kept from a removed app was written with its settings then: a kept unset one stays unset,
+    // even when the kit installed now generates or sets it, and a kept value stays as it was.
+    const keptUnset = new Map([["POSTGRES_PASSWORD", null]]);
+    for (const kit of ["kit: 1\n", "kit: 1\ngenerate: { POSTGRES_PASSWORD: {} }\n", "kit: 1\nset: { POSTGRES_PASSWORD: chosen }\n"]) {
+      expect(buildSettings(variables, parseKit(kit), address, keptUnset).find((s) => s.name === "POSTGRES_PASSWORD"), kit).toMatchObject({ value: null, generated: false });
+    }
+    expect(buildSettings(variables, parseKit("kit: 1\ngenerate: { POSTGRES_PASSWORD: {} }\n"), address, new Map([["POSTGRES_PASSWORD", "kept"]])).find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ value: "kept", generated: true });
     // A value the kit sets is the kit's choice.
     expect(buildSettings(variables, parseKit("kit: 1\nset: { POSTGRES_PASSWORD: chosen }\n"), address).find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ value: "chosen", generated: false });
 
