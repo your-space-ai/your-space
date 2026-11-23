@@ -1,0 +1,88 @@
+name: Build macOS app
+
+# Builds the Apple Silicon and Intel apps, packs each in a DMG and tests installing it. It runs on
+# pull requests that touch the desktop app or what it bundles, and Release macOS app calls it with
+# the release tag. It never signs with the Developer ID and has no access to signing secrets.
+
+on:
+  pull_request:
+    paths:
+      - desktop/**
+      - shared/appearance/**
+      - web/public/themes/**
+      - cli/**
+      - deploy/**
+      - package-lock.json
+      - package.json
+      - .github/workflows/macos-app-build.yml
+      - .github/workflows/release-macos-app.yml
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+
+concurrency:
+  group: macos-app-build-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package and open (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - name: Build the ZIP preview and exercise the DMG installation
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          version=${RELEASE_TAG#v}
+          if [[ -z $version ]]; then version=$(node -p 'require("./desktop/package.json").version'); fi
+          desktop/scripts/package-macos.sh "$version" "$RUNNER_TEMP/packages"
+          name="your-space-macos-${{ matrix.arch }}-$version-preview.zip"
+          (cd "$RUNNER_TEMP/packages" && shasum -a 256 -c "$name.sha256")
+          ditto -x -k "$RUNNER_TEMP/packages/$name" "$RUNNER_TEMP/open"
+          app="$RUNNER_TEMP/open/Your Space.app"
+          test "$("$app/Contents/Resources/bin/your-space" --version)" = "$version"
+          mkdir -p "$RUNNER_TEMP/signing-input"
+          dmg="your-space-macos-${{ matrix.arch }}-$version-candidate.dmg"
+          desktop/scripts/create-dmg.sh "$app" "$RUNNER_TEMP/signing-input/$dmg"
+          desktop/scripts/test-dmg-install.sh "$RUNNER_TEMP/signing-input/$dmg" "${{ matrix.arch }}"
+          (cd "$RUNNER_TEMP/signing-input" && shasum -a 256 "$dmg" > "$dmg.sha256")
+      - name: Offer the private ZIP preview
+        if: github.event.repository.private && !inputs.release_tag
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-preview-${{ matrix.arch }}
+          path: ${{ runner.temp }}/packages/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 5
+      - name: Hand the tested image to the signing job
+        if: inputs.release_tag != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-signing-input-${{ matrix.arch }}
+          path: ${{ runner.temp }}/signing-input/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
