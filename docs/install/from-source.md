@@ -37,16 +37,18 @@ demo exec server create-owner --username you --name "You"
 
 Open the single-use link printed in your terminal, choose a password, and sign in as `you`. If the link expires, `demo exec server reset-link` prints a fresh one.
 
-1. Open **Apps**. Paste this link into **Link to the app's Compose file** and select **Review**.
+1. Open **Apps**. Paste this address into **Link to the app's Compose file** and select **Review**.
 
    ```text
    https://github.com/ys-fixtures/whoami/blob/main/compose.yaml
    ```
 
+   This address works only inside the demo. No such repository exists on GitHub: the demo answers it with the [sample app's Compose file in this repository](https://github.com/your-space-ai/your-space/blob/main/e2e/github/fixtures/ys-fixtures/whoami/compose.yaml).
+
 2. Read the kit details, including the removed host port and requested outbound access. Choose **Install** and wait for the app to finish starting.
 3. Open **Who Am I**. Its pane shows the hostname and request headers received by the sample app. If your browser offers **Open in its own tab**, follow that link to view it.
 
-The demo resolves GitHub links against the [fixtures in this repository](https://github.com/your-space-ai/your-space/tree/main/e2e/github/fixtures). To try kits from real GitHub repositories with your own locally built images and CLI, use [operator setup from reviewed source](agent-setup.md#test-from-reviewed-source) to create a separate workspace. The [packaged installation guide](index.md) applies once a matching release is available.
+The demo never reaches GitHub; it answers GitHub links from the [sample apps in this repository](https://github.com/your-space-ai/your-space/tree/main/e2e/github/fixtures). To try kits from real GitHub repositories with your own locally built images and CLI, use [operator setup from reviewed source](agent-setup.md#test-from-reviewed-source) to create a separate workspace. The [packaged installation guide](index.md) applies once a matching release is available.
 
 ## Stop and return later
 
