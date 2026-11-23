@@ -1,0 +1,119 @@
+# Image-scan findings in Go binaries that come from upstream images, where govulncheck shows the
+# vulnerable code is never reached. Trivy reports a Go binary by module version alone; govulncheck
+# checks the binary's symbols. Each entry expires so it's checked again; before renewing one, run
+# `govulncheck -mode=binary` on the binary from the current upstream image (container-security.yml).
+vulnerabilities:
+  # gosu, in the official postgres image, is built with Go 1.24.6 on purpose: its maintainers rebuild
+  # only for vulnerabilities gosu can reach (https://github.com/tianon/gosu/blob/master/SECURITY.md).
+  # govulncheck on gosu 1.20 from postgres:18: "Your code is affected by 0 vulnerabilities."
+  - id: CVE-2025-61726
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2025-61729
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2025-68121
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-111943
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-25679
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-27145
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-32280
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-32281
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-32283
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-33811
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-33814
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-33818
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-39820
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-39821
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-39822
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-39836
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-42499
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-42504
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-56853
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-56858
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-56859
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-56860
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-56862
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-78667
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-78669
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+  - id: CVE-2026-97031
+    paths: [usr/local/bin/gosu]
+    statement: Go standard library code gosu never calls (govulncheck).
+    expired_at: 2027-05-23
+
+  # Docker Compose 5.7.1, from docker:29-cli in the runtime image. golang.org/x/net's html parser has
+  # the flaw; govulncheck on that binary finds no path to it, and Compose 5.8.0 still pins x/net 0.60.
+  - id: CVE-2026-78661
+    paths: [usr/local/libexec/docker/cli-plugins/docker-compose]
+    statement: golang.org/x/net/html code Compose never calls (govulncheck).
+    expired_at: 2027-05-23

@@ -35,6 +35,9 @@ jobs:
             docker build --pull -f "$COMPONENT/Dockerfile" -t "$image" .
           fi
           echo "name=$image" >> "$GITHUB_OUTPUT"
+      # Only findings with a fix to take: an unfixed one has nothing to act on, and comes back once
+      # its distribution or module ships a fix. Findings in upstream Go binaries that govulncheck
+      # shows are never reached are listed, with their reasons, in .trivyignore.yaml.
       - name: Scan installed OS packages and bundled libraries
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -42,6 +45,8 @@ jobs:
           image-ref: ${{ steps.image.outputs.name }}
           scanners: vuln
           severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
           limit-severities-for-sarif: true
           format: sarif
           output: container.sarif
