@@ -158,7 +158,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
     - [ ] Build on journey 011’s portable Compose apps with the full SDK for deeper integrations.
   - **External apps and compatibility**
     - [ ] Let the owner add an app someone already runs elsewhere through a connector that runs next to it and connects out to Your Space, instead of deploying it.
-    - [x] Run Sure and Twenty side by side from their own Compose files and kits in development. Their identically named database, Redis and worker services ran without collisions. (2026-11-14, [PR #30](https://github.com/your-space-ai/your-space/pull/30)) [Recorded two-app run](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/research.md#sure-and-twenty-from-their-own-files)
+    - [x] Run two existing open-source apps, a personal finance app and a CRM, side by side from their own Compose files and kits in development. Their identically named database, Redis and worker services ran without collisions. (2026-11-14, [PR #30](https://github.com/your-space-ai/your-space/pull/30)) [Recorded two-app run](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/research.md#the-first-two-apps-from-their-own-files)
 
 - [ ] **Additional SDK languages** · *Later direction*
 

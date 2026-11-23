@@ -5,8 +5,7 @@ title: "Install and publish apps"
 Your Space runs existing open-source apps from their own Compose files, on the same Docker engine,
 and opens them inside Your Space.
 
-**Install.** In Apps, paste the GitHub link to the app's Compose file, for example
-`https://github.com/we-promise/sure/blob/main/compose.example.yml`, and choose Review. The review
+**Install.** In Apps, paste the GitHub link to the app's Compose file and choose Review. The review
 shows the exact commit and image versions that will run, what Your Space changes or leaves out of
 the file, the settings it reads, and the internet hosts it may reach. Secrets the file gives a
 published default for get generated values instead, and they are never shown. Install runs in the
@@ -35,7 +34,7 @@ Installing an app trusts it with everything you put into it. Your Space keeps it
 other apps, Your Space's own data and this machine, and controls who can reach it, but it can't see
 or check what the app does with your data.
 
-**Open.** Each app is at `<app>.<Your Space's address>`, such as `http://sure.space.localhost`, and
+**Open.** Each app is at `<app>.<Your Space's address>`, such as `http://notes.space.localhost`, and
 only you, signed in to Your Space, can reach it. On this machine that works with no setup, through
 `*.localhost`; on your own domain it needs one wildcard DNS record. Where it can't work, as on
 Tailscale, [publish the app on a port](#publish-an-app-on-a-port). Apps open in a pane beside Your Space's navigation;
@@ -56,7 +55,7 @@ address to. Choose it when installing the app, or later on the app's page, under
 - **Address to listen on:** `127.0.0.1`, this machine only, by default. `0.0.0.0` listens on every
   network the machine is on.
 - **Link:** the address you reach the app at through your proxy or tunnel, such as
-  `https://sure.example.com`. The app's own address settings, such as the URL it puts in its links,
+  `https://notes.example.com`. The app's own address settings, such as the URL it puts in its links,
   use it, and Your Space shows the app there, in its pane. A changed link reaches them when the app
   restarts, which saving does.
 - **Show inside Your Space:** on by default, on the app's page once the app has a link. Many apps
@@ -86,9 +85,9 @@ address keeps working.
 From the server:
 
 ```sh
-docker compose exec server publish-app sure --port 8081 --link https://sure.example.com
-docker compose exec server publish-app sure --no-frame
-docker compose exec server publish-app sure --off
+docker compose exec server publish-app notes --port 8081 --link https://notes.example.com
+docker compose exec server publish-app notes --no-frame
+docker compose exec server publish-app notes --off
 ```
 
 `--no-frame` opens the app in its own tab instead of inside Your Space, and `--frame` shows it inside

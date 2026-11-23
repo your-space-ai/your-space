@@ -16,12 +16,12 @@ it merges.
 - [x] T008 `stop-apps`; restarts leave apps running
 - [x] T009 GitHub stand-in and fixture apps for tests (`e2e/github`)
 
-## Slice 2: Run Sure
+## Slice 2: Run the finance app
 
 - [x] T010 Installation kits: format, strict parsing, kits repository lookup (`server/src/apps/kits.ts`)
 - [x] T011 Generated, derived and kit-set settings, encrypted at rest (`server/src/apps/settings.ts`)
-- [x] T012 Sure installed from its own file with its kit (research R3)
-- [x] T013 Publish Sure's and Twenty's kits in a separate repository
+- [x] T012 The finance app installed from its own file with its kit (research R3)
+- [x] T013 Publish the finance app's and the CRM's kits in a separate repository
 
 ## Slice 3: Apps in Your Space
 
@@ -62,7 +62,7 @@ it merges.
 
 ## Slice 10: A second app, side by side
 
-- [x] T030 Twenty installed beside Sure (research R3)
+- [x] T030 The CRM installed beside the finance app (research R3)
 - [x] T031 Two panes on large screens; one on a phone with the menu
 
 ## Across slices
