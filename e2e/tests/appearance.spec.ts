@@ -74,6 +74,11 @@ test("the owner previews, shares and applies workspace themes in light and dark"
   await expect(page.getByRole("alert")).toContainText("Your theme library changed");
   await expect(page.getByRole("radio", { name: "Dark", exact: true })).toBeChecked();
   await expect.poll(() => background(page)).toBe(cerulean.dark.bg);
+  // The saved mode outlasts a reload, over the browser's light preference.
+  await page.reload();
+  await expect(page.getByRole("radio", { name: "Dark", exact: true })).toBeChecked();
+  await expect.poll(() => background(page)).toBe(cerulean.dark.bg);
+  await expect.poll(() => colorScheme(page)).toBe("dark");
   await chooseMode(page, "Match my device");
   await expect.poll(() => background(page)).toBe(cerulean.light.bg);
 

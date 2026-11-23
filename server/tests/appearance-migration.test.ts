@@ -91,6 +91,21 @@ it("keeps a chosen retired starter as the owner's copy and converts saved versio
   expect(await removed.json()).toMatchObject({ activeId: "fern", themes: [{ id: "custom-1" }] });
 });
 
+it.each(["canopy", "tide", "ember"])("keeps the chosen %s starter, as the file it was, still selected", async (id) => {
+  const workspace = await workspaceBeforeThemes();
+  await t.pool.query("insert into workspace_appearance(workspace_id, revision, active_id, themes) values ($1, 3, $2, '[]')", [workspace, id]);
+  await runMigrations(t.pool);
+  // The migration stores the version 1 file the workspace was showing, not a version 2 lookalike.
+  const { rows } = await t.pool.query<{ active_id: string; themes: { id: string; theme: unknown }[] }>(
+    "select active_id, themes from workspace_appearance");
+  expect(rows).toEqual([{ active_id: expect.stringMatching(/^custom-[0-9a-f-]{36}$/), themes: [{ id: rows[0]!.active_id, theme: retired(id) }] }]);
+  const { catalog, active } = await upgrade();
+  const copy = validateTheme(retired(id));
+  expect(catalog).toEqual({ revision: 4, activeId: rows[0]!.active_id, mode: "system", themes: [{ id: rows[0]!.active_id, theme: copy }] });
+  const { style, fonts, light, dark } = copy;
+  expect(active).toEqual({ mode: "system", style, fonts, light, dark });
+});
+
 it("leaves a workspace on a custom theme as it was, and a new workspace starts on Cerulean", async () => {
   const workspace = await workspaceBeforeThemes();
   const own = { ...retired("canopy"), name: "Reading room" };
