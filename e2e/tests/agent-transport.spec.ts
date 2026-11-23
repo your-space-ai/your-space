@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { fixtureCommit } from "../github/commits.mjs";
 import { compose, composeWithInput, createOwner, docker, resetStack, sql } from "./helpers/stack.ts";
 
 test("the private transport reaches only the registered interface of the selected installation", async () => {
@@ -6,7 +7,7 @@ test("the private transport reaches only the registered interface of the selecte
   await createOwner();
   const kit = {
     kit: 2,
-    source: { repo: "ys-fixtures/probe", path: "compose.yaml" },
+    source: { repo: "ys-fixtures/probe", path: "compose.yaml", commit: fixtureCommit("ys-fixtures/probe") },
     name: "probe",
     interface: { service: "web", port: 8080 },
     agentAccess: {
@@ -15,7 +16,7 @@ test("the private transport reaches only the registered interface of the selecte
       roles: { reader: { title: "Reader", routes: ["read"] } },
     },
   };
-  // The kit names the probe's Compose file on GitHub.
+  // The kit names the probe's Compose file on GitHub, at the commit the stand-in serves it at.
   await composeWithInput(["exec", "-T", "server", "install-app", "--kit", "-", "--json"], JSON.stringify(kit));
   await docker([
     "exec", "ys-probe-web-1", "sh", "-c", 'printf %s "$1" > /www/record.json',
