@@ -38,6 +38,8 @@ export function Appearance() {
   const [notice, setNotice] = useState("");
   // The mode a click asked for, shown until the server answers.
   const [modeChoice, setModeChoice] = useState<ThemeMode | null>(null);
+  // Which mode click is the latest, so an earlier one that finishes later leaves its choice shown.
+  const modeRequest = useRef(0);
   const [error, setError] = useState("");
   const file = useRef<HTMLInputElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -119,9 +121,10 @@ export function Appearance() {
   const applyTheme = (entry: ThemeEntry) => change({ method: "PUT", path: "/api/appearance/selection", body: { id: entry.id, revision: library.revision } }, `${entry.theme.name} is now your workspace theme.`);
   const applyMode = async (mode: ThemeMode, label: string) => {
     if (busy) return;
+    const request = ++modeRequest.current;
     setModeChoice(mode);
     try { await change({ method: "PUT", path: "/api/appearance/mode", body: { mode, revision: library.revision } }, `Mode set to ${label}.`); }
-    finally { setModeChoice(null); }
+    finally { if (modeRequest.current === request) setModeChoice(null); }
   };
   const duplicate = (theme: Theme) => edit({ ...theme, name: `${theme.name.slice(0, 55).trimEnd()} copy` });
 
