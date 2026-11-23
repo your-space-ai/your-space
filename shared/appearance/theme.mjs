@@ -162,6 +162,11 @@ const styleVariables = {
   bold: {'--radius': '0px', '--radius-control': '0px', '--border-width': '2px', '--rule-width': '3px', '--surface-tint': '0%', '--control-tint': '0%'},
 };
 
+/** The color panels and cards render with in a style: Soft mixes the accent into the surface color. */
+export function surfaceColor(colors, style) {
+  return mix(colors.panel, colors.accent, Number.parseFloat(styleVariables[style]['--surface-tint']) / 100);
+}
+
 /** The CSS custom properties for a theme's palette in one scheme, its fonts and its style. */
 export function themeVariables(look, scheme) {
   const theme = validateTheme({version: 2, name: 'Workspace', style: look?.style, fonts: look?.fonts, light: look?.light, dark: look?.dark});

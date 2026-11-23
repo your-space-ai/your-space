@@ -22,7 +22,7 @@ textarea { background: var(--panel); color: var(--fg); font: inherit; }
 .nav ul { margin: .9rem 0; }
 .nav ul:last-child { border-top: 1px solid var(--border); padding-top: .8rem; }
 .nav li a { align-items: center; justify-content: flex-start; padding: .55rem .7rem; font-size: .93rem; gap: .7rem; }
-.nav li a[data-status=active] { background: color-mix(in srgb, var(--accent) 13%, var(--panel)); color: var(--accent); font-weight: 700; }
+.nav li a[data-status=active] { background: color-mix(in srgb, var(--accent) 13%, var(--panel)); color: var(--fg); box-shadow: inset 3px 0 var(--accent); font-weight: 700; }
 .nav .badge { margin-left: auto; }
 .nav-symbol { width: 1rem; height: 1rem; display: inline-block; flex: none; position: relative; }
 .nav-home { border: 1.5px solid; border-radius: 3px; background: linear-gradient(to right, transparent 30%, currentColor 30% 41%, transparent 41%); }

@@ -34,4 +34,5 @@ export function validateTheme(value: unknown): Theme;
 export function themeVariables(look: ThemeLook, scheme: ColorScheme): Record<string, string>;
 export function contrastRatio(first: string, second: string): number;
 export function paletteScheme(colors: Palette): ColorScheme;
+export function surfaceColor(colors: Palette, style: ThemeStyle): string;
 export function modeScheme(mode: ThemeMode, prefersDark: boolean): ColorScheme;

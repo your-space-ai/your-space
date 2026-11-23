@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   builtInThemes, colorKeys, contrastRatio, defaultThemeId, fontSuggestions, modeScheme, paletteScheme,
-  retiredStarterThemes, themeVariables, validateTheme,
+  retiredStarterThemes, surfaceColor, themeVariables, validateTheme,
 } from './theme.mjs';
 
 const textColors = ['fg', 'muted', 'accent', 'danger', 'success', 'warning'];
@@ -96,4 +96,20 @@ test('a mode picks a palette, and Match my device follows the preference', () =>
   assert.equal(modeScheme('dark', false), 'dark');
   assert.equal(modeScheme('system', true), 'dark');
   assert.equal(modeScheme('system', false), 'light');
+});
+
+test('Soft tints surfaces with the accent, and the other styles leave them as the panel color', () => {
+  const colors = {...builtInThemes[0].theme.light, panel: '#ffffff', muted: '#767676', accent: '#000000'};
+  assert.equal(surfaceColor(colors, 'crisp'), '#ffffff');
+  assert.equal(surfaceColor(colors, 'bold'), '#ffffff');
+  assert.equal(surfaceColor(colors, 'soft'), '#f0f0f0');
+  // Secondary text that passes on the panel can fall short on Soft's tinted surface.
+  assert.ok(contrastRatio(colors.muted, colors.panel) >= 4.5);
+  assert.ok(contrastRatio(colors.muted, surfaceColor(colors, 'soft')) < 4.5);
+  for (const {theme} of builtInThemes) {
+    for (const scheme of ['light', 'dark']) {
+      const surface = surfaceColor(theme[scheme], theme.style);
+      for (const ink of ['fg', 'muted']) assert.ok(contrastRatio(theme[scheme][ink], surface) >= 4.5, theme.name + ' ' + scheme + ' ' + ink);
+    }
+  }
 });

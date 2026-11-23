@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import {
-  contrastRatio, fontSuggestions, paletteScheme, themeStyles, themeVariables, validateTheme,
+  contrastRatio, fontSuggestions, paletteScheme, surfaceColor, themeStyles, themeVariables, validateTheme,
   type ColorScheme, type Palette, type Theme, type ThemeFonts, type ThemeLook, type ThemeStyle,
 } from "../../../shared/appearance/theme.mjs";
 
@@ -24,11 +24,13 @@ export function themeStyle(theme: ThemeLook, scheme: ColorScheme): CSSProperties
   return { ...themeVariables(theme, scheme), colorScheme: paletteScheme(theme[scheme]) } as CSSProperties;
 }
 
-function contrastIssues(palette: Palette) {
+// Text on surfaces is checked against the surface as the style renders it: Soft tints it.
+function contrastIssues(palette: Palette, style: ThemeStyle) {
+  const surface = surfaceColor(palette, style);
   return [
     ["text on the background", palette.fg, palette.bg],
-    ["text on surfaces", palette.fg, palette.panel],
-    ["secondary text on surfaces", palette.muted, palette.panel],
+    ["text on surfaces", palette.fg, surface],
+    ["secondary text on surfaces", palette.muted, surface],
     ["accent button text", palette.accentInk, palette.accent],
   ].filter(([, ink, surface]) => contrastRatio(ink!, surface!) < 4.5).map(([label]) => label);
 }
@@ -56,7 +58,7 @@ function Preview({ theme }: { theme: Theme }) {
     <aside className="editor-preview" aria-label="Theme preview">
       <h2>Live preview</h2>
       {schemes.map(([scheme, label]) => {
-        const issues = contrastIssues(theme[scheme]);
+        const issues = contrastIssues(theme[scheme], theme.style);
         return (
           <div key={scheme}>
             <ThemeSample theme={theme} scheme={scheme} label={label} />

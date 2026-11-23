@@ -4,7 +4,7 @@ title: "Create and share a theme"
 
 Open **Appearance** in the dashboard. Choose a mode: **Match my device** follows your browser's light or dark setting as it changes, and **Light** or **Dark** keeps one. Then choose a theme. Cerulean pairs blues with bold rules and Instrument Sans. Cinder pairs warm oranges with crisp lines and Space Grotesk headings. Fern pairs greens with soft corners and Fraunces headings. Each has a light and a dark palette, and both meet a 4.5:1 contrast ratio for text and button labels. Customize one to start designing. Preview your changes in both palettes and save the theme to this workspace.
 
-The workspace keeps its theme and mode, so every browser that opens it looks the same. The workspace owner can export a theme and someone else can import the same file. The Mac launcher also accepts a theme file before connecting. Its preference is local to the device, and it follows the Mac's light or dark appearance. Each connected dashboard follows its own server.
+The workspace keeps its theme and mode, so every browser that opens it uses the same ones. With **Match my device**, each browser shows the palette for its own light or dark setting. The workspace owner can export a theme and someone else can import the same file. The Mac launcher also accepts a theme file before connecting. Its preference is local to the device, and it follows the Mac's light or dark appearance. Each connected dashboard follows its own server.
 
 ## Theme file
 
@@ -55,6 +55,6 @@ Fonts apply throughout the Your Space interface. Each installed app controls the
 
 ## Version 1 files
 
-Theme files from earlier releases have `"version": 1`, a `scheme` and nine colors with two fonts under `tokens`. They still import, in the dashboard and the Mac launcher. Their one palette applies in both modes, with the Crisp style and the generic monospace font. Version 1 has no warning color, so Your Space uses amber: `#a15c00` on a light palette and `#f2b24c` on a dark one, blended toward the text color until it reads at 4.5:1 on the background and surfaces. Saving or exporting the theme writes version 2.
+Theme files from earlier releases have `"version": 1`, a `scheme` and nine colors with two fonts under `tokens`. They still import, in the dashboard and the Mac launcher. Their one palette applies in both modes, with the Crisp style and the generic monospace font. Version 1 has no warning color, so Your Space uses amber: `#a15c00` on a light palette and `#f2b24c` on a dark one, blended toward the text color until it reads at 4.5:1 on the background and surfaces. If no blend reaches 4.5:1, the warning color is the text color itself, which can read lower when the file's own colors are low in contrast, so check warnings after importing. Saving or exporting the theme writes version 2.
 
 Earlier releases offered the Canopy, Tide and Ember starters. A workspace that used one, including by default, keeps it as its own theme, still selected.
