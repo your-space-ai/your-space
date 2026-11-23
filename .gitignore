@@ -12,3 +12,4 @@ screenshots/
 # Copied from the repository root when the npm packages are packed.
 cli/LICENSE
 npm/your-space/LICENSE
+npm/your-space-ai/LICENSE

@@ -16,7 +16,7 @@
   },
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "node --test shared/appearance/theme.test.mjs npm/your-space/bin.test.mjs && npm test --workspace server && npm test --workspace runtime && npm test --workspace cli && npm test --workspace desktop",
+    "test": "node --test shared/appearance/theme.test.mjs npm/bin.test.mjs && npm test --workspace server && npm test --workspace runtime && npm test --workspace cli && npm test --workspace desktop",
     "build": "npm run build --workspace web && npm run build --workspace cli",
     "e2e": "npm test --workspace e2e",
     "desktop": "npm start --workspace desktop"
