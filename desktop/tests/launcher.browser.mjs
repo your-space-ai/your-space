@@ -60,10 +60,12 @@ test("loopback HTTP works, remote HTTP is refused, and a failed connection can b
     connect: () => connected ? { state: "ready" } : { error: { code: "unreachable", message: "Could not reach this server." } },
   });
   await page.getByRole("button", { name: /Connect to a server/ }).click();
+  await expect(page.locator("#remote .intro")).toContainText("http://space.localhost:8081");
   const address = page.getByLabel("Server address");
   await address.fill("http://localhost.workspace.example");
   await address.press("Enter");
   assert.equal(await address.evaluate(input => input.checkValidity()), false);
+  assert.match(await address.evaluate(input => input.validationMessage), /http:\/\/space\.localhost and its port/);
   assert.deepEqual(calls, []);
   await address.fill("http://space.localhost:8080");
   await address.press("Enter");

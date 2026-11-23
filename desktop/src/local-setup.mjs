@@ -10,7 +10,7 @@ const messages = {
   permission_denied: "Your Mac user needs permission to access this Docker socket.",
   invalid_engine: "Choose a local Docker context or enter an absolute Unix socket path.",
   engine_changed: "This installation belongs to another Docker engine. Start the originally selected engine to resume it.",
-  another_installation: "This engine already has a Your Space installation in another folder. Connect to that workspace or choose another engine.",
+  another_installation: "This engine already has a Your Space installation in another folder. Connect to it at http://space.localhost, followed by its port if it has one, or choose another engine.",
   folder_not_empty: "Your Space found other files in its installation folder. Move them aside before setting up here.",
   download_failed: "The desktop installation files are missing. Install the matching Your Space desktop build and retry.",
   checksum_mismatch: "The packaged installation files failed verification. Install a fresh copy of this desktop build.",

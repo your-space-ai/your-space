@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkWorkspace, lastWorkspace, linkTarget, ownerDestination, rememberWorkspace, webDestination, workspaceOrigin, workspacePartition } from '../src/workspace.mjs';
 
 test('only HTTPS and loopback HTTP origins are accepted and a workspace has its own session partition', () => {
-  for (const address of ['https://workspace.example.com', 'http://127.0.0.1:3001', 'http://[::1]', 'http://space.localhost']) {
+  for (const address of ['https://workspace.example.com', 'http://127.0.0.1:3001', 'http://[::1]', 'http://space.localhost', 'http://space.localhost:8081']) {
     assert.equal(workspaceOrigin(address + '/'), address);
   }
   for (const address of ['file:///tmp', 'http://server.lan', 'http://localhost.example', 'https://user@host', 'https://a.test/reset-password#token=t', 'https://a.test/?', '//server.test']) {
@@ -48,6 +49,28 @@ test('connection probes accept only the status contract, without cookies or redi
   }
   await assert.rejects(checkWorkspace(origin, async () => Response.json({}, {status:503})), {code: 'storage_unavailable'});
   await assert.rejects(checkWorkspace(origin, async () => {throw Error('private redirect or certificate details');}), {code: 'unreachable'});
+});
+
+test('a failed probe of localhost or 127.0.0.1 names the space.localhost address a local workspace answers at', async () => {
+  // A local workspace's Caddy sends localhost and 127.0.0.1 to space.localhost, a redirect the probe refuses.
+  const server = createServer((req, res) => res.writeHead(302, {Location: 'http://space.localhost:' + server.address().port + req.url}).end());
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const {port} = server.address();
+  try {
+    for (const host of ['127.0.0.1', 'localhost']) {
+      await assert.rejects(checkWorkspace(`http://${host}:${port}`, fetch), {
+        code: 'local_address',
+        message: `Could not reach a workspace at http://${host}:${port}. A workspace on this computer answers at http://space.localhost:${port} instead; connect to that address.`,
+      });
+    }
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
+  await assert.rejects(checkWorkspace('http://[::1]', async () => {throw Error('refused');}), {code: 'local_address', message: /answers at http:\/\/space\.localhost instead/});
+  for (const origin of ['http://space.localhost:8081', 'https://localhost:8443']) {
+    await assert.rejects(checkWorkspace(origin, async () => {throw Error('refused');}), {code: 'unreachable'});
+  }
 });
 
 test('only the chosen origin and setup mode survive relaunch', async () => {

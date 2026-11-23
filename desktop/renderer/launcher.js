@@ -198,7 +198,7 @@ byId("remote-form").addEventListener("submit", (event) => {
     if (!allowed || address.username || address.password || address.href !== address.origin + "/") throw new Error();
   } catch {
     if (address?.username || address?.password || address?.search || address?.hash) input.value = "";
-    input.setCustomValidity("Enter the server’s HTTPS address, or HTTP on localhost, without a path, credentials, query or fragment.");
+    input.setCustomValidity("Enter the server’s HTTPS address, or http://space.localhost and its port for a workspace on this Mac, without a path, credentials, query or fragment.");
     input.reportValidity();
     return;
   }

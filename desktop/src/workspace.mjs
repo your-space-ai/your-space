@@ -26,6 +26,14 @@ function isWorkspaceAddress(url) {
     (['127.0.0.1', '[::1]', 'localhost'].includes(url.hostname) || url.hostname.endsWith('.localhost')));
 }
 
+// A workspace on this computer answers only at space.localhost: its Caddy redirects localhost and
+// 127.0.0.1 there, and the status probe follows no redirects.
+function localWorkspaceAddress(origin) {
+  const url = new URL(origin);
+  if (url.protocol !== 'http:' || !['127.0.0.1', '[::1]', 'localhost'].includes(url.hostname)) return null;
+  return 'http://space.localhost' + (url.port ? ':' + url.port : '');
+}
+
 export function webDestination(value) {
   try {
     const url = new URL(value);
@@ -76,6 +84,9 @@ export async function checkWorkspace(origin, fetchStatus) {
     return status.owner;
   } catch (error) {
     if (error instanceof WorkspaceError) throw error;
+    const address = workspaceOrigin(origin);
+    const local = localWorkspaceAddress(address);
+    if (local) throw new WorkspaceError('local_address', `Could not reach a workspace at ${address}. A workspace on this computer answers at ${local} instead; connect to that address.`);
     throw new WorkspaceError('unreachable', 'Could not reach the workspace. Check its address, network connection and HTTPS certificate, then retry.');
   } finally {
     if (response?.body && !response.body.locked) await response.body.cancel().catch(() => {});

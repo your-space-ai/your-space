@@ -106,7 +106,7 @@ test("refuses stale engine choices, altered daemon identities and an unverified 
   app.id = "daemon-aabbcc";
   app.statusFailure = "another_installation";
   await assert.rejects(local.createOwner({ name: "Sam", username: "sam" }),
-    error => error.code === "another_installation" && !error.message.includes("stderr"));
+    error => error.code === "another_installation" && error.message.includes("http://space.localhost") && !error.message.includes("stderr"));
   delete app.statusFailure;
   app.address = "http://other.localhost:8081";
   await assert.rejects(local.createOwner({ name: "Sam", username: "sam" }), { code: "invalid_workspace" });
