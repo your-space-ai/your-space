@@ -1,7 +1,8 @@
 name: Release draft
 
 # Step 3 of the release guide (docs/maintainers/releasing.md). Started by hand on main with an
-# existing version tag on that commit. It builds every release file, installs from them on fresh
+# existing version tag on that commit, once every status and check on that commit has passed (CircleCI's
+# browser and Arm jobs included). It builds every release file, installs from them on fresh
 # Linux machines, signs and notarizes the Mac apps, and creates a draft GitHub release with
 # SHA256SUMS. Only the versioned images are public afterwards; npm and `latest` wait for the owner
 # to publish the draft (Release publish).
@@ -25,6 +26,12 @@ jobs:
   check-tag:
     if: github.ref == 'refs/heads/main' && github.repository == 'your-space-ai/your-space'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # To read the tagged commit's statuses and check runs, and which of them are Release draft's.
+      actions: read
+      checks: read
+      statuses: read
     outputs:
       version: ${{ steps.validate.outputs.version }}
     steps:
@@ -42,6 +49,44 @@ jobs:
           releases=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name')
           if grep -Fxq "$TAG" <<< "$releases"; then echo "This tag already has a release."; exit 1; fi
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Require every status and check on the tagged commit to have passed
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repo="repos/$GITHUB_REPOSITORY"
+          # The latest status of each context (CircleCI, Argos) must be success.
+          statuses=$(gh api --paginate "$repo/commits/$GITHUB_SHA/status?per_page=100" --jq '.statuses[] | [.context, .state] | @tsv')
+          # Check runs, without those of any Release draft run on this commit, this one included, so a
+          # run that failed doesn't block its retry. As in required checks, skipped and neutral pass.
+          drafts=$(gh api --paginate "$repo/actions/runs?head_sha=$GITHUB_SHA&per_page=100" \
+            --jq '.workflow_runs[] | select(.path == ".github/workflows/release-draft.yml") | .check_suite_id')
+          checks=$(gh api --paginate "$repo/commits/$GITHUB_SHA/check-runs?per_page=100" \
+            --jq '.check_runs[] | [.check_suite.id, .name, .conclusion // .status] | @tsv')
+          missing=()
+          # A result that was never reported mustn't pass: main runs these, the browser tests in
+          # Chromium, Firefox and WebKit.
+          contexts=$(cut -f1 <<< "$statuses")
+          for context in 'ci/circleci: e2e' 'ci/circleci: e2e-arm64' 'ci/circleci: check-arm64'; do
+            grep -Fqx "$context" <<< "$contexts" || missing+=("$context: no status yet")
+          done
+          names=$(cut -f2 <<< "$checks")
+          grep -Fqx 'Contribution checks' <<< "$names" || missing+=("Contribution checks: no check run yet")
+          while IFS=$'\t' read -r context state; do
+            if [[ -n $context && $state != success ]]; then missing+=("$context: $state"); fi
+          done <<< "$statuses"
+          while IFS=$'\t' read -r suite name result; do
+            if [[ -z $name ]] || grep -Fqx "$suite" <<< "$drafts"; then continue; fi
+            case $result in success | skipped | neutral) ;; *) missing+=("$name: $result") ;; esac
+          done <<< "$checks"
+          if ((${#missing[@]})); then
+            printf '%s\n' "Release draft starts only when every status and check on $TAG's commit has passed." \
+              "Wait for them, or fix main and tag again. Not passed:" "${missing[@]/#/- }" >&2
+            summary=$(printf '%s; ' "${missing[@]}")
+            echo "::error::Not every status and check on $TAG's commit has passed: ${summary%; }"
+            exit 1
+          fi
+          echo "Every status and check on $TAG's commit has passed."
 
   images:
     needs: check-tag
