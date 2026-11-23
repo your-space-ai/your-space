@@ -177,9 +177,9 @@ stack, and check it again.
    running throughout, and Your Space reports its state correctly once it is back.
 6. **Given** a link that isn't a public GitHub file, a file that isn't Compose, or an image missing
    for this machine's architecture, **When** the operator runs the install command, **Then** nothing
-   is installed, nothing runs, and the message says what is wrong. (2026-11-23: the command takes the
-   link to the app's kit; given a Compose file's link, it installs nothing and says that installs
-   need a kit's link.)
+   is installed, nothing runs, and the message says what is wrong. (2026-11-23: the command takes
+   the link to the app's kit, and the file that must be Compose is the one the kit names; given a
+   Compose file's link, it installs nothing and says that installs need a kit's link.)
 7. **Given** two installs of apps with the same service names, **When** both run, **Then** their
    containers, networks and volumes don't collide.
 
