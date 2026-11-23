@@ -14,9 +14,10 @@ another computer, give it an HTTPS address in one of three ways:
 A plain `http://` address on your network is not one of them; see
 [Plain HTTP on Your Network Is Not Supported](#plain-http-on-your-network-is-not-supported).
 
-`your-space configure` changes the setup: it asks the same question as `init`, writes `.env`,
-checks what it can, and restarts Your Space with the new address. If the new setup can't start, it
-puts the old one back. By hand, change `.env` and run `docker compose up -d`. Then open the address
+`your-space configure` changes the setup: it asks the same question as `init`, checks what it
+can, and writes `.env`. If Your Space is running, it restarts it with the new address, and if the
+new setup can't start, it puts the old one back; otherwise the new setup applies at the next
+`your-space start`. By hand, change `.env` and run `docker compose up -d`. Then open the address
 on the other device and sign in with the same username and password. It's the same account and
 workspace, so there is nothing to set up again.
 
@@ -116,7 +117,7 @@ reach. You need no domain and no ports open to the internet.
 
 1. Install Tailscale on this server and on each device you'll use, signed in to the same tailnet
    (your Tailscale network).
-3. On the server, run (on Linux, with `sudo`):
+2. On the server, run (on Linux, with `sudo`):
 
    ```sh
    tailscale serve --bg --https=443 http://127.0.0.1:8080
@@ -126,8 +127,8 @@ reach. You need no domain and no ports open to the internet.
 
    It prints the server's address, such as `https://myserver.tail1234.ts.net`. If it says HTTPS
    isn't enabled for your tailnet, follow the link it prints. `--bg` keeps it serving after you
-   close the terminal; `tailscale serve status` shows the address again. Until the next two steps
-   are done, the address shows an error page.
+   close the terminal; `tailscale serve status` shows the address again. Until the next step is
+   done, the address shows an error page.
 
 3. Give Your Space that address, with `https://` and no trailing slash:
 
@@ -135,6 +136,7 @@ reach. You need no domain and no ports open to the internet.
    your-space configure --proxy-url https://myserver.tail1234.ts.net
    ```
 
+   If Your Space is stopped, `configure` only saves the address; start it with `your-space start`.
    By hand, add `YS_PROXY_URL=https://myserver.tail1234.ts.net` to `.env` and run
    `docker compose up -d`.
 
@@ -176,9 +178,9 @@ For devices on your own network, use [Tailscale](#use-tailscale): it needs no do
 ## Certificates
 
 With your own domain, Caddy asks Let's Encrypt for a certificate when it starts and renews it
-automatically. `your-space start` and `your-space configure` wait up to three minutes for it, and
-`your-space status` shows whether it is issued. If it isn't, they read Caddy's log and say why in
-plain words. To see the log itself:
+automatically. `your-space start` and `your-space configure` wait up to three minutes for it;
+while it isn't issued, they read Caddy's log and say why in plain words. `your-space status` shows
+whether it is issued. To see the log itself:
 
 ```sh
 your-space logs caddy

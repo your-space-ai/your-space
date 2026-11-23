@@ -35,8 +35,9 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
    `localhost` redirects there. Each app is at `<app>.<Your Space's address>`: Caddy's app sites
    (`*.space.localhost`, or `*.<domain>` with certificates obtained on demand) ask the server's gate
    with `forward_auth`, then proxy to the upstream the gate names on the app's own network. Caddy
-   removes Your Space's cookies and the app pass from requests to apps, removes `Domain` from
-   cookies apps set, and replaces apps' framing headers so only Your Space can frame them. See
+   removes the app pass from requests to apps (Your Space's session cookies are host-only, so
+   browsers don't send them to apps), removes `Domain` from cookies apps set, and replaces apps'
+   framing headers so only Your Space can frame them. See
    [installation and hosting](decisions.md#installation-and-hosting) and
    [UI integration](decisions.md#ui-integration).
 4. **Your Space core.** Identity and sessions, roles and delegation, the gateway for agent requests,

@@ -40,8 +40,9 @@ only you, signed in to Your Space, can reach it. On this machine that works with
 `*.localhost`; on your own domain it needs one wildcard DNS record. Where it can't work, as on
 Tailscale, [publish the app on a port](#publish-an-app-on-a-port). Apps open in a pane beside Your Space's navigation;
 on a large screen, two apps open side by side. An app keeps its own accounts: you sign up in the app
-the first time. On this machine, Safari doesn't keep apps' cookies inside Your Space, so apps open in
-their own tab there; over HTTPS they open in a pane in every browser.
+the first time. A browser that blocks an app's cookies inside Your Space, as WebKit-based browsers
+can on this machine's plain-HTTP setup, can't keep you signed in to the app in a pane; the pane then
+offers a link to open the app in its own tab.
 
 ## Publish an App on a Port
 

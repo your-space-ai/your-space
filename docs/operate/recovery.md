@@ -101,10 +101,10 @@ By hand, the same is:
 docker compose exec server reset-link
 ```
 
-It prints a link:
+Either prints a new link for the owner. The `docker compose` form prints:
 
 ```text
-Password reset link for you@example.com (expires 2026-11-04T01:45:00Z, works once):
+Password reset link for you (expires 2026-11-04T01:45:00Z, works once):
 http://space.localhost/reset-password#token=...
 Using it signs out every existing session.
 ```
