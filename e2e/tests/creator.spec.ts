@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { root } from "./helpers/cli.ts";
+import { fixtureCommit } from "../github/commits.mjs";
 import { expect, test, type Frame } from "@playwright/test";
 import { composeWithInput, createOwner, docker, resetStack, serverCommand } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
@@ -49,7 +50,9 @@ test("the owner installs a directory kit, grants a custom Home one read, and res
   await page.getByText("Kit directory", { exact: true }).click();
   await page.getByRole("button", { name: "Review whoami", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Review", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "ys-fixtures/catalog/apps/ys-fixtures/whoami.yaml" })).toHaveAttribute("href", /0123456789abcdef/);
+  // The directory's entry is pinned to the directory's commit, and the kit pins its Compose file.
+  await expect(page.getByRole("link", { name: "ys-fixtures/catalog/apps/ys-fixtures/whoami.yaml" })).toHaveAttribute("href", new RegExp(`/blob/${fixtureCommit("ys-fixtures/catalog")}/`));
+  await expect(page.getByRole("link", { name: "ys-fixtures/whoami/compose.yaml" })).toHaveAttribute("href", new RegExp(`/blob/${fixtureCommit("ys-fixtures/whoami")}/`));
   await page.getByLabel("Link to the app's kit").fill(kitLink);
   await page.getByRole("button", { name: "Review", exact: true }).click();
   await expect(page.getByRole("button", { name: "Install", exact: true })).toBeEnabled();
@@ -186,13 +189,18 @@ test("a synthetic GitHub account can manage, commit, preview a private install, 
   await page.getByLabel("File contents").fill(release("'Release one'"));
   await page.getByLabel("Commit message").fill("Add the fixture service");
   await page.getByRole("button", { name: "Commit changes" }).click();
-  await expect(page.getByRole("status").filter({ hasText: /Committed/ })).toBeVisible();
+  const committed = page.getByRole("status").filter({ hasText: /Committed/ });
+  await expect(committed).toBeVisible();
+  const release1 = (await committed.locator("code").textContent())!;
+  expect(release1).toMatch(/^[0-9a-f]{40}$/);
   await page.getByRole("button", { name: "Open file", exact: true }).click();
   await expect(page.getByLabel("File contents")).toHaveValue(/node:26-slim/);
-  // Every app installs with a kit: this one sits beside its Compose file.
+  // Every app installs with a kit: this one sits beside its Compose file and pins it to the commit above.
   await page.getByLabel("File path", { exact: true }).fill("kit.yaml");
   await page.getByRole("button", { name: "New file" }).click();
-  await page.getByLabel("File contents").fill("kit: 1\ninterface: { service: web, port: 8080 }\n");
+  await page
+    .getByLabel("File contents")
+    .fill(`kit: 1\nsource: { repo: fixture-owner/fixtures-private, path: compose.yaml, commit: ${release1} }\ninterface: { service: web, port: 8080 }\n`);
   await page.getByLabel("Commit message").fill("Add the fixture's kit");
   await page.getByRole("button", { name: "Commit changes" }).click();
   await expect(page.getByRole("status").filter({ hasText: /Committed/ })).toBeVisible();
@@ -200,7 +208,7 @@ test("a synthetic GitHub account can manage, commit, preview a private install, 
   await expect(page.getByLabel("Kit file path")).toHaveValue("kit.yaml");
   await page.getByRole("button", { name: "Review", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Review", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "fixture-owner/fixtures-private/compose.yaml" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "fixture-owner/fixtures-private/compose.yaml" })).toHaveAttribute("href", new RegExp(`/blob/${release1}/`));
   await page.getByRole("button", { name: "Install", exact: true }).click();
   await expect(page.locator("section.job")).toHaveAttribute("data-job-state", "succeeded", { timeout: 120000 });
   // Write once in the running first release. The next commit contains only the reader.

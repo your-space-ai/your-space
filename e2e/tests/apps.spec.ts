@@ -4,6 +4,7 @@
 import { Agent, request } from "node:http";
 import { createServer } from "node:net";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { fixtureCommit } from "../github/commits.mjs";
 import { evidence } from "./helpers/evidence.ts";
 import { compose, createOwner, docker, resetStack, serverCommand, up } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
@@ -80,9 +81,10 @@ test("the owner installs an app from its link, after a review and a trust warnin
   await page.getByLabel(LINK_LABEL).fill(WHOAMI);
   await page.getByRole("button", { name: "Review" }).click();
   await expect(page.getByRole("heading", { name: "Review" })).toBeVisible();
-  // The review names the kit, at its exact commit, as well as the Compose file it names.
-  await expect(page.getByRole("link", { name: "ys-fixtures/catalog/apps/ys-fixtures/whoami.yaml" })).toHaveAttribute("href", /\/blob\/[0-9a-f]{40}\//);
-  await expect(page.getByRole("link", { name: "ys-fixtures/whoami/compose.yaml" })).toBeVisible();
+  // The review names the kit at the commit its main link resolves to now, and the Compose file at the
+  // exact commit the kit pins.
+  await expect(page.getByRole("link", { name: "ys-fixtures/catalog/apps/ys-fixtures/whoami.yaml" })).toHaveAttribute("href", new RegExp(`/blob/${fixtureCommit("ys-fixtures/catalog")}/`));
+  await expect(page.getByRole("link", { name: "ys-fixtures/whoami/compose.yaml" })).toHaveAttribute("href", new RegExp(`/blob/${fixtureCommit("ys-fixtures/whoami")}/`));
   await expect(page.getByText("Published ports removed")).toBeVisible();
   await expect(page.getByText(/trusts it with everything/)).toBeVisible();
   await expect(page.getByText("example.com")).toBeVisible();

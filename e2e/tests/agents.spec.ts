@@ -1,6 +1,7 @@
 // Real owner controls, without credentials in screenshots, traces, or console output.
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
+import { fixtureCommit } from "../github/commits.mjs";
 import { cliIn } from "./helpers/cli.ts";
 import { compose, composeWithInput, createOwner, docker, resetStack, serverCommand, sql } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
@@ -147,7 +148,7 @@ test("upgrading a running installation keeps its app ID and volume and installs 
   await resetStack();
   await createOwner();
   // A kit file on this machine names the app's Compose file on GitHub.
-  const legacy = { kit: 1, source: { repo: "ys-fixtures/records", path: "compose.yaml" }, name: "records", interface: { service: "app", port: 8080 } };
+  const legacy = { kit: 1, source: { repo: "ys-fixtures/records", path: "compose.yaml", commit: fixtureCommit("ys-fixtures/records") }, name: "records", interface: { service: "app", port: 8080 } };
   await composeWithInput(["exec", "-T", "server", "install-app", "--kit", "-", "--json"], JSON.stringify(legacy));
   const operator = ["exec", "-T", "server", "upgrade-agent-kit", "records", "--json"];
   const inspect = async () => JSON.parse((await compose([...operator, "--inspect"])).stdout);
