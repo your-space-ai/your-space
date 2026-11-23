@@ -497,7 +497,7 @@ Dependency selection must consider actual licenses, including bundled components
 - The project uses the name Your Space and the domain getyourspace.ai. Trademark filing and a policy for forks remain open.
 - Outside contributions are accepted under the Developer Certificate of Origin (DCO): contributors sign off each commit and keep their copyright, and the code they contribute is licensed under the license of the part it changes. (Contributor license agreement superseded 2026-11-16; see below.)
 - Code specific to the managed service, such as billing, provisioning, and multi-tenant operations, lives in a separate private repository and integrates with the core through its APIs.
-- The license, trademark, and contributor agreement are in place before publication, after review by a lawyer.
+- The license, trademark, and contributor agreement are in place before publication, after review by a lawyer. (Lawyer review superseded: the source preview went without one on 2026-11-21, and since 2026-11-23 no release requires one; see below.)
 
 **Decision update (2026-11-02):** AGPL-3.0 for Your Space and Apache-2.0 for the SDKs replace the earlier MIT preference. AGPL keeps the core open source while preventing closed hosted forks; the trademark and maintainership protect the managed offering. Source-available licenses such as FSL were considered and rejected because the business depends on an open-source core.
 
@@ -508,12 +508,21 @@ Dependency selection must consider actual licenses, including bundled components
 - **`AGPL-3.0-only`, not "or later".** The project decides on any future license version itself; under the DCO this can't easily be changed later.
 - **Copyright holder.** Code is published under the owner's name; the owner assigns it to the company when it is incorporated. Incorporation isn't required for publication.
 - **Trademark: open.** A 2026-11-16 screening found no live US registration for YOUR SPACE in software classes, but the name is descriptive and may be hard to register, and MYSPACE registrations exist in related classes. Whether and when to file, and the trademark policy for forks, are open.
-- **Lawyer review before publication remains as stated above** and now covers the DCO in place of a contributor agreement.
+- **Lawyer review before publication remains as stated above** and now covers the DCO in place of a contributor agreement. (Superseded: the source preview went without one on 2026-11-21, and since 2026-11-23 no release requires one; see below.)
 
 **Decision update (2026-11-21, quiet source preview).** The owner chose to publish the developer
 preview under AGPL-3.0-only and accept outside contributions under the DCO without a counsel
 review for this milestone. Trademark filing and the policy for forks remain open. The separately
 packaged product release follows the [maintainer release guide](../maintainers/releasing.md).
+
+**Decision update (2026-11-23, packaged prereleases).** Packaged prereleases, starting with the
+alpha, also ship without a counsel review, because the project can't afford one before the alpha.
+This extends the 2026-11-21 decision from the source preview to the packaged prereleases that the
+[maintainer release guide](../maintainers/releasing.md) produces, under the same AGPL-3.0-only
+license and DCO. It supersedes the lawyer review before publication above: the guide no longer
+asks for one for any release. Maintainers still confirm distribution rights and notices for
+everything that ships, as the guide describes. Trademark filing, the policy for forks, and whether
+counsel reviews the license, contributor and trademark terms before a later release remain open.
 
 ### Product Experience Principles
 
@@ -1059,7 +1068,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 - The app contract defines app roles in 002, although only the owner exists then, so 004 adds role assignment without changing the contract. (Superseded 2026-11-14: app roles come with level 2 integration in a later journey; see [identity and app-owned roles](#identity-and-app-owned-roles).)
 - The activity log arrives with agents in 005, since reviewing what agents did is its main purpose. App installs and member changes are logged from then on.
 - The app database moves from Medium to High, because the Tasks app in 002 needs one. (2026-11-14: Sure, which replaces Tasks, needs one too, so it stays High.)
-- Maintainers review security, privacy and legal requirements across the finished journeys using the [packaged release guide](../maintainers/releasing.md).
+- Maintainers review security, privacy and legal requirements across the finished journeys using the [packaged release guide](../maintainers/releasing.md). (2026-11-23: the legal part is the guide's distribution-rights and notices check, without a counsel review; see [project license and business model](#project-license-and-business-model).)
 - Every specification follows shared rules from the start: simple by default, no telemetry, ARM and Intel images, all durable state in the database or named volumes, the actual actor credited from the first schema, and its own docs and security tests. (2026-11-14: ARM and Intel applies to Your Space's own images; apps need only the engine's processor type.)
 
 This refines the sequence above without changing scope: it groups existing pre-public items into journeys and orders the work after the CLI.
@@ -1148,7 +1157,7 @@ app roles. The [spec map](https://github.com/your-space-ai/your-space/blob/main/
 | Member password recovery | A recovery code at signup, with an owner-issued temporary password as the fallback, is selected. Code count and replacement, and temporary-password lifetime, need definition in the members specification. Optional owner-configured email resets are post-open-source. |
 | Public launch scope | The [personal dashboard decision](#personal-dashboard-release-boundary) sets the scope. The [packaged release guide](../maintainers/releasing.md) lists the evidence required. |
 | App UI execution | Apps open in panes, side by side on larger screens: cross-origin iframes in the web client and PWA, native views in the desktop app. Each app is at `<app>.<Your Space's address>` behind Caddy's `forward_auth` gate, with no port fallback; Caddy replaces framing headers, and apps keep their own sign-in (2026-11-14). The platform session is a `__Host-` cookie over HTTPS and host-only on the plain-HTTP local setup, where WebKit opens apps in their own tab. An app can also be published on a port of this machine for the owner's own proxy or tunnel, and is then reached at the owner's link, outside the gate (2026-11-19); Your Space shows it there in its pane, where the app's own Caddy lets only Your Space frame it, unless the owner turns that off for the app (2026-11-20). On Tailscale the owner creates one Tailscale Service per published app. Shell-to-app messages remain open; Safari on macOS is still to check. |
-| Project license | AGPL-3.0-only for the platform and MIT for future SDKs. The quiet source preview uses the DCO without counsel review. Trademark filing remains open. |
+| Project license | AGPL-3.0-only for the platform and MIT for future SDKs, with outside contributions under the DCO. The quiet source preview (2026-11-21) and packaged prereleases, starting with the alpha (2026-11-23), ship without counsel review. Trademark filing, the policy for forks, and counsel review before a later release remain open. |
 | Telemetry | None. Update checks to GitHub, which the owner can turn off, are the only automatic outbound requests planned apart from the built-in proxy's certificate requests for an owner-configured domain, which are part of HTTPS setup (2026-11-03); no update check exists yet (2026-11-23). Future reporting must be opt-in; opt-out is prohibited. |
 | External apps | Apps can be managed or hosted elsewhere. An app someone already runs is added through a connector that connects out to Your Space and plugs into the app endpoint (2026-11-14). The connector, and whether such an app must also verify Your Space identity, need definition in a later specification. |
 | App settings, egress, and limits | Settled in the [002 plan](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/plan.md) (2026-11-14): settings encrypted in the server's database; outbound access through a Squid proxy per app, with kits' starter hosts and owner-approved access requests; fixed default limits a kit or the owner can change. What the owner sees and sets for generated secrets in the review, limits that scale with the space's resources, and an "all internet" option remain open. |
