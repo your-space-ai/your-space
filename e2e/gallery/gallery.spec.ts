@@ -123,6 +123,14 @@ for (const [theme, heading] of themes) {
       await page.screenshot({ path: join(folder, `${theme}-${scheme}-4-confirm.png`), animations: "disabled" });
       await page.keyboard.press("Escape");
       await expect(confirm).toHaveCount(0);
+
+      // On a wide screen the list and details show together, and choosing an item keeps focus on it.
+      const notes = page.getByRole("list", { name: "Installed apps" }).getByRole("button", { name: /^Notes/ });
+      await notes.focus();
+      await page.keyboard.press("Enter");
+      await expect(notes).toHaveAttribute("aria-current", "true");
+      await expect(notes).toBeFocused();
+      await expect(page.getByRole("heading", { level: 3, name: "Notes" })).toBeVisible();
     });
   }
   test(`${theme} on a phone`, async ({ page }) => {
@@ -131,5 +139,21 @@ for (const [theme, heading] of themes) {
     expect(await contrastProblems(page)).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: join(folder, `${theme}-light-5-phone.png`), fullPage: true, animations: "disabled" });
+
+    // A narrow list beside details shows one side at a time: choosing an item moves focus to its
+    // details, and Back returns it to the item.
+    const list = page.getByRole("list", { name: "Installed apps" });
+    const notes = list.getByRole("button", { name: /^Notes/ });
+    await notes.focus();
+    await page.keyboard.press("Enter");
+    await expect(list).toBeHidden();
+    await expect(page.locator(".ui-list-detail__detail")).toBeFocused();
+    await expect(page.getByRole("heading", { level: 3, name: "Notes" })).toBeVisible();
+    await page.keyboard.press("Tab");
+    const back = page.getByRole("button", { name: "Apps", exact: true });
+    await expect(back).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(notes).toBeVisible();
+    await expect(notes).toBeFocused();
   });
 }
