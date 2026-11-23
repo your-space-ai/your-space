@@ -15,9 +15,9 @@ work out, the internet hosts it needs, and its limits. The app's authors change 
 file isn't enough: Your Space says so and asks for the kit's link. The review shows the kit and the
 Compose file it names, each at its exact commit, the image versions that will run, what Your Space
 changes or leaves out of the file, the settings it reads, and the internet hosts it may reach.
-Secrets the file gives a published default for get generated values instead, and they are never
-shown. Install runs in the background; you can leave the page. If Your Space is set up with a kit
-directory, Apps lists its kits too.
+Secrets the file gives a published default for get generated values instead, unless the app reuses
+kept data (see **Remove**), and they are never shown. Install runs in the background; you can leave
+the page. If Your Space is set up with a kit directory, Apps lists its kits too.
 
 Your Space reads the Compose file a kit names at the kit's own commit when both are in one
 repository, and otherwise at the latest commit of the app's repository when you review it. A kit
@@ -27,9 +27,12 @@ A kit in a private repository installs through your [GitHub connection](github-c
 you connect with private repositories included. If the kit names a Compose file in another private
 repository, import that repository in **Repositories** first.
 
-From the server, `docker compose exec server install-app <kit-link>` does the same. A kit Your Space
-can't read from GitHub, such as one in a private repository, can come from this machine instead,
-and names the app's Compose file on GitHub: `docker compose exec -T server install-app --kit - < kit.yaml`.
+From the server, `docker compose exec server install-app <kit-link>` does the same, reading public
+GitHub only. A kit it can't read, such as one in a private repository, can come from this machine
+instead, and names the app's Compose file in a public repository:
+`docker compose exec -T server install-app --kit - < kit.yaml`. For a Compose file in a private
+repository, install from Apps through your GitHub connection, or give the Compose file from this
+machine too, as below.
 
 When an app's own Compose file doesn't fit Your Space's rules, for example because it builds its
 images or mounts folders of this machine, install it from a Compose file you write instead, with
@@ -119,7 +122,10 @@ and CPU limits. An app that runs out of memory is stopped before Your Space itse
 shows the engine Your Space uses and what each app uses.
 
 **Remove.** Removing an app stops and deletes its containers and keeps its data. Installing it
-again offers to reuse the data. Deleting kept data is a separate step, and can't be undone.
+again offers to reuse the data, with the settings it was written with: a setting kept with the data
+keeps its value, even one that was never set, rather than one the kit generates or sets now. A
+secret never set this way leaves the app on its published default, so give it a value in the
+review. Deleting kept data is a separate step, and can't be undone.
 
 **Stop Your Space and its apps.** `docker compose restart` and updates leave apps running.
 `your-space stop` stops everything, apps first; by hand:

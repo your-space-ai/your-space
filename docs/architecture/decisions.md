@@ -663,10 +663,10 @@ app's files by link and exact commit and never copies them, so the app's license
 Space contains no logic for a particular app, and an app with no kit installs if its own files are
 enough. App authors can't be expected to add a section for Your Space, and requiring one would leave
 almost no existing app installable. (Superseded in part 2026-11-23: every installed app has a kit,
-installed from the kit's link, and the directory no longer finds a kit from a Compose link; kits
-still live outside the app's repository, so its authors change nothing. See
-[Kits define apps](#kits-define-apps).) The format is in the
-[kit contract](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
+installed from the kit's link, and the directory no longer finds a kit from a Compose link. A kit
+can still live outside the app's repository, so its authors needn't change anything, or beside the
+app's Compose file in its own repository. See [Kits define apps](#kits-define-apps).) The format
+is in the [kit contract](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
 
 **Decision update (2026-11-14):** The [002 plan](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/plan.md#runtime-manager-docker-adapter)
 sets the approved list of Compose settings for every app, checked against the first two apps'

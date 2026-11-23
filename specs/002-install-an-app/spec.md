@@ -86,7 +86,8 @@ A kit can set a setting to a value Your Space works out itself, such as the app'
 second app, a CRM, needs it in a setting), so the owner isn't asked for it.
 Your Space reads a kit as another input, and contains no app-specific logic. An app with no kit
 installs if its own files are enough. (Superseded 2026-11-23: a kit is the app's definition, and
-apps install only from a kit's link. The kit's `source` names the Compose file; the
+every app installs with one: from the kit's link, or, with the server command, a kit file on this
+machine, alone or with a Compose file given there. The kit's `source` names the Compose file; the
 [kit format](contracts/kit-format.md) says at which commit Your Space reads it. The configured
 directory lists kits and holds review evidence; it no longer finds a kit from a Compose link.)
 
@@ -438,6 +439,9 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
 - **FR-006**: Published defaults for secrets are never used. An installation kit can say which
   values Your Space generates; generated values never appear in output, logs or the review. How the
   owner sees and sets these values is designed with the review screen in slice 3 (see Q3).
+  (2026-11-23: one exception, a reinstall that reuses a removed app's data. A setting kept with the
+  data keeps its value, even an unset one, so a secret never set before leaves the app on its
+  published default until the owner gives it a value; see Q3.)
 - **FR-007**: Apps must come back when Your Space starts, and Your Space must not report a state that
   doesn't match what is running.
 - **FR-008**: Stopping Your Space on purpose stops the apps it manages, and starting it brings them
@@ -671,11 +675,13 @@ request after agreement.
    which values to generate, which to work out (such as the app's own address) and which plain
    values to set from the app's own example settings. Without a kit, any setting whose name says it
    holds a secret and that has a published default gets a generated value (2026-11-23: every app has
-   a kit, and this applies to the settings its kit doesn't generate, derive or set). The review shows each
-   setting; secrets show only as set or generated, never their values, and the owner can give a
-   value for any setting before installing. How to keep less experienced owners safe with apps that
-   have no kit (for example, clearer warnings, or installing only apps with kits by default) is
-   left for later. (Decided 2026-11-23: Your Space installs only apps with kits.)
+   a kit, and this applies to the settings its kit doesn't generate, derive or set; a reinstall that
+   reuses a removed app's data keeps each setting's kept value instead, even an unset one, since the
+   data was written with it). The review shows each setting; secrets show only as set or generated,
+   never their values, and the owner can give a value for any setting before installing. How to keep
+   less experienced owners safe with apps that have no kit (for example, clearer warnings, or
+   installing only apps with kits by default) is left for later. (Decided 2026-11-23: Your Space
+   installs only apps with kits.)
 4. **Q4, processor types (decided 2026-11-14)**: an app installs if its images run on the runtime's
    processor type; nothing more is required.
 5. **Q5, app addresses (decided 2026-11-14)**: every app is at `<app>.<Your Space's address>` in
