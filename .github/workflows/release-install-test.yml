@@ -79,7 +79,7 @@ jobs:
           done
       - name: The npm package installs and reports its version
         run: |
-          npm install --global "./downloads/your-space-$VERSION.tgz"
+          npm install --global "./downloads/your-space-ai-cli-$VERSION.tgz"
           test "$(your-space --version)" = "$VERSION"
       - name: Install and resume with the standalone executable
         run: |

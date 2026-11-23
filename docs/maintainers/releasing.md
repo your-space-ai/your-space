@@ -6,12 +6,12 @@
 | --- | --- | --- | --- |
 | Server, web and runtime images, tagged with the version | Linux AMD64 and ARM64 | GHCR | Every installation |
 | `your-space.tar.gz`, the Compose bundle | Any | GitHub release | `your-space init` and manual installs |
-| `your-space-<version>.tgz`, the CLI npm package | Any machine with Node 22.12 or newer | npm, and the same file on the GitHub release | Mac and Linux users with Node, and agents |
+| `your-space-ai-cli-<version>.tgz`, the CLI npm package `@your-space-ai/cli` | Any machine with Node 22.12 or newer | npm, and the same file on the GitHub release | Mac and Linux users with Node, and agents |
 | `your-space-linux-x64`, `your-space-linux-arm64`, the standalone CLI | Linux Intel/AMD and ARM64 | GitHub release | Servers without Node |
 | `your-space-macos-arm64-<version>.dmg`, `your-space-macos-x64-<version>.dmg`, signed and notarized, with the CLI inside | macOS Apple Silicon and Intel | GitHub release | Mac users |
 | `SHA256SUMS` | — | GitHub release | Checking any download |
 
-Not shipped: `.deb` and `.rpm` packages, standalone macOS CLI downloads, Homebrew, the Linux desktop app and Windows. Add a new download as a new file; keep existing file names, the npm package name `your-space`, the image names and the `SHA256SUMS` format stable, because install guides, scripts and the CLI depend on them.
+Not shipped: `.deb` and `.rpm` packages, standalone macOS CLI downloads, Homebrew, the Linux desktop app and Windows. Add a new download as a new file; keep existing file names, the npm package name `@your-space-ai/cli` (published by the `your-space-ai` npm organization; the command it installs is `your-space`), the image names and the `SHA256SUMS` format stable, because install guides, scripts and the CLI depend on them.
 
 Each piece has its own workflow:
 
@@ -31,7 +31,7 @@ Each piece has its own workflow:
 3. **Run Release draft** on main with that tag. It verifies the tag, pushes the versioned images, builds the CLI files, installs a fresh workspace from them on Linux x64 and ARM64 and resumes it, signs and notarizes both DMGs, and creates a draft GitHub release with the six files and `SHA256SUMS`. Only the versioned images are public at this point; configure their GHCR packages for public pulls. A failed run creates no draft; if an upload leaves a partial draft, inspect it before deleting it and retrying.
 4. **Review the draft** against the checks below. Mark preview versions as prereleases.
 5. **Publish the draft.** Publishing runs Release publish, which checks the npm tarball against `SHA256SUMS`, publishes that exact file to npm (`next` for prereleases, otherwise `latest`) and points the images' `latest` tag at the version (not for prereleases). It needs the `NPM_TOKEN` repository secret. An npm version can never be reused, so publishing is one-way.
-6. **Check the result from a clean machine:** install with `npx your-space@<version>`, with a Linux executable and with a DMG, and confirm each reports the version.
+6. **Check the result from a clean machine:** install with `npx @your-space-ai/cli@<version>`, with a Linux executable and with a DMG, and confirm each reports the version.
 
 The protected macOS signing runner requires an approved Developer ID Application identity, a notarytool profile, and the `macos-release` environment variables described in the [desktop guide](../install/macos-desktop.md). Limit the signing environment and runner group to the reviewed workflow on main.
 
