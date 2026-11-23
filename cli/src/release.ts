@@ -81,7 +81,8 @@ export async function fetchRelease(version: string, folder: string, releaseDir?:
         throw new CliError("checksum_mismatch", "The bundled installation files belong to a different CLI version.");
       }
     }
-    const unpacked = await run("tar", ["-xzf", path, "-C", folder]);
+    // The files belong to whoever unpacks them, never to the build machine's user, even as root.
+    const unpacked = await run("tar", ["--no-same-owner", "-xzf", path, "-C", folder]);
     if (unpacked.code !== 0) throw new CliError("unexpected", `Couldn't unpack ${TARBALL}.`, {}, unpacked.stderr);
   } finally {
     rmSync(path, { force: true });

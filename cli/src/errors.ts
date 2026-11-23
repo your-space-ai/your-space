@@ -33,6 +33,7 @@ const STATUS = {
   download_failed: EXIT.unreachable,
   engine_unreachable: EXIT.unreachable,
   storage_unavailable: EXIT.unreachable,
+  app_failed: EXIT.state,
   unexpected: EXIT.unexpected,
 } as const;
 
@@ -40,7 +41,9 @@ export type ErrorCode = keyof typeof STATUS;
 
 export class CliError extends Error {
   override name = "CliError";
-  readonly code: ErrorCode;
+  /** One of the codes above, or a server command's own code (ServerFailure). */
+  readonly code: string;
+  readonly status: number;
   /** Extra JSON fields, such as the port in use. */
   readonly fields: Record<string, unknown>;
   /** What Compose or the engine said, shown with --verbose and in JSON. */
@@ -49,11 +52,20 @@ export class CliError extends Error {
   constructor(code: ErrorCode, message: string, fields: Record<string, unknown> = {}, detail?: string) {
     super(message);
     this.code = code;
+    this.status = STATUS[code];
     this.fields = fields;
     this.detail = detail;
   }
+}
 
-  get status(): number {
-    return STATUS[this.code];
+/** A server command's failure under its own code and exit status, which follow the same pattern (server.ts). */
+export class ServerFailure extends CliError {
+  override readonly code: string;
+  override readonly status: number;
+
+  constructor(code: string, status: number, message: string, fields: Record<string, unknown>) {
+    super("app_failed", message, fields);
+    this.code = code;
+    this.status = status;
   }
 }

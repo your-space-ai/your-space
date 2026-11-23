@@ -1,6 +1,6 @@
 // An installation is a folder with the release files and `.env` (spec, Key Entities). The CLI reads
 // everything from the folder and the running space, and stores nothing of its own.
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CliError } from "./errors.ts";
 import { parseEnv, setEnv } from "./env-file.ts";
@@ -48,14 +48,17 @@ export class Installation {
   writeEnv(values: Record<string, string | null>): string[] {
     let text = this.envText();
     for (const [key, value] of Object.entries(values)) text = setEnv(text, key, value);
-    writeFileSync(this.envPath, text, { mode: 0o600 });
+    this.writeEnvText(text);
     return Object.entries(values)
       .filter(([, value]) => value !== null)
       .map(([key, value]) => `${key}=${value}`);
   }
 
-  /** Puts `.env` back as it was, word for word. */
+  /** Writes `.env` word for word, as `configure` does to put it back. Only its owner can read it. */
   writeEnvText(text: string): void {
+    // Node applies the mode only to a file it creates, so an existing .env (one copied from
+    // env.example, say) is made owner-only before the new text lands.
+    if (existsSync(this.envPath)) chmodSync(this.envPath, 0o600);
     writeFileSync(this.envPath, text, { mode: 0o600 });
   }
 

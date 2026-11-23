@@ -1,6 +1,6 @@
 // Runs the server's operator commands with --json and keeps their exit statuses, which already
 // follow the same pattern as the CLI's (001 contracts/operator-commands.md).
-import { CliError, type ErrorCode } from "./errors.ts";
+import { CliError, EXIT, ServerFailure, type ErrorCode } from "./errors.ts";
 import type { Compose } from "./compose.ts";
 
 export type ServerCommand = "create-owner" | "reset-link" | "show-secrets" | "show-owner" | "list-apps" | "upgrade-agent-kit" | "install-app";
@@ -34,16 +34,40 @@ const CODES: Record<string, ErrorCode> = {
   no_owner: "no_owner",
   owner_exists: "owner_exists",
   storage_unavailable: "storage_unavailable",
+  unexpected: "unexpected",
 };
+
+/** A plain snake_case code, as the server's commands write them. */
+const SERVER_CODE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
+
+/** What went wrong, in the server's words, or from the fields it named or the reasons it refused a kit. */
+function failureMessage(message: unknown, fields: Record<string, unknown>): string {
+  if (message !== undefined && message !== null) return String(message);
+  // create-owner names each field that fails the account rules instead of one message.
+  const problems = fields.fields ? Object.entries(fields.fields as Record<string, string>).map(([field, problem]) => `${field}: ${problem}`) : [];
+  if (problems.length) return problems.join(" ");
+  // install-app lists why it refused a kit, a `service: reason` line each.
+  const reasons = Array.isArray(fields.refusals)
+    ? fields.refusals.flatMap((r: { service?: unknown; reason?: unknown } | null) =>
+        typeof r?.reason === "string" ? [`  - ${typeof r.service === "string" && r.service ? `${r.service}: ` : ""}${r.reason}`] : [],
+      )
+    : [];
+  if (reasons.length) return [`Your Space can't run ${typeof fields.name === "string" ? fields.name : "this app"} as it is:`, ...reasons].join("\n");
+  return "The server's command failed.";
+}
 
 /** Throws the server command's failure as the CLI's own. */
 export function expectOk(result: ServerResult): Record<string, unknown> {
   if (result.status === 0 && result.json.ok) return result.json;
-  const code = CODES[result.json.error ?? ""] ?? (result.status === 2 ? "owner_exists" : result.status === 3 ? "storage_unavailable" : "unexpected");
-  const { ok: _ok, error: _error, message, ...fields } = result.json;
-  // create-owner names each field that fails the account rules instead of one message.
-  const problems = fields.fields ? Object.entries(fields.fields as Record<string, string>).map(([field, problem]) => `${field}: ${problem}`) : [];
-  throw new CliError(code, String(message ?? (problems.join(" ") || "The server's command failed.")), fields);
+  const { ok: _ok, error, message, ...fields } = result.json;
+  const said = failureMessage(message, fields);
+  if (typeof error === "string" && Object.hasOwn(CODES, error)) throw new CliError(CODES[error]!, said, fields);
+  // Any other code is the server's own, such as `refused` or `name_taken`, kept with its exit status.
+  if (typeof error === "string" && SERVER_CODE.test(error)) {
+    throw new ServerFailure(error, result.status >= EXIT.usage && result.status <= EXIT.unexpected ? result.status : EXIT.unexpected, said, fields);
+  }
+  // Without one, the exit status still says what kind of failure it was: 2 the state, 3 storage.
+  throw new CliError(result.status === EXIT.state ? "app_failed" : result.status === EXIT.unreachable ? "storage_unavailable" : "unexpected", said, fields);
 }
 
 export interface Owner {

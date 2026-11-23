@@ -77,7 +77,13 @@ Compose or the engine gave in `detail` when there was any.
 | `checksum_mismatch` | 2 | The archive failed checksum verification or its packaged image version differs from the CLI version |
 | `engine_unreachable` | 3 | The engine stopped answering |
 | `storage_unavailable` | 3 | The server couldn't read its database |
+| `app_failed` | 2 | A server command exited 2 without a code of its own |
 | `unexpected` | 4 | Anything else |
+
+When a server command the CLI runs fails with a code this table doesn't have, the CLI reports that
+code and the server's exit status, with the server's other fields. For example, `app install-local`
+gives `refused` with `name` and `refusals` (`{ service, reason }`) when Your Space can't run a kit,
+and its message lists them.
 
 ### The summary (`start`, `status`)
 
@@ -137,7 +143,7 @@ Compose or the engine gave in `detail` when there was any.
 | Command | Compose and server commands, in the installation's folder |
 | --- | --- |
 | `engine check` | Reads the local Docker endpoint, `docker version --format json` and `docker compose version --short` |
-| `init` | Downloads `your-space.tar.gz` and `SHA256SUMS` from the release of the CLI's version, checks the hash, `tar -xzf`, copies `env.example` to `.env`, sets the setup's lines |
+| `init` | Downloads `your-space.tar.gz` and `SHA256SUMS` from the release of the CLI's version, checks the hash, `tar --no-same-owner -xzf`, copies `env.example` to `.env`, sets the setup's lines |
 | `start` | `docker compose up -d --wait`; then `show-owner --json`, and `create-owner --json` when there is none and owner creation is enabled; `list-apps --json` |
 | `stop` | `docker compose exec -T runtime stop-apps`, then `docker compose stop` |
 | `status` | `docker compose ps --format json`, `show-owner --json`, `list-apps --json` |
