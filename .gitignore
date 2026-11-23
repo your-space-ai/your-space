@@ -9,5 +9,7 @@ playwright-report/
 .DS_Store
 __pycache__/
 screenshots/
-# Copied from the repository root when the npm package is packed.
+# Copied from the repository root when the npm packages are packed.
 cli/LICENSE
+npm/your-space/LICENSE
+npm/your-space-ai/LICENSE
