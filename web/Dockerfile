@@ -11,7 +11,8 @@ RUN npm ci --workspace web --no-audit --no-fund
 COPY shared/appearance/theme.mjs shared/appearance/theme.mjs
 COPY shared/workspace-layout/model.mjs shared/workspace-layout/model.mjs
 COPY web web
-RUN npm run build --workspace web
+# The build writes the bundled packages' licenses to licenses/THIRD-PARTY.md, which the image serves.
+RUN npm run build --workspace web && test -s web/dist/licenses/THIRD-PARTY.md
 
 # Caddy serves the built web client and forwards /api to the server (research R2, R9).
 FROM caddy:2.11
