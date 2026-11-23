@@ -3,13 +3,17 @@
 ## Run a workspace
 
 - [Try the dashboard from source](install/from-source.md) with Docker and a sample app.
-- [Install and operate a workspace](install/README.md) on your computer, behind a proxy, or at your own domain. The guide covers owner recovery, secrets and agent permissions.
+- [Install Your Space](install/README.md) with the `your-space` command, or [by hand](install/manual.md) with Docker Compose.
+- [Use it from other devices](install/other-devices.md): your own domain, your own reverse proxy, or Tailscale.
+- [Run Your Space](operate/README.md): everyday commands, sessions, restarts and your data, and what it encrypts.
+- [Recover secrets and the owner account](operate/recovery.md).
 - [Run the Mac launcher](install/macos-desktop.md) to set up a local workspace or connect to a server.
 - [Set up with an agent](install/agent-setup.md) from an authorized shell.
 - [Customize the appearance](appearance.md) and share a theme file.
 
 ## Build and customize apps
 
+- [Install and publish apps](apps/install-apps.md), and [give an agent access to one app](apps/agent-access.md).
 - [Build a Home app](apps/build-an-app.md) that displays data from the apps and read roles you choose.
 - [Connect GitHub](apps/github-connection.md) to make public or private repositories available to your workspace.
 - [Manage repositories and installation kits](apps/managed-repositories.md) to customize a source, import kits, and review a deployment.

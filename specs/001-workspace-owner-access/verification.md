@@ -1,7 +1,7 @@
 # Verification Record: Workspace Setup and Owner Access
 
-This records what was checked for [spec 001](../../specs/001-workspace-owner-access/spec.md), where,
-with which versions, and what was not checked. The [installation guide](README.md) claims support only
+This records what was checked for [spec 001](spec.md), where,
+with which versions, and what was not checked. The [installation guide](../../docs/install/README.md) claims support only
 for what is listed here as verified (SC-010).
 
 **Date:** 2026-11-08 · **Pull request:** [#15](https://github.com/your-space-ai/your-space/pull/15)
@@ -20,7 +20,7 @@ for what is listed here as verified (SC-010).
 | Idle stack memory under 512 MB (plan constraint) | Pass: 237 MiB (about 250 MB) |
 | Quickstart on an Apple Silicon Mac | **Not run** |
 | Quickstart on a real Intel/AMD Linux host, HTTPS with a real domain, Tailscale | **Not run** |
-| Published multi-architecture images (`images.yml`) | **Not run**: the workflow runs on GitHub on a release, or when started by hand |
+| Published multi-architecture images (`images.yml`, now `release-images.yml`) | **Not run**: the workflow runs on GitHub on a release, or when started by hand |
 | IPv6 | **Not supported yet**; not run |
 
 ## Where It Ran
@@ -174,7 +174,7 @@ tries to contact, not a completed certificate exchange.
 These are required before the guide can claim them. They need real machines and a real domain:
 
 - **Apple Silicon (ARM) and a physical Intel/AMD Linux host** (FR-022, SC-011). Only the x86_64
-  sandbox above was used. The ARM image is built by `.github/workflows/images.yml` with QEMU, but no
+  sandbox above was used. The ARM image is built by `.github/workflows/images.yml` (now `release-images.yml`) with QEMU, but no
   ARM image has been run.
 - **macOS 15 and 26 with Docker Desktop, Debian 13** (plan, research R15): not run.
 - **HTTPS with a real domain**: obtaining and renewing a Let's Encrypt certificate (User Story 1,

@@ -178,7 +178,7 @@ function recovery(missing: SecretSpec[]): string {
       "installation already has a database. Your Space won't make new ones without asking, because the",
       "database only accepts the password it was created with. To recover, do one of these:",
       `  - ${RESTORE} as BETTER_AUTH_SECRET and POSTGRES_PASSWORD;`,
-      '  - or start with new ones by following "Lost Secrets" in the installation guide.',
+      '  - or start with new ones by following "Lost Secrets" in the recovery guide (docs/operate/recovery.md).',
     ].join("\n");
   }
   if (missing[0] === AUTH_SECRET) {
@@ -195,7 +195,7 @@ function recovery(missing: SecretSpec[]): string {
     "The database password isn't in .env or in the ys-secrets volume, but the database already exists,",
     "and it only accepts the password it was created with. Your Space won't make a new one. To recover:",
     `  - ${RESTORE} as POSTGRES_PASSWORD;`,
-    '  - or set a new one by following "Lost Secrets" in the installation guide.',
+    '  - or set a new one by following "Lost Secrets" in the recovery guide (docs/operate/recovery.md).',
   ].join("\n");
 }
 

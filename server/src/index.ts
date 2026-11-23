@@ -46,7 +46,7 @@ for (let attempt = 1; ; attempt++) {
       console.error(
         "PostgreSQL refused the database password. It keeps the password it was first created with, so " +
           "if POSTGRES_PASSWORD in .env changed, change it back, or give PostgreSQL the new one: see " +
-          "\"Give PostgreSQL the Database Password\" in the installation guide.",
+          "\"Give PostgreSQL the Database Password\" in the recovery guide (docs/operate/recovery.md).",
       );
       process.exit(1);
     }

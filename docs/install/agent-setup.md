@@ -18,7 +18,7 @@ On success, return the `workspaceUrl` and, when present, the `handoffFile` path 
 
 ## Resume and manage
 
-Re-run the same command and workdir after resolving a missing engine, unavailable images or a startup failure. It reuses the installation and keeps the existing owner, credentials and data. An existing installation with no handoff file returns `owner: "present"` and `handoffFile: null`. It can also return the path to the original file after the link was used or expired. Setup never renews or consumes that link. If a handoff expired or file storage failed during creation, the authorized owner can use [operator recovery](README.md#recover-the-owner-account) in a private terminal.
+Re-run the same command and workdir after resolving a missing engine, unavailable images or a startup failure. It reuses the installation and keeps the existing owner, credentials and data. An existing installation with no handoff file returns `owner: "present"` and `handoffFile: null`. It can also return the path to the original file after the link was used or expired. Setup never renews or consumes that link. If a handoff expired or file storage failed during creation, the authorized owner can use [operator recovery](../operate/recovery.md#recover-the-owner-account) in a private terminal.
 
 For routine operations, use `your-space status --workdir <folder> --json`, `your-space logs --workdir <folder>`, `your-space stop --workdir <folder>` and `your-space start --workdir <folder> --no-open`. Keep the installation folder, named volumes and generated secrets. To change an already initialized port, use `your-space configure --workdir <folder> --this-machine --port <port>`. Establish agent identities and grants separately after owner sign-in.
 
