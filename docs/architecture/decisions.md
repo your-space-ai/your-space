@@ -6,7 +6,7 @@ title: "Your Space Architecture and Product Decisions"
 
 **Recorded**: 2026-10-28
 
-**Last updated**: 2026-11-21
+**Last updated**: 2026-11-23
 
 **Scope**: Project-wide direction, independent of any feature specification
 
@@ -25,6 +25,8 @@ One useful action in a real connected app, with attribution, denial, and revocat
 **Owner update (2026-11-21).** The first public release also requires a downloadable macOS Electron app. On first launch the owner chooses between setting up a local workspace and connecting to an existing server by URL. Local setup detects a Docker engine, lets the owner override that choice, guides them through installation or startup if needed, and drives the existing Your Space CLI and owner setup. Connecting to a server works on a Mac without Docker. Both paths open the selected server's dashboard, where the owner can review and apply installation kits. The headless Docker and browser paths still ship. Journey [008](https://github.com/your-space-ai/your-space/blob/main/specs/008-desktop-entry/spec.md) owns desktop entry and packaging. Journey 005 still owns agent identity, grants and approvals. Windows and Linux desktop downloads, a bundled engine or VM, and the remaining desktop lifecycle features follow publication.
 
 **Source preview (2026-11-21).** Prepare a quiet source preview with a Docker quickstart before the first tagged product release. The owner reviews exposure before changing repository visibility. The Mac download, clean-install checks and marketing launch follow separately. Public pull requests use ordinary CI without the maintainer’s subscription-backed reviewer.
+
+**Workspace redesign (2026-11-23).** The first packaged release includes journey [013](https://github.com/your-space-ai/your-space/blob/main/specs/013-workspace-redesign/spec.md), the workspace redesign. Every packaged release, the alpha prerelease included, waits for its delivery: theme format version 2 through the copy pass, in the order the spec gives. 013 supersedes the presentation of journey 010 and the view behavior of 012; their storage, sharing and permission rules still apply. This decision doesn't place the two features the spec leaves to their own specifications: moving owner creation into first run, and agents requesting more access.
 
 ### Portable workspace appearance
 
@@ -1050,7 +1052,7 @@ This is a developing release roadmap, not a complete acceptance specification or
 
 ### Journey-Based Specifications
 
-**Current scope (2026-11-21).** 001–003 supply the foundation. Both 005 agent access and 008 macOS desktop entry must pass before release. Journeys 004, 006, 007 and the rest of 008 follow publication. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
+**Current scope (2026-11-21).** 001–003 supply the foundation. Both 005 agent access and 008 macOS desktop entry must pass before release. (2026-11-23: so must 013, the workspace redesign; see the [personal dashboard decision](#personal-dashboard-release-boundary).) Journeys 004, 006, 007 and the rest of 008 follow publication. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
 
 **Decision update (2026-11-02):** Pre-public work is specified as eight user journeys rather than one specification per roadmap capability. Each journey follows a person from where they start to a result they can see, so one specification covers many roadmap items and is tested the way people will use it. The [spec map](https://github.com/your-space-ai/your-space/blob/main/specs/README.md) lists the journeys, what each covers, and the build order.
 

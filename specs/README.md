@@ -19,6 +19,8 @@ The [roadmap](../docs/roadmap.md) tracks delivery. Open a specification below fo
 
 008 reuses 001 owner setup, 002 installation kits and the 003 CLI. macOS desktop entry and 005 agent access have independent acceptance checks. Both precede the product release.
 
+013 redesigns the dashboard that the other journeys use and supersedes 010's presentation and 012's view behavior. It also precedes the product release, delivered in the order its spec gives.
+
 The roadmap tracks [004 teams](../docs/roadmap.md#accounts-and-access), [006 lifecycle tooling](../docs/roadmap.md#workspace-and-hosting), [007 developer ecosystem](../docs/roadmap.md#apps-and-kits), and [broader 008 desktop support](../docs/roadmap.md#dashboard-and-desktop) as later work. The existing specifications and their historical task records keep their original scope.
 
 ## Rules Every Spec Follows
