@@ -16,7 +16,7 @@ import { app, installJob } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY } from "./helpers/env.ts";
 import { runCommand } from "./helpers/commands.ts";
-import { fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
+import { COMMIT, fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
 
 const COMPOSE = `services:
   web:
@@ -33,7 +33,7 @@ outbound: [example.com]
 `;
 // A kit written for an app's file on GitHub, given with a Compose file adapted from it.
 const GITHUB_KIT = `kit: 1
-source: { repo: ys-fixtures/notes, path: compose.yaml }
+source: { repo: ys-fixtures/notes, path: compose.yaml, commit: ${COMMIT} }
 name: notes
 title: Notes
 `;
@@ -106,7 +106,7 @@ describe("a Compose file on this machine", () => {
     expect(parseKit(KIT).source).toBeUndefined();
     expect(kitFromFile(KIT, null).kit).toMatchObject({ name: "notes", outbound: ["example.com"] });
     expect(kitFromFile(GITHUB_KIT, null).kit.name).toBe("notes");
-    expect(() => kitFromFile(KIT, { repo: "ys-fixtures/notes", path: "compose.yaml" })).toThrow(/names no source file/);
+    expect(() => kitFromFile(KIT, { repo: "ys-fixtures/notes", path: "compose.yaml" })).toThrow(/names no Compose file in source/);
     // The kit is a file, never a folder of kits.
     expect(() => readLocalKit(folder)).toThrow(KitFileError);
   });
@@ -200,7 +200,7 @@ describe("installing from a Compose file on this machine", () => {
 
   it("can reuse data kept under its name, from an app installed from GitHub too, only when asked", async () => {
     // A kit file without source is for a Compose file on this machine, not for an app's file on GitHub.
-    await expect(apps.preview({ text: KIT })).rejects.toThrow(/names no source file/);
+    await expect(apps.preview({ text: KIT })).rejects.toThrow(/names no Compose file/);
     const linked = await apps.preview({ text: GITHUB_KIT.replace("name: notes", "name: shared") });
     await (await apps.install(linked.previewId, {}, false, actor)).done;
     await apps.remove("shared", actor);

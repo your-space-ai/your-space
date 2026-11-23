@@ -1,9 +1,8 @@
 // Installation kits (component D, FR-002a, contracts/kit-format.md): an app's definition in Your
-// Space, kept in a separate repository and read as data. Every app installs from one (decision
-// 2026-11-23). Your Space has no app-specific logic.
+// Space, a file anywhere on GitHub, read as data, that names the app's Compose file at an exact
+// commit. Every app installs from one (decision 2026-11-23). Your Space has no app-specific logic.
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
-import { posix } from "node:path";
 import { parse } from "yaml";
 import { parseAgentAccess, AgentKitError } from "./agent-kit.ts";
 import type { Kit } from "../db/schema.ts";
@@ -36,6 +35,9 @@ const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const HOST = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
 const TOP_KEYS = new Set(["kit", "source", "name", "title", "interface", "pane", "generate", "derive", "set", "secrets", "outbound", "limits"]);
+const SOURCE_KEYS = new Set(["repo", "path", "commit"]);
+/** A full commit SHA, as GitHub gives it. */
+const COMMIT = /^[0-9a-f]{40}$/;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -62,20 +64,34 @@ export function parseKit(text: string): Kit {
   if (data.kit === undefined && isObject(data.services)) throw new NotAKitError();
   for (const key of Object.keys(data)) if (!TOP_KEYS.has(key) && !(data.kit === 2 && key === "agentAccess")) throw new KitError(`it has the unknown field ${key}.`);
   if (data.kit !== 1 && data.kit !== 2) throw new KitError("it is for a kit format this Your Space doesn't know (use kit: 1 or kit: 2).");
-  // A kit for a Compose file given on this machine (install-app --compose) may leave out source, and
-  // a kit linked from GitHub without it names the compose.yaml beside it (composeOf).
+  // The source names the app's Compose file at an exact commit (contracts/kit-format.md). Only a kit
+  // given with a Compose file on this machine (install-app --compose) may leave it out (composeOf).
   const source = data.source;
-  if (source !== undefined && (!isObject(source) || typeof source.repo !== "string" || typeof source.path !== "string")) {
-    throw new KitError("it must name the source repo and path it fits.");
+  if (source !== undefined) {
+    if (!isObject(source) || typeof source.repo !== "string" || typeof source.path !== "string") {
+      throw new KitError("its source must name the app's Compose file with source.repo, source.path and source.commit.");
+    }
+    for (const key of Object.keys(source)) if (!SOURCE_KEYS.has(key)) throw new KitError(`its source has the unknown field ${key}.`);
+    // The path is read at that commit, so it can't step out of it with . or ..
+    if (!REPOSITORY.test(source.repo) || source.repo.split("/").some((part) => part === "." || part === "..")) {
+      throw new KitError("its source.repo must be a GitHub owner/repository.");
+    }
+    if (source.path.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
+      throw new KitError("its source.path must be a file's path in the repository, with no empty, . or .. parts.");
+    }
+    if (source.commit === undefined) {
+      throw new KitError(
+        `its source has no commit. Add source.commit, the full 40-character commit of ${source.repo} to read ${source.path} at: Your Space reads the app's Compose file at exactly that commit, never at a branch's latest one.`,
+      );
+    }
+    if (typeof source.commit !== "string" || !COMMIT.test(source.commit)) {
+      throw new KitError("its source.commit must be a full 40-character commit in lower case, not a branch, a tag or a short commit.");
+    }
   }
-  // The path is read at the commit Your Space records, so it can't step out of it with . or ..
-  if (source !== undefined && (!REPOSITORY.test(source.repo as string) || (source.repo as string).split("/").some((part) => part === "." || part === ".."))) {
-    throw new KitError("its source repo must be a GitHub owner/repository.");
-  }
-  if (source !== undefined && (source.path as string).split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
-    throw new KitError("its source path must be a file's path in the repository, with no empty, . or .. parts.");
-  }
-  const kit: Kit = { kit: data.kit, ...(source !== undefined ? { source: { repo: source.repo as string, path: source.path as string } } : {}) };
+  const kit: Kit = {
+    kit: data.kit,
+    ...(source !== undefined ? { source: { repo: source.repo as string, path: source.path as string, commit: source.commit as string } } : {}),
+  };
   if (data.kit === 2) {
     try {
       kit.agentAccess = parseAgentAccess(data.agentAccess);
@@ -228,7 +244,7 @@ function misfit(kit: Kit, repo: string, path: string): KitError {
   return new KitError(
     kit.source
       ? `it is for ${kit.source.repo}/${kit.source.path}, not ${repo}/${path}.`
-      : "it names no source file, so it is for a Compose file given on this machine with install-app --compose.",
+      : "it names no Compose file in source, so it goes only with a Compose file given on this machine (install-app --compose).",
   );
 }
 
@@ -247,18 +263,18 @@ export function kitFromFile(text: string, file: { repo: string; path: string } |
 }
 
 /**
- * The Compose file a kit names (contracts/kit-format.md): its `source`, read at the kit's own commit
- * when it is in the kit's repository, or at the head of its repository's default branch (commit
- * null). A kit linked from GitHub without `source` names the compose.yaml beside it. A kit file given
- * on this machine (`at` null) names no file without `source`.
+ * The Compose file a parsed kit names (contracts/kit-format.md): its `source`, at the exact commit the
+ * kit pins. Nothing is read at a branch's latest commit. Only a kit given with a Compose file on this
+ * machine leaves out `source`, so any other kit without it is refused.
  */
-export function composeOf(kit: Kit, at: { repo: string; path: string; commit: string } | null): { repo: string; path: string; commit: string | null } | null {
-  if (kit.source) {
-    const same = at !== null && kit.source.repo.toLowerCase() === at.repo.toLowerCase();
-    return { repo: kit.source.repo, path: kit.source.path, commit: same ? at.commit : null };
+export function composeOf(kit: Kit): { repo: string; path: string; commit: string } {
+  if (!kit.source) {
+    throw new KitError(
+      "it names no Compose file. Add source with the app's Compose file's repo, path and commit. Only a kit given with a Compose file on this machine (install-app --compose) leaves out source.",
+    );
   }
-  if (!at) return null;
-  return { repo: at.repo, path: posix.join(posix.dirname(at.path), "compose.yaml"), commit: at.commit };
+  // parseKit refuses a source without its commit; only a kit stored before kits pinned one lacks it.
+  return { repo: kit.source.repo, path: kit.source.path, commit: kit.source.commit! };
 }
 
 /** A review can follow unchanged kit bytes through an unrelated repository commit.

@@ -20,7 +20,7 @@ const COMPOSE = `services:
     ports: ["8000:80"]
 `;
 const KIT = `kit: 1
-source: { repo: ys-fixtures/Private-App, path: compose.yaml }
+source: { repo: ys-fixtures/Private-App, path: compose.yaml, commit: ${COMMIT} }
 name: private-app
 title: Private App
 interface: { service: web, port: 80 }

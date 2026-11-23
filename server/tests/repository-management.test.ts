@@ -8,10 +8,11 @@ import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { encrypt } from "../src/apps/settings.ts";
 import { transaction } from "../src/agents/store.ts";
 import { createAgent, manageKey } from "../src/agents/owner.ts";
-import { previewSnapshot } from "../src/repositories/sources.ts";
 
 let db: TestDatabase, server: TestServer, cookie: string, actor: string, agent: string, authorization: string;
 const commit = "a".repeat(40);
+/** An older commit, which kits pin their Compose files to. */
+const pinned = "c".repeat(40);
 const fixture = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
 const meta = (id: number, full_name: string, hidden = false) => ({
   id,
@@ -138,14 +139,15 @@ it("pins catalog entries and both sources in the ordinary installation preview",
           tree: [{ mode: "100644", type: "blob", path: "apps/fixture/dashboard.yaml" }],
         });
       if (path === "/repositories/11/contents/apps/fixture/dashboard.yaml")
-        return fixture(file("kit: 1\nname: morning-board\nsource: { repo: fixture/dashboard, path: compose.yaml }"));
+        return fixture(file(`kit: 1\nname: morning-board\nsource: { repo: fixture/dashboard, path: compose.yaml, commit: ${pinned} }`));
       if (path === "/repos/fixture/dashboard") {
         expect(new Headers(init?.headers).has("authorization")).toBe(false);
         return fixture(meta(22, "fixture/dashboard"));
       }
       if (path.includes("/commits/")) return fixture({ sha: commit });
       if (path === "/repositories/22/contents/compose.yaml") {
-        expect(new URL(String(url)).searchParams.get("ref")).toBe(commit);
+        // At the commit the kit pins, never the head of the repository's default branch.
+        expect(new URL(String(url)).searchParams.get("ref")).toBe(pinned);
         return fixture(file("services:\n  web: { image: example/web:1 }"));
       }
       return fixture({}, 404);
@@ -157,7 +159,7 @@ it("pins catalog entries and both sources in the ordinary installation preview",
   );
   const response = await call("/api/kits/preview", "POST", { kitUrl: listing.kits[0].kitUrl });
   expect(response.status).toBe(200);
-  expect(await response.json()).toMatchObject({ name: "morning-board" });
+  expect(await response.json()).toMatchObject({ name: "morning-board", source: { repo: "fixture/dashboard", commit: pinned } });
   expect((await call("/api/kits/preview", "POST", { kitUrl: "https://unrelated.invalid/kit.yaml" })).status).toBe(400);
 });
 
@@ -165,6 +167,7 @@ it("uses direct kit URLs without a directory and trusts only exact evidence from
   const text = "\uFEFF" + JSON.stringify({
     kit: 2,
     name: "demo",
+    source: { repo: "fixture/app", path: "compose.yaml", commit: pinned },
     agentAccess: { credential: { binding: "service", inject: { location: "header", name: "X-API-Key" } }, roles: {}, routes: {} },
   });
   const digest = createHash("sha256").update(text).digest("hex");
@@ -202,7 +205,7 @@ it("recognizes a separately committed review when the owner chooses a directory 
   const path = "apps/fixture/app.yaml";
   const kitText = JSON.stringify({
     kit: 2, name: "demo",
-    source: { repo: "fixture/app", path: "compose.yaml" },
+    source: { repo: "fixture/app", path: "compose.yaml", commit: pinned },
     agentAccess: { credential: { binding: "service", inject: { location: "header", name: "X-API-Key" } }, roles: {}, routes: {} },
   });
   const digest = createHash("sha256").update(kitText).digest("hex");
@@ -215,7 +218,6 @@ it("recognizes a separately committed review when the owner chooses a directory 
     const ref = url.searchParams.get("ref");
     if (route === "/repos/" + directory) return fixture({ ...meta(11, directory, true), default_branch: "catalog/stable" });
     if (route === "/repos/fixture/app") return fixture(meta(22, "fixture/app"));
-    if (route === "/repositories/22/commits/main") return fixture({ sha: commit });
     if (route === "/repositories/22/contents/compose.yaml") return fixture(file("services:\n  web: { image: example/web:1 }"));
     if (route === "/repositories/11/commits/catalog/stable" || route === "/repositories/11/commits/" + directoryAt)
       return fixture({ sha: directoryAt });
@@ -249,7 +251,7 @@ it("requires an explicit import before following a linked kit to a different pri
       if (path === "/repos/owner/kits") return fixture(meta(11, "owner/kits"));
       if (path.includes("/commits/")) return fixture({ sha: commit });
       if (path.endsWith("/contents/kit.yaml"))
-        return fixture(file("kit: 1\nsource: {repo: owner/private, path: compose.yaml}"));
+        return fixture(file(`kit: 1\nsource: {repo: owner/private, path: compose.yaml, commit: ${pinned}}`));
       if (path === "/repos/owner/private") expect(new Headers(init?.headers).has("authorization")).toBe(false);
       return fixture({}, 404);
     }),
@@ -258,11 +260,6 @@ it("requires an explicit import before following a linked kit to a different pri
     (await call("/api/kits/preview", "POST", { kitUrl: "https://github.com/owner/kits/blob/main/kit.yaml" })).status,
   ).toBe(403);
   expect(calls.some((path) => path.includes("contents/compose.yaml"))).toBe(false);
-});
-
-it("installs from a managed repository only with a kit in it", () => {
-  const snapshot = { repo: "owner/app", repoId: "10", ref: "main", commit, composePath: "compose.yaml", composeText: "services: {}", kitPath: null, kitText: null };
-  expect(() => previewSnapshot(server.apps!, snapshot)).toThrow(expect.objectContaining({ code: "kit_required", message: expect.stringMatching(/Every app installs with a kit/) }));
 });
 
 it("reads a linked kit through the connection, refusing a Compose file and naming a kit it can't see", async () => {
@@ -284,21 +281,40 @@ it("reads a linked kit through the connection, refusing a Compose file and namin
   expect(await hidden.json()).toMatchObject({ error: "kit_not_found", message: expect.stringMatching(/connect GitHub with private access/) });
 });
 
-it("installs from a managed repository with the kit.yaml beside its Compose file unless told another", async () => {
-  const kit = "kit: 1\nname: desk\ninterface: { service: web, port: 80 }\n";
+it("installs from a managed repository with its kit.yaml, or another named, at the Compose commit the kit pins", async () => {
+  const kits: Record<string, string> = {
+    "kit.yaml": `kit: 1\nname: desk\nsource: { repo: owner/desk, path: compose.yaml, commit: ${pinned} }\ninterface: { service: web, port: 80 }\n`,
+    "beside.yaml": "kit: 1\nname: desk\ninterface: { service: web, port: 80 }\n",
+    "unpinned.yaml": "kit: 1\nname: desk\nsource: { repo: owner/desk, path: compose.yaml }\n",
+  };
+  const reads: string[] = [];
   const provider = vi.fn<typeof fetch>(async (url) => {
     const u = new URL(String(url));
     if (u.pathname === "/repos/owner/desk" || u.pathname === "/repositories/41") return fixture(meta(41, "owner/desk", true));
     if (u.pathname.startsWith("/repositories/41/commits/")) return fixture({ sha: commit });
-    if (u.pathname === "/repositories/41/contents/compose.yaml") return fixture(file("services:\n  web: { image: example/web:1 }\n"));
-    if (u.pathname === "/repositories/41/contents/kit.yaml") return fixture(file(kit));
+    const path = u.pathname.slice("/repositories/41/contents/".length);
+    reads.push(path + "@" + u.searchParams.get("ref"));
+    if (path === "compose.yaml" && u.searchParams.get("ref") === pinned) return fixture(file("services:\n  web: { image: example/web:1 }\n"));
+    if (Object.hasOwn(kits, path) && u.searchParams.get("ref") === commit) return fixture(file(kits[path]!));
     return fixture({}, 404);
   });
   vi.stubGlobal("fetch", provider);
   expect((await call(repoApi + "/import", "POST", { fullName: "owner/desk" })).status).toBe(200);
-  const review = await call(repoApi + "/41/install/preview", "POST", {});
+  // The kit names the Compose file; a Compose path in the request changes nothing.
+  const review = await call(repoApi + "/41/install/preview", "POST", { composePath: "other.yaml" });
   expect(review.status).toBe(200);
-  expect(await review.json()).toMatchObject({ name: "desk", kit: { repo: "owner/desk", path: "kit.yaml", commit } });
-  const other = await call(repoApi + "/41/install/preview", "POST", { kitPath: "deploy/kit.yaml" });
-  expect(other.status).toBe(404);
+  expect(await review.json()).toMatchObject({
+    name: "desk",
+    source: { repo: "owner/desk", path: "compose.yaml", commit: pinned },
+    kit: { repo: "owner/desk", path: "kit.yaml", commit },
+  });
+  expect(reads).toEqual(["kit.yaml@" + commit, "compose.yaml@" + pinned]);
+  const missing = await call(repoApi + "/41/install/preview", "POST", { kitPath: "deploy/kit.yaml" });
+  expect(missing.status).toBe(400);
+  expect(await missing.json()).toMatchObject({ error: "kit_required", message: expect.stringMatching(/no kit at deploy\/kit\.yaml.*Every app installs with a kit/) });
+  // Without source, or without its commit, the kit doesn't pin the Compose file, so it is refused.
+  const beside = await call(repoApi + "/41/install/preview", "POST", { kitPath: "beside.yaml" });
+  expect(await beside.json()).toMatchObject({ error: "invalid_kit", message: expect.stringMatching(/names no Compose file/) });
+  const unpinned = await call(repoApi + "/41/install/preview", "POST", { kitPath: "unpinned.yaml" });
+  expect(await unpinned.json()).toMatchObject({ error: "invalid_kit", message: expect.stringMatching(/source has no commit\. Add source\.commit/) });
 });

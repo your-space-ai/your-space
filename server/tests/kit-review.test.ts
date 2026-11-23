@@ -4,7 +4,7 @@ import { kitFromFile, kitFromLink } from "../src/apps/kits.ts";
 
 const kit = "\uFEFF" + JSON.stringify({
   kit: 2,
-  source: { repo: "example/app", path: "compose.yaml" },
+  source: { repo: "example/app", path: "compose.yaml", commit: "c".repeat(40) },
   agentAccess: { credential: { binding: "service", inject: { location: "header", name: "X-API-Key" } }, roles: {}, routes: {} },
 });
 const revision = "a".repeat(40);

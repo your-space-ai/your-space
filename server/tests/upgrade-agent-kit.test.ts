@@ -137,7 +137,7 @@ it("rejects retargeting, nonlocal or stale sources, changed settings, and invali
   for (const patch of [
     { title: "Changed" },
     { limits: { ui: { memory: "512M" } } },
-    { source: { repo: "someone/records", path: "compose.yaml" } },
+    { source: { repo: "someone/records", path: "compose.yaml", commit: "c".repeat(40) } },
     { interface: { service: "other", port: 8080 } },
     { generate: {} },
     { set: {} },
@@ -159,15 +159,20 @@ it("rejects retargeting, nonlocal or stale sources, changed settings, and invali
 
 it("checks the source for GitHub Compose installs and accepts equivalent normalized kit fields", async () => {
   const source = { repo: "example/records", path: "container/compose.yaml" };
-  const original = kitFromFile(JSON.stringify({ ...base, source }), source);
+  const pin = { ...source, commit: "c".repeat(40) };
+  const original = kitFromFile(JSON.stringify({ ...base, source: pin }), source);
   await t.db
     .update(app)
-    .set({ ...source, kit: original.kit, kitSource: original.source })
+    .set({ ...source, commit: pin.commit, kit: original.kit, kitSource: original.source })
     .where(eq(app.id, id));
   await expect(upgradeAgentKit(t.db, "records", generation, original.source, candidateText)).rejects.toMatchObject({
     name: "KitError",
   });
-  const text = JSON.stringify({ ...candidate, source, limits: { ui: { memory: 128 * 1024 * 1024 } }, set: { BATCH: "20" } });
+  // The kit pins the installed Compose commit; an upgrade can't move it to another.
+  await expect(
+    upgradeAgentKit(t.db, "records", generation, original.source, JSON.stringify({ ...candidate, source: { ...pin, commit: "d".repeat(40) } })),
+  ).rejects.toMatchObject({ code: "upgrade_conflict" });
+  const text = JSON.stringify({ ...candidate, source: pin, limits: { ui: { memory: 128 * 1024 * 1024 } }, set: { BATCH: "20" } });
   await expect(upgradeAgentKit(t.db, "records", generation, original.source, text)).resolves.toMatchObject({
     kitSource: kitFromFile(text, source).source,
   });

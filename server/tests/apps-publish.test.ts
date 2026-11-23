@@ -9,7 +9,7 @@ import { app, event, installJob } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
-import { fakeGithub, FakeRuntime, kitLink, plainKit } from "./helpers/runtime.ts";
+import { COMMIT, fakeGithub, FakeRuntime, kitLink, plainKit } from "./helpers/runtime.ts";
 import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
 
 const COMPOSE = `services:
@@ -22,7 +22,7 @@ const COMPOSE = `services:
 `;
 // A kit whose settings follow the app's address, as Plane's WEB_URL and CORS origins do.
 const KIT = `kit: 1
-source: { repo: ys-fixtures/linked, path: compose.yaml }
+source: { repo: ys-fixtures/linked, path: compose.yaml, commit: ${COMMIT} }
 name: linked
 title: Linked
 interface: { service: web, port: 80 }
@@ -33,7 +33,7 @@ derive:
 `;
 // A kit for an app that can't run in a pane.
 const NOPANE_KIT = `kit: 1
-source: { repo: ys-fixtures/nopane, path: compose.yaml }
+source: { repo: ys-fixtures/nopane, path: compose.yaml, commit: ${COMMIT} }
 name: nopane
 title: No pane
 interface: { service: web, port: 80 }

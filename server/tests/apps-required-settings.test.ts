@@ -5,7 +5,7 @@ import { operatorActorId } from "../src/actors.ts";
 import { AppsService } from "../src/apps/service.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY } from "./helpers/env.ts";
-import { fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
+import { COMMIT, fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
 
 const COMPOSE = `services:
   web:
@@ -18,7 +18,7 @@ const COMPOSE = `services:
 `;
 // The app's kit says nothing about these settings, so the file's own rules apply.
 const KIT_LINK = "https://github.com/ys-fixtures/kits/blob/main/needs.yaml";
-const KIT = "kit: 1\nsource: { repo: ys-fixtures/needs, path: compose.yaml }\n";
+const KIT = `kit: 1\nsource: { repo: ys-fixtures/needs, path: compose.yaml, commit: ${COMMIT} }\n`;
 
 describe("an app whose file requires settings", () => {
   let t: TestDatabase;

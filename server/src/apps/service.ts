@@ -20,7 +20,7 @@ import {
   type Publish,
 } from "../db/schema.ts";
 import { errorFields, log } from "../log.ts";
-import { fetchLatestFile, fetchPinnedFile, githubEndpoints, SourceError, type GithubEndpoints, type SourceFile } from "./github.ts";
+import { fetchPinnedFile, githubEndpoints, SourceError, type GithubEndpoints, type SourceFile } from "./github.ts";
 import { composeOf, kitFromFile, kitFromLink, KitError, kitIdentity, NotAKitError, type FoundKit } from "./kits.ts";
 import { localSource, type LocalCompose } from "./local.ts";
 import { RuntimeError, type AppSpec, type CheckAnswer, type Runtime, type ServiceState } from "./runtime-client.ts";
@@ -326,10 +326,11 @@ export class AppsService {
   // ----- Preview and install (FR-011) -----
 
   /**
-   * Reviews an app from its kit (decision 2026-11-23): the kit's GitHub link, or a kit file's text
-   * given on this machine. The kit names the app's Compose file on GitHub (composeOf). With a Compose
-   * file given on this machine, the kit is a file given with it, nothing is read from GitHub, and the
-   * app's name is the one the owner gives, else its kit's.
+   * Reviews an app from its kit (decision 2026-11-23): the kit's GitHub link, read at the commit the
+   * link resolves to now, or a kit file's text given on this machine. The kit names the app's Compose
+   * file on GitHub at an exact commit (composeOf), and the review reads it there. With a Compose file
+   * given on this machine, the kit is a file given with it, nothing is read from GitHub, and the app's
+   * name is the one the owner gives, else its kit's.
    */
   async preview(kit: { link: string } | { text: string }, compose?: LocalCompose, appName?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
     const github = this.config.github ?? githubEndpoints();
@@ -342,26 +343,19 @@ export class AppsService {
         source = localSource(compose);
         found = kitFromFile(kit.text, null);
       } else {
-        let file;
         if ("link" in kit) {
-          let linked;
           try {
-            linked = await kitFromLink(kit.link, this.config.kitsRepository, github, fetcher);
+            found = await kitFromLink(kit.link, this.config.kitsRepository, github, fetcher);
           } catch (error) {
             // Its caller says how to reach a kit in a private repository instead.
             if (error instanceof SourceError && error.missing) throw new AppError(404, "kit_not_found", error.message);
             throw error;
           }
-          found = linked;
-          file = composeOf(linked.kit, linked.file);
         } else {
           found = kitFromFile(kit.text, null);
-          file = composeOf(found.kit, null);
         }
-        if (!file) throw new KitError("it names no source file, so it goes with a Compose file given on this machine: install-app --compose <file> --kit <file>.");
-        source = file.commit
-          ? await fetchPinnedFile(file.repo, file.path, file.commit, github, fetcher)
-          : await fetchLatestFile(file.repo, file.path, github, fetcher);
+        const file = composeOf(found.kit);
+        source = await fetchPinnedFile(file.repo, file.path, file.commit, github, fetcher);
       }
     } catch (error) {
       if (error instanceof NotAKitError) throw new AppError(400, "kit_required", error.message);
