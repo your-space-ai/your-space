@@ -88,16 +88,17 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 - [x] **Install and open apps (002).** Install a Compose file and kit, inspect the review, and open the app in its own pane. Local Compose installs, opt-in port publishing, framing for published apps, and explicit complete removal also shipped. (2026-11-20, [PR #48](https://github.com/your-space-ai/your-space/pull/48), [PR #54](https://github.com/your-space-ai/your-space/pull/54), [PR #56](https://github.com/your-space-ai/your-space/pull/56), [PR #57](https://github.com/your-space-ai/your-space/pull/57)) [App installation tasks](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/tasks.md)
 - [x] Upgrade a running local installation’s kit in place to add agent routes while retaining its app ID and volume. (2026-11-21, [PR #66](https://github.com/your-space-ai/your-space/pull/66))
 - [ ] **Apps screen (013)** · *First packaged release*. List installed apps with their status beside the selected app's details: update notice, version, address, agent access, internet access requests, and Open, Restart and Remove. [Workspace redesign journey](https://github.com/your-space-ai/your-space/blob/main/specs/013-workspace-redesign/spec.md)
+- [ ] Install an app only from the link to its kit, which names the app's Compose file, and explain kits when the owner pastes a bare Compose link. A Compose file given on this machine and an install from a managed repository need a kit too. [Kits define apps](architecture/decisions.md#kits-define-apps)
 - [ ] **First packaged release.** Follow the documented install from a live upstream GitHub source through the server, open the independent app in each supported browser, and identify its supported agent actions. Include native Safari on macOS with the local app hostnames.
 
 <details>
 <summary>Verified install sources, kits and owner controls (002)</summary>
 
-- [x] Let the owner install an app by pasting the GitHub link to its own Compose file in a public repository into the UI. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
+- [x] Let the owner install an app by pasting the GitHub link to its own Compose file in a public repository into the UI. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26)) **Replaced (2026-11-23):** the owner pastes the link to the app's kit, which names the Compose file. [Kits define apps](architecture/decisions.md#kits-define-apps)
 - [x] Read the file at the exact commit the link resolves to and record it, with the commit of any installation kit applied; updates re-read the file from the same link. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
 - [x] Pin every image, including database services, to an exact version by digest, and validate and retain the installed image identity. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
 - [x] Check the app's fully resolved Compose file against an allowlist of settings; adapt it only by rules that hold for every app, reporting each change, and refuse anything else with reasons, including settings that would break app isolation. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
-- [x] Apply an installation kit, kept in a separate repository, for what a particular app needs (its interface, generated values, starter hosts, limits), with no app-specific logic in Your Space; an app without a kit installs if its own files are enough. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
+- [x] Apply an installation kit, kept in a separate repository, for what a particular app needs (its interface, generated values, starter hosts, limits), with no app-specific logic in Your Space; an app without a kit installs if its own files are enough. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25)) **Superseded in part (2026-11-23):** every installed app has a kit. [Kits define apps](architecture/decisions.md#kits-define-apps)
 - [x] Let the owner provide app settings and secrets at installation and change them later; generate secrets instead of using published defaults, keep them out of output and logs, and store them encrypted in Your Space's database. (2026-11-17, [PR #28](https://github.com/your-space-ai/your-space/pull/28))
 - [x] Install an app if its images run on the engine's processor type (ARM or Intel/AMD); fail installation with a clear message if no image matches. (2026-11-17, [PR #25](https://github.com/your-space-ai/your-space/pull/25))
 - [x] Restrict app installation and removal to the owner for the first public release. (2026-11-17, [PR #26](https://github.com/your-space-ai/your-space/pull/26))
@@ -130,6 +131,14 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 - [ ] **Additional discovery sources** · *Later direction*
 
   Journey 011 supports private GitHub sources, direct kit URLs and one optional operator-selected GitHub directory. Later discovery work includes combining multiple directories and preserving update routing when a directory changes.
+
+- [ ] **Kits as app definitions** · *Later direction*
+
+  **Agreed (2026-11-23):** [Kits define apps](architecture/decisions.md#kits-define-apps). Apps install only from a kit's link until these exist.
+
+  - [ ] Draft an app's kit during the review when the owner pastes a bare Compose link, for the owner to check before installing.
+  - [ ] An app store: a page that shows a chosen group of kits, with no format of its own.
+  - [ ] Display fields in the kit format, such as a description, an icon and links, shown wherever the app is listed.
 
 - [ ] **Build apps from source during installation** · *Later direction*
 
