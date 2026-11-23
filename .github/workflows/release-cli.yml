@@ -38,14 +38,19 @@ jobs:
           deploy/release-files.sh "$VERSION" release
           npm version "$VERSION" --workspace cli --no-git-tag-version --allow-same-version
           (cd cli && node scripts/build.mjs "$VERSION")
+          # npm packs a package's own README and LICENSE; the license lives at the repository root.
+          cp LICENSE cli/LICENSE
           npm pack --workspace cli --pack-destination release
           for arch in x64 arm64; do
             cli/scripts/executable.sh "$arch"
             cp "cli/dist/your-space-linux-$arch" release/
           done
           test "$(release/your-space-linux-x64 --version)" = "$VERSION"
-          # The package holds the bundle and its manifest, at the release's version.
-          tar -tzf "release/your-space-ai-cli-$VERSION.tgz" | grep -x package/dist/your-space.cjs
+          # The package holds the bundle, its README, the project's license and its manifest, at the
+          # release's version.
+          listing=$(tar -tzf "release/your-space-ai-cli-$VERSION.tgz")
+          for file in dist/your-space.cjs README.md LICENSE; do grep -Fqx "package/$file" <<< "$listing"; done
+          cmp LICENSE <(tar -xOzf "release/your-space-ai-cli-$VERSION.tgz" package/LICENSE)
           test "$(tar -xOzf "release/your-space-ai-cli-$VERSION.tgz" package/package.json | jq -r .version)" = "$VERSION"
           ls -l release
           test "$(find release -type f | wc -l)" -eq 4

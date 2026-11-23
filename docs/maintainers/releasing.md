@@ -8,7 +8,7 @@ title: "Prepare a versioned release"
 | --- | --- | --- | --- |
 | Server, web and runtime images, tagged with the version | Linux AMD64 and ARM64 | GHCR | Every installation |
 | `your-space.tar.gz`, the Compose bundle | Any | GitHub release | `your-space init` and manual installs |
-| `your-space-ai-cli-<version>.tgz`, the CLI npm package `@your-space-ai/cli` | Any machine with Node 22.12 or newer | npm, and the same file on the GitHub release | Mac and Linux users with Node, and agents |
+| `your-space-ai-cli-<version>.tgz`, the CLI npm package `@your-space-ai/cli`, with its README and the project's license | Any machine with Node 22.12 or newer | npm, and the same file on the GitHub release | Mac and Linux users with Node, and agents |
 | `your-space-linux-x64`, `your-space-linux-arm64`, the standalone CLI | Linux Intel/AMD and ARM64 | GitHub release | Servers without Node |
 | `your-space-macos-arm64-<version>.dmg`, `your-space-macos-x64-<version>.dmg`, signed and notarized, with the CLI inside | macOS Apple Silicon and Intel | GitHub release | Mac users |
 | `SHA256SUMS` | — | GitHub release | Checking any download |
