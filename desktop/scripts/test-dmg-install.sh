@@ -1,10 +1,15 @@
 #!/bin/bash
-# Exercise the Finder installation contract on an isolated Applications directory.
+# Exercise the Finder installation contract on an isolated Applications directory. With
+# --notarized, the image and the installed app must also pass Gatekeeper with their stapled tickets;
+# with a VERSION, the installed app's CLI must report it.
 set -euo pipefail
-if [[ $(uname -s) != Darwin || $# != 2 || ! -f $1 ]]; then
-  echo 'Usage on macOS: test-dmg-install.sh IMAGE.dmg arm64|x64' >&2
+notarized=false
+if [[ ${1:-} == --notarized ]]; then notarized=true; shift; fi
+if [[ $(uname -s) != Darwin || ($# != 2 && $# != 3) || ! -f $1 ]]; then
+  echo 'Usage on macOS: test-dmg-install.sh [--notarized] IMAGE.dmg arm64|x64 [VERSION]' >&2
   exit 2
 fi
+version=${3:-}
 case $2 in
   arm64) cpu=arm64 ;;
   x64) cpu=x86_64 ;;
@@ -30,6 +35,10 @@ trap 'exit 130' INT TERM HUP
 
 mkdir "$mount" "$destination"
 hdiutil verify "$image"
+if [[ $notarized == true ]]; then
+  xcrun stapler validate "$image"
+  spctl --assess --type open --context context:primary-signature --verbose "$image"
+fi
 hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$mount" "$image"
 mounted=true
 if [[ ! -d "$mount/Your Space.app" || -L "$mount/Your Space.app" ||
@@ -53,6 +62,14 @@ for binary in "$executable" "$cli"; do
   fi
 done
 codesign --verify --deep --strict "$app"
+if [[ $notarized == true ]]; then
+  xcrun stapler validate "$app"
+  spctl --assess --type execute --verbose "$app"
+fi
+if [[ -n $version && $("$cli" --version) != "$version" ]]; then
+  echo "Expected the CLI at $cli to report version $version." >&2
+  exit 1
+fi
 node "$root/desktop/scripts/seal-macos.mjs" verify "$app"
 (cd "$app/Contents/Resources/release" && shasum -a 256 -c SHA256SUMS)
 (cd "$root" && YS_DESKTOP_EXECUTABLE="$executable" npm run test:native -w desktop)

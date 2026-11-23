@@ -4,6 +4,8 @@ name: Release macOS app
 # by hand on main with a version tag; nothing here runs on pull requests, so fork code never reaches
 # the signing secrets. Signing runs on a GitHub-hosted macOS runner in the protected `macos-release`
 # environment, whose secrets hold the Developer ID certificate and the App Store Connect API key.
+# Then, without those secrets, each notarized DMG is installed and opened on a Mac of its own
+# architecture; a failure there fails the run, so no draft is created.
 on:
   workflow_call:
     inputs:
@@ -92,3 +94,43 @@ jobs:
           security delete-keychain "$RUNNER_TEMP/release-signing.keychain-db" 2> /dev/null || true
           rm -f "$RUNNER_TEMP/release-signing.p12" "$RUNNER_TEMP/release-notary-key.p8"
           rm -rf "$RUNNER_TEMP/macos-input" "$RUNNER_TEMP/macos-release"
+
+  # The packaged native smoke needs the repository's npm packages, which never run next to the
+  # signing keychain, so the delivered DMGs are opened here, in a job without the environment.
+  verify:
+    name: Install and open the notarized app (${{ matrix.arch }})
+    needs: notarize
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notarized-macos
+          path: ${{ runner.temp }}/notarized
+      - name: Install the DMG, pass Gatekeeper, open the stapled app and run its CLI
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          version=${RELEASE_TAG#v}
+          name="your-space-macos-$ARCH-$version.dmg"
+          (cd "$RUNNER_TEMP/notarized" && shasum -a 256 -c "$name.sha256")
+          desktop/scripts/test-dmg-install.sh --notarized "$RUNNER_TEMP/notarized/$name" "$ARCH" "$version"
