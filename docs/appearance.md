@@ -47,7 +47,7 @@ Save this as a UTF-8 JSON file of up to 16 KB. Every key is required, and no oth
 }
 ```
 
-- **style** sets the shape of the interface and adds no colors of its own. `crisp` uses hairline borders and small corners, `soft` uses larger corners and tints surfaces with the palette's accent, and `bold` uses heavy rules and square corners.
+- **style** sets the shape of the interface and adds no colors of its own. `crisp` uses hairline borders and small corners, `soft` uses larger corners and tints surfaces with the palette's accent, and `bold` uses heavy rules and square corners. For now, only the theme previews on the Appearance page show the style; the rest of the dashboard follows it as each screen is redesigned.
 - **fonts** name the heading, body and monospace families. Instrument Sans, Space Grotesk, Fraunces and IBM Plex Mono come with the dashboard under the SIL Open Font License ([credits](https://github.com/your-space-ai/your-space/blob/main/web/public/fonts/CREDITS.txt)), so they look the same on every device. Any other name means a font installed on the device, or a generic choice such as system-ui, serif or monospace. Devices without that font use a system fallback.
 - **light** and **dark** each hold ten colors with six hexadecimal digits after the hash: the background (`bg`), surfaces such as panels and cards (`panel`), text (`fg`), secondary text (`muted`), the accent, text on the accent (`accentInk`), borders, and the colors for errors (`danger`), success and warnings.
 
