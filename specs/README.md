@@ -13,6 +13,7 @@ The [roadmap](../docs/roadmap.md) tracks delivery. Open a specification below fo
 | [010 · Make Your Space look like yours](010-personal-themes/spec.md) | Pick, customize and share a theme. Store workspace appearance on its server and launcher appearance on the device. |
 | [011 · Build and customize a personal workspace with an agent](011-agent-workspace/spec.md) | Agent setup, portable app authoring, Home read grants, managed GitHub repos, an optional operator-selected kit directory and owner-confirmed replacement. |
 | [012 · Arrange apps and return to a saved view](012-multi-app-layouts/spec.md) | Resize installed apps in four arrangements, share the composition, save named views and order app shortcuts. |
+| [013 · Redesign the workspace](013-workspace-redesign/spec.md) | New sidebar, tabs, views, Home, Apps, Agents, Approvals and Settings on a component kit that themes restyle. Theme format version 2 with light and dark palettes, a component style and three built-in themes. |
 
 001–003 supply the foundation for 005. One app must implement the role and action contract needed for 005. Acceptance covers listing, creating and editing a synthetic record in an independent app through kit-defined routes. An app that only offers a browser sign-in can still appear on the dashboard.
 
