@@ -26,7 +26,8 @@ export default defineConfig({
   use: {
     baseURL,
     viewport: { width: 1280, height: 720 },
-    trace: "off",
+    // A failed test keeps its trace and screenshot, which CircleCI stores with the job.
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
     // A local evidence run can record video. Hosted checks report results in the job log.
     video: evidence ? { mode: "on", size: { width: 1280, height: 720 } } : "off",

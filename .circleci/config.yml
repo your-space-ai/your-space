@@ -38,6 +38,26 @@ commands:
           # space.example.com is the CLI test's own domain, served with a certificate from Pebble.
           command: echo "127.0.0.1 space.localhost app.space.localhost whoami.space.localhost probe.space.localhost space.example.com" | sudo tee -a /etc/hosts
 
+  failed-journeys:
+    description: >-
+      Keeps what explains a failed browser journey: its screenshot at the failure, the page's
+      accessibility snapshot and its Playwright trace. Passing journeys keep nothing.
+    steps:
+      - run:
+          # Only the failed tests' files, which hold the test stack's synthetic data. No HTML report,
+          # videos or other test results.
+          name: Failed journeys
+          when: on_fail
+          command: |
+            mkdir -p /tmp/failed-journeys
+            [ -d e2e/test-results ] || exit 0
+            cd e2e/test-results
+            find . \( -name 'test-failed-*.png' -o -name error-context.md -o -name trace.zip \) \
+              -exec cp --parents {} /tmp/failed-journeys/ \;
+      - store_artifacts:
+          path: /tmp/failed-journeys
+          destination: failed-journeys
+
   ready-pull-request:
     description: >-
       Stops the job early on a draft pull request. Marking a draft ready starts a new pipeline,
@@ -196,6 +216,7 @@ jobs:
             docker version --format 'Docker Engine {{.Server.Version}}'
             docker compose -p ys-e2e --env-file e2e/stack.env -f deploy/compose.yaml \
               -f deploy/compose.build.yaml -f e2e/compose.e2e.yaml ps --all
+      - failed-journeys
       - unless:
           condition:
             equal: [main, << pipeline.git.branch >>]
@@ -232,6 +253,7 @@ jobs:
           command: npx playwright test --project chromium
           working_directory: e2e
           no_output_timeout: 30m
+      - failed-journeys
 
 parameters:
   arm-e2e:
