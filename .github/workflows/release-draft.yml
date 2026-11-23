@@ -98,7 +98,7 @@ jobs:
           (cd macos && shasum -a 256 -c -- *.dmg.sha256)
           mv macos/*.dmg release/
           cd release
-          files=(your-space.tar.gz "your-space-$VERSION.tgz" your-space-linux-x64 your-space-linux-arm64)
+          files=(your-space.tar.gz "your-space-ai-cli-$VERSION.tgz" your-space-linux-x64 your-space-linux-arm64)
           files+=("your-space-macos-arm64-$VERSION.dmg" "your-space-macos-x64-$VERSION.dmg")
           test "$(find . -type f | wc -l)" -eq "${#files[@]}"
           sha256sum -- "${files[@]}" > SHA256SUMS

@@ -132,7 +132,7 @@ The release workflow gains a `cli` job and a shared script:
 
 ```text
 cli/
-  package.json            name "your-space", bin, build scripts
+  package.json            name "@your-space-ai/cli", bin "your-space", build scripts
   src/                    modules above
   scripts/build.mjs       esbuild bundle
   scripts/executable.sh   standalone executable

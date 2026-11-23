@@ -148,7 +148,7 @@ builds on.
 
 **Independent Test**: On a Linux machine with Docker Engine and Compose and nothing else, download
 the standalone executable and `SHA256SUMS` from a release, check it, install it on PATH as
-`your-space` (or, where Node is installed, use the npm package), run `your-space init` and `your-space start` in an empty folder, give a
+`your-space` (or, where Node is installed, use the npm package `@your-space-ai/cli`), run `your-space init` and `your-space start` in an empty folder, give a
 name and username, open the set-password link from the summary, set a password and sign in at
 `http://space.localhost`.
 
@@ -335,7 +335,8 @@ option that is still complete.
 
 **Getting the CLI**
 
-- **FR-001**: Each release publishes the CLI as the project's npm package (for use with `npx`, or a
+- **FR-001**: Each release publishes the CLI as the project's npm package, `@your-space-ai/cli`
+  (published by the `your-space-ai` npm organization; for use with `npx`, or a
   project or global install, on any machine with Node) and as standalone Linux executables for ARM
   and Intel that need no language runtime. On macOS the CLI comes from the npm package or ships
   inside the signed desktop app. `.deb` and `.rpm` packages, standalone macOS downloads and a

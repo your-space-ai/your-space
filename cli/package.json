@@ -1,5 +1,5 @@
 {
-  "name": "your-space",
+  "name": "@your-space-ai/cli",
   "version": "0.1.0",
   "description": "Install and run Your Space: init a folder, start it, and manage it.",
   "license": "AGPL-3.0-only",

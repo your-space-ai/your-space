@@ -67,7 +67,7 @@ CLI and server images, select that version and get the CLI one of these ways:
 
 | Machine | How to get `your-space` |
 | --- | --- |
-| Any Mac or Linux machine with Node 22.12 or newer | The npm package: `npx your-space@<version>` or `npm install -g your-space@<version>` |
+| Any Mac or Linux machine with Node 22.12 or newer | The npm package [`@your-space-ai/cli`](https://www.npmjs.com/package/@your-space-ai/cli): `npx @your-space-ai/cli@<version>`, or `npm install -g @your-space-ai/cli@<version>` to get the `your-space` command |
 | Linux Intel/AMD or ARM64 without Node | The standalone executable `your-space-linux-x64` or `your-space-linux-arm64` |
 | Mac with the desktop app | The CLI bundled in the app, at `Your Space.app/Contents/Resources/bin/your-space` |
 
