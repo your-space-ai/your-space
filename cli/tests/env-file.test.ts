@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parseEnv, setEnv } from "../src/env-file.ts";
 
@@ -9,6 +10,11 @@ const EXAMPLE = `# Your Space settings.
 `;
 
 describe(".env", () => {
+  it("is copied from an env.example that never offers another release's images", () => {
+    // Those images would run on this release's stack.yaml and modes, which release-files.sh pairs.
+    expect(readFileSync(new URL("../../deploy/.env.example", import.meta.url), "utf8")).not.toContain("YS_VERSION");
+  });
+
   it("reads settings, leaving comments out, as Compose does", () => {
     expect(parseEnv(`${EXAMPLE}YS_PORT=8082\nA="quoted value"\nB='single'\nC=plain # comment\n`)).toEqual({
       YS_PORT: "8082",
