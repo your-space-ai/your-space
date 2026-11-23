@@ -550,7 +550,7 @@ export class AppsService {
       throw new AppError(
         409,
         "settings_unreadable",
-        "This app's settings were encrypted with a data key Your Space no longer has. Remove the app, keeping its data, and install it again.",
+        "This app's settings were encrypted with a data key Your Space no longer has. Restore that data key, or remove the app, delete its kept data and install it again; the app then starts empty.",
       );
     }
   }

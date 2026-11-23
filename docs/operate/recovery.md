@@ -13,11 +13,14 @@ hand, `docker compose up -d` reports that the `secrets` service didn't complete,
 Ways to recover, best first:
 
 1. **Restore the `ys-secrets` volume** from a backup, or **put the old values back** in `.env` as
-   `BETTER_AUTH_SECRET` and `POSTGRES_PASSWORD`. Then run `docker compose up -d`.
+   `BETTER_AUTH_SECRET`, `POSTGRES_PASSWORD` and `YS_DATA_KEY`. Then run `docker compose up -d`.
+   Without the old data key, installed apps' settings can't be read; see option 2.
 2. **Start with new secrets.** Your account and workspace stay; every device is signed out. If the
    data key was lost too (it is in the same volume, unless you set `YS_DATA_KEY` in `.env`),
-   installed apps' settings can't be read, and each app must be removed, keeping its data, and
-   installed again; its page says so. Run:
+   installed apps' settings can't be read, and an app can't be installed again over its kept data,
+   because that data depends on the settings, such as the app's own database password. Restore the
+   old data key if you can. Otherwise remove the app, delete its kept data on its page, and install it
+   again: the app starts empty, and deleting its data can't be undone. Run:
 
    ```sh
    your-space start --new-secrets

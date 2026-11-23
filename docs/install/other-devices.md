@@ -58,7 +58,8 @@ for other services.
    Your Space then serves plain HTTP on `127.0.0.1:8080`, reachable only from this machine, and
    doesn't use ports 80 and 443 at all, so it doesn't compete with your proxy for them. It gets no
    certificate. If another program has port 8080, add `--port 8090` (or any free port) and use that
-   port below. By hand, add `YS_PROXY_URL=https://space.example.com` (and `YS_PORT`) to `.env`.
+   port below for a proxy on this machine. A proxy in a container on Your Space's network still
+   reaches it at `http://your-space:8080`, because the port only changes on this machine's side. By hand, add `YS_PROXY_URL=https://space.example.com` (and `YS_PORT`) to `.env`.
 
 2. If you set it by hand, run `docker compose up -d`. `your-space status` now lists, under "Your
    proxy or tunnel forwards", the names your proxy must send to Your Space, each app's included.
@@ -114,7 +115,7 @@ reach. You need no domain and no ports open to the internet.
 
 1. Install Tailscale on this server and on each device you'll use, signed in to the same tailnet
    (your Tailscale network).
-2. On the server, run (on Linux, with `sudo`):
+3. On the server, run (on Linux, with `sudo`):
 
    ```sh
    tailscale serve --bg --https=443 http://127.0.0.1:8080
@@ -143,16 +144,19 @@ Instead, [publish each app on a port](../apps/install-apps.md#publish-an-app-on-
 [Tailscale Service](https://tailscale.com/kb/1552/tailscale-services) of its own: each app needs its
 own address, and Tailscale gives one name per service. For Sure published on port 8081:
 
-1. In Tailscale's admin console, under Services, define a service named `sure`.
-2. On the server, run (on Linux, with `sudo`):
+1. Make sure the server joined your tailnet as a tagged device, for example `tag:server`: a
+   [Tailscale Service](https://tailscale.com/kb/1552/tailscale-services) can only be hosted by a device
+   with a tag, not one signed in as a user.
+2. In Tailscale's admin console, under Services, define a service named `sure`.
+3. On the server, run (on Linux, with `sudo`):
 
    ```sh
    tailscale serve --service=svc:sure --https=443 http://127.0.0.1:8081
    ```
 
-3. In the admin console, approve this server as the service's host, and let your devices reach
+4. In the admin console, approve this server as the service's host, and let your devices reach
    `svc:sure` in your access policy.
-4. Give Your Space the service's address as the app's link, `https://sure.tail1234.ts.net`, in the
+5. Give Your Space the service's address as the app's link, `https://sure.tail1234.ts.net`, in the
    app's Publishing settings.
 
 ## Plain HTTP on Your Network Is Not Supported
