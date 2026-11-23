@@ -1,9 +1,12 @@
 #!/bin/bash
-# Runs only for a release candidate on the protected signing runner.
+# Runs only for a release candidate, in the protected signing job of Release macOS app. It expects the
+# Developer ID identity in the job's temporary keychain and an App Store Connect API key for notarytool.
 set -euo pipefail
 [[ $# == 2 && -f $1 ]] || { echo 'Usage: notarize-macos.sh CANDIDATE.dmg OUTPUT-DIR' >&2; exit 2; }
 : "${MACOS_SIGN_IDENTITY:?Configure the approved Developer ID signing identity}"
-: "${MACOS_NOTARY_PROFILE:?Configure the existing notarytool keychain profile}"
+: "${APPLE_API_KEY_PATH:?Provide the App Store Connect API key file}"
+: "${APPLE_API_KEY_ID:?Provide the App Store Connect API key ID}"
+: "${APPLE_API_ISSUER:?Provide the App Store Connect API issuer ID}"
 [[ $MACOS_SIGN_IDENTITY != - ]] || exit 2
 candidate=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 name=$(basename "$candidate")
@@ -39,7 +42,8 @@ detach() {
   mounted=false
 }
 notarize() {
-  xcrun notarytool submit "$1" --keychain-profile "$MACOS_NOTARY_PROFILE" --wait --output-format json > result.json
+  xcrun notarytool submit "$1" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" \
+    --wait --output-format json > result.json
   [[ $(plutil -extract status raw -o - result.json) == Accepted ]] || { echo 'Apple did not accept the submission.' >&2; return 1; }
 }
 
