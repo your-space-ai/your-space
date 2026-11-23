@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useLayoutEffect, useRef, useState, type ChangeEvent } from "react";
 import { defaultThemeId, starterThemes, validateTheme, type Theme } from "../../../shared/appearance/theme.mjs";
 import { activePaletteQuery, catalogQuery, selectedTheme, type AppearanceCatalog, type ThemeEntry } from "../appearance.ts";
 import { ApiError, api, errorMessage } from "../apps-api.ts";
@@ -38,7 +38,8 @@ export function Appearance() {
   const file = useRef<HTMLInputElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const wasEditing = useRef(false);
-  useEffect(() => {
+  // Like the editor's, the focus moves in the same commit that shows the library.
+  useLayoutEffect(() => {
     if (!draft && wasEditing.current) heading.current?.focus();
     wasEditing.current = !!draft;
   }, [draft]);

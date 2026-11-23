@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { fontSuggestions, themeVariables, validateTheme, type Theme } from "../../../shared/appearance/theme.mjs";
 
 export type ThemeDraft = { id?: string; initial: Theme; revision: number };
@@ -67,7 +67,9 @@ export function ThemeEditor({ draft, busy, stale, error, onCancel, onReload, onS
   const [activate, setActivate] = useState(false);
   const [preview, setPreview] = useState(draft.initial);
   const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => { heading.current?.focus(); }, []);
+  // Focus the heading in the same commit that shows the editor. A passive effect can run a task
+  // later, after the form takes input, and would pull focus away from a field being typed in.
+  useLayoutEffect(() => { heading.current?.focus(); }, []);
   const parsed = useMemo(() => {
     try { return { value: validateTheme(theme) }; }
     catch (error) { return { message: error instanceof Error ? error.message : "Check the theme settings." }; }

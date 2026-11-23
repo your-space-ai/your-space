@@ -9,7 +9,7 @@ const HIDE_TIMES = "time { visibility: hidden; }";
 
 export async function evidence(page: Page, testInfo: TestInfo, name: string): Promise<void> {
   // Chromium only: Argos's screenshot allowance is limited, and the other browsers' journeys are
-  // still checked, with a video of each in the run's Playwright report.
+  // still checked.
   if (testInfo.project.name !== "chromium") return;
   await argosScreenshot(page, name, { argosCSS: HIDE_TIMES });
 }
