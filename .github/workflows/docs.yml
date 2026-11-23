@@ -1,0 +1,41 @@
+name: Docs
+
+# Builds the Mintlify site from docs/ and checks its links and anchors, on pull requests that change
+# the documentation and on main. The same commands run locally from docs/ (AGENTS.md).
+on:
+  pull_request:
+    paths:
+      - docs/**
+      - .github/workflows/docs.yml
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - .github/workflows/docs.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  site:
+    name: Docs site builds and links resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Build the site
+        run: npx --yes mint@4.3.84 validate
+      - name: Check links and anchors
+        run: npx --yes mint@4.3.84 broken-links --check-anchors

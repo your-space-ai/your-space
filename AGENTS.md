@@ -46,7 +46,7 @@ The documentation in `docs/` is published with Mintlify from `docs/docs.json`. G
 and link to files outside `docs/` with full `https://github.com/your-space-ai/your-space/blob/main/...`
 URLs, because the site only serves `docs/`. Name a folder's landing page `index.md`, not `README.md`,
 which Mintlify doesn't publish. Check changes with `npx mint@4 validate` and
-`npx mint@4 broken-links --check-anchors` from `docs/`.
+`npx mint@4 broken-links --check-anchors` from `docs/`; the **Docs** workflow runs both on pull requests that change `docs/`.
 
 Write pull request descriptions with the [template](.github/pull_request_template.md). Its visible
 part answers three questions in a minute: what the PR changes and why (Summary), where to look
