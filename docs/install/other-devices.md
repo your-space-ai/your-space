@@ -135,6 +135,7 @@ reach. You need no domain and no ports open to the internet.
    your-space configure --proxy-url https://myserver.tail1234.ts.net
    ```
 
+   If Your Space is stopped, `configure` only saves the address; start it with `your-space start`.
    By hand, add `YS_PROXY_URL=https://myserver.tail1234.ts.net` to `.env` and run
    `docker compose up -d`.
 

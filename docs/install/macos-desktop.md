@@ -16,7 +16,17 @@ The first tagged desktop release is in preparation. For the current source previ
 
 The public release includes a single `SHA256SUMS` manifest. To verify a download, save both files in the same folder and run `grep -F "  <filename>.dmg" SHA256SUMS | shasum -a 256 -c -` there. The bundled CLI requires macOS 13.5 or later. The release notes list the macOS versions tested.
 
-Choose **Run on this Mac** to run the server on this Mac. Set up or start a Docker-compatible engine and Docker Compose if prompted, or select a different local engine. Select **Open local workspace**, complete owner setup, then open the workspace dashboard. The launcher sets up the workspace at `http://space.localhost:8081`, which only this Mac can reach, and it is unavailable while the Mac is asleep or off. To use it from other devices, give it an HTTPS address by running `your-space configure` in its installation folder, `~/Library/Application Support/org.your-space.desktop/local`, as [Use Your Space from other devices](other-devices.md) describes, then open that address with **Connect to a server**. Owners who choose Docker Desktop should check its [installation and licensing terms](https://docs.docker.com/desktop/setup/install/mac-install/).
+Choose **Run on this Mac** to run the server on this Mac. Set up or start a Docker-compatible engine and Docker Compose if prompted, or select a different local engine. Select **Open local workspace**, complete owner setup, then open the workspace dashboard. The launcher sets up the workspace at `http://space.localhost:8081`, which only this Mac can reach, and it is unavailable while the Mac is asleep or off. Owners who choose Docker Desktop should check its [installation and licensing terms](https://docs.docker.com/desktop/setup/install/mac-install/).
+
+To use that workspace from other devices, give it an HTTPS address with `your-space configure`, as [Use Your Space from other devices](other-devices.md) describes. Run it against the launcher's installation folder, `~/Library/Application Support/org.your-space.desktop/local`, and the engine the launcher uses: the `socket` value in that folder's `.desktop-engine.json`. For example, with the app in Applications:
+
+```sh
+env -u DOCKER_CONTEXT DOCKER_HOST="unix://<socket>" \
+  "/Applications/Your Space.app/Contents/Resources/bin/your-space" configure \
+  --workdir "$HOME/Library/Application Support/org.your-space.desktop/local"
+```
+
+From a source checkout, run `node cli/dist/your-space.cjs` in the repository root in place of the app's CLI. Then open the new address with **Connect to a server**.
 
 Choose **Connect to a server** to use an existing workspace without installing Docker on this Mac. Enter the HTTPS address supplied by its operator and sign in as usual. In either workspace, review and confirm an app's installation kit in the dashboard. The selected server runs the app. The [CLI and headless installation guide](index.md) covers server setup, owner recovery and proxies.
 
