@@ -25,7 +25,7 @@ your-space app upgrade-agent-kit <app-name> --refresh \
 
 ## Grant access to an agent
 
-Create a named agent. Grant it roles for this installation and choose the approval settings. **Ask for all writes** overrides an individual route set to Allow. Otherwise the route override takes precedence over the kit recommendation. With neither setting, reads run directly and writes ask. A community review link refers to the exact kit revision reviewed.
+Create a named agent. Grant it roles for this installation and choose the approval settings. **Ask for all writes** overrides an individual route set to Allow. Otherwise the route override takes precedence over the kit recommendation. With neither setting, the kit recommendation applies. A route without a recommendation runs reads directly and asks for writes. A community review link refers to the exact kit revision reviewed.
 
 Issue a key and store it in the external agent’s secret environment as `YOUR_SPACE_AGENT_KEY`. Set `YOUR_SPACE_URL` to the workspace HTTPS origin (or HTTP on localhost for a local test). Run these commands on the agent machine:
 

@@ -38,8 +38,9 @@ use it from other devices, add one line:
 | Use your own proxy or Tailscale | `YS_PROXY_URL=https://<the proxy's address>` | Caddy serves plain HTTP on `127.0.0.1:8080` only; your proxy or Tailscale handles HTTPS. See [Use Your Own Reverse Proxy](other-devices.md#use-your-own-reverse-proxy) or [Use Tailscale](other-devices.md#use-tailscale) |
 
 If another program already uses port 80 on this machine (or 8080 with `YS_PROXY_URL`), also add
-`YS_PORT=8081`, or any free port. Your Space then answers at `http://space.localhost:8081`. `YS_PORT`
-doesn't apply to your own domain, which needs ports 80 and 443.
+`YS_PORT=8081`, or any free port. On this machine only, Your Space then answers at
+`http://space.localhost:8081`. With `YS_PROXY_URL`, keep using the proxy's HTTPS address and point
+the proxy at the new port. `YS_PORT` doesn't apply to your own domain, which needs ports 80 and 443.
 
 Which line you write decides which ports open: only `YS_DOMAIN` opens any to the network. The
 server checks every line when it starts and refuses to start, with a message that says what to fix,
