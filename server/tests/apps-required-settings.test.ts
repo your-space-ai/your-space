@@ -72,13 +72,35 @@ describe("an app whose file requires settings", () => {
     expect(runtime.calls.some((c) => c.method === "apply")).toBe(false);
   });
 
-  it("runs with the owner's values, and its start asks for no placeholders", async () => {
+  it("is checked again with the owner's values, and isn't installed when that check refuses it", async () => {
+    runtime.refuse = (spec) => (spec.env.ADMIN_EMAIL === "refused@example.com" ? [{ service: "web", setting: "image", reason: "No image has this tag." }] : []);
+    const review = await apps.preview(LINK);
+    expect(review.ok).toBe(true);
+    const checks = runtime.calls.filter((c) => c.method === "check").length;
+    await expect(apps.install(review.previewId, { ADMIN_EMAIL: "refused@example.com", SECRET_KEY_BASE: "a-real-secret" }, false, actor)).rejects.toMatchObject({
+      status: 400,
+      code: "refused",
+      message: "Your Space can't run this app with these settings: web: No image has this tag.",
+    });
+    const recheck = runtime.calls.filter((c) => c.method === "check").slice(checks);
+    expect(recheck).toHaveLength(1);
+    expect(recheck[0]!.spec).toMatchObject({ env: { ADMIN_EMAIL: "refused@example.com", SECRET_KEY_BASE: "a-real-secret" } });
+    expect(recheck[0]!.spec!.placeholders).toBeUndefined();
+    expect(runtime.calls.some((c) => c.method === "apply")).toBe(false);
+    await expect(apps.detail("needs")).rejects.toMatchObject({ status: 404 });
+    runtime.refuse = () => [];
+  });
+
+  it("runs with the owner's values, checked again without placeholders before it starts", async () => {
     const review = await apps.preview(LINK);
     const { name, done } = await apps.install(review.previewId, { ADMIN_EMAIL: "owner@example.com", SECRET_KEY_BASE: "a-real-secret" }, false, actor);
     await done;
     expect((await apps.detail(name)).state).toBe("running");
-    const applied = runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!;
-    expect(applied.env).toMatchObject({ ADMIN_EMAIL: "owner@example.com", SECRET_KEY_BASE: "a-real-secret" });
-    expect(applied.placeholders).toBeUndefined();
+    const [recheck, apply] = runtime.calls.slice(-2);
+    expect(recheck).toMatchObject({ method: "check", spec: { env: { ADMIN_EMAIL: "owner@example.com", SECRET_KEY_BASE: "a-real-secret" } } });
+    expect(recheck!.spec!.placeholders).toBeUndefined();
+    expect(apply!.method).toBe("apply");
+    expect(apply!.spec!.env).toMatchObject({ ADMIN_EMAIL: "owner@example.com", SECRET_KEY_BASE: "a-real-secret" });
+    expect(apply!.spec!.placeholders).toBeUndefined();
   });
 });

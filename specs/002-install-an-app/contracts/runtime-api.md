@@ -35,9 +35,10 @@ policy's `frame-ancestors`, or a policy of its own, to that origin; it is labell
 
 `placeholders` (optional, for `/check`): with `true`, each setting the file requires, with
 `${NAME:?…}` or `${NAME?…}`, that `env` has no value for gets a placeholder, so the server can
-review the file before the owner fills those settings in; `variables` marks them `required`.
-`/apply` ignores it and refuses a file whose required settings have no value, so a placeholder never
-reaches a running app.
+review the file before the owner fills those settings in; `variables` marks them `required`. An
+image named with a placeholder isn't looked up and has no digest; the server checks the file again
+with the owner's values before installing it. `/apply` ignores `placeholders` and refuses a file
+whose required settings have no value, so a placeholder never reaches a running app.
 
 | Method and path | Body | Answer |
 | --- | --- | --- |

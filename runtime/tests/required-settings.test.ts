@@ -48,6 +48,7 @@ const spec = (body: Record<string, unknown> = {}) => validateSpec({ project: "ys
 
 beforeEach(() => {
   resolutions = [];
+  vi.mocked(inspectImage).mockClear();
   vi.mocked(docker).mockImplementation(async (args, env) => compose(args, env));
   vi.mocked(engineInfo).mockResolvedValue({ reachable: true, arch: "arm64", connection: "fixture" });
   vi.mocked(inspectImage).mockImplementation(async (ref) => ({ ref, digest: `sha256:${"a".repeat(64)}`, runsHere: true, platforms: ["linux/arm64"] }));
@@ -90,6 +91,34 @@ describe("placeholders for required settings", () => {
     expect(steps).toEqual([{ step: "check" }]);
     expect(resolutions.length).toBeGreaterThan(0);
     expect(resolutions.flatMap((env) => Object.values(env))).not.toContain(PLACEHOLDER);
+  });
+
+  it("leave an image named with one for the install's check to look up", async () => {
+    // `image: example/app:${TAG:?Set TAG}`
+    vi.mocked(docker).mockImplementation(async (args, env = {}) => {
+      if (args.includes("--variables")) return { code: 0, stdout: JSON.stringify({ TAG: { Name: "TAG", DefaultValue: "", PresenceValue: "", Required: true } }), stderr: "" };
+      if (!env.TAG) return { code: 1, stdout: "", stderr: "required variable TAG is missing a value: Set TAG\n" };
+      return { code: 0, stdout: JSON.stringify({ services: { web: { image: `example/app:${env.TAG}` } } }), stderr: "" };
+    });
+    const reviewed = await check(spec({ placeholders: true }));
+    expect(reviewed.ok).toBe(true);
+    expect(reviewed.images).toContainEqual({ ref: `example/app:${PLACEHOLDER}`, platforms: [], runsHere: true });
+    expect(inspectImage).not.toHaveBeenCalledWith(`example/app:${PLACEHOLDER}`, "arm64");
+
+    const installing = await check(spec({ env: { TAG: "2.1" } }));
+    expect(installing.ok).toBe(true);
+    expect(inspectImage).toHaveBeenCalledWith("example/app:2.1", "arm64");
+    expect(installing.images).toContainEqual(expect.objectContaining({ ref: "example/app:2.1", digest: `sha256:${"a".repeat(64)}` }));
+  });
+
+  it("are named when the file can't take one, such as for a port", async () => {
+    vi.mocked(docker).mockImplementation(async (args) => {
+      if (args.includes("--variables")) return { code: 0, stdout: JSON.stringify({ APP_PORT: { Name: "APP_PORT", DefaultValue: "", PresenceValue: "", Required: true } }), stderr: "" };
+      return { code: 1, stdout: "", stderr: `invalid hostPort: ${PLACEHOLDER}\n` };
+    });
+    await expect(check(spec({ placeholders: true }))).rejects.toThrow(
+      `The file isn't a Compose file Your Space can read: invalid hostPort: ${PLACEHOLDER} Your Space read it with a placeholder in place of APP_PORT, which the file requires and which has no value yet.`,
+    );
   });
 
   it("are asked for with true or false", () => {

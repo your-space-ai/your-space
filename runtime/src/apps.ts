@@ -135,7 +135,12 @@ async function resolve(spec: AppSpec, placeholders: boolean): Promise<Resolved> 
         .filter((l) => l.trim() && !/level=warning/.test(l))
         .join(" ")
         .slice(0, 600);
-      throw new SpecError(`The file isn't a Compose file Your Space can read: ${message || "Compose refused it."}`);
+      // A placeholder fits a setting used as text, not one used as a port or another typed value.
+      const filled = Object.keys(env).filter((name) => env[name] !== spec.env[name]);
+      const placeheld = filled.length
+        ? ` Your Space read it with a placeholder in place of ${filled.join(", ")}, which the file requires and which ${filled.length === 1 ? "has" : "have"} no value yet.`
+        : "";
+      throw new SpecError(`The file isn't a Compose file Your Space can read: ${message || "Compose refused it."}${placeheld}`);
     }
     const resolved = JSON.parse(plain.stdout) as Record<string, unknown>;
     const allServices = all.code === 0 ? Object.keys((JSON.parse(all.stdout) as { services?: object }).services ?? {}) : [];
@@ -162,6 +167,8 @@ async function checkWithImages(spec: AppSpec, waitForCaddy = 0, placeholders = f
   const pins: Record<string, string> = { ...(spec.pins ?? {}) };
   const images = await Promise.all(
     refs.map(async (ref) => {
+      // An image named with a placeholder is looked up once the owner gives the setting (the install's check).
+      if (placeholders && ref.includes(PLACEHOLDER)) return { ref, platforms: [], runsHere: true } satisfies ImageCheck;
       if (pins[ref]) {
         if (!spec.verifyPins?.includes(ref)) return { ref, digest: pins[ref], platforms: [], runsHere: true } satisfies ImageCheck;
         const expected = pins[ref]!;
