@@ -1,7 +1,8 @@
 name: Release publish
 
 # Step 5 of the release guide (docs/maintainers/releasing.md). Runs when the owner publishes a
-# reviewed draft. It publishes the exact npm tarball attached to the release, after checking it
+# reviewed draft. It first installs from the published release as a stranger would, with no
+# credentials; nothing else runs unless that passes. Then it publishes the exact npm tarball attached to the release, after checking it
 # against the release's SHA256SUMS, and points the images' `latest` tag at the release's version
 # (prereleases go to npm's `next` tag and leave `latest` alone). A published npm version can never
 # be reused, which is why this happens only on publication, never at draft time.
@@ -17,7 +18,73 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # What someone without access gets: the release's public download links and anonymous image pulls
+  # on a fresh runner, with no GHCR sign-in and no token. No checkout either, as it would use one.
+  stranger:
+    name: Install from the public release (${{ matrix.arch }})
+    if: github.repository == 'your-space-ai/your-space'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      # The runner's own engine is older than the CLI's minimum.
+      - uses: docker/setup-docker-action@3f1ab1ab0e29231562e4db4ca600c1a49653bac6 # v5.7.0
+        with:
+          version: v29.10.0
+          github-token: ''
+      - name: Download every release file and check it against SHA256SUMS
+        run: |
+          set -o pipefail
+          mkdir release
+          cd release
+          get() {
+            curl --fail --location --silent --show-error --retry 3 --proto '=https' \
+              -o "$1" "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$1"
+          }
+          get SHA256SUMS
+          # SHA256SUMS lists exactly the release's other files.
+          diff <(jq -r '.release.assets[].name | select(. != "SHA256SUMS")' "$GITHUB_EVENT_PATH" | sort) \
+            <(awk '{ print $2 }' SHA256SUMS | sort)
+          while read -r file; do get "$file"; done < <(awk '{ print $2 }' SHA256SUMS)
+          sha256sum -c SHA256SUMS
+      - name: Read the images for both platforms without signing in
+        run: |
+          set -o pipefail
+          for name in your-space-server your-space-web your-space-runtime; do
+            image="ghcr.io/$GITHUB_REPOSITORY_OWNER/$name:${TAG#v}"
+            if ! manifest=$(docker manifest inspect "$image"); then
+              echo "::error::$image can't be pulled without signing in. Make the your-space-server, your-space-web and your-space-runtime packages on GHCR public (each package's settings, Change visibility), as step 3 of docs/maintainers/releasing.md says, then re-run the failed jobs; npm publishes once this check passes."
+              exit 1
+            fi
+            platforms=$(jq -r '[.manifests[].platform | "\(.os)/\(.architecture)"] | join(" ")' <<< "$manifest")
+            for platform in linux/amd64 linux/arm64; do
+              [[ " $platforms " == *" $platform "* ]] || { echo "::error::$image has no $platform image."; exit 1; }
+            done
+          done
+      - name: Set up a workspace with the release's executable, as the install guide does
+        run: |
+          set -o pipefail
+          exe="release/your-space-linux-$ARCH"
+          chmod +x "$exe"
+          test "$("$exe" --version)" = "${TAG#v}"
+          # No --release-dir: the CLI downloads the Compose bundle from the release and pulls the images.
+          "$exe" setup --workdir "$RUNNER_TEMP/workspace" --port 8081 --json |
+            jq -e 'if .ok then .running and .owner == "created" else error(.error + ": " + .message) end'
+          "$exe" status --workdir "$RUNNER_TEMP/workspace" --require-running --json | jq -e '.ok'
+
   npm:
+    needs: stranger
     if: github.repository == 'your-space-ai/your-space'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -50,6 +117,7 @@ jobs:
           npm publish "./$file" --provenance --access public --tag "$dist_tag"
 
   images:
+    needs: stranger
     if: github.repository == 'your-space-ai/your-space' && !github.event.release.prerelease
     runs-on: ubuntu-24.04
     timeout-minutes: 10
