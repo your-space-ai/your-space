@@ -96,6 +96,8 @@ export function RepositoryDeployment({
     },
     onSettled: () => setCheckingReceipt(false),
     onSuccess: async (done) => {
+      // The receipt answers the check, so stop showing it now rather than after the refetch below.
+      setCheckingReceipt(false);
       setReceipt(done);
       setPlan(null);
       client.setQueryData(pendingKey, { pending: null });
