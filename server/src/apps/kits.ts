@@ -31,6 +31,8 @@ export class NotAKitError extends KitError {
 }
 
 const NAME = /^[a-z][a-z0-9-]{0,29}$/;
+/** A GitHub `owner/repo`, as a link names it. */
+const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const HOST = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
 const TOP_KEYS = new Set(["kit", "source", "name", "title", "interface", "pane", "generate", "derive", "set", "secrets", "outbound", "limits"]);
@@ -65,6 +67,13 @@ export function parseKit(text: string): Kit {
   const source = data.source;
   if (source !== undefined && (!isObject(source) || typeof source.repo !== "string" || typeof source.path !== "string")) {
     throw new KitError("it must name the source repo and path it fits.");
+  }
+  // The path is read at the commit Your Space records, so it can't step out of it with . or ..
+  if (source !== undefined && (!REPOSITORY.test(source.repo as string) || (source.repo as string).split("/").some((part) => part === "." || part === ".."))) {
+    throw new KitError("its source repo must be a GitHub owner/repository.");
+  }
+  if (source !== undefined && (source.path as string).split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
+    throw new KitError("its source path must be a file's path in the repository, with no empty, . or .. parts.");
   }
   const kit: Kit = { kit: data.kit, ...(source !== undefined ? { source: { repo: source.repo as string, path: source.path as string } } : {}) };
   if (data.kit === 2) {

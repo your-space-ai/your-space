@@ -235,7 +235,8 @@ export function repoRoutes(
       route(async (p, r, g) => {
         const id = repoId(r.params.id);
         await managed(db, p, g, id);
-        return previewSnapshot(apps, await loadSnapshot(g, id, object(r.body)));
+        // Every app installs with a kit: kit.yaml beside the Compose file, unless the owner names another.
+        return previewSnapshot(apps, await loadSnapshot(g, id, { kitPath: "kit.yaml", ...object(r.body) }));
       }),
     );
     router.post(

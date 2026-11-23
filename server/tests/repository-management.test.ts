@@ -283,3 +283,22 @@ it("reads a linked kit through the connection, refusing a Compose file and namin
   expect(hidden.status).toBe(404);
   expect(await hidden.json()).toMatchObject({ error: "kit_not_found", message: expect.stringMatching(/connect GitHub with private access/) });
 });
+
+it("installs from a managed repository with the kit.yaml beside its Compose file unless told another", async () => {
+  const kit = "kit: 1\nname: desk\ninterface: { service: web, port: 80 }\n";
+  const provider = vi.fn<typeof fetch>(async (url) => {
+    const u = new URL(String(url));
+    if (u.pathname === "/repos/owner/desk" || u.pathname === "/repositories/41") return fixture(meta(41, "owner/desk", true));
+    if (u.pathname.startsWith("/repositories/41/commits/")) return fixture({ sha: commit });
+    if (u.pathname === "/repositories/41/contents/compose.yaml") return fixture(file("services:\n  web: { image: example/web:1 }\n"));
+    if (u.pathname === "/repositories/41/contents/kit.yaml") return fixture(file(kit));
+    return fixture({}, 404);
+  });
+  vi.stubGlobal("fetch", provider);
+  expect((await call(repoApi + "/import", "POST", { fullName: "owner/desk" })).status).toBe(200);
+  const review = await call(repoApi + "/41/install/preview", "POST", {});
+  expect(review.status).toBe(200);
+  expect(await review.json()).toMatchObject({ name: "desk", kit: { repo: "owner/desk", path: "kit.yaml", commit } });
+  const other = await call(repoApi + "/41/install/preview", "POST", { kitPath: "deploy/kit.yaml" });
+  expect(other.status).toBe(404);
+});

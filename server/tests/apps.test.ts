@@ -96,9 +96,18 @@ describe("links, kits and settings", () => {
     expect(composeOf(parseKit(BESIDE), at)).toEqual({ repo: "ys-fixtures/Catalog", path: "apps/ys-fixtures/compose.yaml", commit: COMMIT });
     expect(composeOf(parseKit(BESIDE), { ...at, path: "kit.yaml" })).toEqual({ repo: "ys-fixtures/Catalog", path: "compose.yaml", commit: COMMIT });
     expect(composeOf(parseKit(BESIDE), null)).toBeNull();
+    // The source is a repository and a file in it, which can't step out of the commit it is read at.
+    for (const [repo, path] of [["a/b", "../dev/compose.yaml"], ["a/b", "deploy/./compose.yaml"], ["a/b", "/compose.yaml"], ["a/b/c", "compose.yaml"], ["../b", "compose.yaml"], ["a", "compose.yaml"]]) {
+      expect(() => parseKit(`kit: 1\nsource: { repo: "${repo}", path: "${path}" }\n`), `${repo} ${path}`).toThrow(KitError);
+    }
   });
 
-  it("identifies a kit by its repository, path and commit, or by its digest", () => {
+  it("identifies a kit by its repository, path and commit, or by its digest", async () => {
+    // A file whose name has a literal %20 keeps it: the pinned link encodes it, and the identity decodes it once.
+    const github = fakeGithub({ "a/kits/x%20y.yaml": "kit: 1\n" });
+    const file = await fetchSource("https://github.com/a/kits/blob/main/x%2520y.yaml", { api: "https://api.github.test", raw: "https://raw.github.test" }, github);
+    expect(file.pinnedLink).toBe(`https://github.com/a/kits/blob/${COMMIT}/x%2520y.yaml`);
+    expect(kitIdentity(file.pinnedLink).path).toBe("x%20y.yaml");
     expect(kitIdentity(`https://github.com/a/kits/blob/${COMMIT}/apps/x%20y.yaml`)).toEqual({ source: `https://github.com/a/kits/blob/${COMMIT}/apps/x%20y.yaml`, repo: "a/kits", path: "apps/x y.yaml", commit: COMMIT });
     expect(kitIdentity(`sha256:${"a".repeat(64)}`)).toEqual({ source: `sha256:${"a".repeat(64)}` });
   });
@@ -122,6 +131,8 @@ describe("links, kits and settings", () => {
     expect(silent.find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ secret: true, generated: true, publishedDefault: null });
     expect(silent.find((s) => s.name === "POSTGRES_PASSWORD")!.value).not.toBe("sure_password");
     expect(silent.find((s) => s.name === "OPENAI_ACCESS_TOKEN")).toMatchObject({ secret: true, generated: false, value: null });
+    // Data kept from a removed app was written with its settings then: a kept unset one stays unset.
+    expect(buildSettings(variables, parseKit("kit: 1\n"), address, new Map([["POSTGRES_PASSWORD", null]])).find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ value: null, generated: false });
     // A value the kit sets is the kit's choice.
     expect(buildSettings(variables, parseKit("kit: 1\nset: { POSTGRES_PASSWORD: chosen }\n"), address).find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ value: "chosen", generated: false });
 

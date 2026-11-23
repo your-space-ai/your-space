@@ -121,13 +121,18 @@ export async function fetchLatestFile(repo: string, path: string, endpoints: Git
   return fetchPinnedFile(repo, path, commit, endpoints, fetcher);
 }
 
+/** A path's segments, each encoded for a URL. */
+function encodePath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
 export function fetchPinnedFile(repo: string, path: string, commit: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
-  const link = `https://github.com/${repo}/blob/${commit}/${path}`;
+  const link = `https://github.com/${repo}/blob/${commit}/${encodePath(path)}`;
   return readResolvedFile(repo, commit, path, commit, link, endpoints, fetcher);
 }
 
 async function readResolvedFile(repo: string, ref: string, path: string, commit: string, link: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
-  const res = await get(fetcher, `${endpoints.raw}/${repo}/${commit}/${path.split("/").map(encodeURIComponent).join("/")}`, "text/plain");
+  const res = await get(fetcher, `${endpoints.raw}/${repo}/${commit}/${encodePath(path)}`, "text/plain");
   if (res.status === 404) throw new SourceError(`There is no file ${path} in ${repo} at ${ref}.`, true);
   if (!res.ok) throw new SourceError(`GitHub answered ${res.status} for the file. Try again later.`);
   const length = Number(res.headers.get("content-length") ?? 0);
@@ -141,5 +146,5 @@ async function readResolvedFile(repo: string, ref: string, path: string, commit:
   } catch {
     throw new SourceError("Choose a UTF-8 file.");
   }
-  return { link, repo, ref, path, commit, text, pinnedLink: `https://github.com/${repo}/blob/${commit}/${path}` };
+  return { link, repo, ref, path, commit, text, pinnedLink: `https://github.com/${repo}/blob/${commit}/${encodePath(path)}` };
 }

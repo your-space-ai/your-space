@@ -108,7 +108,8 @@ export interface AppAddress {
  * The settings an app's file reads, with values Your Space generates or works out. A published
  * default is never used for a secret: the kit says which values to generate, and any other setting
  * that looks secret and has a published default, unless the kit sets it, gets a generated value
- * (spec Q3, decision 2026-11-23).
+ * (spec Q3, decision 2026-11-23). Data kept from a removed app was written with its settings then,
+ * so a setting kept from it keeps its value, even an unset one, rather than a new generated one.
  */
 export function buildSettings(variables: Variable[], kit: Kit | null, address: AppAddress, previous: Map<string, string | null> = new Map()): Setting[] {
   const names = new Set(variables.map((v) => v.name));
@@ -138,7 +139,7 @@ export function buildSettings(variables: Variable[], kit: Kit | null, address: A
       generated = true;
     } else if (kit?.set?.[name] !== undefined && (kept === undefined || kept === null)) {
       value = kit.set[name]!;
-    } else if (secret && variable.default && kit?.set?.[name] === undefined) {
+    } else if (secret && variable.default && kit?.set?.[name] === undefined && !previous.has(name)) {
       value = kept ?? generateValue();
       generated = true;
     }

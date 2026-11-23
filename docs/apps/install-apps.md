@@ -5,8 +5,8 @@ title: "Install and publish apps"
 Your Space runs existing open-source apps from their own Compose files, on the same Docker engine,
 and opens them inside Your Space.
 
-**Kits.** Every app installs from its kit: a small YAML file, kept outside the app's own repository,
-that is the app's definition in Your Space. It names the app's own Compose file and says what Your
+**Kits.** Every app installs from its kit: a small YAML file, in the app's own repository or in a
+separate one, that is the app's definition in Your Space. It names the app's own Compose file and says what Your
 Space needs to run and show the app: which service is its interface, which settings to generate or
 work out, the internet hosts it needs, and its limits. The app's authors change nothing. See the
 [kit format](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
