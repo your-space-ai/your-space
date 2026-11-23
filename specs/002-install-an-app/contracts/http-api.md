@@ -1,6 +1,10 @@
 # Apps HTTP API and Commands
 
 Every route below requires the signed-in owner (FR-010); others get 401 or 403 and nothing changes.
+A request with any method but `GET` or `HEAD` must also carry Your Space's exact origin in its
+`Origin` header, which browsers send from Your Space's own pages. Without it, or with another origin
+such as an app's, it gets `403 forbidden` and nothing changes: apps are on names under Your Space's,
+so the browser sends the owner's session with a request from an app's page too.
 Errors use journey 001's shape `{ "error": "<code>", "message": "…" }`.
 
 | Method and path | Body | Answer |

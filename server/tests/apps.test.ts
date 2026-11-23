@@ -286,6 +286,30 @@ describe("apps API", () => {
     expect((await response.json() as any).error).toBe("already_installed");
   });
 
+  it("changes apps only from Your Space's own pages, not from an app's", async () => {
+    const host = new URL(server.publicUrl).host;
+    const calls = runtime.calls.length;
+    // An app's page is on a name under Your Space's, so the browser sends the owner's cookie from it.
+    // A form or a no-cors fetch needs no preflight, and sends no content type and no body.
+    for (const origin of [`http://whoami.${host}`, "null", "https://elsewhere.example"]) {
+      for (const [method, path] of [["POST", "/api/apps/whoami/remove"], ["POST", "/api/apps/whoami/start"], ["DELETE", "/api/apps/whoami/outbound/example.com"]]) {
+        const response = await api(path!, { method, headers: { origin } });
+        expect(response.status, `${method} ${path} from ${origin}`).toBe(403);
+        expect(await response.json()).toEqual({ error: "forbidden", message: "Manage apps from Your Space itself." });
+      }
+    }
+    // Without an Origin header, as from a client that isn't a browser on Your Space's page.
+    expect((await send(`${server.url}/api/apps/whoami/remove`, "POST", new Headers({ cookie, host }), undefined)).status).toBe(403);
+    expect(runtime.calls.length).toBe(calls);
+    expect(await t.db.select({ desired: app.desired, removedAt: app.removedAt }).from(app).where(eq(app.name, "whoami"))).toEqual([{ desired: "running", removedAt: null }]);
+
+    // Reading needs no Origin: a browser shows the answer only to Your Space's own pages.
+    expect((await api("/api/apps/whoami", { headers: { origin: `http://whoami.${host}` } })).status).toBe(200);
+    // Your Space's page sends the same bodyless POST with its own origin, and it works.
+    expect((await api("/api/apps/whoami/start", { method: "POST" })).status).toBe(202);
+    await settled();
+  });
+
   it("turns blocked hosts into access requests; approving opens one host, dismissing keeps it quiet", async () => {
     runtime.denied.set("ys-whoami", [
       { host: "api.openai.com", attempts: 3, lastSeen: new Date().toISOString() },

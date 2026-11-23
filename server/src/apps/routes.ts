@@ -45,6 +45,7 @@ type Handler = (req: Request, res: Response, owner: Owner) => Promise<void>;
 
 export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Handoffs): Router {
   const router = Router();
+  const publicOrigin = new URL(apps.config.publicUrl).origin;
 
   const owner = (handler: Handler) => async (req: Request, res: Response, next: NextFunction) => {
     res.set("Cache-Control", "no-store");
@@ -52,6 +53,12 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
       const who = await ownerFor(auth, db, req);
       if (who === "signed_out") return void res.status(401).json({ error: "signed_out", message: "Sign in to Your Space first." });
       if (who === "forbidden") return void res.status(403).json({ error: "forbidden", message: "Only the owner can manage apps." });
+      // Apps live under Your Space's host, so the browser sends the owner's session with a request
+      // from an app's page too. A change counts only from Your Space's own pages, which browsers say
+      // in the Origin header; a request without one is refused like any other.
+      if (req.method !== "GET" && req.method !== "HEAD" && req.get("origin") !== publicOrigin) {
+        return void res.status(403).json({ error: "forbidden", message: "Manage apps from Your Space itself." });
+      }
       await handler(req, res, who);
     } catch (error) {
       if (error instanceof AppError) {

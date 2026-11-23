@@ -116,7 +116,22 @@ test("the app opens in a pane on its own origin, only for the signed-in owner", 
   // Only Your Space may frame the app.
   const direct = await page.request.get("http://whoami.space.localhost/");
   expect(direct.headers()["content-security-policy"]).toContain("frame-ancestors http://space.localhost:*");
+  expect(direct.headers()["content-security-policy"]).not.toContain("'self'");
   expect(direct.headers()["x-frame-options"]).toBeUndefined();
+  // And only Your Space may frame its own pages, so an app's page can't show them to steer the owner.
+  for (const path of ["/", "/apps", "/api/apps"]) {
+    const own = await page.request.get(path);
+    expect(own.headers()["content-security-policy"], path).toBe("frame-ancestors 'self'");
+    expect(own.headers()["x-frame-options"], path).toBe("SAMEORIGIN");
+  }
+
+  // The browser sends the owner's session with a request from an app's page too, but not Your
+  // Space's origin, so it changes nothing. Your Space's own pages approve, dismiss and remove below.
+  const appOrigin = new URL(page.url()).origin.replace("://space.", "://whoami.");
+  const forged = await page.request.post("/api/apps/whoami/remove", { headers: { origin: appOrigin } });
+  expect(forged.status()).toBe(403);
+  expect(await forged.json()).toMatchObject({ error: "forbidden" });
+  expect(await (await page.request.get("/api/apps/whoami")).json()).toMatchObject({ state: "running", desired: "running" });
 
   // Someone who isn't signed in reaches no part of the app (SC-005).
   const stranger = await browser.newContext();

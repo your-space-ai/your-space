@@ -982,6 +982,18 @@ Platform isolation must protect platform services and other apps; SDK checks alo
 
 **Decision update (2026-11-01):** Add install-time warnings, documentation disclaimers, and a pre-publication security hardening pass on app and workspace boundaries, so the isolation work is not mistaken for a sandbox for untrusted code.
 
+**Decision update (2026-11-23):** Every app is on a name under Your Space's, so the browser treats
+an app's page as the same site as Your Space and sends the owner's session with its requests. Two
+rules keep that from reaching Your Space as the owner. Every route of Your Space's own API that
+changes something for the owner, the apps API included, takes the request only when its `Origin`
+header is Your Space's exact origin; a request without one is refused, because browsers always send
+it from Your Space's own pages, and agents and the CLI don't use the owner's session. The sign-in
+and session routes keep Better Auth's own check of the request's origin. And only Your Space can
+frame its own pages: its Caddy sends `Content-Security-Policy: frame-ancestors 'self'` and
+`X-Frame-Options: SAMEORIGIN` with them, so an app's page can't show Your Space in a frame and steer
+the owner's clicks. `'self'`, not `'none'`, keeps the page a pane shows when the browser blocks an
+app's cookies, which Your Space frames itself. Apps' own framing rules are unchanged.
+
 ### Agent Access Through Your Space
 
 - Agents never call apps directly. Your Space is the API gateway between agents and apps, so every agent request passes its permission checks.
