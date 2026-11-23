@@ -1,0 +1,5 @@
+# The kit of the fixture app whose file requires two settings. It generates neither, so the owner
+# fills both in.
+kit: 1
+source: {repo: ys-fixtures/required, path: compose.yaml}
+interface: {service: web, port: 8080}

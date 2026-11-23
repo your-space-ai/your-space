@@ -15,8 +15,8 @@ test("the private transport reaches only the registered interface of the selecte
       roles: { reader: { title: "Reader", routes: ["read"] } },
     },
   };
-  const source = "https://github.com/ys-fixtures/probe/blob/main/compose.yaml";
-  await composeWithInput(["exec", "-T", "server", "install-app", source, "--kit", "-", "--json"], JSON.stringify(kit));
+  // The kit names the probe's Compose file on GitHub.
+  await composeWithInput(["exec", "-T", "server", "install-app", "--kit", "-", "--json"], JSON.stringify(kit));
   await docker([
     "exec", "ys-probe-web-1", "sh", "-c", 'printf %s "$1" > /www/record.json',
     "sh", JSON.stringify({ id: "fixture" }),

@@ -1,0 +1,4 @@
+# The kit of the fixture app that refuses to be framed: only its interface.
+kit: 1
+source: {repo: ys-fixtures/noframe, path: compose.yaml}
+interface: {service: web, port: 8080}

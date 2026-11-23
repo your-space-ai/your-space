@@ -1,0 +1,4 @@
+# The probe fixture's kit: only its interface, so the app starts with no internet access.
+kit: 1
+source: {repo: ys-fixtures/probe, path: compose.yaml}
+interface: {service: web, port: 8080}

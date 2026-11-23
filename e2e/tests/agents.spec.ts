@@ -61,7 +61,7 @@ test("kit grants and exact approvals route real calls to the installed app", asy
   await setPassword(page, owner.url);
   await signIn(page, "sam");
   const installed = await serverCommand("install-app", [
-    "https://github.com/ys-fixtures/records/blob/main/compose.yaml",
+    "https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/records.yaml",
   ]);
   expect(installed.json?.ok, installed.json?.error).toBe(true);
   await page.getByRole("link", { name: "Agents", exact: true }).click();
@@ -146,9 +146,9 @@ test("kit grants and exact approvals route real calls to the installed app", asy
 test("upgrading a running installation keeps its app ID and volume and installs a usable agent interface", async () => {
   await resetStack();
   await createOwner();
-  const source = "https://github.com/ys-fixtures/records/blob/main/compose.yaml";
+  // A kit file on this machine names the app's Compose file on GitHub.
   const legacy = { kit: 1, source: { repo: "ys-fixtures/records", path: "compose.yaml" }, name: "records", interface: { service: "app", port: 8080 } };
-  await composeWithInput(["exec", "-T", "server", "install-app", source, "--kit", "-", "--json"], JSON.stringify(legacy));
+  await composeWithInput(["exec", "-T", "server", "install-app", "--kit", "-", "--json"], JSON.stringify(legacy));
   const operator = ["exec", "-T", "server", "upgrade-agent-kit", "records", "--json"];
   const inspect = async () => JSON.parse((await compose([...operator, "--inspect"])).stdout);
   const before = await inspect();

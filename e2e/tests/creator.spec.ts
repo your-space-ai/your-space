@@ -10,7 +10,7 @@ import { setPassword, signIn } from "./helpers/ui.ts";
 
 // Runs through the real owner UI, database, Docker runtime, edge and managed GitHub routes.
 // Only GitHub is replaced with the synthetic provider mounted by compose.e2e.yaml.
-const composeLink = "https://github.com/ys-fixtures/records/blob/main/compose.yaml";
+const recordsKit = "https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/records.yaml";
 const kitLink = "https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/whoami.yaml";
 
 async function sendHome(frame: Frame, workspace: string, request: Record<string, unknown>) {
@@ -49,9 +49,9 @@ test("the owner installs a directory kit, grants a custom Home one read, and res
   await page.getByText("Kit directory", { exact: true }).click();
   await page.getByRole("button", { name: "Review whoami", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Review", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "installation kit" })).toHaveAttribute("href", /0123456789abcdef/);
-  await page.getByLabel("GitHub kit URL").fill(kitLink);
-  await page.getByRole("button", { name: "Review kit URL" }).click();
+  await expect(page.getByRole("link", { name: "ys-fixtures/catalog/apps/ys-fixtures/whoami.yaml" })).toHaveAttribute("href", /0123456789abcdef/);
+  await page.getByLabel("Link to the app's kit").fill(kitLink);
+  await page.getByRole("button", { name: "Review", exact: true }).click();
   await expect(page.getByRole("button", { name: "Install", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Install", exact: true }).click();
   await expect(page.locator("section.job")).toHaveAttribute("data-job-state", "succeeded", { timeout: 120000 });
@@ -73,7 +73,7 @@ test("the owner installs a directory kit, grants a custom Home one read, and res
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
-  const other = await serverCommand("install-app", [composeLink]);
+  const other = await serverCommand("install-app", [recordsKit]);
   expect(other.json?.ok, other.json?.error).toBe(true);
   await page.getByRole("link", { name: "Agents", exact: true }).click();
   const connection = page.getByRole("region", { name: "App connections" });
@@ -189,7 +189,15 @@ test("a synthetic GitHub account can manage, commit, preview a private install, 
   await expect(page.getByRole("status").filter({ hasText: /Committed/ })).toBeVisible();
   await page.getByRole("button", { name: "Open file", exact: true }).click();
   await expect(page.getByLabel("File contents")).toHaveValue(/node:26-slim/);
+  // Every app installs with a kit: this one sits beside its Compose file.
+  await page.getByLabel("File path", { exact: true }).fill("kit.yaml");
+  await page.getByRole("button", { name: "New file" }).click();
+  await page.getByLabel("File contents").fill("kit: 1\ninterface: { service: web, port: 8080 }\n");
+  await page.getByLabel("Commit message").fill("Add the fixture's kit");
+  await page.getByRole("button", { name: "Commit changes" }).click();
+  await expect(page.getByRole("status").filter({ hasText: /Committed/ })).toBeVisible();
   await page.getByRole("button", { name: "Install new app" }).click();
+  await expect(page.getByLabel("Kit file path")).toHaveValue("kit.yaml");
   await page.getByRole("button", { name: "Review", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Review", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "fixture-owner/fixtures-private/compose.yaml" })).toBeVisible();
