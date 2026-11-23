@@ -25,7 +25,9 @@ one. A kit's link can name a branch, such as `blob/main/kit.yaml`; when you revi
 resolves it to the kit's commit at that moment, and the review and the install use exactly that kit.
 A kit without `source`, or without `source.commit`, is refused, and the message names the field. A
 newer commit of the kit, or of the Compose file, never reaches an installed app by itself: you
-install it when you choose to. Your Space doesn't yet tell you when a newer kit exists.
+install it when you choose to. Your Space doesn't yet tell you when a newer kit exists. For a
+repository you manage, **Update installed app** deploys the commit you select there, after you
+review it (see [managed repositories](managed-repositories.md)).
 
 ```yaml
 source:
