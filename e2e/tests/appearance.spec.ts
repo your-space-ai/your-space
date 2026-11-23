@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
-import { builtInThemes, retiredStarterThemes } from "../../shared/appearance/theme.mjs";
+import { builtInThemes, bundledFonts, retiredStarterThemes } from "../../shared/appearance/theme.mjs";
 import { evidence } from "./helpers/evidence.ts";
 import { createOwner, resetStack } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
@@ -31,8 +31,18 @@ test("the owner previews, shares and applies workspace themes in light and dark"
   await expect(page.getByRole("radio", { name: "Match my device" })).toBeChecked();
   await expect(page.locator(".starter-card .theme-sample")).toHaveCount(6);
   // The four bundled families load from the dashboard itself.
-  for (const family of ["Instrument Sans", "Space Grotesk", "Fraunces", "IBM Plex Mono"]) {
+  for (const family of bundledFonts) {
     await expect.poll(() => loadedFaces(page, family)).toBeGreaterThan(0);
+  }
+  // Each family's license ships beside it and in the dashboard's third-party notices.
+  const notices = await page.request.get("/licenses/THIRD-PARTY.md");
+  expect(notices.ok()).toBe(true);
+  const noticeText = await notices.text();
+  for (const family of bundledFonts) {
+    expect(noticeText).toContain(`## ${family} font (OFL-1.1)`);
+    const license = await page.request.get(`/fonts/OFL-${family.replaceAll(" ", "")}.txt`);
+    expect(license.ok()).toBe(true);
+    expect(await license.text()).toContain("SIL Open Font License, Version 1.1");
   }
   const origin = new URL(page.url()).origin;
   expect(fonts.length).toBeGreaterThan(0);
