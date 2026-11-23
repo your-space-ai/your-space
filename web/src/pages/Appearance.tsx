@@ -71,7 +71,8 @@ export function Appearance() {
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) {
         setError(cause.code === "theme_in_use" ? "Choose another theme before deleting the current one." : "Your theme library changed. Review the latest version and try again.");
-        await catalog.refetch();
+        // Another browser changed the library: show its latest themes and the look it applied.
+        await Promise.all([catalog.refetch(), client.invalidateQueries({ queryKey: activePaletteQuery.queryKey })]);
         setDeleting(null);
       } else setError(errorMessage(cause));
       return false;

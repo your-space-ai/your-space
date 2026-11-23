@@ -55,6 +55,18 @@ test("the owner previews, shares and applies workspace themes in light and dark"
   await expect.poll(() => background(page)).toBe(cerulean.light.bg);
   await expect.poll(() => colorScheme(page)).toBe("light");
 
+  // Another browser chose Dark: this page's stale change is refused, and it shows the saved mode.
+  const other = await page.context().newPage();
+  await other.goto("/appearance");
+  await chooseMode(other, "Dark");
+  await other.close();
+  await page.getByRole("radio", { name: "Light", exact: true }).check();
+  await expect(page.getByRole("alert")).toContainText("Your theme library changed");
+  await expect(page.getByRole("radio", { name: "Dark", exact: true })).toBeChecked();
+  await expect.poll(() => background(page)).toBe(cerulean.dark.bg);
+  await chooseMode(page, "Match my device");
+  await expect.poll(() => background(page)).toBe(cerulean.light.bg);
+
   await page.getByRole("button", { name: "Use Cinder", exact: true }).focus();
   await Promise.all([
     page.waitForResponse((response) => response.url().endsWith("/api/appearance/selection") && response.ok()),
