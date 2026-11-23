@@ -40,8 +40,8 @@ commands:
 
   failed-journeys:
     description: >-
-      Keeps what explains a failed browser journey: its screenshot at the failure, the page's
-      accessibility snapshot and its Playwright trace. Passing journeys keep nothing.
+      Keeps what explains a failed browser journey: its screenshot at the failure and the page's
+      accessibility snapshot (error-context.md). Passing journeys keep nothing.
     steps:
       - run:
           # Only the failed tests' files, which hold the test stack's synthetic data. No HTML report,
@@ -52,7 +52,7 @@ commands:
             mkdir -p /tmp/failed-journeys
             [ -d e2e/test-results ] || exit 0
             cd e2e/test-results
-            find . \( -name 'test-failed-*.png' -o -name error-context.md -o -name trace.zip \) \
+            find . \( -name 'test-failed-*.png' -o -name error-context.md \) \
               -exec cp --parents {} /tmp/failed-journeys/ \;
       - store_artifacts:
           path: /tmp/failed-journeys

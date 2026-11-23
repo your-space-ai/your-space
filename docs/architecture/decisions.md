@@ -1081,6 +1081,18 @@ Chromium on a GitHub-hosted runner. This gives forks a browser check without Cir
 credentials. CircleCI retains the broader browser matrix for first-party development. Hosted
 checks report test results in job logs. CircleCI omits automatic HTML reports, raw test-result
 artifacts and videos. Its configured Argos project receives the selected synthetic screenshots.
+(Superseded in part 2026-11-23: CircleCI keeps a failed journey's screenshot and page snapshot;
+see the next entry.)
+
+**Decision update (2026-11-23):** CircleCI keeps what explains a failed browser journey. A failure
+that shows only on CircleCI, such as one in WebKit on `main`, otherwise left only the error in the
+job log, and the screenshot Playwright took at the failure was lost with the machine. Both browser
+jobs now store, for each failed test, that screenshot and the page's accessibility snapshot
+(`error-context.md`) as job artifacts. They hold only the test stack's synthetic data. Passing tests
+store nothing, and CircleCI still keeps no HTML report, no videos and no other test results.
+Playwright traces stay off, because recording one slows every action enough to hide timing races
+in the app. The WebKit theme import failure that showed in 3 of 29 untraced runs passed all 61
+traced ones.
 
 
 **Decision update (2026-11-19):** CircleCI's browser tests take less time on pull requests, superseding the stack rule of the decision above for them. A pull request runs the journeys, and installs the browser, in Chromium only, whose screenshots Argos compares; pushes to `main` run them in Chromium, Firefox and WebKit, so a bug only Firefox or WebKit shows can surface after the merge, which is accepted for quicker pull request runs. Every pull request in a stack runs the browser tests once it is ready for review, not only the one based on `main`, so its results come before the ones below it merge; drafts still skip them. A pull request whose commit has the same git tree as an earlier passing run of the job in the same browsers doesn't run them again: a passing run leaves a marker in CircleCI's cache, keyed by the tree, and a later run that finds it stops successfully after checkout. So a pull request rebased onto `main` after the one below it merged unchanged, or given a new sign-off, doesn't rerun them, while a change to any file does; `main` always runs them in full. A skipped run uploads nothing to Argos, so its commit gets no Argos check rather than a failed one: the Argos check isn't required to merge, and the earlier run's build has the same screenshots, though compared with `main` as it was then, so after the pull request below merges, the skipped one has no build compared with the new `main`. Argos's `skip` command, which marks a commit's check as passed, isn't used, since it would show a pass while that earlier build may still wait for a decision. CircleCI's free plan stays: the job keeps its machine size and runs without parallelism. GitHub Actions keeps the Compose setups checks on the pull request based on `main`.
