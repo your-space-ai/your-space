@@ -36,11 +36,12 @@ an existing open-source personal finance app, called the finance app below.
 
 ## Objective and Scope
 
-An owner can install an app from a link to its Compose file in a public GitHub repository. Your
-Space reads the file at an exact commit, adapts it to its rules or refuses it with reasons, shows
-the owner what will run and the trust warning, and runs the app's containers on its runtime.
-The owner opens the app in a pane inside Your Space, and only people signed in to Your Space can
-reach it.
+An owner can install an app from a link to its Compose file in a public GitHub repository
+(2026-11-23: from the link to the app's kit, which names its Compose file; see the update at the
+top). Your Space reads the file at an exact commit, adapts it to its rules or refuses it with
+reasons, shows the owner what will run and the trust warning, and runs the app's containers on its
+runtime. The owner opens the app in a pane inside Your Space, and only people signed in to Your
+Space can reach it.
 
 Apps are not written for Your Space. An app keeps its own interface, its own accounts and its own
 data; Your Space runs it, protects the platform and other apps from it, and controls who can reach
@@ -87,9 +88,11 @@ second app, a CRM, needs it in a setting), so the owner isn't asked for it.
 Your Space reads a kit as another input, and contains no app-specific logic. An app with no kit
 installs if its own files are enough. (Superseded 2026-11-23: a kit is the app's definition, and
 every app installs with one: from the kit's link, or, with the server command, a kit file on this
-machine, alone or with a Compose file given there. The kit's `source` names the Compose file; the
-[kit format](contracts/kit-format.md) says at which commit Your Space reads it. The configured
-directory lists kits and holds review evidence; it no longer finds a kit from a Compose link.)
+machine, alone or with a Compose file given there. The kit's `source` names the Compose file;
+without one, a linked kit names the `compose.yaml` beside it, and a kit given with a Compose file on
+this machine goes with that file. The [kit format](contracts/kit-format.md) says at which commit
+Your Space reads it. The configured directory lists kits and holds review evidence; it no longer
+finds a kit from a Compose link.)
 
 ## Slices and Their Dependencies
 
