@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { defaultThemeId, starterThemes, themeVariables, validateTheme } from '../../shared/appearance/theme.mjs';
+import { builtInThemes, defaultThemeId, paletteScheme, retiredStarterThemes, themeVariables, validateTheme } from '../../shared/appearance/theme.mjs';
 
 const limit = 16 * 1024;
 
+// The launcher follows the Mac's light or dark appearance, so each card carries both palettes.
 function card(id, theme) {
-  return { id, name: theme.name, scheme: theme.scheme, variables: themeVariables(theme) };
+  const look = scheme => ({ scheme: paletteScheme(theme[scheme]), variables: themeVariables(theme, scheme) });
+  return { id, name: theme.name, light: look('light'), dark: look('dark') };
 }
 
 export function previewTheme(text) {
@@ -15,14 +17,18 @@ export function previewTheme(text) {
 }
 
 export function launcherAppearance(file) {
-  const presets = starterThemes.map(({ id, theme }) => card(id, theme));
+  const presets = builtInThemes.map(({ id, theme }) => card(id, theme));
   const builtIn = id => presets.some(item => item.id === id);
 
   async function read() {
     try {
       const saved = JSON.parse(await readFile(file, 'utf8'));
-      const custom = saved.custom ? validateTheme(saved.custom) : undefined;
-      const selected = builtIn(saved.selected) || (saved.selected === 'custom' && custom) ? saved.selected : defaultThemeId;
+      let custom = saved.custom ? validateTheme(saved.custom) : undefined;
+      let selected = saved.selected;
+      // A launcher left on a retired starter keeps it as its imported theme, unless it already has one.
+      const retired = retiredStarterThemes.find(item => item.id === selected);
+      if (retired && !custom) [custom, selected] = [validateTheme(retired.theme), 'custom'];
+      if (!builtIn(selected) && !(selected === 'custom' && custom)) selected = defaultThemeId;
       return { selected, custom };
     } catch {
       return { selected: defaultThemeId };

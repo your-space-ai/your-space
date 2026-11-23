@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { createAppRouter } from "./router.tsx";
 import { WorkspaceAppearance } from "./appearance.ts";
+import "./fonts.css";
 import "./styles.css";
 import "./appearance.css";
 import "./creator.css";

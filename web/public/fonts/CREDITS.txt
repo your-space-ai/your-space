@@ -1,0 +1,24 @@
+Fonts bundled with the Your Space dashboard
+
+The dashboard serves these fonts itself, so no page loads a font from another host. Each file is
+the Latin subset that the Google Fonts CSS2 API served for the family in November 2026, unmodified.
+Each family is licensed under the SIL Open Font License, Version 1.1, in the file named beside it.
+
+Instrument Sans, weights 400-700 (variable)
+  Copyright 2022 The Instrument Sans Project Authors (https://github.com/Instrument/instrument-sans)
+  instrument-sans-latin.woff2, license OFL-InstrumentSans.txt
+
+Space Grotesk, weights 400-700 (variable)
+  Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk)
+  space-grotesk-latin.woff2, license OFL-SpaceGrotesk.txt
+
+Fraunces, weights 400-700 (variable)
+  Copyright 2018 The Fraunces Project Authors (https://github.com/undercasetype/Fraunces)
+  fraunces-latin.woff2, license OFL-Fraunces.txt
+
+IBM Plex Mono, weights 400 and 600
+  Copyright 2017 IBM Corp. with Reserved Font Name "Plex"
+  ibm-plex-mono-latin-400.woff2 and ibm-plex-mono-latin-600.woff2, license OFL-IBMPlexMono.txt
+
+The license texts come from the Google Fonts repository (https://github.com/google/fonts), under
+ofl/<family>/OFL.txt.

@@ -101,10 +101,6 @@ h1, h2 { font-family: var(--font-heading); font-weight: 600; }
   margin-inline-start: auto; padding: .42rem .85rem; border: 1px solid var(--border);
   border-radius: 999px; background: var(--panel); color: var(--fg); font-size: .9rem;
 }
-#workspace-art {
-  display: block; width: 100%; height: clamp(6rem, 17vh, 9rem); object-fit: cover;
-  border-radius: .9rem; margin: 0 0 1.6rem;
-}
 dialog {
   width: min(calc(100% - 2rem), 43rem); max-height: calc(100vh - 2rem); overflow: auto;
   padding: clamp(1.25rem, 4vw, 2.2rem); color: var(--fg); background: var(--bg);
@@ -126,10 +122,12 @@ dialog .intro { margin-bottom: 1.15rem; }
   position: absolute; top: .45rem; right: .45rem; z-index: 1; width: 1rem; height: 1rem;
   margin: 0; padding: 0; accent-color: var(--accent); cursor: pointer;
 }
-.theme-sample, .theme-sample img { display: block; width: 100%; }
-.theme-sample { height: 4.7rem; }
-.theme-sample img { height: 100%; object-fit: cover; }
-.custom-sample { background: linear-gradient(120deg, var(--sample-bg) 65%, var(--sample-accent) 65%); }
+/* The light palette on the left and the dark one on the right, each with its accent. */
+.theme-sample {
+  display: block; width: 100%; height: 4.7rem;
+  background: linear-gradient(120deg, var(--sample-light-bg) 34%, var(--sample-light-accent) 34% 50%,
+    var(--sample-dark-accent) 50% 66%, var(--sample-dark-bg) 66%);
+}
 .theme-name { display: block; padding: .45rem .6rem; overflow-wrap: anywhere; }
 #theme-file::file-selector-button {
   background: var(--panel); color: var(--fg); border: 0; border-inline-end: 1px solid var(--border);

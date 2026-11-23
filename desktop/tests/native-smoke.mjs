@@ -1,7 +1,7 @@
 // Runs the actual Electron windows, either from source or from an extracted Mac candidate.
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { starterThemes } from "../../shared/appearance/theme.mjs";
+import { builtInThemes } from "../../shared/appearance/theme.mjs";
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -70,21 +70,20 @@ test('a packaged launcher previews, imports and remembers its own portable theme
     client = await launch();
     const launcher = await client.firstWindow();
     const properties = () => launcher.evaluate(() => document.documentElement.style.getPropertyValue('--bg'));
+    // The launcher shows each theme's palette for the Mac's current appearance.
+    const scheme = await launcher.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     await launcher.getByRole('button', {name:'Appearance'}).click();
-    await expect(launcher.getByRole('radio', {name:'Canopy'})).toBeChecked();
-    for (const image of await launcher.locator('#theme-cards img').all()) {
-      await expect.poll(() => image.evaluate(node => node.naturalWidth)).toBeGreaterThan(0);
-    }
-    await launcher.getByRole('radio', {name:'Ember'}).check();
-    await expect.poll(properties).toBe(starterThemes[2].theme.tokens.bg);
+    await expect(launcher.getByRole('radio', {name:'Cerulean'})).toBeChecked();
+    await launcher.getByRole('radio', {name:'Fern'}).check();
+    await expect.poll(properties).toBe(builtInThemes[2].theme[scheme].bg);
     await launcher.getByRole('button', {name:'Cancel'}).click();
-    await expect.poll(properties).toBe(starterThemes[0].theme.tokens.bg);
+    await expect.poll(properties).toBe(builtInThemes[0].theme[scheme].bg);
     await launcher.getByRole('button', {name:'Appearance'}).click();
 
     const file = launcher.getByLabel('Import a theme');
     await file.setInputFiles({name:'invalid.json', mimeType:'application/json', buffer:Buffer.from('{}')});
     await expect(launcher.locator('#theme-error')).toContainText('valid Your Space theme');
-    const theme = {...starterThemes[1].theme, name:'Northern sky'};
+    const theme = {...builtInThemes[1].theme, name:'Northern sky'};
     await file.setInputFiles({name:'custom.json', mimeType:'application/json', buffer:Buffer.from(JSON.stringify(theme))});
     await expect(launcher.getByRole('radio', {name:theme.name})).toBeChecked();
     await launcher.getByRole('button', {name:'Use theme'}).click();

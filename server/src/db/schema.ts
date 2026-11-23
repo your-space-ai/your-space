@@ -1,6 +1,6 @@
 // Your Space's own tables (T011, data-model.md): whether the owner exists, actors, and events.
 import type { SavedView } from "../../../shared/workspace-layout/model.mjs";
-import type { Theme } from "../../../shared/appearance/theme.mjs";
+import type { Theme, Version1Theme } from "../../../shared/appearance/theme.mjs";
 import type { AgentAccess } from "../apps/agent-kit.ts";
 import { sql } from "drizzle-orm";
 import { boolean, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
@@ -305,11 +305,13 @@ export const agentRequest = pgTable(
 );
 
 /** The owner's saved themes share one revision across edits and selection. An absent row uses the platform default. */
+/** Themes saved before version 2 stay version 1 until their next write; reads convert them. */
 export const workspaceAppearance = pgTable("workspace_appearance", {
   workspaceId: uuid("workspace_id").primaryKey().references(() => organization.id, { onDelete: "cascade" }),
   revision: integer("revision").notNull(),
   activeId: text("active_id").notNull(),
-  themes: jsonb("themes").$type<{ id: string; theme: Theme }[]>().notNull(),
+  mode: text("mode", { enum: ["system", "light", "dark"] }).notNull().default("system"),
+  themes: jsonb("themes").$type<{ id: string; theme: Theme | Version1Theme }[]>().notNull(),
 });
 
 export const ownerLayout = pgTable("owner_layout", {
