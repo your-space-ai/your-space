@@ -1,0 +1,3 @@
+/* Brand details Mintlify's docs.json can't set: monospace font for code (Your Space design system). */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap");
+code, pre, kbd, samp { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }

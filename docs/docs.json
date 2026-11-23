@@ -2,7 +2,11 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "Your Space",
-  "colors": { "primary": "#2563eb" },
+  "colors": { "primary": "#0A6FB0", "light": "#55C1FF", "dark": "#0A6FB0" },
+  "background": { "color": { "light": "#F4F8FA", "dark": "#0A1218" } },
+  "fonts": { "heading": { "family": "Instrument Sans", "weight": 700 }, "body": { "family": "Instrument Sans" } },
+  "logo": { "light": "/brand/wordmark-ink.svg", "dark": "/brand/wordmark-white.svg" },
+  "favicon": "/brand/favicon.svg",
   "navigation": {
     "groups": [
       { "group": "Start", "pages": ["index", "install/from-source"] },
