@@ -6,8 +6,9 @@
 #   YS_ORIGIN         Your Space's origin, the only page allowed to frame an app
 #   YS_REDIRECT_SITES addresses that redirect to Your Space, such as http://localhost
 #   YS_REDIRECT_URL   where they redirect: sign-in works at one address only
-# Behind your own proxy, YS_PROXY_URL names Your Space's address; every other name on port 8080 is an
-# app's.
+# Behind your own proxy, YS_PROXY_URL names Your Space's address, and every other name on port 8080
+# goes to the access gate. Names under Your Space's are the apps'; the gate answers any other name,
+# which a proxy that rewrites the Host header sends, with 421 and what to fix.
 {
 	log {
 		format filter {
@@ -98,7 +99,8 @@
 }
 
 {$YS_SITE:http://space.localhost} {
-	# Behind your own proxy, every name other than Your Space's own is an app's.
+	# Behind your own proxy, every name other than Your Space's own goes to the gate, which serves
+	# the apps' names and answers any other name with 421.
 	@app_host expression `"{$YS_PROXY_URL}" != "" && "{$YS_PROXY_URL}" != "https://" + {http.request.hostport}`
 	handle @app_host {
 		import apps

@@ -26,7 +26,10 @@ including Better Auth's:
 | --- | --- | --- |
 | 421 | `{ "error": "wrong_host", "message": "Your Space is set up for <public address>, …" }` | The request named another address: usually a proxy that rewrites `Host` (the message says how to fix nginx), or a page that re-pointed its own name at this machine (DNS rebinding) |
 
-The web client shows the message's advice instead of "Can't reach Your Space".
+The web client shows the message's advice instead of "Can't reach Your Space". Behind the owner's
+proxy, Caddy sends a request under another name to the apps' access gate, which gives the same
+answer, and its message in plain text to a request outside `/api`
+([gate listener](../../002-install-an-app/contracts/http-api.md#gate-listener-port-3001-reached-only-by-caddy)).
 
 ## Custom Endpoints (Your Space code)
 

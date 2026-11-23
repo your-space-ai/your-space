@@ -9,8 +9,9 @@ import { rateLimit } from "express-rate-limit";
 import type { Db } from "../db/client.ts";
 import { member, session } from "../db/auth-schema.ts";
 import { app } from "../db/schema.ts";
+import { wrongHost } from "../host.ts";
 import { errorFields, log } from "../log.ts";
-import { appAddress, appNameFromHost } from "./service.ts";
+import { appAddress, appNameFromHost, underOwnName } from "./service.ts";
 
 export const PASS_LIFETIME_SECONDS = 12 * 60 * 60;
 const CODE_LIFETIME_MS = 60_000;
@@ -124,10 +125,24 @@ export function createGate({ db, publicUrl, authSecret, handoffs }: GateDeps): e
   gate.disable("x-powered-by");
   const cookieName = passCookieName(publicUrl);
   const ownHost = new URL(publicUrl).hostname;
+  const publicOrigin = new URL(publicUrl).origin;
 
   async function liveApp(name: string) {
     return (await db.select().from(app).where(and(eq(app.name, name), ne(app.state, "removed"))))[0];
   }
+
+  // Behind the owner's proxy, Caddy sends here every name that isn't exactly Your Space's own. One
+  // that isn't under it either, such as 127.0.0.1:8080, comes from a proxy that rewrote the Host
+  // header (nginx's default), so it gets the API's wrong_host answer, which says what to fix: as
+  // JSON to an API request and as text to a page. A name under Your Space's is an app's address,
+  // which the proxy passed on as it should.
+  const rightHost: express.RequestHandler = (req, res, next) => {
+    if (underOwnName(publicUrl, req.get("x-forwarded-host"))) return next();
+    res.set("Cache-Control", "no-store");
+    const answer = wrongHost(publicOrigin);
+    if (/^\/api(\/|\?|$)/.test(req.get("x-forwarded-uri") ?? "")) res.status(421).json(answer);
+    else res.status(421).type("text").send(answer.message);
+  };
 
   // Caddy replaces the forwarding header with the resolved client IP on this private listener.
   gate.set("trust proxy", 1);
@@ -137,7 +152,7 @@ export function createGate({ db, publicUrl, authSecret, handoffs }: GateDeps): e
     standardHeaders: "draft-8",
     legacyHeaders: false,
   });
-  gate.get("/gate", limitGate, async (req, res) => {
+  gate.get("/gate", limitGate, rightHost, async (req, res) => {
     res.set("Cache-Control", "no-store");
     const name = appNameFromHost(publicUrl, req.get("x-forwarded-host"));
     try {
@@ -161,7 +176,7 @@ export function createGate({ db, publicUrl, authSecret, handoffs }: GateDeps): e
     }
   });
 
-  gate.get("/handoff", async (req, res) => {
+  gate.get("/handoff", rightHost, async (req, res) => {
     res.set("Cache-Control", "no-store");
     const name = appNameFromHost(publicUrl, req.get("x-forwarded-host"));
     const code = typeof req.query.code === "string" ? req.query.code : "";

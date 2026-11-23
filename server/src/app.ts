@@ -3,6 +3,7 @@ import express, { type ErrorRequestHandler } from "express";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import type { Auth } from "./auth.ts";
 import { isStorageError, type Db } from "./db/client.ts";
+import { wrongHost } from "./host.ts";
 import { errorFields, log } from "./log.ts";
 import { workspaceLayoutRoutes } from "./workspace-layout.ts";
 import { appearanceRoutes } from "./appearance.ts";
@@ -39,10 +40,7 @@ export function createApp({ auth, db, apps, dataKey }: AppDeps): express.Express
   const publicOrigin = publicUrl.origin;
   app.use("/api", (req, res, next) => {
     if (req.path === "/health" || req.headers.host?.toLowerCase() === publicUrl.host) return next();
-    res.status(421).json({
-      error: "wrong_host",
-      message: `Your Space is set up for ${publicOrigin}, and this request named a different address. If you use your own proxy, set it to pass the original Host header (nginx: proxy_set_header Host $http_host).`,
-    });
+    res.status(421).json(wrongHost(publicOrigin));
   });
 
   // Better Auth reports sign-out as done even when deleting the session failed, which would leave
