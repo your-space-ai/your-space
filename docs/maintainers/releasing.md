@@ -39,9 +39,9 @@ Each piece has its own workflow:
 
 ## The unscoped your-space and your-space-ai packages
 
-The npm names `your-space` and `your-space-ai`, without a scope, are for two small packages from [`npm/your-space`](https://github.com/your-space-ai/your-space/tree/main/npm/your-space) and [`npm/your-space-ai`](https://github.com/your-space-ai/your-space/tree/main/npm/your-space-ai), so nobody else can publish code that runs as `npx your-space` or `npx your-space-ai`. They aren't published yet: until a maintainer publishes them with the steps below, anyone can still take the names. Each package's command, named after the package, runs nothing: it prints that Your Space is published by the [`your-space-ai` organization](https://www.npmjs.com/org/your-space-ai), the pinned `npx @your-space-ai/cli@<version>` install and a link to the installation guide, then exits with status 1. Once they are published, npm also refuses new names that differ from them only in punctuation, such as `yourspace`, `your_space` and `yourspaceai` ([npm's rule](https://blog.npmjs.org/post/168978377570/new-package-moniker-rules)).
+The npm names `your-space` and `your-space-ai`, without a scope, are for two small packages from [`npm/your-space`](https://github.com/your-space-ai/your-space/tree/main/npm/your-space) and [`npm/your-space-ai`](https://github.com/your-space-ai/your-space/tree/main/npm/your-space-ai), so nobody else can publish code that runs as `npx your-space` or `npx your-space-ai`. Both were published on 2026-11-23 at version 0.0.1, so the names are taken. Each package's command, named after the package, runs nothing: it prints that Your Space is published by the [`your-space-ai` organization](https://www.npmjs.com/org/your-space-ai), the pinned `npx @your-space-ai/cli@<version>` install and a link to the installation guide, then exits with status 1. npm also refuses new names that differ from them only in punctuation, such as `yourspace`, `your_space` and `yourspaceai` ([npm's rule](https://blog.npmjs.org/post/168978377570/new-package-moniker-rules)).
 
-The release workflows don't publish them: the repository's `NPM_TOKEN` only covers the `@your-space-ai` scope, and an unscoped name can't belong to it. A maintainer publishes both by hand from a checkout of main, signed in to npm on an account with two-factor authentication:
+The release workflows don't publish them: the repository's `NPM_TOKEN` only covers the `@your-space-ai` scope, and an unscoped name can't belong to it. A maintainer published both by hand from a checkout of main, signed in to npm on an account with two-factor authentication:
 
 ```sh
 npm whoami
@@ -53,7 +53,7 @@ npm pack --dry-run           # the same four files
 npm publish --access public
 ```
 
-`npm pack` and `npm publish` first copy the project's license into each folder. The packages don't depend on the CLI or its version, so they rarely need republishing: only when a message, README or link changes, after raising `version` in that package's `package.json`, since an npm version can never be reused. When the release workflows move from `NPM_TOKEN` to npm's trusted publishing, add a trusted publisher for these packages too and publish them from a workflow instead of by hand.
+`npm pack` and `npm publish` first copy the project's license into each folder. The packages don't depend on the CLI or its version, so they only need republishing when the message, README or a link changes, after raising `version` in that package's `package.json`, since an npm version can never be reused. When the release workflows move from `NPM_TOKEN` to npm's trusted publishing, add a trusted publisher for these packages too and publish them from a workflow instead of by hand.
 
 ## Sign the Mac app
 
