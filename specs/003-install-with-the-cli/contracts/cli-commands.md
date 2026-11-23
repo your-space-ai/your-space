@@ -77,7 +77,13 @@ Compose or the engine gave in `detail` when there was any.
 | `checksum_mismatch` | 2 | The archive failed checksum verification or its packaged image version differs from the CLI version |
 | `engine_unreachable` | 3 | The engine stopped answering |
 | `storage_unavailable` | 3 | The server couldn't read its database |
+| `app_failed` | 2 | A server command failed without a code of its own |
 | `unexpected` | 4 | Anything else |
+
+When a server command the CLI runs fails with a code this table doesn't have, the CLI reports that
+code and the server's exit status, with the server's other fields. For example, `app install-local`
+gives `refused` with `name` and `refusals` (`{ service, reason }`) when Your Space can't run a kit,
+and its message lists them.
 
 ### The summary (`start`, `status`)
 

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { canOpen } from "../src/browser.ts";
 import { parseJsonLines, parsePs } from "../src/compose.ts";
-import { expectOk } from "../src/server.ts";
+import type { CliError } from "../src/errors.ts";
+import { expectOk, type ServerResult } from "../src/server.ts";
 import { buildSummary, forwardFor, summaryText } from "../src/summary.ts";
 
 const services = parsePs(
@@ -106,6 +107,38 @@ describe("server commands", () => {
     } catch (error) {
       expect(error).toMatchObject({ code: "invalid_input", message: "username: Not a valid username." });
     }
+  });
+
+  const failure = (status: number, json: ServerResult["json"]) => {
+    try {
+      expectOk({ status, json });
+    } catch (error) {
+      return error as CliError;
+    }
+    throw new Error("expected a failure");
+  };
+
+  it("keep the server's own code and status, and say why a kit was refused", () => {
+    const refusals = [{ service: "web", reason: "Uses the host's network." }, { reason: "Has no interface." }];
+    const refused = failure(2, { ok: false, error: "refused", name: "notes", refusals });
+    expect(refused).toMatchObject({ code: "refused", status: 2, fields: { name: "notes", refusals } });
+    expect(refused.message).toBe("Your Space can't run notes as it is:\n  - web: Uses the host's network.\n  - Has no interface.");
+    expect(failure(2, { ok: false, error: "name_taken", message: "Data kept from another app called notes uses this name." })).toMatchObject({
+      code: "name_taken",
+      status: 2,
+      message: "Data kept from another app called notes uses this name.",
+    });
+    expect(failure(4, { ok: false, error: "unexpected", message: "Something unexpected went wrong." })).toMatchObject({ code: "unexpected", status: 4 });
+    expect(failure(9, { ok: false, error: "install_failed", message: "Pull failed." })).toMatchObject({ code: "install_failed", status: 4 });
+  });
+
+  it("keep owner_exists for create-owner, and give other failures without a plain code a generic one", () => {
+    expect(failure(2, { ok: false, error: "owner_exists", message: "This installation already has an owner." })).toMatchObject({ code: "owner_exists", status: 2 });
+    for (const error of [undefined, "Not A Code", "toString"]) {
+      expect(failure(2, { ok: false, error })).toMatchObject({ code: "app_failed", status: 2, message: "The server's command failed." });
+    }
+    expect(failure(3, { ok: false })).toMatchObject({ code: "storage_unavailable", status: 3 });
+    expect(failure(1, { ok: false })).toMatchObject({ code: "unexpected", status: 4 });
   });
 });
 
