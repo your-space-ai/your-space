@@ -32,7 +32,8 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### App panes and saved views
 
-- [x] **Arrange installed apps (012).** Resize columns, rows, grids and main-with-companion layouts. Share a composition link, reopen saved panes at their original sizes, reorder sidebar apps and switch between them on a phone-sized display. Chromium covered mouse, touch and keyboard input. (2026-11-21, [PR #71](https://github.com/your-space-ai/your-space/pull/71)) [Layout journey](https://github.com/your-space-ai/your-space/blob/main/specs/012-multi-app-layouts/spec.md)
+- [x] **Arrange installed apps (012).** Resize columns, rows, grids and main-with-companion layouts. Share a composition link, reopen saved panes at their original sizes, reorder sidebar apps and switch between them on a phone-sized display. Chromium covered mouse, touch and keyboard input. (2026-11-21, [PR #71](https://github.com/your-space-ai/your-space/pull/71)) [Layout journey](https://github.com/your-space-ai/your-space/blob/main/specs/012-multi-app-layouts/spec.md) Journey 013 replaces this view behavior when it lands; 012's storage, sharing and permission rules still apply.
+- [ ] **Sidebar, tabs, views and Home (013).** A sidebar that collapses to an icon rail, apps that open as tabs beside Home, and views that merge tabs and lay out their apps by count. Swap, move and resize panes, act from each pane's menu, and save, pin and list views. Home is a launcher that shows what needs the owner and each app's status, and Settings opens as a list of sections. [Workspace redesign journey](https://github.com/your-space-ai/your-space/blob/main/specs/013-workspace-redesign/spec.md)
 
 <details>
 <summary>Verified app panes and browser behavior (002)</summary>
@@ -48,7 +49,8 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### Themes
 
-- [x] **Personalize the dashboard (010).** Choose among three starters, edit fonts and colors, and export and import a theme file. The browser walkthrough reapplied an exported theme in the same workspace. A packaged Apple Silicon launcher also verified local theme preview and persistence across relaunch. (2026-11-21, [PR #69](https://github.com/your-space-ai/your-space/pull/69)) [Appearance journey](https://github.com/your-space-ai/your-space/blob/main/specs/010-personal-themes/spec.md)
+- [x] **Personalize the dashboard (010).** Choose among three starters, edit fonts and colors, and export and import a theme file. The browser walkthrough reapplied an exported theme in the same workspace. A packaged Apple Silicon launcher also verified local theme preview and persistence across relaunch. (2026-11-21, [PR #69](https://github.com/your-space-ai/your-space/pull/69)) [Appearance journey](https://github.com/your-space-ai/your-space/blob/main/specs/010-personal-themes/spec.md) Journey 013 replaces this presentation when it lands; 010's storage, sharing and permission rules still apply.
+- [ ] **Light and dark themes (013).** Choose among Cerulean, Cinder and Fern, each with a light and a dark palette, a component style and fonts that ship with the dashboard. The workspace keeps a mode that can match the device, and version 1 theme files still import. [Workspace redesign journey](https://github.com/your-space-ai/your-space/blob/main/specs/013-workspace-redesign/spec.md)
 - [ ] **First packaged release.** Export a theme from one workspace and apply it in a second, independent workspace. Recheck the dashboard and launcher on the packaged candidate.
 
 ### Desktop clients
@@ -85,6 +87,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 - [x] **Install and open apps (002).** Install a Compose file and kit, inspect the review, and open the app in its own pane. Local Compose installs, opt-in port publishing, framing for published apps, and explicit complete removal also shipped. (2026-11-20, [PR #48](https://github.com/your-space-ai/your-space/pull/48), [PR #54](https://github.com/your-space-ai/your-space/pull/54), [PR #56](https://github.com/your-space-ai/your-space/pull/56), [PR #57](https://github.com/your-space-ai/your-space/pull/57)) [App installation tasks](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/tasks.md)
 - [x] Upgrade a running local installation’s kit in place to add agent routes while retaining its app ID and volume. (2026-11-21, [PR #66](https://github.com/your-space-ai/your-space/pull/66))
+- [ ] **Apps screen (013).** List installed apps with their status beside the selected app's details: update notice, version, address, agent access, internet access requests, and Open, Restart and Remove. [Workspace redesign journey](https://github.com/your-space-ai/your-space/blob/main/specs/013-workspace-redesign/spec.md)
 - [ ] **First packaged release.** Follow the documented install from a live upstream GitHub source through the server, open the independent app in each supported browser, and identify its supported agent actions. Include native Safari on macOS with the local app hostnames.
 
 <details>
@@ -175,6 +178,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 - [x] **Agent identities and grants (005).** Create a named agent with its own key in the web UI. Grant any subset of the installation’s enabled kit roles. The gateway checks their combined routes and HTTP methods, supplies the app credential, and the app enforces its native permissions. Inspect or change the grants, rotate the key independently, or revoke the agent. (2026-11-21, [PR #60](https://github.com/your-space-ai/your-space/pull/60), [PR #62](https://github.com/your-space-ai/your-space/pull/62), [PR #65](https://github.com/your-space-ai/your-space/pull/65)) [Agent access specification](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/spec.md)
 - [x] Enforce per-route approvals and the owner’s all-write override. Record the result, agent and delegating owner. Gateway and browser tests cover denied actions and installations, withdrawn grants, rotated keys, and use of a single approval only once. (2026-11-21, [PR #63](https://github.com/your-space-ai/your-space/pull/63), [PR #65](https://github.com/your-space-ai/your-space/pull/65))
 - [x] Discover and invoke kit actions with the agent CLI. A live external agent completed an owner-approved read from an independently installed app. Automated tests separately exercised creating and editing a record, replay handling and stale edits against a fixture. (2026-11-21, [PR #64](https://github.com/your-space-ai/your-space/pull/64), [PR #66](https://github.com/your-space-ai/your-space/pull/66)) [Verification record](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/tasks.md)
+- [ ] **Agents and Approvals screens (013).** One queue of agent actions waiting for the owner, with Waiting and Decided tabs; access requests stay on the related app or agent. Each agent shows its app access, keys and activity. [Workspace redesign journey](https://github.com/your-space-ai/your-space/blob/main/specs/013-workspace-redesign/spec.md)
 - [ ] **First packaged release.** Use an external agent to create and edit a recurring record in the independent app. Verify approval, the upstream result, retry after an interrupted request, and rejection of a stale edit. Remove the grant and retry in the same session, then repeat after key rotation and revocation. Record the app and actions so another owner can repeat the [walkthrough](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/quickstart.md).
 
 ### Agent connections and workflows
@@ -285,6 +289,8 @@ Each branch puts the work on `main` beside the checks and plans for that part of
   - [x] Preserve identity and revoke existing sessions after successful password recovery. (2026-11-08, [PR #14](https://github.com/your-space-ai/your-space/pull/14))
 
 </details>
+
+- [ ] **Sign-in and first run (013).** Sign in from one row under a large greeting. After the owner account exists, pick a theme previewed in light and dark, then add a first app or skip. [Workspace redesign journey](https://github.com/your-space-ai/your-space/blob/main/specs/013-workspace-redesign/spec.md)
 
 ### Members and recovery
 

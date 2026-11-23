@@ -18,7 +18,7 @@ The dashboard gets a new structure and a component kit that every theme can rest
 ## Themes
 
 - A version 2 theme file holds a name, a style (`crisp`, `soft` or `bold`), a heading, body and monospace font, and a light and a dark palette. Each palette has ten colors: background, panel, text, muted text, accent, text on accent, border, danger, success and warning.
-- The style changes component shape only: Crisp uses hairline borders and small corners, Soft uses tinted surfaces and larger corners, and Bold uses heavy rules and square corners. Every component reads its colors, fonts and shape from the active theme and mode, so an owner's theme restyles the whole dashboard.
+- The style sets component shape and adds no colors of its own: Crisp uses hairline borders and small corners, Soft uses larger corners and tints surfaces with the palette's accent, and Bold uses heavy rules and square corners. Every component reads its colors, fonts and shape from the active theme and mode, so an owner's theme restyles the whole dashboard.
 - The workspace stores the selected theme and mode. **Match my device** follows the browser's color scheme preference.
 - The built-in themes are Cerulean (blue, Bold, Instrument Sans), Cinder (orange, Crisp, Space Grotesk headings) and Fern (green, Soft, Fraunces headings). Their fonts and IBM Plex Mono ship with the dashboard under the SIL Open Font License, so no theme loads remote fonts.
 - Version 1 files still import: their single palette applies in both modes and they use the Crisp style. Workspaces using Canopy, Tide or Ember keep that theme as their own copy.
