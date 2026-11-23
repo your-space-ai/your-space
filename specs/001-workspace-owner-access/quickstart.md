@@ -17,7 +17,7 @@ automated tests and the evidence for SC-010. Endpoint and command details are in
 
 For the current preview, [try the dashboard from source](../../docs/install/from-source.md).
 For the packaged validation below, select a release containing the matching server images and install files.
-Follow the [manual download and checksum steps](../../docs/install/README.md#1-download), then run these commands in the installation folder:
+Follow the [manual download and checksum steps](../../docs/install/manual.md#1-download), then run these commands in the installation folder:
 
 ```sh
 # .env can stay as it is for this machine (http://localhost); the first start generates the secrets.

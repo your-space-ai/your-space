@@ -23,7 +23,7 @@
 		# Strict mode reads X-Forwarded-For from the right and skips private addresses as proxies, so
 		# the proxy must replace the header with the visitor's address. If it appended to it instead
 		# (nginx's $proxy_add_x_forwarded_for), a visitor on the local network could put a made-up
-		# address in front of their own (docs/install/README.md).
+		# address in front of their own (docs/install/other-devices.md).
 		trusted_proxies static private_ranges
 		trusted_proxies_strict
 	}

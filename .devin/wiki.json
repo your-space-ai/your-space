@@ -1,7 +1,7 @@
 {
   "repo_notes": [
     {
-      "content": "Treat the repository's own docs as the source of truth and link to them instead of restating them: docs/architecture/decisions.md (decisions), docs/roadmap.md (what is delivered vs planned), specs/ (journey requirements), docs/install/ (installation steps), docs/maintainers/releasing.md (what a release ships and the release steps). Where an exact command, version or file name matters, cite the canonical doc."
+      "content": "Treat the repository's own docs as the source of truth and link to them instead of restating them: docs/architecture/decisions.md (decisions), docs/roadmap.md (what is delivered vs planned), specs/ (journey requirements), docs/install/ and docs/operate/ (installing, running and recovering), docs/maintainers/releasing.md (what a release ships and the release steps). Where an exact command, version or file name matters, cite the canonical doc."
     },
     {
       "content": "Describe what exists on the default branch. The roadmap and decision record separate delivered work from planned, deferred and candidate work; never present planned or deferred work as implemented."

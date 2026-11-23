@@ -1,10 +1,12 @@
-# Try Your Space from source
+---
+title: "Try Your Space from source"
+---
 
 Run the dashboard on your computer, create its owner, and install a sample app. This walkthrough builds Your Space from your checkout. Its local GitHub stand-in serves the example app and kit. You can try them without a GitHub account.
 
 ## Start the dashboard
 
-Use a local Docker engine on Linux or macOS that you can dedicate to the demo. You'll need Git, Docker Compose 2.26.0 or newer, internet access for the first build and image downloads, and a free local port (8081 below). On Linux, use Docker Engine 28.3.3 or newer. The containers provide Node.js and PostgreSQL. [Docker prerequisites](README.md#before-you-start)
+Use a local Docker engine on Linux or macOS that you can dedicate to the demo. You'll need Git, Docker Compose 2.26.0 or newer, internet access for the first build and image downloads, and a free local port (8081 below). On Linux, use Docker Engine 28.3.3 or newer. The containers provide Node.js and PostgreSQL. [Docker prerequisites](index.md#before-you-start)
 
 Clone the project and enter the repository root, or open a terminal there if you already have a clean checkout.
 
@@ -44,7 +46,7 @@ Open the single-use link printed in your terminal, choose a password, and sign i
 2. Read the kit details, including the removed host port and requested outbound access. Choose **Install** and wait for the app to finish starting.
 3. Open **Who Am I**. Its pane shows the hostname and request headers received by the sample app. If your browser offers **Open in its own tab**, follow that link to view it.
 
-The demo resolves GitHub links against the [fixtures in this repository](../../e2e/github/fixtures/). To try kits from real GitHub repositories with your own locally built images and CLI, use [operator setup from reviewed source](agent-setup.md#test-from-reviewed-source) to create a separate workspace. The [packaged installation guide](README.md) applies once a matching release is available.
+The demo resolves GitHub links against the [fixtures in this repository](https://github.com/your-space-ai/your-space/tree/main/e2e/github/fixtures). To try kits from real GitHub repositories with your own locally built images and CLI, use [operator setup from reviewed source](agent-setup.md#test-from-reviewed-source) to create a separate workspace. The [packaged installation guide](index.md) applies once a matching release is available.
 
 ## Stop and return later
 

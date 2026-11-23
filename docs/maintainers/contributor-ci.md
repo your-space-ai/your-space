@@ -1,4 +1,6 @@
-# Checking an outside contribution
+---
+title: "Checking an outside contribution"
+---
 
 The required **Contribution checks** job includes sign-off verification and the code checks selected by the PR diff. A separate **Dependency review** check uses GitHub's MIT-licensed [Dependency Review Action v5.0.1](https://github.com/actions/dependency-review-action/tree/bbc44d14a204704ccc493733616cd1e93a0321ec) to read the dependency graph diff. It fails on newly introduced moderate or higher advisories, including development tools, but it is not required: a failure is a clear signal to read the advisory, and a maintainer can still merge after deciding the risk is acceptable, for example a development-only tool that never ships. It runs on a hosted runner with read-only access. The action ships only in CI. Existing vulnerabilities have separate Dependabot, CodeQL and container scans.
 

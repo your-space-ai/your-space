@@ -1,4 +1,6 @@
-# Glossary
+---
+title: "Glossary"
+---
 
 Your Space's names follow one picture: **Your Space is a home**. New names should fit it, so the
 product reads as one place rather than a collection of technical parts.

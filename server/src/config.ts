@@ -1,7 +1,7 @@
 // Server configuration, read from the environment and validated at startup (T006).
 //
 // The owner writes at most one line, and which key they write picks the setup (constitution
-// principle II; docs/install/README.md):
+// principle II; docs/install/other-devices.md):
 //   nothing                        this machine only, http://space.localhost
 //   YS_DOMAIN=space.example.com    your own domain, HTTPS from Let's Encrypt
 //   YS_PROXY_URL=https://...       behind your own proxy or Tailscale
