@@ -9,10 +9,13 @@ and opens them inside Your Space.
 `https://github.com/we-promise/sure/blob/main/compose.example.yml`, and choose Review. The review
 shows the exact commit and image versions that will run, what Your Space changes or leaves out of
 the file, the settings it reads, and the internet hosts it may reach. Secrets the file gives a
-published default for get generated values instead, and they are never shown. Install runs in the
-background; you can leave the page. From the server, `docker compose exec server install-app <link>`
-does the same. A kit Your Space can't read from GitHub, such as one in a private repository, can come
-from this machine instead: `docker compose exec -T server install-app <link> --kit - < kit.yaml`.
+published default for get generated values instead, and they are never shown. A setting the file
+requires with no value, written `${NAME:?message}` or `${NAME?message}`, shows as a required field,
+and Install stays unavailable until you fill each one in. Install runs in the background; you can
+leave the page. From the server, `docker compose exec server install-app <link>` does the same, but
+it can't ask for required settings: unless the app's kit fills them, it refuses the file with
+`These settings need a value`. A kit Your Space can't read from GitHub, such as one in a private
+repository, can come from this machine instead: `docker compose exec -T server install-app <link> --kit - < kit.yaml`.
 
 When an app's own Compose file doesn't fit Your Space's rules, for example because it builds its
 images or mounts folders of this machine, install it from a Compose file you write instead. Your
