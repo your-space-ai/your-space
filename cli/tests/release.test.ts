@@ -3,8 +3,15 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { checkSum, fetchRelease, parseSums, releaseUrl, safeEntries } from "../src/release.ts";
+
+// Every program the CLI runs, still run for real.
+const ran = vi.hoisted(() => [] as string[][]);
+vi.mock("../src/process.ts", async (original) => {
+  const actual = await original<typeof import("../src/process.ts")>();
+  return { ...actual, run: (program: string, args: string[], options?: object) => (ran.push([program, ...args]), actual.run(program, args, options)) };
+});
 
 describe("release files", () => {
   it("are downloaded from the release of the CLI's version", () => {
@@ -40,6 +47,10 @@ describe("release files", () => {
       expect(readdirSync(install)).toEqual([]);
       await fetchRelease("0.1.0", install, assets);
       expect(readFileSync(join(install, "stack.yaml"), "utf8")).toBe(readFileSync(join(root, "stack.yaml"), "utf8"));
+      // Unpacked as root, the files would otherwise keep the build machine's owner.
+      expect(ran.filter(([program, ...args]) => program === "tar" && args.includes("-xzf"))).toEqual([
+        ["tar", "--no-same-owner", "-xzf", expect.stringContaining(install), "-C", install],
+      ]);
       writeFileSync(archive, "different");
       await expect(fetchRelease("0.1.0", install, assets)).rejects.toMatchObject({ code: "checksum_mismatch" });
     } finally {
@@ -56,6 +67,12 @@ describe("release files", () => {
 });
 
 describe("the guide's steps", () => {
+  it("unpack the release as the CLI does, owned by whoever unpacks it", () => {
+    const guide = readFileSync(new URL("../../docs/install/manual.md", import.meta.url), "utf8");
+    expect(guide).toContain("\ntar --no-same-owner -xzf your-space.tar.gz\n");
+    expect(guide).not.toMatch(/^tar -xzf/m);
+  });
+
   it("give PostgreSQL the database password with the guide's own command", async () => {
     const { readFileSync } = await import("node:fs");
     const { GIVE_POSTGRES_PASSWORD } = await import("../src/secrets.ts");

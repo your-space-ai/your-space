@@ -20,4 +20,8 @@ images=$(grep -c "YS_VERSION:-$version}" "$work/stack.yaml")
 if [ "$images" -ne 4 ]; then echo "Expected 4 images pinned to $version in stack.yaml, found $images." >&2; exit 1; fi
 if grep -rq "YS_VERSION:-latest" "$work"; then echo "A file still runs the latest images." >&2; exit 1; fi
 mkdir -p "$out"
-tar -czf "$out/your-space.tar.gz" -C "$work" compose.yaml stack.yaml modes env.example
+# Owned by root in the archive, not by the build machine's user. Only GNU tar takes these options;
+# the CLI and the guide unpack with --no-same-owner anyway, so the Mac build's bsdtar needs nothing.
+set --
+if tar --version 2>/dev/null | grep -q "GNU tar"; then set -- --owner=0 --group=0 --numeric-owner; fi
+tar "$@" -czf "$out/your-space.tar.gz" -C "$work" compose.yaml stack.yaml modes env.example

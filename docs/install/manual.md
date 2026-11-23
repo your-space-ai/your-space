@@ -17,7 +17,7 @@ and `SHA256SUMS` from the same release to a new installation folder. In that fol
 the digest matches the `your-space.tar.gz` entry in `SHA256SUMS` before unpacking it:
 
 ```sh
-tar -xzf your-space.tar.gz
+tar --no-same-owner -xzf your-space.tar.gz
 cp env.example .env
 ```
 

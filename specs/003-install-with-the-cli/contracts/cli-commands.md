@@ -143,7 +143,7 @@ and its message lists them.
 | Command | Compose and server commands, in the installation's folder |
 | --- | --- |
 | `engine check` | Reads the local Docker endpoint, `docker version --format json` and `docker compose version --short` |
-| `init` | Downloads `your-space.tar.gz` and `SHA256SUMS` from the release of the CLI's version, checks the hash, `tar -xzf`, copies `env.example` to `.env`, sets the setup's lines |
+| `init` | Downloads `your-space.tar.gz` and `SHA256SUMS` from the release of the CLI's version, checks the hash, `tar --no-same-owner -xzf`, copies `env.example` to `.env`, sets the setup's lines |
 | `start` | `docker compose up -d --wait`; then `show-owner --json`, and `create-owner --json` when there is none and owner creation is enabled; `list-apps --json` |
 | `stop` | `docker compose exec -T runtime stop-apps`, then `docker compose stop` |
 | `status` | `docker compose ps --format json`, `show-owner --json`, `list-apps --json` |
