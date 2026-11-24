@@ -123,15 +123,17 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### Custom apps and sources
 
-- [x] **Build a custom Home with an agent (011).** Resumable provisioning ran on disposable Docker. A scaffolded Home app ran in Chromium with reads from only the apps and roles the owner chose. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70)) [Creator journey](https://github.com/your-space-ai/your-space/blob/main/specs/011-agent-workspace/spec.md)
-- [x] Manage public and private GitHub repositories, grant an agent scoped file edits, and preview an install from a direct kit URL or an optional owner-selected directory. Public GitHub reads ran live. OAuth and write operations used a synthetic GitHub provider. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70), [PR #72](https://github.com/your-space-ai/your-space/pull/72)) **Removed in part (2026-11-23):** managed repositories and agents' file edits left the product; kit links, the kit directory and private kits through the GitHub connection stay. [Managed repositories deferred](architecture/decisions.md#managed-repositories-deferred)
-- [x] Require owner confirmation of the pinned replacement and its storage changes. A running replacement read its predecessor’s volume marker under the same installation ID. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70)) **Removed (2026-11-23):** deploying an installed app from a repository commit left the product with managed repositories. [Managed repositories deferred](architecture/decisions.md#managed-repositories-deferred)
-- [ ] **First packaged release.** With a disposable live GitHub account and production OAuth configuration, connect GitHub with private access and install from a kit in a private repository. **Changed (2026-11-23):** the private repo, fork, edit and deployment checks moved to the deferred managed repositories below.
+- [x] **Build a custom Home with an agent (011).** Resumable provisioning ran on disposable Docker. A scaffolded Home app ran in Chromium with reads from only the apps and roles the owner chose. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70)) [Creator journey](https://github.com/your-space-ai/your-space/blob/main/specs/011-agent-workspace/spec.md) **Removed in part (2026-11-23):** the custom Home, Home read grants and `app new`, `app pack` and `app install-local` left the product for the alpha; agent setup from a shell stays. [Creator workflow deferred](architecture/decisions.md#creator-workflow-deferred)
+- [x] Manage public and private GitHub repositories, grant an agent scoped file edits, and preview an install from a direct kit URL or an optional owner-selected directory. Public GitHub reads ran live. OAuth and write operations used a synthetic GitHub provider. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70), [PR #72](https://github.com/your-space-ai/your-space/pull/72)) **Removed in part (2026-11-23):** managed repositories, agents' file edits and the GitHub connection left the product for the alpha; kit links and the kit directory stay, read from public GitHub. [Creator workflow deferred](architecture/decisions.md#creator-workflow-deferred)
+- [x] Require owner confirmation of the pinned replacement and its storage changes. A running replacement read its predecessor’s volume marker under the same installation ID. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70)) **Removed (2026-11-23):** deploying an installed app from a repository commit, and the replacement engine behind it, left the product with managed repositories. [Creator workflow deferred](architecture/decisions.md#creator-workflow-deferred)
+- [ ] **First packaged release.** Rehearse the creator journey with a disposable live GitHub account and production OAuth configuration. Verify a private repo, an authorized fork and edit, and the owner-confirmed deployment from that commit. **Moved (2026-11-23):** to the deferred creator workflow below, with the features it checks.
 
-- [ ] **Managed repositories (011)** · *Deferred journey*
+- [ ] **Creator workflow (011)** · *Deferred journey*
 
-  **Deferred (2026-11-23):** [Managed repositories deferred](architecture/decisions.md#managed-repositories-deferred). Out of the alpha and the first packaged release; the delivered work above keeps its history.
+  **Deferred (2026-11-23):** [Creator workflow deferred](architecture/decisions.md#creator-workflow-deferred). Out of the alpha, to get feedback before building more; the delivered work above keeps its history.
 
+  - [ ] Connect GitHub, and install from a kit in a private repository through that connection in the web client. Until then a private kit installs with the server command, `install-app --kit -`.
+  - [ ] Make a dashboard app with `app new`, `app pack` and `app install-local`, choose it as Home, and grant it read roles of other apps.
   - [ ] Create, import and fork GitHub repositories from Your Space, on a Repositories screen.
   - [ ] Grant an agent access to selected repositories, with creation and fork rights, and let it commit files through its key.
   - [ ] Install from a kit in a managed repository, and deploy an installed app from a reviewed repository commit, keeping its installation and volumes.
@@ -139,7 +141,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 - [ ] **Additional discovery sources** · *Later direction*
 
-  Journey 011 supports private GitHub sources, direct kit URLs and one optional operator-selected GitHub directory. Later discovery work includes combining multiple directories and preserving update routing when a directory changes.
+  Journey 011 supports private GitHub sources, direct kit URLs and one optional operator-selected GitHub directory. (2026-11-23: private GitHub sources are deferred with the [creator workflow](#custom-apps-and-sources), and the directory must be a public repository.) Later discovery work includes combining multiple directories and preserving update routing when a directory changes.
 
 - [ ] **Kits as app definitions** · *Later direction*
 
@@ -242,7 +244,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
   - **App updates, history and rollback**
     - [ ] Show the owner when an installed app's kit has a newer commit, as an update the owner chooses to install, such as in the update notice of the [Apps screen (013)](https://github.com/your-space-ai/your-space/blob/main/specs/013-workspace-redesign/spec.md): Your Space reviews the newer kit and the Compose commit it pins, and changes nothing until the owner confirms. Nothing follows a kit's branch by itself. [Kits define apps](architecture/decisions.md#kits-define-apps)
     - [ ] Include app installation, removal and update events in the broader workspace activity history.
-    - [ ] Extend the [confirmed replacement path](#custom-apps-and-sources) to general updates. Preserve app identity, source revision and provenance, enforce the approved update policy, and prevent silent expansion of access. (2026-11-23: the confirmed replacement path left the product with [managed repositories](#custom-apps-and-sources); updates build their own.)
+    - [ ] Extend the [confirmed replacement path](#custom-apps-and-sources) to general updates. Preserve app identity, source revision and provenance, enforce the approved update policy, and prevent silent expansion of access. (2026-11-23: the confirmed replacement path left the product with managed repositories, deferred in the [creator workflow](#custom-apps-and-sources); updates build their own.)
     - [ ] Extend 011’s owner-confirmed compatible replacements to general upstream updates with reviewed data migrations. (2026-11-23: those replacements are deferred with managed repositories.)
     - [ ] Back up app data and record image versions before each update; if the update fails, automatically roll back to the previous versions and restore the backup.
 

@@ -89,7 +89,7 @@ The **Build macOS app** workflow builds, packs and install-tests an Apple Silico
 
 - Install an independent app from its real source. Review the pinned images and kit revision, confirm installation and verify app limits, network isolation and persistent storage. Follow the [app installation acceptance checks](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/tasks.md).
 - Grant an external agent kit-defined roles. Use synthetic data to list, create and edit a recurring record through the gateway. Check approval, attribution and the upstream result. Try an ungranted action, change the role, rotate the credential and revoke access. Follow the [agent access specification](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/spec.md).
-- Run [agent-led setup](../install/agent-setup.md) and install an [agent-built Home](../apps/build-an-app.md) with owner-selected reads. Use a disposable GitHub account to install from a kit in a public repository and, through the [GitHub connection](../apps/github-connection.md) with private access, from a kit in a private repository. Verify retained data and denied access after revocation.
+- Run [agent-led setup](../install/agent-setup.md). [Install apps](../apps/install-apps.md) from a kit in a public repository by its link, and from a kit file with the server command, `install-app --kit -`.
 - Exercise the [roadmap’s appearance and layout journeys](../roadmap.md#dashboard-and-desktop). Test keyboard navigation, focus, labels and error recovery during setup and in the dashboard at the screen sizes claimed for release.
 
 ## Review and publish

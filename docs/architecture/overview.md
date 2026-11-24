@@ -85,9 +85,10 @@ The signed-in dashboard arranges installed app panes in a resizable grid. A name
   the app this way, at the owner's link, unless the owner turned "Show inside Your Space" off; then
   the app opens there in its own tab.
 - **Installing an app:** the owner pastes the GitHub link to the app's kit → the server reads the
-  kit, then the Compose file it names, each at an exact commit (through the owner's GitHub
-  connection when there is one) → the runtime manager resolves, checks, and pins it → after the
-  owner confirms, it starts the app's Compose project. A Compose file's link alone is refused.
+  kit, then the Compose file it names, each at an exact commit on public GitHub → the runtime
+  manager resolves, checks, and pins it → after the owner confirms, it starts the app's Compose
+  project. A Compose file's link alone is refused. A kit in a private repository goes to the
+  server command as a file instead.
 - **An app reaching the internet:** app → its egress proxy → approved host, or a denial the
   runtime manager reads and the server turns into an access request.
 - **An agent.** The CLI sends the agent’s key and requested action to the server through the edge.
@@ -109,13 +110,12 @@ layer, or request path, or when a `(spec)` item is resolved. Keep the diagram 80
 aligned box borders. Rationale belongs in the decision record, not here.
 
 
-## Creator workflows
+## Setup and kit workflows
 
 ```text
 Authorized agent on host → setup CLI → Docker workspace → private owner claim
-Home app frame → exact-origin message → dashboard → Home read policy → installed app
-Kit URL or directory → pinned kit, then the Compose file it names → install preview
-Private kit → owner's server-held GitHub connection, read only → GitHub
+Kit link or directory → public GitHub at pinned commits → install preview
+Private kit file → server command (install-app --kit -) → install preview
 ```
 
-[Author a Home app](../apps/build-an-app.md) · [Connect GitHub](../apps/github-connection.md)
+[Set up with an agent](../install/agent-setup.md) · [Install apps](../apps/install-apps.md)

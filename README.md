@@ -21,7 +21,6 @@ Apple Silicon and Intel disk images will be published on [GitHub Releases](https
 ## Explore Your Space
 
 - [Give an agent access to an app](docs/apps/agent-access.md)
-- [Build your own Home app](docs/apps/build-an-app.md)
 - [Install apps from their kits](docs/apps/install-apps.md)
 - [Create and share a theme](docs/appearance.md)
 

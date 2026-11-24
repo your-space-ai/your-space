@@ -81,9 +81,7 @@ Compose or the engine gave in `detail` when there was any.
 | `unexpected` | 4 | Anything else |
 
 When a server command the CLI runs fails with a code this table doesn't have, the CLI reports that
-code and the server's exit status, with the server's other fields. For example, `app install-local`
-gives `refused` with `name` and `refusals` (`{ service, reason }`) when Your Space can't run a kit,
-and its message lists them.
+code and the server's exit status, with the server's other fields.
 
 ### The summary (`start`, `status`)
 

@@ -118,11 +118,7 @@ describe("server commands", () => {
     throw new Error("expected a failure");
   };
 
-  it("keep the server's own code and status, and say why a kit was refused", () => {
-    const refusals = [{ service: "web", reason: "Uses the host's network." }, { reason: "Has no interface." }];
-    const refused = failure(2, { ok: false, error: "refused", name: "notes", refusals });
-    expect(refused).toMatchObject({ code: "refused", status: 2, fields: { name: "notes", refusals } });
-    expect(refused.message).toBe("Your Space can't run notes as it is:\n  - web: Uses the host's network.\n  - Has no interface.");
+  it("keep the server's own code and status", () => {
     expect(failure(2, { ok: false, error: "name_taken", message: "Data kept from another app called notes uses this name." })).toMatchObject({
       code: "name_taken",
       status: 2,

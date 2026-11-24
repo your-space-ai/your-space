@@ -37,27 +37,24 @@ source:
 A kit kept in the app's own repository names an earlier commit than its own, since a file can't
 name the commit it is in: commit the Compose file, then the kit with that commit.
 
-A kit in a private repository installs through your [GitHub connection](github-connection.md) when
-you connect with private repositories included, on the GitHub page. Its Compose file must be in the
-same repository or in a public one: Your Space refuses a kit that names a Compose file in another
-private repository.
+Your Space reads kits and Compose files from public GitHub. A kit in a private repository installs
+from this machine instead, with the server command (see below).
 
 **Kit directory.** To offer a directory of kits, set `YS_KITS_REPOSITORY=owner/repository` in the
 workspace's `.env` and recreate the server with `docker compose up -d`. Choose a repository you
 trust to publish kit reviews. Your Space lists `apps/<upstream-owner>/<upstream-repo>.yaml` from its
-default branch, pins each entry to the commit that branch is at, and reads the directory through your
-GitHub connection when there is one. The directory lists kits and holds their reviews; it doesn't
+default branch, pins each entry to the commit that branch is at, and reads it from public GitHub, so
+the directory must be a public repository. The directory lists kits and holds their reviews; it doesn't
 find a kit from a Compose link. A kit counts as reviewed when the directory has a matching record in
 `reviews/sha256/<digest>.json` on its default branch: the same repository, path and content digest
 for the reviewed kit commit. A review still applies across unrelated commits only while the kit's
 bytes are unchanged. You still choose every agent grant.
 
-From the server, `docker compose exec server install-app <kit-link>` does the same, reading public
-GitHub only. A kit it can't read, such as one in a private repository, can come from this machine
-instead, and names the app's Compose file and its commit in a public repository:
+From the server, `docker compose exec server install-app <kit-link>` does the same. A kit Your Space
+can't read on GitHub, such as one in a private repository, can come from this machine instead, and
+names the app's Compose file and its commit in a public repository:
 `docker compose exec -T server install-app --kit - < kit.yaml`. For a Compose file in a private
-repository, install from Apps through your GitHub connection, or give the Compose file from this
-machine too, as below.
+repository, give the Compose file from this machine too, as below.
 
 When an app's own Compose file doesn't fit Your Space's rules, for example because it builds its
 images or mounts folders of this machine, install it from a Compose file you write instead, with
