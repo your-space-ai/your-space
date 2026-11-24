@@ -2,7 +2,7 @@
 title: "Try Your Space from source"
 ---
 
-Run the dashboard on your computer, create its owner, and install a sample app. This walkthrough builds Your Space from your checkout. Its local GitHub stand-in serves the example app and kit. You can try them without a GitHub account.
+Run the dashboard on your computer, create its owner, and install a sample app. This walkthrough builds Your Space from your checkout. Its local GitHub stand-in serves the example app and kit. You can try them without a GitHub account. To install the published 0.1.0-alpha.1 instead, follow the [installation guide](index.md).
 
 ## Start the dashboard
 
@@ -48,7 +48,7 @@ Open the single-use link printed in your terminal, choose a password, and sign i
 2. Read the kit details, including the removed host port and requested outbound access. Choose **Install** and wait for the app to finish starting.
 3. Open **Who Am I**. Its pane shows the hostname and request headers received by the sample app. If your browser offers **Open in its own tab**, follow that link to view it.
 
-The demo never reaches GitHub; it answers GitHub links from the [sample apps in this repository](https://github.com/your-space-ai/your-space/tree/main/e2e/github/fixtures). To try kits from real GitHub repositories with your own locally built images and CLI, use [operator setup from reviewed source](agent-setup.md#test-from-reviewed-source) to create a separate workspace. The [packaged installation guide](index.md) applies once a matching release is available.
+The demo never reaches GitHub; it answers GitHub links from the [sample apps in this repository](https://github.com/your-space-ai/your-space/tree/main/e2e/github/fixtures). To try kits from real GitHub repositories with your own locally built images and CLI, use [operator setup from reviewed source](agent-setup.md#test-from-reviewed-source) to create a separate workspace.
 
 ## Stop and return later
 

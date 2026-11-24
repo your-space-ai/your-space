@@ -6,12 +6,17 @@ These pages are the maintained reference: how to install and run Your Space, how
 
 ## Run a workspace
 
-- [Try the dashboard from source](install/from-source.md) with Docker and a sample app.
+Your Space 0.1.0-alpha.1 is an alpha, for trying Your Space out; read the [alpha limits](install/index.md#alpha-limits) first. With Docker and Node 22.12 or newer, this sets it up on your machine:
+
+```sh
+npx @your-space-ai/cli@0.1.0-alpha.1 setup
+```
+
 - [Install Your Space](install/index.md) with the `your-space` command, or [by hand](install/manual.md) with Docker Compose.
 - [Use it from other devices](install/other-devices.md): your own domain, your own reverse proxy, or Tailscale.
 - [Run Your Space](operate/index.md): everyday commands, sessions, restarts and your data, and what it encrypts.
 - [Recover secrets and the owner account](operate/recovery.md).
-- [Build and run the Mac launcher](install/macos-desktop.md) from source to set up a local workspace or connect to a server.
+- [Download the Mac app](install/macos-desktop.md) to set up a local workspace or connect to a server, or build it from source.
 - [Set up with an agent](install/agent-setup.md) from an authorized shell.
 - [Customize the appearance](appearance.md) and share a theme file.
 
@@ -21,6 +26,7 @@ These pages are the maintained reference: how to install and run Your Space, how
 
 ## Work on Your Space
 
+- [Try the dashboard from source](install/from-source.md) with Docker and a sample app.
 - [Contributor guide and repository layout](https://github.com/your-space-ai/your-space/blob/main/CONTRIBUTING.md)
 - [Roadmap](roadmap.md) and [feature specifications](https://github.com/your-space-ai/your-space/blob/main/specs/README.md)
 - [Architecture overview](architecture/overview.md), [design decisions](architecture/decisions.md), and [glossary](glossary.md)

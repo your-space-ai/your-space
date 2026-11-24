@@ -10,9 +10,8 @@ Each step says which `your-space` command does the same.
 
 `your-space init` does this step.
 
-For the source preview, use the [Docker source walkthrough](from-source.md). For a published
-[Your Space release](https://github.com/your-space-ai/your-space/releases), save `your-space.tar.gz`
-and `SHA256SUMS` from the same release to a new installation folder. In that folder, run
+From the [0.1.0-alpha.1 release](https://github.com/your-space-ai/your-space/releases/tag/v0.1.0-alpha.1),
+save `your-space.tar.gz` and `SHA256SUMS` to a new installation folder. In that folder, run
 `sha256sum your-space.tar.gz` on Linux or `shasum -a 256 your-space.tar.gz` on macOS. Check that
 the digest matches the `your-space.tar.gz` entry in `SHA256SUMS` before unpacking it:
 

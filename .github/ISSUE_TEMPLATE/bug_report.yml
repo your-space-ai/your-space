@@ -1,0 +1,74 @@
+name: Bug report
+description: Something in Your Space doesn't work as the documentation says.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues are public. Leave out set-password links, agent keys, secrets (including
+        `your-space secrets show --reveal` output) and private app data, and use an example
+        address in place of your own domain if you prefer. Report a security problem privately,
+        as the [security policy](https://github.com/your-space-ai/your-space/blob/main/SECURITY.md)
+        describes.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: >-
+        `your-space --version`, or `npx @your-space-ai/cli@<version> --version` if you run it with
+        npx. For the Mac app, what Your Space › About Your Space shows, or
+        `"/Applications/Your Space.app/Contents/Resources/bin/your-space" --version`. From source,
+        the commit.
+      placeholder: 0.1.0-alpha.1
+    validations:
+      required: true
+  - type: dropdown
+    id: install-path
+    attributes:
+      label: How you installed Your Space
+      options:
+        - npm package (npx or npm install -g)
+        - Linux standalone executable
+        - Mac app
+        - By hand with Docker Compose
+        - From source
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and architecture
+      placeholder: Ubuntu 24.04 on x86_64, or macOS 15 on Apple Silicon
+    validations:
+      required: true
+  - type: input
+    id: docker
+    attributes:
+      label: Docker engine and versions
+      description: The engine, and what `docker version` and `docker compose version` print for the server and Compose.
+      placeholder: Docker Engine 29.1.0, Compose 2.40.3; or OrbStack 2.0 with Compose 2.40.3
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead, with any error message.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >-
+        The relevant lines of `your-space logs` (with npx, `npx @your-space-ai/cli@<version> logs`),
+        or `docker compose logs` for an installation by hand. For a command that failed, run it
+        again with `--verbose` and paste its output.
+      render: text
+  - type: checkboxes
+    id: private-data
+    attributes:
+      label: Private data
+      options:
+        - label: I removed set-password links, keys, secrets and private app data from this report.
+          required: true
