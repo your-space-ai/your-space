@@ -8,7 +8,7 @@ The workspace keeps its theme and mode, so every browser that opens it uses the 
 
 ## Theme file
 
-Save this as a UTF-8 JSON file of up to 16 KB. Every key is required, and no others are allowed. Only version 2 files import; a version 1 file, from before themes had light and dark palettes, is refused. A workspace built from source before version 2 starts on Cerulean when it upgrades, and its saved themes are removed. Before upgrading, note the colors of any theme you want to keep, since its version 1 export won't import, and recreate it as version 2.
+Save this as a UTF-8 JSON file of up to 16 KB. Every key is required, and no others are allowed. Only version 2 files import; a version 1 file, from before themes had light and dark palettes, is refused. A workspace built from source before version 2 starts on Cerulean when it upgrades, and its saved themes are removed. Before upgrading, note the colors of any theme you want to keep, since its version 1 export won't import, and recreate it as version 2. A build from before version 2 can't read version 2 themes, so before going back to one, choose a built-in theme, then export and delete your saved themes.
 
 ```json
 {

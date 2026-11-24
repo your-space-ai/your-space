@@ -29,7 +29,7 @@ Copy follows the good-neighbor voice: welcoming, plain-spoken and specific. Erro
 
 ## Acceptance
 
-- Each built-in theme meets a 4.5:1 contrast ratio for ordinary text and primary button labels in light and dark. Verify every screen in all three themes and both modes, and with an imported version 1 theme. (2026-11-23: version 1 files no longer import; verify that one is refused.)
+- Each built-in theme meets a 4.5:1 contrast ratio for ordinary text and primary button labels in light and dark. Verify every screen in all three themes and both modes. (2026-11-23: this also covered an imported version 1 theme; version 1 files no longer import, so verify that one is refused.)
 - Switch mode between Match my device, Light and Dark, and verify the setting persists across browsers for the workspace.
 - Import, export and re-import a version 2 theme. Reject malformed, oversized and unknown-version files without changing the current theme.
 - Open three apps as tabs, merge them into a view, swap two panes, drag one to an edge, resize a divider and use each pane menu action with pointer and keyboard. Save, pin, unpin and delete a view, and reopen it from the sidebar and from All views. App documents stay open while panes move and resize.
