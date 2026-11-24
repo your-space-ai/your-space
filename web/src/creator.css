@@ -30,78 +30,22 @@
 .home-settings > p {
   margin-block: 1rem;
 }
-.nav-repos {
+.nav-github {
   border: 1.5px solid;
   border-radius: 3px;
   background: linear-gradient(90deg, transparent 22%, currentColor 22% 30%, transparent 30%);
 }
-.repo-page {
-  max-width: 67rem;
-}
-.repo-page fieldset {
-  border: 1px solid var(--border);
-  min-width: 0;
-  margin-top: 0.7rem;
-}
-.repo-page select,
-.repo-page input:not([type="checkbox"]),
-.repo-page textarea {
-  width: 100%;
-  min-width: 0;
-}
-.repo-page .card > p:last-child,
-.repo-page fieldset p {
-  margin-bottom: 0;
-}
-.repo-page code,
 .kit-directory .small {
   overflow-wrap: anywhere;
 }
-.repo-details,
 .kit-directory {
   margin: 1rem 0;
 }
-.repo-details summary,
 .kit-directory summary {
   color: var(--accent);
   font-weight: 650;
   margin-bottom: 0.7rem;
 }
-.repo-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
-  gap: 0.75rem 1rem;
-  align-items: end;
-}
-.repo-fields > p,
-.repo-fields > .actions {
-  grid-column: 1/-1;
-}
-.repo-fields button {
-  justify-self: start;
-}
-.file-editor {
-  margin-top: 1rem;
-}
-.file-editor textarea {
-  font-family: ui-monospace, monospace;
-  padding: 0.6rem;
-  border-radius: 6px;
-}
-.deploy-review {
-  border-inline-start: 3px solid var(--accent);
-  padding: 0.4rem 1rem;
-  margin-top: 1rem;
-}
-.deploy-review dd {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.repo-page .notice {
-  margin: 0.6rem 0;
-}
-.home-settings select,
-.repo-page input,
-.repo-page textarea {
+.home-settings select {
   max-width: 100%;
 }

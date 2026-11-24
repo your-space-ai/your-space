@@ -15,8 +15,6 @@ export interface AppSpec {
   env: Record<string, string>;
   /** Image reference → `sha256:…` index digest. */
   pins?: Record<string, string>;
-  /** New immutable references to verify on this engine during a replacement preview. */
-  verifyPins?: string[];
   interface?: { service: string; port: number } | null;
   limits?: Record<string, { memory?: number; cpus?: number }>;
   egress?: string[];

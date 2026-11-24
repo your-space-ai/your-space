@@ -19,8 +19,7 @@ These pages are the maintained reference: how to install and run Your Space, how
 
 - [Install and publish apps](apps/install-apps.md), and [give an agent access to one app](apps/agent-access.md).
 - [Build a Home app](apps/build-an-app.md) that displays data from the apps and read roles you choose.
-- [Connect GitHub](apps/github-connection.md) to make public or private repositories available to your workspace.
-- [Manage repositories and installation kits](apps/managed-repositories.md) to customize a source, import kits, and review a deployment.
+- [Connect GitHub](apps/github-connection.md) to install apps whose kits are in private repositories.
 
 ## Work on Your Space
 

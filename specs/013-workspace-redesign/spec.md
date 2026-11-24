@@ -13,7 +13,7 @@ The dashboard gets a new structure and a component kit that every theme can rest
 7. **Apps.** A list of installed apps with status, beside the selected app's details: update notice, version, address, agent access, internet access requests, and Open, Restart and Remove. **Install** sits at the top of the list.
 8. **Approvals.** One queue of agent actions waiting for the owner, each showing the agent, app, action, change type, time and scope, with **Approve** and **Deny**. Waiting and Decided tabs. Access requests are not in this queue: an app's internet access requests appear on its Apps details and an agent's request for more access appears on its Agents details, each flagged with a count.
 9. **Agents.** A list of agents beside the selected agent's tabs: App access (role per app and which changes need approval), Keys and Activity. **New agent** sits at the top.
-10. **Settings.** A section list: Account, Appearance, Home, Engine, GitHub and Repositories. Engine shows each app's memory and processor use as bars. Appearance offers a mode (Match my device, Light, Dark), the three built-in themes, and the owner's own themes with New theme and Import.
+10. **Settings.** A section list: Account, Appearance, Home, Engine and GitHub. GitHub holds the connection Your Space reads private kits through; Repositories left with managed repositories (2026-11-23, [decision](../../docs/architecture/decisions.md#managed-repositories-deferred)). Engine shows each app's memory and processor use as bars. Appearance offers a mode (Match my device, Light, Dark), the three built-in themes, and the owner's own themes with New theme and Import.
 
 ## Themes
 

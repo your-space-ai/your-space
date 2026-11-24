@@ -87,11 +87,9 @@ function AppTable({ list }: { list: AppList }) {
   );
 }
 
-export function Install({ repository }: { repository?: { id: string; fullName: string; defaultBranch: string } }) {
+function Install() {
   const queryClient = useQueryClient();
   const [link, setLink] = useState("");
-  const [ref, setRef] = useState(repository?.defaultBranch ?? "");
-  const [kit, setKit] = useState(repository ? "kit.yaml" : "");
   const [review, setReview] = useState<Review | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [reuse, setReuse] = useState(true);
@@ -100,11 +98,9 @@ export function Install({ repository }: { repository?: { id: string; fullName: s
   const [installing, setInstalling] = useState<{ name: string; title: string; jobId: string } | null>(null);
   const [finished, setFinished] = useState<boolean | null>(null);
 
-  // Every app installs with a kit: from its link, a kit in the directory, or a repository's kit file.
+  // Every app installs with a kit: from its link, or a kit in the directory.
   const preview = useMutation({
-    mutationFn: (kitUrl: string) => repository
-      ? api<Review>("POST", `/api/repositories/${repository.id}/install/preview`, { ref: ref.trim(), kitPath: kit.trim() })
-      : api<Review>("POST", "/api/kits/preview", { kitUrl: kitUrl.trim() }),
+    mutationFn: (kitUrl: string) => api<Review>("POST", "/api/kits/preview", { kitUrl: kitUrl.trim() }),
     onSuccess: (data) => {
       setReview(data);
       setValues({});
@@ -126,7 +122,7 @@ export function Install({ repository }: { repository?: { id: string; fullName: s
       setInstalling({ name: data.name, title: r.title, jobId: data.jobId });
       setFinished(null);
       setReview(null);
-      if (!repository) setLink("");
+      setLink("");
       void queryClient.invalidateQueries({ queryKey: ["apps"] });
     },
   });
@@ -143,24 +139,23 @@ export function Install({ repository }: { repository?: { id: string; fullName: s
 
   return (
     <section aria-labelledby="install-heading" className="card">
-      <h2 id="install-heading">{repository ? "Install from this repository" : "Install an app"}</h2>
+      <h2 id="install-heading">Install an app</h2>
       <form onSubmit={onReview}>
-        {repository ? <><label>Branch, tag, or commit<input required value={ref} onChange={(event) => setRef(event.target.value)} /></label>
-          <label>Kit file path<small>Every app installs with a kit, which names the app's Compose file at an exact commit and says what Your Space needs to run and show it.</small><input required value={kit} onChange={(event) => setKit(event.target.value)} /></label></> : <label>
+        <label>
           Link to the app's kit
           <small>
             A kit is a small file that names the app's Compose file at an exact commit and says what Your Space needs to run and show the app.
             Your Space installs apps from their kits. Paste the kit's GitHub link, like https://github.com/owner/repo/blob/main/kit.yaml
           </small>
           <input type="url" required value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://github.com/…" />
-        </label>}
+        </label>
         <div>
           <button type="submit" disabled={preview.isPending || install.isPending}>
             {preview.isPending ? "Reading the kit…" : "Review"}
           </button>
         </div>
       </form>
-      {!repository ? <KitDirectory busy={preview.isPending || install.isPending} onPreview={reviewKit} /> : null}
+      <KitDirectory busy={preview.isPending || install.isPending} onPreview={reviewKit} />
       {preview.isError ? (
         <p className="notice error" role="alert">
           {errorMessage(preview.error)}

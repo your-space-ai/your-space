@@ -115,8 +115,8 @@
       "parent": "Apps Subsystem"
     },
     {
-      "title": "Managed Repositories and Kit Directory",
-      "purpose": "Managed repositories, forks with edits, and the kit directory.",
+      "title": "Kit Directory and GitHub Connection",
+      "purpose": "The kit directory, kit links and the owner's read-only GitHub connection for private kits.",
       "parent": "Apps Subsystem"
     },
     {

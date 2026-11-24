@@ -44,7 +44,7 @@ export function Layout() {
         </ul>
         <WorkspaceNav apps={apps.data?.apps ?? []} close={close} />
         <ul>
-          <li><Link to="/repositories" search={{}} onClick={close}><span className="nav-symbol nav-repos" aria-hidden="true" />Repositories</Link></li>
+          <li><Link to="/github" onClick={close}><span className="nav-symbol nav-github" aria-hidden="true" />GitHub</Link></li>
           <li>
             <Link to="/appearance" onClick={close}><span className="nav-symbol nav-appearance" aria-hidden="true" />Appearance</Link>
           </li>

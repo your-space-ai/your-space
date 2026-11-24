@@ -43,3 +43,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     for (const repo of readdirSync(join(root, owner))) console.log(`${owner}/${repo} ${fixtureCommit(`${owner}/${repo}`)}`);
   }
 }
+
+/**
+ * A private repository that only the connected fixture account can read, served by api-fetch.mjs
+ * through the owner's GitHub connection. Its kit, at commit `kit`, pins its Compose file to the
+ * commit before it, `compose`, as a kit beside its Compose file does.
+ */
+export const PRIVATE_FIXTURE = {
+  repo: "fixture-owner/private-whoami",
+  compose: createHash("sha1").update("private-whoami compose").digest("hex"),
+  kit: createHash("sha1").update("private-whoami kit").digest("hex"),
+};

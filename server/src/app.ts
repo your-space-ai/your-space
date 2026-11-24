@@ -8,7 +8,6 @@ import { errorFields, log } from "./log.ts";
 import { workspaceLayoutRoutes } from "./workspace-layout.ts";
 import { appearanceRoutes } from "./appearance.ts";
 import { kitRoutes } from "./repositories/kits.ts";
-import { repoRoutes } from "./repositories/routes.ts";
 import { githubConnectionRoutes } from "./repositories/connection.ts";
 import { homeRoutes } from "./home.ts";
 import { ownerRoutes } from "./owner/routes.ts";
@@ -62,9 +61,6 @@ export function createApp({ auth, db, apps, dataKey }: AppDeps): express.Express
   // Better Auth reads the raw body itself, so it is mounted before express.json().
   app.all("/api/auth/*splat", toNodeHandler(auth));
 
-  // JSON escaping can expand a 256 KiB source file. The provider also checks the decoded size.
-  app.put(["/api/repositories/file", "/api/agent/repositories/file"], express.json({ limit: "1600kb" }));
-  // Other settings and request envelopes use the original small limit.
   app.use(express.json({ limit: "64kb" }));
   app.use("/api", ownerRoutes(db));
   app.use("/api/workspace-layout", workspaceLayoutRoutes(auth, db));
@@ -72,11 +68,7 @@ export function createApp({ auth, db, apps, dataKey }: AppDeps): express.Express
   if (dataKey) {
     app.use("/api", agentRoutes(auth, db, dataKey));
     app.use("/api/repositories/connection", githubConnectionRoutes(auth, db, dataKey));
-    if (apps) {
-      app.use("/api/repositories", repoRoutes(auth, db, dataKey, apps.service));
-      app.use("/api/agent/repositories", repoRoutes(auth, db, dataKey, apps.service, true));
-      app.use("/api/kits", kitRoutes(auth, db, dataKey, apps.service));
-    }
+    if (apps) app.use("/api/kits", kitRoutes(auth, db, dataKey, apps.service));
     app.use("/api/home", homeRoutes(auth, db, dataKey, apps?.service));
   }
   if (apps) app.use("/api", appRoutes(auth, db, apps.service, apps.handoffs));

@@ -24,7 +24,7 @@ import { Apps } from "./pages/Apps.tsx";
 import { Engine } from "./pages/Engine.tsx";
 import { failureKind } from "./errors.ts";
 import { BuiltInHome, Home } from "./pages/Home.tsx";
-import { Repositories } from "./pages/Repositories.tsx";
+import { GitHub } from "./pages/GitHub.tsx";
 import { HomeSettings } from "./pages/HomeSettings.tsx";
 import { NoOwnerYet } from "./pages/NoOwnerYet.tsx";
 import { ResetPassword } from "./pages/ResetPassword.tsx";
@@ -87,11 +87,7 @@ const homeRoute = createRoute({
 const homeSettingsRoute = createRoute({ getParentRoute: () => signedInRoute, path: "/home/settings", component: HomeSettings });
 const builtInHomeRoute = createRoute({ getParentRoute: () => signedInRoute, path: "/home/built-in", component: BuiltInHome });
 
-const repositoriesRoute = createRoute({
-  getParentRoute: () => signedInRoute, path: "/repositories",
-  validateSearch: (search: Record<string, unknown>): { app?: string } => typeof search.app === "string" && /^[a-z][a-z0-9-]{0,29}$/.test(search.app) ? { app: search.app } : {},
-  component: function RepoPage() { const { app } = repositoriesRoute.useSearch(); return <Repositories key={app} appName={app} />; },
-});
+const githubRoute = createRoute({ getParentRoute: () => signedInRoute, path: "/github", component: GitHub });
 
 const appearanceRoute = createRoute({
   getParentRoute: () => signedInRoute,
@@ -161,7 +157,7 @@ const resetPasswordRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  signedInRoute.addChildren([homeRoute, homeSettingsRoute, builtInHomeRoute, repositoriesRoute, agentsRoute, appsRoute, appDetailRoute, openRoute, engineRoute, appearanceRoute]),
+  signedInRoute.addChildren([homeRoute, homeSettingsRoute, builtInHomeRoute, githubRoute, agentsRoute, appsRoute, appDetailRoute, openRoute, engineRoute, appearanceRoute]),
   signInRoute,
   resetPasswordRoute,
 ]);

@@ -1,13 +1,12 @@
 import { createHash } from "node:crypto";
-import type { Db } from "../db/client.ts";
 import { parseLink, type SourceFile } from "../apps/github.ts";
 import { composeOf, kitFromFile, KitError, matchesKitReview, NotAKitError, type FoundKit } from "../apps/kits.ts";
-import type { ReplacementSnapshot } from "../apps/replacement.ts";
 import { AppError, type AppsService } from "../apps/service.ts";
 import { publicGithubClient, type GithubClient, type GithubRepo } from "./github.ts";
 
 export type Reader = Pick<GithubClient, "repo" | "resolve" | "file" | "kitPaths">;
-type Snapshot = ReplacementSnapshot & { ref: string };
+/** The Compose file a kit names, read at the exact commit the kit pins. */
+type Snapshot = { repo: string; ref: string; commit: string; composePath: string; composeText: string };
 const invalid = () => new AppError(400, "invalid_kit_source", "Choose a GitHub kit file and a valid Compose path.");
 const notKitLink = () =>
   new AppError(400, "invalid_kit_source", "Paste the GitHub link to the app's kit, like https://github.com/owner/repo/blob/main/kit.yaml.");
@@ -32,28 +31,6 @@ function kitFile(text: string): { found: FoundKit; compose: { repo: string; path
   }
 }
 
-export async function loadSnapshot(reader: Reader, id: string, body: Record<string, unknown>): Promise<Snapshot> {
-  const repo = await reader.repo(id);
-  const ref = field(body.ref, repo.defaultBranch);
-  const commit = await reader.resolve(id, ref);
-  const composePath = field(body.composePath, "compose.yaml");
-  const kitPath = body.kitPath == null ? null : field(body.kitPath, "kit.yaml");
-  const [compose, kit] = await Promise.all([
-    reader.file(id, composePath, commit),
-    kitPath ? reader.file(id, kitPath, commit) : null,
-  ]);
-  return {
-    repo: repo.fullName,
-    repoId: repo.id,
-    ref,
-    commit,
-    composePath,
-    composeText: compose.content,
-    kitPath,
-    kitText: kit?.content ?? null,
-  };
-}
-
 function preview(apps: AppsService, snap: Snapshot, found: FoundKit) {
   const pinnedLink = link(snap.repo, snap.commit, snap.composePath);
   const source: SourceFile = {
@@ -66,36 +43,6 @@ function preview(apps: AppsService, snap: Snapshot, found: FoundKit) {
     text: snap.composeText,
   };
   return apps.previewResolved(source, found);
-}
-
-/**
- * An install from a repository the owner manages: its kit, `kit.yaml` unless the owner names another
- * path, read at the commit the branch, tag or commit resolves to now. Every app installs with a kit
- * (decision 2026-11-23), and the kit names the Compose file at its exact commit, as a linked kit does.
- */
-export async function previewManagedKit(
-  db: Db,
-  owner: string,
-  connected: GithubClient,
-  apps: AppsService,
-  id: string,
-  body: Record<string, unknown>,
-  publicReader = publicGithubClient(),
-) {
-  const repo = await connected.repo(id);
-  const ref = field(body.ref, repo.defaultBranch);
-  const kitPath = field(body.kitPath ?? undefined, "kit.yaml");
-  const commit = await connected.resolve(id, ref);
-  let content: string;
-  try {
-    content = (await connected.file(id, kitPath, commit)).content;
-  } catch (error) {
-    if (error instanceof AppError && error.code === "github_not_found") {
-      throw new AppError(400, "kit_required", `There is no kit at ${kitPath} in ${repo.fullName} at ${ref}. Give the path of the app's kit in this repository, such as kit.yaml. Every app installs with a kit.`);
-    }
-    throw error;
-  }
-  return previewKit(db, owner, connected, apps, { repo, ref, commit, path: kitPath, content }, publicReader);
 }
 
 export async function catalog(reader: Reader, directory?: string) {
@@ -129,7 +76,7 @@ async function linkedKit(reader: Reader, input: unknown) {
       throw new AppError(
         404,
         "kit_not_found",
-        "GitHub can't find the repository of that kit for your GitHub connection. If it is private, connect GitHub with private access in Repositories, with an account that can read it.",
+        "GitHub can't find the repository of that kit for your GitHub connection. If it is private, connect GitHub with private repositories included, on the GitHub page, with an account that can read it.",
       );
     }
     throw error;
@@ -150,26 +97,20 @@ async function linkedKit(reader: Reader, input: unknown) {
   throw notKitLink();
 }
 
-/** A kit may point to a different public upstream. A connected private upstream
- * must already be in this owner's managed repositories before a kit can read it. */
-async function targetRepo(
-  db: Db,
-  owner: string,
-  connected: GithubClient | null,
-  fullName: string,
-  publicReader: Reader,
-) {
+/** A kit may name a Compose file in another repository only if that repository is public. Your Space
+ * reads a private repository through the owner's GitHub connection only for a kit in that same repository. */
+async function targetRepo(fullName: string, publicReader: Reader) {
   try {
     return { repo: await publicReader.repo(fullName), reader: publicReader };
   } catch (error) {
-    if (!(error instanceof AppError) || error.code !== "github_not_found" || !connected) throw error;
-    const managed = await db.$client.query(
-      "select repo_id from managed_repository where owner_id=$1 and account_id=$2 and lower(full_name)=lower($3)",
-      [owner, connected.accountId, fullName],
-    );
-    if (!managed.rowCount)
-      throw new AppError(403, "private_source", "Import the private source repository before installing its kit.");
-    return { repo: await connected.repo(managed.rows[0].repo_id), reader: connected };
+    if (error instanceof AppError && error.code === "github_not_found") {
+      throw new AppError(
+        403,
+        "private_source",
+        `The kit names its Compose file in ${fullName}, which isn't a public repository. A kit in a private repository can name a Compose file in that same repository or in a public one.`,
+      );
+    }
+    throw error;
   }
 }
 
@@ -191,14 +132,12 @@ async function attachReview(reader: Reader, found: FoundKit, file: Awaited<Retur
 }
 
 export async function previewKitUrl(
-  db: Db,
-  owner: string,
   connected: GithubClient | null,
   apps: AppsService,
   url: unknown,
   publicReader = publicGithubClient(),
 ) {
-  return previewKit(db, owner, connected, apps, await linkedKit(connected ?? publicReader, url), publicReader);
+  return previewKit(connected, apps, await linkedKit(connected ?? publicReader, url), publicReader);
 }
 
 /**
@@ -206,8 +145,6 @@ export async function previewKitUrl(
  * names, read at the commit the kit pins, never at a branch's latest commit.
  */
 async function previewKit(
-  db: Db,
-  owner: string,
   connected: GithubClient | null,
   apps: AppsService,
   kit: Awaited<ReturnType<typeof linkedKit>>,
@@ -216,7 +153,7 @@ async function previewKit(
   const reader = connected ?? publicReader;
   const { found, compose: file } = kitFile(kit.content);
   const same = file.repo.toLowerCase() === kit.repo.fullName.toLowerCase();
-  const target = same ? { repo: kit.repo, reader } : await targetRepo(db, owner, connected, file.repo, publicReader);
+  const target = same ? { repo: kit.repo, reader } : await targetRepo(file.repo, publicReader);
   let compose: string;
   try {
     compose = (await target.reader.file(target.repo.id, file.path, file.commit)).content;
@@ -230,16 +167,7 @@ async function previewKit(
   await attachReview(reader, found, kit, apps.config.kitsRepository);
   return preview(
     apps,
-    {
-      repo: target.repo.fullName,
-      repoId: target.repo.id,
-      ref: file.commit,
-      commit: file.commit,
-      composePath: file.path,
-      composeText: compose,
-      kitPath: kit.path,
-      kitText: kit.content,
-    },
+    { repo: target.repo.fullName, ref: file.commit, commit: file.commit, composePath: file.path, composeText: compose },
     found,
   );
 }

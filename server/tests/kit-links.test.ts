@@ -6,10 +6,10 @@ import { TEST_DATA_KEY } from "./helpers/env.ts";
 import { OWNER, createOwnerWithPassword } from "./helpers/owner.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { encrypt } from "../src/apps/settings.ts";
-import { transaction } from "../src/agents/store.ts";
-import { createAgent, manageKey } from "../src/agents/owner.ts";
 
-let db: TestDatabase, server: TestServer, cookie: string, actor: string, agent: string, authorization: string;
+// Reviewing an app from its kit's link in the web client (POST /api/kits/preview) and the kit
+// directory's listing, read through the owner's GitHub connection (decision 2026-11-23).
+let db: TestDatabase, server: TestServer, cookie: string, actor: string;
 const commit = "a".repeat(40);
 /** An older commit, which kits pin their Compose files to. */
 const pinned = "c".repeat(40);
@@ -27,12 +27,10 @@ const file = (s: string) => ({
   content: Buffer.from(s).toString("base64"),
   sha: commit,
 });
-const repoApi = "/api/repositories",
-  agentApi = "/api/agent/repositories";
-const call = (path: string, method = "GET", body?: unknown, ag = false) =>
+const call = (path: string, method = "GET", body?: unknown) =>
   server.request(path, {
     method,
-    headers: ag ? { authorization } : { cookie },
+    headers: { cookie },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 beforeEach(async () => {
@@ -50,68 +48,11 @@ beforeEach(async () => {
     "insert into github_connection(owner_id,github_user_id,login,credential,scope) values($1,'456','owner',$2,'repo')",
     [actor, encrypt(TEST_DATA_KEY, "fixture-private")],
   );
-  await transaction(db.db, async (c) => {
-    agent = (await createAgent(c, actor, "Builder")).id;
-    authorization = "Bearer " + (await manageKey(c, actor, agent)).key;
-  });
 });
 afterEach(async () => {
   vi.unstubAllGlobals();
   await server.close();
   await db.destroy();
-});
-
-it("limits repository files and forks to owner-granted IDs, with owner-only confirmation and revocable access", async () => {
-  const provider = vi.fn<typeof fetch>(async (url, init) => {
-    const u = new URL(String(url));
-    if (u.pathname === "/repos/owner/dashboard") return fixture(meta(31, "owner/dashboard", true));
-    if (u.pathname === "/repositories/31/forks") return fixture(meta(32, "owner/custom-dashboard", true));
-    if (u.pathname === "/repositories/32/contents/index.html" && init?.method === "PUT")
-      return fixture({ commit: { sha: commit }, content: { sha: commit } });
-    if (u.pathname === "/repositories/31/contents/index.html") return fixture(file("only the managed file"));
-    throw Error("Unexpected GitHub request");
-  });
-  vi.stubGlobal("fetch", provider);
-  expect((await call(repoApi + "/import", "POST", { fullName: "owner/dashboard" })).status).toBe(200);
-  expect((await call(agentApi + "/file?repoId=31&path=index.html", "GET", undefined, true)).status).toBe(403);
-  const initial = { revision: 0, canCreate: false, canFork: true, repoIds: ["31"] };
-  expect((await call(repoApi + "/grants/" + agent, "PUT", initial)).status).toBe(200);
-  expect((await call(repoApi + "/grants/" + agent, "PUT", initial)).status).toBe(409);
-  expect((await call(agentApi + "/file?repoId=31&path=index.html", "GET", undefined, true)).status).toBe(200);
-  const calls = provider.mock.calls.length;
-  expect((await call(agentApi + "/fork", "POST", { fullName: "private/another" }, true)).status).toBe(403);
-  expect((await call(agentApi + "/create", "POST", { name: "project", private: false }, true)).status).toBe(403);
-  expect(provider).toHaveBeenCalledTimes(calls);
-  expect(
-    (await call(agentApi + "/fork", "POST", { fullName: "owner/dashboard", name: "custom-dashboard" }, true)).status,
-  ).toBe(200);
-  const edit = {
-    repoId: "32",
-    path: "index.html",
-    branch: "main",
-    message: "Change the header",
-    content: "My tasks",
-    sha: commit,
-  };
-  expect((await call(agentApi + "/file", "PUT", edit, true)).status).toBe(200);
-  expect((await call(agentApi + "/32/deploy/receipt", "GET", undefined, true)).status).toBe(404);
-  expect((await call(agentApi + "/32/deploy/pending?appId=" + actor, "GET", undefined, true)).status).toBe(404);
-  expect((await call(agentApi + "/32/deploy/apply", "POST", {}, true)).status).toBe(404);
-  expect((await call(repoApi + "/32/deploy/apply", "POST", {}, true)).status).toBe(401);
-  const list = (await (await call(repoApi)).json()) as { grants: { repoIds: string[]; revision: number }[] };
-  expect(list.grants[0].repoIds).toEqual(["31", "32"]);
-  expect(
-    (
-      await call(repoApi + "/grants/" + agent, "PUT", {
-        ...initial,
-        revision: list.grants[0].revision,
-        repoIds: [],
-        canFork: false,
-      })
-    ).status,
-  ).toBe(200);
-  expect((await call(agentApi + "/file", "PUT", edit, true)).status).toBe(403);
-  expect(JSON.stringify(list)).not.toContain("fixture-private");
 });
 
 it("returns an empty directory without contacting GitHub on a fresh install", async () => {
@@ -241,7 +182,7 @@ it("recognizes a separately committed review when the owner chooses a directory 
   expect(probe.mock.lastCall?.[1]?.kit.agentReview).toBeUndefined();
 });
 
-it("requires an explicit import before following a linked kit to a different private source", async () => {
+it("refuses to follow a linked kit to a Compose file in a different private repository", async () => {
   const calls: string[] = [];
   vi.stubGlobal(
     "fetch",
@@ -256,9 +197,9 @@ it("requires an explicit import before following a linked kit to a different pri
       return fixture({}, 404);
     }),
   );
-  expect(
-    (await call("/api/kits/preview", "POST", { kitUrl: "https://github.com/owner/kits/blob/main/kit.yaml" })).status,
-  ).toBe(403);
+  const refused = await call("/api/kits/preview", "POST", { kitUrl: "https://github.com/owner/kits/blob/main/kit.yaml" });
+  expect(refused.status).toBe(403);
+  expect(await refused.json()).toMatchObject({ error: "private_source", message: expect.stringMatching(/owner\/private, which isn't a public repository/) });
   expect(calls.some((path) => path.includes("contents/compose.yaml"))).toBe(false);
 });
 
@@ -278,20 +219,21 @@ it("reads a linked kit through the connection, refusing a Compose file and namin
   expect(await compose.json()).toMatchObject({ error: "kit_required", message: expect.stringMatching(/not a Your Space kit/) });
   const hidden = await call("/api/kits/preview", "POST", { kitUrl: "https://github.com/owner/hidden/blob/main/kit.yaml" });
   expect(hidden.status).toBe(404);
-  expect(await hidden.json()).toMatchObject({ error: "kit_not_found", message: expect.stringMatching(/connect GitHub with private access/) });
+  expect(await hidden.json()).toMatchObject({ error: "kit_not_found", message: expect.stringMatching(/connect GitHub with private repositories included/) });
 });
 
-it("installs from a managed repository with its kit.yaml, or another named, at the Compose commit the kit pins", async () => {
+it("reviews a kit in a private repository through the connection, at the Compose commit the kit pins", async () => {
   const kits: Record<string, string> = {
     "kit.yaml": `kit: 1\nname: desk\nsource: { repo: owner/desk, path: compose.yaml, commit: ${pinned} }\ninterface: { service: web, port: 80 }\n`,
     "beside.yaml": "kit: 1\nname: desk\ninterface: { service: web, port: 80 }\n",
     "unpinned.yaml": "kit: 1\nname: desk\nsource: { repo: owner/desk, path: compose.yaml }\n",
   };
   const reads: string[] = [];
-  const provider = vi.fn<typeof fetch>(async (url) => {
+  const provider = vi.fn<typeof fetch>(async (url, init) => {
     const u = new URL(String(url));
-    if (u.pathname === "/repos/owner/desk" || u.pathname === "/repositories/41") return fixture(meta(41, "owner/desk", true));
-    if (u.pathname.startsWith("/repositories/41/commits/")) return fixture({ sha: commit });
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer fixture-private");
+    if (u.pathname === "/repos/owner/desk") return fixture(meta(41, "owner/desk", true));
+    if (u.pathname === "/repositories/41/commits/main") return fixture({ sha: commit });
     const path = u.pathname.slice("/repositories/41/contents/".length);
     reads.push(path + "@" + u.searchParams.get("ref"));
     if (path === "compose.yaml" && u.searchParams.get("ref") === pinned) return fixture(file("services:\n  web: { image: example/web:1 }\n"));
@@ -299,9 +241,8 @@ it("installs from a managed repository with its kit.yaml, or another named, at t
     return fixture({}, 404);
   });
   vi.stubGlobal("fetch", provider);
-  expect((await call(repoApi + "/import", "POST", { fullName: "owner/desk" })).status).toBe(200);
-  // The kit names the Compose file; a Compose path in the request changes nothing.
-  const review = await call(repoApi + "/41/install/preview", "POST", { composePath: "other.yaml" });
+  const preview = (path: string) => call("/api/kits/preview", "POST", { kitUrl: "https://github.com/owner/desk/blob/main/" + path });
+  const review = await preview("kit.yaml");
   expect(review.status).toBe(200);
   expect(await review.json()).toMatchObject({
     name: "desk",
@@ -309,12 +250,7 @@ it("installs from a managed repository with its kit.yaml, or another named, at t
     kit: { repo: "owner/desk", path: "kit.yaml", commit },
   });
   expect(reads).toEqual(["kit.yaml@" + commit, "compose.yaml@" + pinned]);
-  const missing = await call(repoApi + "/41/install/preview", "POST", { kitPath: "deploy/kit.yaml" });
-  expect(missing.status).toBe(400);
-  expect(await missing.json()).toMatchObject({ error: "kit_required", message: expect.stringMatching(/no kit at deploy\/kit\.yaml.*Every app installs with a kit/) });
   // Without source, or without its commit, the kit doesn't pin the Compose file, so it is refused.
-  const beside = await call(repoApi + "/41/install/preview", "POST", { kitPath: "beside.yaml" });
-  expect(await beside.json()).toMatchObject({ error: "invalid_kit", message: expect.stringMatching(/names no Compose file/) });
-  const unpinned = await call(repoApi + "/41/install/preview", "POST", { kitPath: "unpinned.yaml" });
-  expect(await unpinned.json()).toMatchObject({ error: "invalid_kit", message: expect.stringMatching(/source has no commit\. Add source\.commit/) });
+  expect(await (await preview("beside.yaml")).json()).toMatchObject({ error: "invalid_kit", message: expect.stringMatching(/names no Compose file/) });
+  expect(await (await preview("unpinned.yaml")).json()).toMatchObject({ error: "invalid_kit", message: expect.stringMatching(/source has no commit\. Add source\.commit/) });
 });

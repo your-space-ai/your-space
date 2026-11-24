@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../apps-api.ts";
-import { connectionQuery, repositoryQuery, reposPath } from "../repositories-api.ts";
+import { connectionPath, connectionQuery } from "../github-api.ts";
 
 type Attempt = {
   attemptId: string;
@@ -10,7 +10,7 @@ type Attempt = {
   expiresAt: string;
   intervalSeconds: number;
 };
-const endpoint = reposPath + "/connection";
+const endpoint = connectionPath;
 
 export function GitHubConnection({ ownerId }: { ownerId: string }) {
   const client = useQueryClient();
@@ -34,7 +34,8 @@ export function GitHubConnection({ ownerId }: { ownerId: string }) {
       setConfirm(false);
       setError("");
       await client.invalidateQueries({ queryKey: options.queryKey });
-      await client.invalidateQueries({ queryKey: repositoryQuery(ownerId).queryKey });
+      // The kit directory is read through the connection when there is one.
+      await client.invalidateQueries({ queryKey: ["kit-directory"] });
     },
     onError: (reason) => setError(errorMessage(reason)),
   });
@@ -63,7 +64,7 @@ export function GitHubConnection({ ownerId }: { ownerId: string }) {
         if (result.status === "connected") {
           setAttempt(null);
           await client.invalidateQueries({ queryKey: options.queryKey });
-          await client.invalidateQueries({ queryKey: repositoryQuery(ownerId).queryKey });
+          await client.invalidateQueries({ queryKey: ["kit-directory"] });
         } else schedule(result.intervalSeconds ?? attempt.intervalSeconds);
       } catch (reason) {
         if (active) {
@@ -109,7 +110,7 @@ export function GitHubConnection({ ownerId }: { ownerId: string }) {
           ) : (
             <div className="confirm">
               <p>
-                Disconnect this workspace’s GitHub account? Repository operations will require another connection.
+                Disconnect this workspace’s GitHub account? Kits in private repositories will need another connection.
               </p>
               <div className="actions">
                 <button
@@ -150,7 +151,7 @@ export function GitHubConnection({ ownerId }: { ownerId: string }) {
         </div>
       ) : (
         <>
-          <p>Connect the account that owns the repositories you want to manage.</p>
+          <p>Connect the GitHub account that can read the kits you want to install.</p>
           <label className="checkbox">
             <input
               type="checkbox"
@@ -159,8 +160,8 @@ export function GitHubConnection({ ownerId }: { ownerId: string }) {
             />{" "}
             Include private repositories
             <small>
-              GitHub will request its full repository scope for this account. Your Space limits agent access to the
-              grants you choose.
+              GitHub will request its full repository scope for this account. Your Space only reads kits and the
+              Compose files they name.
             </small>
           </label>
           <button type="button" disabled={start.isPending} onClick={() => start.mutate()}>

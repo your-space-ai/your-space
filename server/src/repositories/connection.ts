@@ -173,8 +173,6 @@ export function githubConnections(db: Db, dataKey: string) {
         params,
       );
       if (!consumed.rowCount) throw expired();
-      // An account switch must not resurrect agent grants if the owner later switches back.
-      await tx.query("delete from repository_grant where owner_id=$1 and account_id<>$2", [owner.actorId, account.id]);
       await tx.query(
         `insert into github_connection(owner_id,github_user_id,login,credential,scope) values($1,$2,$3,$4,$5)
          on conflict(owner_id) do update set github_user_id=$2,login=$3,credential=$4,scope=$5`,

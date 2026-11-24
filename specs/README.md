@@ -11,7 +11,7 @@ The [roadmap](../docs/roadmap.md) tracks delivery. Open a specification below fo
 | [008 · Open a workspace from the macOS desktop](008-desktop-entry/spec.md) | Download the native app. Use a detected or owner-selected Docker engine for local setup, with guidance when Docker is missing, or connect to an existing server without local Docker. Apply an installation kit from the selected dashboard. |
 | [009 · Encrypt stored app settings](009-encrypt-stored-data/spec.md) | Follow-up to 003. A dedicated encryption key protects installed apps’ settings and can be rotated independently of the owner sign-in secret. |
 | [010 · Make Your Space look like yours](010-personal-themes/spec.md) | Pick, customize and share a theme. Store workspace appearance on its server and launcher appearance on the device. 013 supersedes its presentation; its storage, sharing and permission rules still apply. |
-| [011 · Build and customize a personal workspace with an agent](011-agent-workspace/spec.md) | Agent setup, portable app authoring, Home read grants, managed GitHub repos, an optional operator-selected kit directory and owner-confirmed replacement. |
+| [011 · Build and customize a personal workspace with an agent](011-agent-workspace/spec.md) | Agent setup, portable app authoring, Home read grants, kit links, private kits through the GitHub connection and an optional operator-selected kit directory. Managed GitHub repos and owner-confirmed replacement are deferred beyond the first release (2026-11-23). |
 | [012 · Arrange apps and return to a saved view](012-multi-app-layouts/spec.md) | Resize installed apps in four arrangements, share the composition, save named views and order app shortcuts. 013 supersedes its view behavior; its storage, sharing and permission rules still apply. |
 | [013 · Redesign the workspace](013-workspace-redesign/spec.md) | New sidebar, tabs, views, Home, Apps, Agents, Approvals and Settings on a component kit that themes restyle. Theme format version 2 with light and dark palettes, a component style and three built-in themes. |
 
@@ -21,7 +21,7 @@ The [roadmap](../docs/roadmap.md) tracks delivery. Open a specification below fo
 
 013 redesigns the dashboard that the other journeys use and supersedes 010's presentation and 012's view behavior. It also precedes the product release, delivered in the order its spec gives.
 
-The roadmap tracks [004 teams](../docs/roadmap.md#accounts-and-access), [006 lifecycle tooling](../docs/roadmap.md#workspace-and-hosting), [007 developer ecosystem](../docs/roadmap.md#apps-and-kits), and [broader 008 desktop support](../docs/roadmap.md#dashboard-and-desktop) as later work. The existing specifications and their historical task records keep their original scope.
+The roadmap tracks [004 teams](../docs/roadmap.md#accounts-and-access), [006 lifecycle tooling](../docs/roadmap.md#workspace-and-hosting), [007 developer ecosystem](../docs/roadmap.md#apps-and-kits), [broader 008 desktop support](../docs/roadmap.md#dashboard-and-desktop) and [011's managed repositories](../docs/roadmap.md#custom-apps-and-sources) as later work. The existing specifications and their historical task records keep their original scope.
 
 ## Rules Every Spec Follows
 

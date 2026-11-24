@@ -108,7 +108,7 @@ it("rejects broader scopes and prevents a late upstream success from undoing a d
   expect((await service.state(owner)).connected).toBe(false);
 });
 
-it("keeps public discovery uncredentialed and managed writes bound to the immutable ID", async () => {
+it("keeps public discovery uncredentialed and connected reads bound to the immutable ID", async () => {
   const upstream = vi.fn<typeof fetch>();
   vi.stubGlobal("fetch", upstream);
   const publicClient = publicGithubClient(),
@@ -128,18 +128,19 @@ it("keeps public discovery uncredentialed and managed writes bound to the immuta
   expect(upstream.mock.calls[0]?.[1]?.redirect).toBe("error");
   upstream.mockResolvedValueOnce(response({ truncated: true, tree: [] }));
   await expect(publicClient.kitPaths("owner/catalog", hash)).rejects.toMatchObject({ code: "catalog_incomplete" });
+  // Your Space only reads through a connection, by GitHub's immutable repository ID.
   const connected = new GithubClient("fixture-token", "13", "public_repo");
-  const edit = { content: "example", message: "Update file", branch: "main", sha: hash };
-  await expect(connected.put("name/changed", "app.yaml", edit)).rejects.toMatchObject({ status: 400 });
-  await expect(connected.put("19", "../unsafe", edit)).rejects.toMatchObject({ status: 400 });
-  await expect(connected.create("test", true)).rejects.toMatchObject({ status: 400 });
-  upstream.mockResolvedValueOnce(response({ commit: { sha: hash }, content: { sha: hash } }));
-  expect(await connected.put("19", "apps/app.yaml", edit)).toEqual({ commit: hash, sha: hash });
+  await expect(connected.file("19", "../unsafe", hash)).rejects.toMatchObject({ status: 400 });
+  const text = "kit: 1\n";
+  upstream.mockResolvedValueOnce(
+    response({ type: "file", encoding: "base64", content: Buffer.from(text).toString("base64"), size: text.length, sha: hash }),
+  );
+  expect(await connected.file("19", "apps/app.yaml", hash)).toEqual({ content: text, sha: hash });
   const [url, options] = upstream.mock.calls.at(-1)!;
-  expect(url).toBe("https://api.github.com/repositories/19/contents/apps/app.yaml");
-  expect(JSON.parse(String(options?.body))).toMatchObject({ sha: hash, branch: "main" });
-  upstream.mockResolvedValueOnce(response({ message: "fixture private internal detail" }, 409));
-  await expect(connected.put("19", "app.yaml", edit)).rejects.toMatchObject({ code: "github_conflict" });
+  expect(url).toBe(`https://api.github.com/repositories/19/contents/apps/app.yaml?ref=${hash}`);
+  expect(options?.method).toBeUndefined();
+  expect(options?.body).toBeUndefined();
+  expect(new Headers(options?.headers).get("Authorization")).toBe("Bearer fixture-token");
 });
 
 it("requires an owner and same-origin JSON at the mounted connection API", async () => {

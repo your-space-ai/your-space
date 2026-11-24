@@ -157,17 +157,15 @@ export class GithubClient {
     this.scope = scope;
   }
 
-  private api(path: string, method = "GET", body?: object) {
+  // Your Space only reads from GitHub: kits, the Compose files they name and the kit directory.
+  private api(path: string) {
     return request(rest + path, {
-      method,
       headers: {
         ...(this.#token ? { Authorization: "Bearer " + this.#token } : {}),
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
-        "Content-Type": "application/json",
         "User-Agent": "Your-Space",
       },
-      ...(body ? { body: JSON.stringify(body) } : {}),
     });
   }
 
@@ -179,17 +177,6 @@ export class GithubClient {
 
   async repo(nameOrNumericId: string) {
     return repository(await this.api(repositoryPath(nameOrNumericId)));
-  }
-
-  async create(name: string, privateRepo: boolean) {
-    segment(name);
-    if (typeof privateRepo !== "boolean" || (privateRepo && this.scope !== "repo")) throw badInput();
-    return repository(await this.api("/user/repos", "POST", { name, private: privateRepo, auto_init: true }));
-  }
-
-  async fork(id: string, name: string) {
-    segment(name);
-    return repository(await this.api(repositoryId(id) + "/forks", "POST", { name }));
   }
 
   async resolve(fullName: string, revision: string) {
@@ -244,27 +231,6 @@ export class GithubClient {
         throw new AppError(422, "catalog_incomplete", "The catalog exceeds the supported number of kits.");
     }
     return found.sort();
-  }
-
-  // Address managed mutations only by GitHub's immutable repository ID. A
-  // renamed or transferred repository can never retarget an existing grant.
-  async put(id: string, path: string, options: { content: string; message: string; branch: string; sha?: string }) {
-    if (
-      typeof options.content !== "string" ||
-      Buffer.byteLength(options.content) > limit ||
-      typeof options.message !== "string" ||
-      !options.message.trim() ||
-      options.message.length > 512 ||
-      (options.sha !== undefined && !/^[0-9a-f]{40}$/i.test(options.sha))
-    )
-      throw badInput();
-    const result = await this.api(repositoryId(id) + "/contents/" + pathParts(path), "PUT", {
-      content: Buffer.from(options.content).toString("base64"),
-      message: options.message,
-      branch: ref(options.branch),
-      ...(options.sha !== undefined ? { sha: options.sha } : {}),
-    });
-    return { commit: sha(object(result.commit).sha), sha: sha(object(result.content).sha) };
   }
 }
 

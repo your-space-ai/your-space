@@ -114,9 +114,8 @@ aligned box borders. Rationale belongs in the decision record, not here.
 ```text
 Authorized agent on host → setup CLI → Docker workspace → private owner claim
 Home app frame → exact-origin message → dashboard → Home read policy → installed app
-Owner or scoped agent → repository API → server-held OAuth connection → GitHub
 Kit URL or directory → pinned kit, then the Compose file it names → install preview
-Owner → confirmed replacement preview → runtime → same installation and volumes
+Private kit → owner's server-held GitHub connection, read only → GitHub
 ```
 
-[Author a Home app](../apps/build-an-app.md) · [Manage repositories](../apps/managed-repositories.md)
+[Author a Home app](../apps/build-an-app.md) · [Connect GitHub](../apps/github-connection.md)
