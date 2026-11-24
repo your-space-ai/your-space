@@ -16,18 +16,11 @@ export interface Theme {
 }
 /** A theme's presentation values without its name: what the sign-in page receives. */
 export type ThemeLook = Pick<Theme, 'style' | 'fonts' | 'light' | 'dark'>;
-export interface Version1Theme {
-  version: 1;
-  name: string;
-  scheme: ColorScheme;
-  tokens: Omit<Palette, 'warning'> & { fontBody: string; fontHeading: string };
-}
 export const colorKeys: readonly (keyof Palette)[];
 export const themeStyles: readonly ThemeStyle[];
 export const themeModes: readonly ThemeMode[];
 export const defaultThemeId: string;
 export const builtInThemes: {id: string; theme: Theme}[];
-export const retiredStarterThemes: {id: string; theme: Version1Theme}[];
 export const bundledFonts: string[];
 export const fontSuggestions: string[];
 export function validateTheme(value: unknown): Theme;

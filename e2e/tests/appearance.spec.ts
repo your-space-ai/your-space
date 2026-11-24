@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
-import { builtInThemes, bundledFonts, retiredStarterThemes } from "../../shared/appearance/theme.mjs";
+import { builtInThemes, bundledFonts } from "../../shared/appearance/theme.mjs";
 import { evidence } from "./helpers/evidence.ts";
 import { createOwner, resetStack } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
@@ -122,9 +122,9 @@ test("the owner previews, shares and applies workspace themes in light and dark"
   expect(file).not.toHaveProperty("id");
   const input = page.locator('input[type="file"]');
   await input.setInputFiles({ name: "invalid.json", mimeType: "application/json", buffer: Buffer.from('{"arbitrary":"style"}') });
-  await expect(page.getByRole("alert")).toContainText("version 1 or 2");
+  await expect(page.getByRole("alert")).toContainText("version 2");
   await input.setInputFiles({ name: "future.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ ...file, version: 3 })) });
-  await expect(page.getByRole("alert")).toContainText("version 1 or 2");
+  await expect(page.getByRole("alert")).toContainText("version 2");
   await input.setInputFiles({ name: "copy.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(file)) });
   await expect(page.getByLabel("Theme name", { exact: true })).toHaveValue("Night study");
   await page.getByLabel("Theme name", { exact: true }).fill("Imported theme");
@@ -138,17 +138,6 @@ test("the owner previews, shares and applies workspace themes in light and dark"
   await renamed.getByRole("button", { name: "Delete theme" }).click();
   await renamed.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(renamed).toHaveCount(0);
-
-  // A version 1 file opens as version 2: its one palette in both modes, in the Crisp style.
-  const ember = retiredStarterThemes.find((entry) => entry.id === "ember")!.theme;
-  await input.setInputFiles({ name: "ember.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ ...ember, name: "Old favorite" })) });
-  await expect(page.getByLabel("Theme name", { exact: true })).toHaveValue("Old favorite");
-  await expect(page.getByRole("combobox", { name: "Style", exact: true })).toHaveValue("crisp");
-  await expect(page.getByLabel("Light Background", { exact: true })).toHaveValue(ember.tokens.bg);
-  await expect(page.getByLabel("Dark Background", { exact: true })).toHaveValue(ember.tokens.bg);
-  await expect(page.getByLabel("Monospace font", { exact: true })).toHaveValue("monospace");
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByRole("button", { name: "Night study is current" })).toBeDisabled();
 
   // The sign-in page shows the workspace's theme in the visitor's own mode.
   for (const scheme of ["light", "dark"] as const) {

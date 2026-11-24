@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { builtInThemes, defaultThemeId, paletteScheme, retiredStarterThemes, themeVariables, validateTheme } from '../../shared/appearance/theme.mjs';
+import { builtInThemes, defaultThemeId, paletteScheme, themeVariables, validateTheme } from '../../shared/appearance/theme.mjs';
 
 const limit = 16 * 1024;
 
@@ -23,12 +23,8 @@ export function launcherAppearance(file) {
   async function read() {
     try {
       const saved = JSON.parse(await readFile(file, 'utf8'));
-      let custom = saved.custom ? validateTheme(saved.custom) : undefined;
-      let selected = saved.selected;
-      // A launcher left on a retired starter keeps it as its imported theme, unless it already has one.
-      const retired = retiredStarterThemes.find(item => item.id === selected);
-      if (retired && !custom) [custom, selected] = [validateTheme(retired.theme), 'custom'];
-      if (!builtIn(selected) && !(selected === 'custom' && custom)) selected = defaultThemeId;
+      const custom = saved.custom ? validateTheme(saved.custom) : undefined;
+      const selected = builtIn(saved.selected) || (saved.selected === 'custom' && custom) ? saved.selected : defaultThemeId;
       return { selected, custom };
     } catch {
       return { selected: defaultThemeId };

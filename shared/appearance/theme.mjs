@@ -1,11 +1,10 @@
 // Portable themes contain only presentation values. All clients use this same parser before
-// applying a theme or accepting an imported file. Version 2 holds a component style, three fonts
-// and a light and a dark palette. A version 1 file still parses: it converts to version 2.
+// applying a theme or accepting an imported file. A theme holds a component style, three fonts
+// and a light and a dark palette.
 export const colorKeys = ['bg', 'panel', 'fg', 'muted', 'accent', 'accentInk', 'border', 'danger', 'success', 'warning'];
 export const themeStyles = ['crisp', 'soft', 'bold'];
 export const themeModes = ['system', 'light', 'dark'];
 const fontKeys = ['heading', 'body', 'mono'];
-const version1ColorKeys = colorKeys.filter(key => key !== 'warning');
 const fontPattern = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} _'-]{0,63}$/u;
 
 // The dashboard bundles these families, so a theme that names one renders the same on every device.
@@ -29,18 +28,6 @@ const palette = text => Object.fromEntries(text.split(' ').map((color, index) =>
 export const defaultThemeId = 'cerulean';
 export const builtInThemes = builtIns.map(([id, name, style, [heading, body, mono], light, dark]) => ({
   id, theme: validateTheme({version: 2, name, style, fonts: {heading, body, mono}, light: palette(light), dark: palette(dark)}),
-}));
-
-// The version 1 starters that the built-in themes replaced. A workspace or launcher that used one
-// keeps it as its own copy; the server's 0013 migration holds the same values.
-export const retiredStarterThemes = [
-  ['canopy', 'Canopy', 'light', ['#eff1e4', '#fafbf2', '#182f24', '#4a6150', '#235b3f', '#ffffff', '#b4c4ad', '#923a27', '#24583b'], 'system-ui', 'Georgia'],
-  ['tide', 'Tide', 'light', ['#eaf2f8', '#fcfeff', '#122c41', '#466071', '#17567d', '#ffffff', '#abc3d2', '#963e42', '#1b645f'], 'Avenir Next', 'Avenir Next'],
-  ['ember', 'Ember', 'dark', ['#21191b', '#302123', '#ffeddb', '#d4b5a8', '#ffad74', '#301c19', '#78564a', '#ff9e97', '#a7d1a0'], 'system-ui', 'ui-monospace'],
-].map(([id, name, scheme, colors, fontBody, fontHeading]) => ({
-  id, theme: {version: 1, name, scheme, tokens: {
-    ...Object.fromEntries(version1ColorKeys.map((key, index) => [key, colors[index]])), fontBody, fontHeading,
-  }},
 }));
 
 function hasKeys(value, fields) {
@@ -74,17 +61,6 @@ function mix(from, to, amount) {
   return '#' + a.map((value, index) => Math.round(value + (b[index] - value) * amount).toString(16).padStart(2, '0')).join('');
 }
 
-// A version 1 palette has no warning color. Use amber, darker on a light palette and lighter on a
-// dark one, and blend it toward the text color until it reads at 4.5:1 on the background and panels.
-function warningFor(colors) {
-  const amber = paletteScheme(colors) === 'dark' ? '#f2b24c' : '#a15c00';
-  for (let step = 0; step <= 10; step++) {
-    const color = mix(amber, colors.fg, step / 10);
-    if (Math.min(contrastRatio(color, colors.bg), contrastRatio(color, colors.panel)) >= 4.5) return color;
-  }
-  return colors.fg;
-}
-
 function fontName(name) {
   if (typeof name !== 'string' || !fontPattern.test(name) || name !== name.trim()) {
     throw new Error('Use one installed font family name of up to 64 characters.');
@@ -109,24 +85,10 @@ function colors(value, keys) {
   return result;
 }
 
-// Version 1: one palette and its scheme, nine colors and two fonts. Its palette applies in both
-// modes, with a derived warning color, the Crisp style and the generic monospace font.
-function fromVersion1(value) {
-  if (!['light', 'dark'].includes(value.scheme)) throw new Error('Choose a light or dark theme.');
-  const keys = [...version1ColorKeys, 'fontBody', 'fontHeading'];
-  if (!hasKeys(value.tokens, keys)) throw new Error('The theme needs nine colors and two font families.');
-  const name = themeName(value.name);
-  const single = colors(value.tokens, version1ColorKeys);
-  const fonts = {heading: fontName(value.tokens.fontHeading), body: fontName(value.tokens.fontBody), mono: 'monospace'};
-  single.warning = warningFor(single);
-  return {version: 2, name, style: 'crisp', fonts, light: single, dark: {...single}};
-}
-
-/** Parses a version 1 or 2 theme and returns it as version 2, or throws a message for the owner. */
+/** Parses a version 2 theme and returns a normalized copy, or throws a message for the owner. */
 export function validateTheme(value) {
-  if (hasKeys(value, ['version', 'name', 'scheme', 'tokens']) && value.version === 1) return fromVersion1(value);
   if (!hasKeys(value, ['version', 'name', 'style', 'fonts', 'light', 'dark']) || value.version !== 2) {
-    throw new Error('Choose a version 1 or 2 Your Space theme file.');
+    throw new Error('Choose a version 2 Your Space theme file.');
   }
   const name = themeName(value.name);
   if (!themeStyles.includes(value.style)) throw new Error('Choose the crisp, soft or bold style.');

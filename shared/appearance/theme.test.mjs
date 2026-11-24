@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  builtInThemes, colorKeys, contrastRatio, defaultThemeId, fontSuggestions, modeScheme, paletteScheme,
-  retiredStarterThemes, surfaceColor, themeVariables, validateTheme,
+  builtInThemes, contrastRatio, defaultThemeId, fontSuggestions, modeScheme, paletteScheme,
+  surfaceColor, themeVariables, validateTheme,
 } from './theme.mjs';
 
 const textColors = ['fg', 'muted', 'accent', 'danger', 'success', 'warning'];
@@ -45,26 +45,6 @@ test('the built-in themes are Cerulean, Cinder and Fern, readable in light and d
   assert.deepEqual([cerulean['--radius'], cerulean['--border-width']], ['0px', '2px']);
 });
 
-test('a version 1 file converts: one palette in both modes, a readable warning, Crisp and monospace', () => {
-  for (const {id, theme: original} of retiredStarterThemes) {
-    const theme = validateTheme(original);
-    assert.equal(theme.version, 2);
-    assert.equal(theme.name, original.name);
-    assert.equal(theme.style, 'crisp');
-    assert.deepEqual(theme.fonts, {heading: original.tokens.fontHeading, body: original.tokens.fontBody, mono: 'monospace'});
-    assert.deepEqual(theme.light, theme.dark);
-    for (const key of colorKeys.filter(key => key !== 'warning')) assert.equal(theme.light[key], original.tokens[key]);
-    assert.deepEqual(unreadable(theme.light), [], id);
-    assert.equal(paletteScheme(theme.light), original.scheme);
-    assert.deepEqual(validateTheme(JSON.parse(JSON.stringify(theme))), theme);
-  }
-  // Amber blends toward the text color when it would be hard to read on the palette.
-  const {theme: canopy} = retiredStarterThemes[0];
-  const dim = validateTheme({...canopy, tokens: {...canopy.tokens, bg: '#c8c8c8', panel: '#d0d0d0', fg: '#000000'}});
-  assert.notEqual(dim.light.warning, '#a15c00');
-  assert.ok(contrastRatio(dim.light.warning, '#c8c8c8') >= 4.5);
-});
-
 test('import accepts installed Unicode families and rejects unknown fields, versions or CSS', () => {
   const {theme} = builtInThemes[1];
   for (const font of [...fontSuggestions, '黑体', "L'Archivo"]) {
@@ -76,19 +56,23 @@ test('import accepts installed Unicode families and rejects unknown fields, vers
     assert.throws(() => themeVariables({...theme, fonts: {...theme.fonts, body: font}}, 'light'));
     assert.throws(() => validateTheme({...theme, fonts: {...theme.fonts, mono: font}}));
   }
-  const version1 = retiredStarterThemes[2].theme;
+  // A version 1 file, from before light and dark palettes, is refused like any other version.
+  const version1 = {version: 1, name: 'Earlier file', scheme: 'light', tokens: {bg: '#ffffff', panel: '#ffffff', fg: '#000000',
+    muted: '#555555', accent: '#0a6fb0', accentInk: '#ffffff', border: '#dddddd', danger: '#b3261e', success: '#1d8248',
+    fontBody: 'serif', fontHeading: 'serif'}};
   for (const input of [
-    {...theme, version: 3}, {...theme, version: '2'}, {...theme, version: 0}, {...version1, version: 2}, {...theme, version: 1},
+    {...theme, version: 3}, {...theme, version: '2'}, {...theme, version: 0}, version1, {...version1, version: 2}, {...theme, version: 1},
     {...theme, name: 'a\nb'}, {...theme, name: ' '}, {...theme, name: 'a'.repeat(61)}, {...theme, uri: 'https://example.test/'},
     {...theme, style: 'sharp'}, {...theme, scheme: 'dark'}, {...theme, fonts: {...theme.fonts, display: 'serif'}},
     {...theme, fonts: {heading: 'serif', body: 'serif'}}, {...theme, light: {...theme.light, accent: 'red'}},
     {...theme, dark: {...theme.dark, bg: '#fff'}}, {...theme, dark: {...theme.dark, url: 'https://example.test/logo'}},
     {...theme, light: {...theme.light, warning: undefined}}, {...theme, dark: undefined},
-    {...version1, tokens: {...version1.tokens, warning: '#ffaa00'}}, {...version1, scheme: 'dim'}, {name: 'incomplete'}, null, [],
+    {name: 'incomplete'}, null, [],
   ]) {
     assert.throws(() => validateTheme(input), JSON.stringify(input)?.slice(0, 80));
   }
-  assert.throws(() => validateTheme({...theme, version: 3}), /version 1 or 2/);
+  assert.throws(() => validateTheme(version1), /version 2/);
+  assert.throws(() => validateTheme({...theme, version: 3}), /version 2/);
 });
 
 test('a mode picks a palette, and Match my device follows the preference', () => {

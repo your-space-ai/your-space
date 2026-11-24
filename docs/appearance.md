@@ -8,7 +8,7 @@ The workspace keeps its theme and mode, so every browser that opens it uses the 
 
 ## Theme file
 
-Save this as a UTF-8 JSON file of up to 16 KB. Every key is required, and no others are allowed.
+Save this as a UTF-8 JSON file of up to 16 KB. Every key is required, and no others are allowed. Only version 2 files import; a version 1 file, from before themes had light and dark palettes, is refused.
 
 ```json
 {
@@ -47,14 +47,8 @@ Save this as a UTF-8 JSON file of up to 16 KB. Every key is required, and no oth
 }
 ```
 
-- **style** sets the shape of the interface and adds no colors of its own. `crisp` uses hairline borders and small corners, `soft` uses larger corners and tints surfaces with the palette's accent, and `bold` uses heavy rules and square corners. For now, only the theme previews on the Appearance page show the style; the rest of the dashboard follows it as each screen is redesigned.
+- **style** sets the shape of the interface and adds no colors of its own. `crisp` uses hairline borders and small corners, `soft` uses larger corners and tints surfaces with the palette's accent, and `bold` uses heavy rules and square corners. For now, only the theme previews on the Appearance page show the style; the rest of the dashboard doesn't use it yet.
 - **fonts** name the heading, body and monospace families. The dashboard comes with the Latin characters of Instrument Sans, Space Grotesk, Fraunces and IBM Plex Mono under the SIL Open Font License ([credits](https://github.com/your-space-ai/your-space/blob/main/web/public/fonts/CREDITS.txt)), so Latin text in them looks the same on every device. Other characters, and the Mac launcher, use fonts installed on the device. Any other name means a font installed on the device, or a generic choice such as system-ui, serif or monospace. Devices without that font use a system fallback, a monospace one for the monospace family.
 - **light** and **dark** each hold ten colors with six hexadecimal digits after the hash: the background (`bg`), surfaces such as panels and cards (`panel`), text (`fg`), secondary text (`muted`), the accent, text on the accent (`accentInk`), borders, and the colors for errors (`danger`), success and warnings.
 
 Fonts apply throughout the Your Space interface. Each installed app controls the content inside its pane. Theme files contain visual values only. They load no remote fonts, artwork, CSS or executable code.
-
-## Version 1 files
-
-Theme files from earlier releases have `"version": 1`, a `scheme` and nine colors with two fonts under `tokens`. They still import, in the dashboard and the Mac launcher. Their one palette applies in both modes, with the Crisp style and the generic monospace font. Native controls such as scroll bars follow the palette's colors, not the file's `scheme`. Version 1 has no warning color, so Your Space uses amber: `#a15c00` on a light palette and `#f2b24c` on a dark one, blended toward the text color until it reads at 4.5:1 on the background and surfaces. If no blend reaches 4.5:1, the warning color is the text color itself, which can read lower when the file's own colors are low in contrast, so check warnings after importing. Saving or exporting the theme writes version 2.
-
-Earlier releases offered the Canopy, Tide and Ember starters. A workspace that used one, including by default, keeps it as its own theme, still selected.

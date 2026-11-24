@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { builtInThemes, defaultThemeId, retiredStarterThemes, validateTheme, type Theme } from "../../shared/appearance/theme.mjs";
+import { builtInThemes, defaultThemeId, type Theme } from "../../shared/appearance/theme.mjs";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
 import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
@@ -120,17 +120,18 @@ it("stores the mode with the workspace, across restarts, and refuses stale or un
   expect(await readPublic()).toEqual({ mode: "system", ...look(builtInThemes[1]!.theme) });
 });
 
-it("imports a version 1 theme as version 2 and no longer offers the retired starters", async () => {
-  const ember = retiredStarterThemes.find(item => item.id === "ember")!.theme;
-  const imported = await request("/themes", "POST", { revision: 0, theme: { ...ember, name: "Night study" }, activate: true });
-  const catalog = await imported.json() as Catalog;
-  expect(catalog.themes[0]!.theme).toEqual({ ...validateTheme(ember), name: "Night study" });
-  expect(catalog.themes[0]!.theme).toMatchObject({ version: 2, style: "crisp", fonts: { mono: "monospace" } });
+it("refuses version 1 files and no longer offers the retired starters", async () => {
+  const version1 = { version: 1, name: "Earlier file", scheme: "dark", tokens: { bg: "#21191b", panel: "#302123", fg: "#ffeddb",
+    muted: "#d4b5a8", accent: "#ffad74", accentInk: "#301c19", border: "#78564a", danger: "#ff9e97", success: "#a7d1a0",
+    fontBody: "system-ui", fontHeading: "ui-monospace" } };
+  const refused = await request("/themes", "POST", { revision: 0, theme: version1, activate: true });
+  expect(refused.status).toBe(400);
+  expect(await refused.json()).toMatchObject({ error: "invalid_theme", message: expect.stringContaining("version 2") });
   for (const id of ["canopy", "tide", "ember"]) {
-    expect((await request("/selection", "PUT", { revision: 1, id })).status).toBe(404);
+    expect((await request("/selection", "PUT", { revision: 0, id })).status).toBe(404);
   }
-  expect((await request("/themes", "POST", { revision: 1, theme: { ...starter, version: 3 } })).status).toBe(400);
-  expect(await readCatalog()).toEqual(catalog);
+  expect((await request("/themes", "POST", { revision: 0, theme: { ...starter, version: 3 } })).status).toBe(400);
+  expect(await readCatalog()).toEqual({ revision: 0, activeId: defaultThemeId, mode: "system", themes: [] });
 });
 
 it("rejects conflicting concurrent editors, unsafe imports, and attempts to edit a built-in theme", async () => {

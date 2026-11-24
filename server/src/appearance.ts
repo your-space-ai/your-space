@@ -42,10 +42,7 @@ async function catalog(db: Db | Tx, workspaceId: string): Promise<Catalog> {
     revision: workspaceAppearance.revision, activeId: workspaceAppearance.activeId, mode: workspaceAppearance.mode,
     themes: workspaceAppearance.themes,
   }).from(workspaceAppearance).where(eq(workspaceAppearance.workspaceId, workspaceId));
-  if (!row) return defaults();
-  // Every saved theme was validated when it was written. A version 1 theme reads as version 2, and
-  // is stored that way with the catalog's next change.
-  return { ...row, themes: row.themes.map(({ id, theme }) => ({ id, theme: validateTheme(theme) })) };
+  return row ?? defaults();
 }
 
 type Change = (current: Catalog, body: Record<string, unknown>, req: Request) => void;

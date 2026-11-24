@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { launcherAppearance } from '../src/appearance.mjs';
-import { builtInThemes, retiredStarterThemes, validateTheme } from '../../shared/appearance/theme.mjs';
+import { builtInThemes } from '../../shared/appearance/theme.mjs';
 
 async function launcherFile(t) {
   const dir = await mkdtemp(join(tmpdir(), 'ys-appearance-'));
@@ -47,28 +47,20 @@ test('launcher keeps a validated custom theme on this device across built-in cho
   assert.deepEqual(await reopened.get(), original);
 });
 
-test('launcher imports version 1 files and keeps a retired starter it was left on', async t => {
+test('launcher refuses version 1 files and opens on Cerulean when left on a retired starter', async t => {
   const file = await launcherFile(t);
   const appearance = launcherAppearance(file);
-  const [canopy, tide, ember] = retiredStarterThemes.map(item => item.theme);
-  const preview = appearance.preview(JSON.stringify({...tide, name: 'Harbor'}));
-  assert.equal(preview.name, 'Harbor');
-  assert.deepEqual(preview.light, preview.dark);
-  assert.equal(preview.light.variables['--bg'], tide.tokens.bg);
+  const version1 = {version: 1, name: 'Harbor', scheme: 'light', tokens: {bg: '#eaf2f8', panel: '#fcfeff', fg: '#122c41',
+    muted: '#466071', accent: '#17567d', accentInk: '#ffffff', border: '#abc3d2', danger: '#963e42', success: '#1b645f',
+    fontBody: 'Avenir Next', fontHeading: 'Avenir Next'}};
+  assert.ok(appearance.preview(JSON.stringify(version1)).error);
+  assert.ok((await appearance.save({id: 'custom', text: JSON.stringify(version1)})).error);
 
-  // Saved by an earlier launcher: Ember chosen, no import.
-  await writeFile(file, JSON.stringify({selected: 'ember'}));
-  const kept = await appearance.get();
-  assert.equal(kept.selected, 'custom');
-  assert.equal(kept.themes.at(-1).name, 'Ember');
-  assert.equal(kept.themes.at(-1).dark.scheme, 'dark');
-  assert.equal(kept.themes.at(-1).light.variables['--bg'], ember.tokens.bg);
-  await appearance.save({id: 'custom'});
-  assert.deepEqual(JSON.parse(await readFile(file)).custom, validateTheme(ember));
-
-  // A retired starter beside an imported theme gives way to the default; the import stays.
-  await writeFile(file, JSON.stringify({selected: 'tide', custom: {...canopy, name: 'Reading room'}}));
-  const fallback = await appearance.get();
-  assert.equal(fallback.selected, 'cerulean');
-  assert.equal(fallback.themes.at(-1).name, 'Reading room');
+  // Saved by an earlier launcher: a retired starter chosen, or a version 1 file imported.
+  for (const saved of [{selected: 'ember'}, {selected: 'custom', custom: version1}]) {
+    await writeFile(file, JSON.stringify(saved));
+    const library = await appearance.get();
+    assert.equal(library.selected, 'cerulean');
+    assert.deepEqual(library.themes.map(theme => theme.id), ['cerulean', 'cinder', 'fern']);
+  }
 });

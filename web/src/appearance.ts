@@ -62,7 +62,7 @@ export function WorkspaceAppearance() {
     const scheme = modeScheme(data.mode, prefersDark);
     const variables = themeVariables(data, scheme);
     for (const [property, value] of Object.entries(variables)) root.setProperty(property, value);
-    // A version 1 theme has one palette for both modes, so native controls follow the palette itself.
+    // Native controls follow the palette's own colors, so a dark palette gets dark controls in either mode.
     root.colorScheme = paletteScheme(data[scheme]);
     return () => {
       for (const property of Object.keys(variables)) root.removeProperty(property);
