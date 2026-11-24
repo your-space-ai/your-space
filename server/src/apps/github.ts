@@ -107,20 +107,6 @@ export async function fetchSource(link: string, endpoints: GithubEndpoints = git
   return readResolvedFile(parsed.repo, ref, path, commit, link.trim(), endpoints, fetcher);
 }
 
-/**
- * A file at the head of its repository's default branch, read at that exact commit. GitHub lists
- * commits on the default branch when no sha is requested.
- */
-export async function fetchLatestFile(repo: string, path: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
-  const response = await get(fetcher, `${endpoints.api}/repos/${repo}/commits?per_page=1`, "application/vnd.github+json");
-  if (rateLimited(response)) throw new SourceError("GitHub is limiting requests from this machine. Try again in a few minutes.");
-  if (!response.ok) throw new SourceError(`Your Space can't read ${repo} on GitHub. The repository must be public.`);
-  const commits: unknown = await response.json().catch(() => null);
-  const commit = Array.isArray(commits) ? commits[0]?.sha : null;
-  if (typeof commit !== "string" || !/^[0-9a-f]{40}$/.test(commit)) throw new SourceError(`GitHub didn't say which commit ${repo} is at.`);
-  return fetchPinnedFile(repo, path, commit, endpoints, fetcher);
-}
-
 /** A path's segments, each encoded for a URL. */
 function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");

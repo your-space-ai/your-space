@@ -328,36 +328,20 @@ test("the owner publishes an app on a port of this machine, for their own proxy 
     }).toPass({ timeout: 30_000 });
     return (name) => headers.filter((h) => h.name.toLowerCase() === name).map((h) => h.value);
   };
-  let values = await headersOf();
+  const values = await headersOf();
   expect(values("x-frame-options")).toEqual([]);
   expect(values("content-security-policy")).toEqual(["default-src 'self'; frame-ancestors http://space.localhost:*", "frame-ancestors http://space.localhost:*"]);
   await page.goto("/open/noframe");
   await expect(page.frameLocator('[data-testid="app-pane"]').getByRole("heading", { name: "Refuses to be framed" })).toBeVisible({ timeout: 30_000 });
   await evidence(page, testInfo, "002-publish-1-pane");
 
-  // With "Show inside Your Space" off, its Caddy passes the app's responses on as the app sent them,
-  // and the app opens at its link in its own tab.
+  // No switch takes it out of the pane: "Show inside Your Space" left with the alpha scope (decision
+  // 2026-11-23), and Your Space frames a published app wherever it can.
   await page.goto("/apps/noframe");
-  await publishing.getByLabel(/^Show inside Your Space/).uncheck();
-  await evidence(page, testInfo, "002-publish-2-switch");
-  await publishing.getByRole("button", { name: "Save publishing" }).click();
-  await waitForJob(page);
-  await expect(async () => {
-    values = await headersOf();
-    expect(values("x-frame-options")).toEqual(["DENY"]);
-  }).toPass({ timeout: 30_000 });
-  expect(values("content-security-policy")).toEqual(["default-src 'self'; frame-ancestors 'none'"]);
-  const listed = (await serverCommand("list-apps")).json as { apps: { name: string; publish: { frame: boolean } | null }[] };
-  expect(listed.apps.find((a) => a.name === "noframe")!.publish).toMatchObject({ frame: false });
-  await page.goto("/open/noframe");
-  const card = page.locator('section[data-pane="noframe"]');
-  await expect(card).toContainText("opens there in its own tab");
-  await expect(card.locator('[data-testid="app-pane"]')).toHaveCount(0);
-  const ownTab = card.getByRole("link", { name: "Open in its own tab" });
-  await expect(ownTab).toHaveCount(2);
-  for (const link of await ownTab.all()) await expect(link).toHaveAttribute("href", "http://127.0.0.1:18783");
-  await page.goto("/apps");
-  await expect(page.locator('li[data-app="noframe"]').getByRole("link", { name: /^Open/ })).toHaveAttribute("href", "http://127.0.0.1:18783");
+  await expect(publishing.getByLabel(/^Show inside Your Space/)).toHaveCount(0);
+  const listed = (await serverCommand("list-apps")).json as { apps: { name: string; publish: { inPane: boolean } | null }[] };
+  expect(listed.apps.find((a) => a.name === "noframe")!.publish).toMatchObject({ inPane: true });
+  expect(listed.apps.find((a) => a.name === "noframe")!.publish).not.toHaveProperty("frame");
 
   // This app closes its connection after each answer. Caddy still keeps the visitor's connection open,
   // and it works after a pause.

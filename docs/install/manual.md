@@ -117,17 +117,13 @@ If it expires, run: docker compose exec server reset-link
 ```
 
 The command creates your account, your workspace ("Your Name's space"), and your ownership of it.
-You sign in with the username. An email address is optional: add `--email you@example.com` to
-store one. Your Space doesn't send email yet, so the address stays unverified and is never used to
-sign in; a later release uses it for verification and recovery links.
+You sign in with the username. Your Space asks for no email address: it sends no email.
 
 Account rules:
 
 - **Name:** 1 to 100 characters, without control characters such as tabs or line breaks.
 - **Username:** 3 to 30 letters, digits, `_` or `.`, with each `.` between other characters. It is stored in lowercase, and signing in
   ignores case, so `You` and `you` are the same username.
-- **Email (optional):** up to 254 characters: letters, digits, and `_ ' + -` in parts separated by
-  single dots, then `@` and a domain such as `example.com`. It is stored in lowercase.
 
 Running `create-owner` again does nothing and says the installation already has an owner. If the
 command was interrupted (for example, the server stopped), run it again with the same username: it

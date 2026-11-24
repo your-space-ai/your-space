@@ -13,7 +13,6 @@ Errors use journey 001's shape `{ "error": "<code>", "message": "…" }`.
 | --- | --- | --- |
 | `GET /api/apps` | | `{ apps: [{ name, title, state, stateReason, origin, pane, hasInterface, pendingRequests, publish, framing }], retained: [{ name, title, removedAt }] }` |
 | `POST /api/kits/preview` | `{ kitUrl }` | The review of the app the kit at `kitUrl`, a GitHub link, defines: `{ previewId, name, title, source: { repo, path, commit }, kit: { source, repo, path, commit }, services, images, adaptations, settings: [{ name, secret, generated, value? }], outbound, publishPort, retained }`. The settings are exactly the variables the kit's `env` defines. Secret values are never included. A Compose file that needs a variable, with no default, that the kit's `env` doesn't define has a refusal for it, `{ service: "", setting: "env", reason: "The kit doesn't define NAME, …" }`, and doesn't install. `publishPort` is the port publishing uses by default, or null without an interface. The kit is read at the commit `kitUrl` resolves to now, even a branch link such as `blob/main/kit.yaml`, and the Compose file at exactly the commit the kit's `source.commit` pins ([kit format](kit-format.md)); `kit.commit` and `source.commit` are those commits, and the install uses them. `400 kit_required` when the link is to a Compose file rather than a kit; `400 source` when the kit doesn't pin its Compose file: no `source`, or a `source` without its full `commit`. Both are read from public GitHub; `404 kit_not_found` when GitHub doesn't show the kit, as in a private repository, with a message that says to install it with the server command, `install-app --kit -` (2026-11-23, the GitHub connection is deferred) |
-| `GET /api/kits/catalog` | | `{ commit, kits: [{ title, repo, path, kitUrl }] }`: the kits in the directory `YS_KITS_REPOSITORY` names, a public repository, pinned to its commit; `{ commit: null, kits: [] }` without one |
 | `POST /api/apps` | `{ previewId, settings?: { NAME: value }, reuseData?: boolean, publish?: { port?, bind?, link?, frame? } }` | `202 { name, jobId }`; `409 port_in_use` when another published app, a container or another program on this machine uses the port |
 | `GET /api/apps/{name}` | | The app: state, services with state, settings (secrets as set or not set), outbound hosts, access requests, limits, the latest job |
 | `GET /api/apps/{name}/logs?service=` | | `{ lines }` |
@@ -44,23 +43,22 @@ proxy that rewrote `Host`, with the API's `421` `wrong_host` answer
 ([Host Check](../../001-workspace-owner-access/contracts/http-api.md#host-check)): as JSON when
 `X-Forwarded-Uri` is under `/api`, and as its message in plain text otherwise.
 
-`publish` (decision 2026-11-19) is `{ port, bind, link, frame, inPane }` or null: the app's interface on
+`publish` (decision 2026-11-19) is `{ port, bind, link, inPane }` or null: the app's interface on
 `bind:port` of this machine, for the owner's own proxy or tunnel, outside the gate. `port` defaults to
 the port the app's file publishes for its interface, else the interface's port; `bind` is an IP
 address, `127.0.0.1` by default; `link` is an `http` or `https` origin, or null. With a link, the
 settings a kit derives with `app_origin` and `app_host` take the link's values whenever the app
 starts, and the app's `origin` in `GET /api/apps` and `GET /api/apps/{name}` is the link; otherwise it
 is the app's built-in address, `<app>.<Your Space's address>`. The gate, `/open` and the handoff
-always use the built-in address. `frame` (decision 2026-11-20), `true` by default, is the owner's
-choice to show the app at its link in Your Space's pane, where the app's Caddy lets only Your Space's
-origin frame it. `inPane`, which the server only reports, says whether Your Space does: `frame` is on,
+always use the built-in address. `inPane`, which the server only reports, says whether Your Space
+shows the app at its link in its pane, where the app's Caddy lets only Your Space's origin frame it:
 the app has a link, its kit lets it run in a pane, and the link isn't plain HTTP inside an HTTPS Your
 Space (one on this machine, like `http://127.0.0.1:8081`, is fine). The server sends the same answer to
 the runtime manager, so the Caddy replaces the app's framing rules exactly when the pane frames the
 link; otherwise it passes the app's framing headers on unchanged, and the web client opens the app at
-its link in its own tab. Like the other fields, `frame` is back to its default when the app is
-published again after publishing stopped; any other value than `true` or `false` is refused with
-`400 bad_frame`.
+its link in its own tab. (Superseded 2026-11-23: `frame`, the owner's switch to keep the app out of
+the pane, left with the [alpha scope](../../../docs/architecture/decisions.md#alpha-scope); a `frame`
+an older client sends is ignored.)
 
 `framing`, for an app with `inPane`, is the short ID of the app's Caddy while it runs and lets Your
 Space's origin frame the app, as the runtime manager reports it, and null until then: while a change
@@ -72,10 +70,9 @@ never shown in the pane.
 ## Commands
 
 ```bash
-docker compose exec -T server install-app <github-link-to-kit> [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
-docker compose exec -T server install-app --kit <file | -> [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
-docker compose exec -T server install-app --compose <file | -> --kit <file | -> [--name <name>] [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
-docker compose exec server publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--frame | --no-frame] [--off] [--json]
+docker compose exec -T server install-app <github-link-to-kit> [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]
+docker compose exec -T server install-app --kit <file | -> [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]
+docker compose exec server publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--off] [--json]
 docker compose exec server list-apps [--json]
 docker compose exec runtime stop-apps
 ```
@@ -91,19 +88,12 @@ must have `source`, with its `commit`. Given a Compose file's link, or a Compose
 nothing and says that installs need a kit. With `--json`, the result has the kit's `kit` source: its
 link at its commit, or its digest.
 
-`--compose` installs from a Compose file on this machine instead of the one a kit names on GitHub,
-for an app whose own file doesn't fit Your Space's rules: `-` reads it from standard input, and any
-other value is the file, at most 256 KB. It is checked and adapted like a file from GitHub, and
-recorded as `sha256:<digest>` with its file name; Your Space reads nothing from GitHub for it, not
-even the kits repository, and later starts use the stored text. It needs a kit, which is only the
-one `--kit <file | ->` gives: giving both in one command is what binds them, so the kit's `source`
-isn't matched and may be left out. The app's name is `--name`, else the kit's `name`; with neither, the command refuses. The two
-share standard input, so only one of `--compose` and `--kit` can be `-`; put the other in the
-server's container first, for example with `docker compose exec -T server sh -c 'cat > /tmp/kit.yaml'
-< kit.yaml`. Data kept under the name can be reused with `--reuse-data` whichever source it came
-from, since a file on this machine has no repository to compare. With `--json`, the result has
-`source: "sha256:<digest>"` in place of `commit`, and `list-apps --json` gives each app's `source`:
-the link to its Compose file, or the digest; its `commit` is the exact commit read. An installed app
+`--compose` and `--name` are gone (2026-11-23, [alpha scope](../../../docs/architecture/decisions.md#alpha-scope)):
+the owner no longer gives the command a Compose file on this machine, and `--files-stdin` left with
+journey 011's creator features. An app installed from one
+before is recorded as `sha256:<digest>` and keeps starting from its stored text; `list-apps --json`
+gives each app's `source`: the link to its Compose file, or that digest, and its `commit` is the
+exact commit read. Data kept under a name can be reused with `--reuse-data`. An installed app
 follows no branch: a newer kit, or the newer Compose commit it pins, reaches it only when the owner
 chooses to install it. Offering a newer kit as an update is left to journey 006.
 
@@ -111,8 +101,6 @@ chooses to install it. Offering a newer kit as an update is left to journey 006.
 or stops publishing it with `--off`, and waits until the change is applied: it restarts the app's
 services only when their address settings follow a link that changed, and otherwise recreates at most
 the app's Caddy.
-`--no-frame` sets
-`frame` to `false`, so Your Space opens the app at its link in its own tab, and `--frame` sets it to
-`true` again; `install-app --publish --no-frame` installs an app published that way. The `publish`
-these commands and `list-apps --json` print includes `frame` and `inPane`, and both the commands' line
+The `publish`
+these commands and `list-apps --json` print includes `inPane`, and both the commands' line
 and `list-apps` say when an app published with a link opens in its own tab rather than in its pane. With `--json`, one JSON object on stdout and logs on stderr, as `create-owner` does.

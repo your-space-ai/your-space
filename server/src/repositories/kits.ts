@@ -3,8 +3,6 @@ import type { Auth } from "../auth.ts";
 import type { Db } from "../db/client.ts";
 import { ownerFor } from "../apps/routes.ts";
 import { AppsService, AppError } from "../apps/service.ts";
-import { publicGithubClient } from "./github.ts";
-import { catalog } from "./sources.ts";
 
 function kitLink(value: unknown): string {
   if (typeof value !== "string" || !value.trim() || value.length > 2048) {
@@ -14,42 +12,36 @@ function kitLink(value: unknown): string {
 }
 
 /**
- * The kit directory's listing, and the review of an app from its kit's link: the only way the web
- * client installs an app (decision 2026-11-23). Both read public GitHub, as the server command does;
- * a kit in a private repository installs from this machine with the server command instead.
+ * The review of an app from its kit's link: the only way the web client installs an app (decision
+ * 2026-11-23). It reads public GitHub, as the server command does; a kit in a private repository
+ * installs from this machine with the server command instead.
  */
 export function kitRoutes(auth: Auth, db: Db, apps: AppsService) {
   const router = Router();
-  router.all(["/catalog", "/preview"], async (req, res, next) => {
+  router.all("/preview", async (req, res, next) => {
     try {
       res.set("Cache-Control", "no-store");
       const owner = await ownerFor(auth, db, req);
       if (typeof owner === "string")
         throw new AppError(owner === "signed_out" ? 401 : 403, owner, "Sign in as the workspace owner.");
-      const listing = req.method === "GET" && req.path === "/catalog";
-      if (!listing && !(req.method === "POST" && req.path === "/preview")) {
+      if (req.method !== "POST") {
         next();
         return;
       }
-      if (
-        !listing &&
-        (!req.is("application/json") || req.get("origin") !== new URL(auth.options.baseURL as string).origin)
-      )
+      if (!req.is("application/json") || req.get("origin") !== new URL(auth.options.baseURL as string).origin)
         throw new AppError(403, "forbidden", "Open the kit from the signed-in workspace.");
       const kitUrl: unknown = req.body?.kitUrl;
       res.json(
-        listing
-          ? await catalog(publicGithubClient(), apps.config.kitsRepository)
-          : await apps.preview({ link: kitLink(kitUrl) }).catch((error: unknown) => {
-              if (error instanceof AppError && error.code === "kit_not_found") {
-                throw new AppError(
-                  404,
-                  error.code,
-                  `${error.message} If the kit is in a private repository, install it from this machine with the server command: docker compose exec -T server install-app --kit - < kit.yaml.`,
-                );
-              }
-              throw error;
-            }),
+        await apps.preview({ link: kitLink(kitUrl) }).catch((error: unknown) => {
+          if (error instanceof AppError && error.code === "kit_not_found") {
+            throw new AppError(
+              404,
+              error.code,
+              `${error.message} If the kit is in a private repository, install it from this machine with the server command: docker compose exec -T server install-app --kit - < kit.yaml.`,
+            );
+          }
+          throw error;
+        }),
       );
     } catch (error) {
       if (error instanceof AppError) res.status(error.status).json({ error: error.code, message: error.message });

@@ -4,6 +4,7 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CliError } from "./errors.ts";
 import { parseEnv, setEnv } from "./env-file.ts";
+import { releasePins } from "./release.ts";
 import { setupFromEnv, type Setup } from "./setup.ts";
 
 export const RELEASE_FILES = ["compose.yaml", "stack.yaml", "modes", "env.example"];
@@ -74,12 +75,9 @@ export class Installation {
     return /^name:\s*(\S+)\s*$/m.exec(readFileSync(file, "utf8"))?.[1] ?? "your-space";
   }
 
-  /** The release these files run: YS_VERSION in .env, or the version stack.yaml was released with. */
+  /** The release these files run: the version stack.yaml was released with. */
   version(): string | null {
-    const set = this.env().YS_VERSION;
-    if (set) return set;
     const stack = readFileSync(join(this.folder, "stack.yaml"), "utf8");
-    const pinned = /\$\{YS_VERSION:-([^}]+)\}/.exec(stack)?.[1];
-    return pinned ?? null;
+    return releasePins(stack)[0] ?? null;
   }
 }

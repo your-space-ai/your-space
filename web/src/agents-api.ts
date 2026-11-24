@@ -8,7 +8,7 @@ export type Approval = "ask" | "allow";
 export interface AgentRoute {
   method: string;
   path: string;
-  effect: "read" | "write";
+  effect: "read";
   approval?: Approval;
 }
 
@@ -17,7 +17,6 @@ export interface AgentInstallation {
   name: string;
   title?: string;
   source: string | null;
-  reviewedBy?: string | null;
   roles: Record<string, { title: string; routes: string[] }>;
   routes: Record<string, AgentRoute>;
   bound: boolean;
@@ -28,7 +27,6 @@ export interface AgentInstallation {
 export interface AgentGrant {
   installationId: string;
   roles: string[];
-  askAllWrites: boolean;
   overrides: Record<string, Approval>;
   revision: number;
 }
@@ -50,8 +48,6 @@ export interface ApprovalRequest {
   input: unknown;
   revision: number;
   credentialId?: string;
-  operationId?: string;
-  expectedRevision?: string;
   expiresAt?: string;
 }
 

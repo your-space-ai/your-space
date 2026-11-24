@@ -21,7 +21,6 @@ afterEach(async () => {
 
 const create = (args: string[]) => runCommand("create-owner", args, { databaseUrl: t.url });
 const VALID = ["--username", "Sam.Rivera", "--name", "Sam Rivera"];
-const WITH_EMAIL = [...VALID, "--email", "Sam@Example.COM"];
 
 describe("create-owner", () => {
   it("creates exactly one account, workspace, owner membership, actor, event, and claim", async () => {
@@ -31,11 +30,10 @@ describe("create-owner", () => {
     expect(result.code).toBe(0);
 
     // --json output matches the contract exactly.
-    expect(Object.keys(result.json).sort()).toEqual(["email", "expiresAt", "ok", "token", "url", "username"]);
+    expect(Object.keys(result.json).sort()).toEqual(["expiresAt", "ok", "token", "url", "username"]);
     expect(result.json.ok).toBe(true);
-    // Stored in lower case. With no --email, the account holds a reserved address it never reports.
+    // Stored in lower case. The account holds a reserved address it never reports.
     expect(result.json.username).toBe("sam.rivera");
-    expect(result.json.email).toBeNull();
     expect(result.json.token).toMatch(/^[A-Za-z0-9]{24}$/);
     expect(result.json.url).toBe(`${PUBLIC_URL}/reset-password#token=${result.json.token}`);
     expect(result.json.expiresAt).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
@@ -109,15 +107,6 @@ describe("create-owner", () => {
   });
 
   it.each([
-    [["--username", "sam", "--name", "Sam", "--email", "not-an-email"], "email"],
-    // Valid for a browser's email field, refused by Better Auth's rule, so refused up front.
-    [["--username", "sam", "--name", "Sam", "--email", "sam!x@example.com"], "email"],
-    [["--username", "sam", "--name", "Sam", "--email", "sam@example.c"], "email"],
-    [["--username", "sam", "--name", "Sam", "--email", "sam..x@example.com"], "email"],
-    [["--username", "sam", "--name", "Sam", "--email", `${"a".repeat(250)}@x.co`], "email"],
-    [["--username", "sam", "--name", "Sam", "--email", ""], "email"],
-    // The reserved placeholder domain can't be anyone's own address.
-    [["--username", "sam", "--name", "Sam", "--email", "sam@users.invalid"], "email"],
     [["--username", "sa", "--name", "Sam"], "username"],
     [["--username", "s".repeat(31), "--name", "Sam"], "username"],
     [["--username", "sam rivera", "--name", "Sam"], "username"],
@@ -140,10 +129,13 @@ describe("create-owner", () => {
     expect((await t.db.select().from(installation))[0]!.state).toBe("unclaimed");
   });
 
-  it("exits 1 on an unknown option", async () => {
-    const result = await create([...VALID, "--admin", "--json"]);
-    expect(result.code).toBe(1);
-    expect(result.json).toMatchObject({ ok: false, error: "usage" });
+  it("exits 1 on an unknown option, --email included", async () => {
+    for (const option of [["--admin"], ["--email", "sam@example.com"]]) {
+      const result = await create([...VALID, ...option, "--json"]);
+      expect(result.code).toBe(1);
+      expect(result.json).toMatchObject({ ok: false, error: "usage" });
+    }
+    expect(await counts(t.db)).toMatchObject({ users: 0 });
   });
 
   it("accepts a name of exactly 100 characters", async () => {
@@ -156,21 +148,6 @@ describe("create-owner", () => {
     await t.destroy();
     t = await createTestDatabase();
     expect((await create(["--username", "s".repeat(30), "--name", "Sam", "--json"])).code).toBe(0);
-  });
-
-  it("stores an email given with --email, in lower case and unverified", async () => {
-    const result = await create([...WITH_EMAIL, "--json"]);
-    expect(result.code).toBe(0);
-    expect(result.json).toMatchObject({ ok: true, username: "sam.rivera", email: "sam@example.com" });
-    const [owner] = await t.db.select().from(user);
-    expect(owner).toMatchObject({ username: "sam.rivera", email: "sam@example.com", emailVerified: false });
-
-    const human = await create(WITH_EMAIL);
-    expect(human.code).toBe(2);
-    await t.destroy();
-    t = await createTestDatabase();
-    const printed = await create(WITH_EMAIL);
-    expect(printed.stdout.split("\n")[0]).toBe("Owner created: Sam Rivera (username sam.rivera, email sam@example.com, unverified)");
   });
 
   it("exits 3 with storage_unavailable when the database is down, and changes nothing", async () => {

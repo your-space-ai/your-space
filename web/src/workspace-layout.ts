@@ -14,5 +14,4 @@ export const updateView = (id: string, revision: number, changes: { name?: strin
   api<SavedView>("PUT", base + "/views/" + encodeURIComponent(id), { revision, ...changes });
 export const deleteView = (id: string, revision: number) =>
   api<{ ok: true }>("DELETE", base + "/views/" + encodeURIComponent(id), { revision });
-export const saveAppOrder = (revision: number, appOrder: string[]) =>
-  api<WorkspaceLayout>("PUT", base + "/app-order", { revision, appOrder });
+

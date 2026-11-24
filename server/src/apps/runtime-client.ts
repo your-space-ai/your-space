@@ -169,10 +169,6 @@ function oneFile(spec: AppSpec): AppSpec {
   return spec;
 }
 
-export async function refreshRuntimeInterface(spec: AppSpec): Promise<{ status: "current" | "refreshed" }> {
-  return json("POST", `/apps/${encodeURIComponent(spec.project)}/interface`, oneFile(spec));
-}
-
 export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
   const p = (project: string) => `/apps/${encodeURIComponent(project)}`;
   return {

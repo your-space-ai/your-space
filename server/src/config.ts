@@ -13,7 +13,6 @@ export type Mode = "local" | "domain" | "proxy";
 
 export interface Config {
   mode: Mode;
-  kitsRepository?: string;
   /** The address people use, e.g. `https://space.example.com` or `http://localhost`. No trailing slash. */
   publicUrl: string;
   databaseUrl: string;
@@ -34,7 +33,7 @@ export class ConfigError extends Error {
   }
 }
 
-const OWNER_KEYS = ["YS_DOMAIN", "YS_PROXY_URL", "YS_PORT", "YS_VERSION", "YS_ENGINE_SOCKET", "YS_DATA_KEY", "YS_KITS_REPOSITORY"];
+const OWNER_KEYS = ["YS_DOMAIN", "YS_PROXY_URL", "YS_PORT", "YS_ENGINE_SOCKET", "YS_DATA_KEY"];
 
 /**
  * This machine's address. Apps are at <app>.space.localhost, a subdomain of it, so they are same-site
@@ -254,15 +253,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, options: LoadOp
     authSecret: checkSecret(env, secretsDir, problems),
     dataKey: checkDataKey(env, secretsDir, problems),
   };
-  if (present(env.YS_KITS_REPOSITORY)) {
-    const repository = env.YS_KITS_REPOSITORY.trim();
-    if (!/^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?\/[a-z0-9_.-]{1,100}$/i.test(repository) ||
-        [".", ".."].includes(repository.split("/")[1]!)) {
-      problems.push("YS_KITS_REPOSITORY must be a GitHub owner/repository, such as community/kits.");
-    } else {
-      config.kitsRepository = repository;
-    }
-  }
   const previous = previousDataKey(secretsDir, problems);
   if (previous) config.previousDataKey = previous;
   if (problems.length > 0) throw new ConfigError(problems);

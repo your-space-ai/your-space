@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import type { SavedView, WorkspaceLayout } from "../../shared/workspace-layout/model.mjs";
-import { app } from "../src/db/schema.ts";
+import { app, ownerLayout } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
 import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
@@ -55,18 +55,15 @@ afterEach(async () => {
   await database.destroy();
 });
 
-it("requires an owner and persists only a complete current app order from the owner's origin", async () => {
+it("requires an owner, lists apps in install order after any order saved before, and no longer saves one", async () => {
   expect((await server.request(base)).status).toBe(401);
   expect(await preferences()).toEqual({ revision: 0, appOrder: ["work", "notes"], views: [] });
-  const order = { revision: 0, appOrder: ["notes", "work"] };
-  expect((await request("/app-order", "PUT", order, { origin: "https://other.example" })).status).toBe(403);
-  expect((await request("/app-order", "PUT", order, { "content-type": "text/plain" })).status).toBe(403);
-  expect((await request("/app-order", "PUT", { revision: 0, appOrder: ["notes", "background"] })).status).toBe(409);
-  expect(await (await request("/app-order", "PUT", order)).json()).toMatchObject({
-    revision: 1,
-    appOrder: order.appOrder,
-  });
-  expect((await request("/app-order", "PUT", order)).status).toBe(409);
+  // Reordering the sidebar left with the alpha scope (decision 2026-11-23).
+  expect((await request("/app-order", "PUT", { revision: 0, appOrder: ["notes", "work"] })).status).toBe(404);
+  // An order an owner saved before still applies.
+  const workspaceId = (await database.pool.query("select workspace_id from installation where id=1")).rows[0].workspace_id;
+  await database.db.insert(ownerLayout).values({ workspaceId, ownerId, revision: 1, appOrder: ["notes", "work"], views: [] });
+  expect((await preferences()).appOrder).toEqual(["notes", "work"]);
   await add("calendar");
   expect((await preferences()).appOrder).toEqual(["notes", "work", "calendar"]);
   await database.db.update(app).set({ state: "removed" }).where(eq(app.name, "notes"));

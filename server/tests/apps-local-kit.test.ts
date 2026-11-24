@@ -82,7 +82,7 @@ describe("installing with a kit file", () => {
 
   it("refuses a kit file whose Compose file isn't on GitHub, or that names none", async () => {
     await expect(apps.preview({ text: KIT.replace("compose.yaml", "other.yaml") })).rejects.toThrow(/no file other.yaml/);
-    await expect(apps.preview({ text: KIT.replace(/^source: .*\n/m, "") })).rejects.toMatchObject({ code: "source", message: expect.stringMatching(/--compose/) });
+    await expect(apps.preview({ text: KIT.replace(/^source: .*\n/m, "") })).rejects.toMatchObject({ code: "source", message: expect.stringMatching(/Add source/) });
   });
 
   it("refuses a Compose file given as the kit, and says what a kit is", async () => {

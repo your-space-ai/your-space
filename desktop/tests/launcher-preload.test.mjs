@@ -20,10 +20,8 @@ test("the launcher bridge exposes fixed operations and projects their arguments"
     },
   });
   assert.ok(Object.isFrozen(bridge));
-  assert.deepEqual(Object.keys(bridge).sort(), ["appearance", "connect", "createOwner", "engines", "openDockerGuide", "previewTheme", "saveTheme", "start"]);
+  assert.deepEqual(Object.keys(bridge).sort(), ["appearance", "connect", "createOwner", "engines", "openDockerGuide", "start"]);
   bridge.appearance("ignored");
-  bridge.previewTheme("theme text");
-  bridge.saveTheme({ id: "cinder", text: undefined, path: "/ignored" });
   assert.equal(bridge.engines(), "reply");
   bridge.start({ engine: "local", expectedSocket: "/run/test.sock", extra: "ignored" });
   bridge.createOwner({ name: "Fixture", username: "fixture", extra: "ignored" });
@@ -32,8 +30,6 @@ test("the launcher bridge exposes fixed operations and projects their arguments"
   // Recreate cross-realm objects before comparing their values.
   assert.deepEqual(structuredClone(calls), [
     ["launcher:appearance"],
-    ["launcher:previewTheme", "theme text"],
-    ["launcher:saveTheme", { id: "cinder", text: undefined }],
     ["launcher:engines"],
     ["launcher:start", { engine: "local", expectedSocket: "/run/test.sock" }],
     ["launcher:createOwner", { name: "Fixture", username: "fixture" }],

@@ -12,7 +12,6 @@ import { checkDomain, checkPorts, gather, open, showSummary, startStack, waitFor
 export interface StartFlags {
   ownerName?: string;
   ownerUsername?: string;
-  ownerEmail?: string;
   open: boolean;
   ignoreChecks?: boolean;
   newSecrets?: boolean;
@@ -87,7 +86,7 @@ export async function createOwner(ui: Ui, compose: Parameters<typeof serverComma
       placeholder: "sam",
       validate: (v) => (/^[A-Za-z0-9_.]{3,30}$/.test(v.trim()) ? undefined : "3 to 30 letters, digits, _ or ."),
     }));
-  const args = ["--name", name, "--username", username, ...(flags.ownerEmail ? ["--email", flags.ownerEmail] : [])];
+  const args = ["--name", name, "--username", username];
   const created = await serverCommand(compose, "create-owner", args);
   if (created.json.error === "owner_exists") throw new CliError("owner_exists", "This installation already has an owner.");
   const json = expectOk(created);

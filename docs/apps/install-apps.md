@@ -35,8 +35,7 @@ file isn't enough: Your Space says so and asks for the kit's link. The review sh
 Compose file it names, each at its exact commit, the image versions that will run, what Your Space
 changes or leaves out of the file, the settings its kit defines, and the internet hosts it may
 reach. Values Your Space generates, and secrets you give, are never shown. Install runs in the
-background; you can leave the page. If Your Space is set up with a kit directory, Apps lists its
-kits too.
+background; you can leave the page.
 
 **Exact commits.** A kit pins the app's Compose file: its `source` gives the repository, the path
 and the full commit, and Your Space reads the file at exactly that commit, never at a branch's latest
@@ -59,33 +58,17 @@ name the commit it is in: commit the Compose file, then the kit with that commit
 Your Space reads kits and Compose files from public GitHub. A kit in a private repository installs
 from this machine instead, with the server command (see below).
 
-**Kit directory.** To offer a directory of kits, set `YS_KITS_REPOSITORY=owner/repository` in the
-workspace's `.env` and recreate the server with `docker compose up -d`. Choose a repository you
-trust to publish kit reviews. Your Space lists `apps/<upstream-owner>/<upstream-repo>.yaml` from its
-default branch, pins each entry to the commit that branch is at, and reads it from public GitHub, so
-the directory must be a public repository. The directory lists kits and holds their reviews; it doesn't
-find a kit from a Compose link. A kit counts as reviewed when the directory has a matching record in
-`reviews/sha256/<digest>.json` on its default branch: the same repository, path and content digest
-for the reviewed kit commit. A review still applies across unrelated commits only while the kit's
-bytes are unchanged. You still choose every agent grant.
-
 From the server, `docker compose exec server install-app <kit-link>` does the same. A kit Your Space
 can't read on GitHub, such as one in a private repository, can come from this machine instead, and
 names the app's Compose file and its commit in a public repository:
-`docker compose exec -T server install-app --kit - < kit.yaml`. For a Compose file in a private
-repository, give the Compose file from this machine too, as below.
+`docker compose exec -T server install-app --kit - < kit.yaml`.
 
-When an app's own Compose file doesn't fit Your Space's rules, for example because it builds its
-images or mounts folders of this machine, install it from a Compose file you write instead, with
-its kit. Your Space checks and adapts the file like any other, records its digest, and reads nothing
-from GitHub for it. The name comes from `--name`, or from the kit's `name`. The kit may leave out
-`source`, since giving both in one command is what binds them; this is the only kit without it. Standard input carries one file, so
-put the kit in the server's container first:
-
-```sh
-docker compose exec -T server sh -c 'cat > /tmp/kit.yaml' < kit.yaml
-docker compose exec -T server install-app --compose - --kit /tmp/kit.yaml < compose.yaml
-```
+The app's Compose file is always the one its kit names in a public repository on GitHub. When an
+app's own file is in a private repository or doesn't fit Your Space's rules, for example because it
+builds its images or mounts folders of this machine, put a Compose file that fits in a public
+repository and point the kit's `source` at it. Your Space no longer installs a Compose file given on
+this machine (`install-app --compose`); an app installed that way before keeps running from the file
+stored with it.
 
 Installing an app trusts it with everything you put into it. Your Space keeps it away from your
 other apps, Your Space's own data and this machine, and controls who can reach it, but it can't see
@@ -115,15 +98,16 @@ address to. Choose it when installing the app, or later on the app's page, under
   `https://notes.example.com`. The app's own address settings, such as the URL it puts in its links,
   use it, and Your Space shows the app there, in its pane. A changed link reaches them when the app
   restarts, which saving does.
-- **Show inside Your Space:** on by default, on the app's page once the app has a link. Many apps
-  refuse to be shown inside another site's page, to protect you from a site that shows the app
-  invisibly and tricks you into clicking in it. With this on, the app's Caddy replaces that rule
-  with one that lets only Your Space show the app; every other site is still refused. Turn it off
-  to keep the app's own rule; Your Space then opens the app at its link in its own tab, as it does
-  for a plain-HTTP link while you reach Your Space over HTTPS (browsers don't show one inside the
-  other, apart from a link on this machine). The app's cookies are its own, so if your link is on
-  another site than Your Space's, a browser that blocks other sites' cookies may not keep you signed
-  in to the app in the pane: open it in its own tab, or turn this off.
+
+Your Space shows an app with a link inside its pane wherever it can. Many apps refuse to be shown
+inside another site's page, to protect you from a site that shows the app invisibly and tricks you
+into clicking in it. The app's Caddy replaces that rule with one that lets only Your Space show the
+app; every other site is still refused. Your Space opens the app at its link in its own tab instead
+when its kit says it can't run in a pane, or for a plain-HTTP link while you reach Your Space over
+HTTPS (browsers don't show one inside the other, apart from a link on this machine). The app's
+cookies are its own, so if your link is on another site than Your Space's, a browser that blocks
+other sites' cookies may not keep you signed in to the app in the pane: open it in its own tab
+from the pane.
 
 Saving restarts the app only if its address settings use a link you changed; any other change
 recreates at most the app's Caddy. Its data is kept. The pane shows the app once the change is
@@ -143,13 +127,11 @@ From the server:
 
 ```sh
 docker compose exec server publish-app notes --port 8081 --link https://notes.example.com
-docker compose exec server publish-app notes --no-frame
 docker compose exec server publish-app notes --off
 ```
 
-`--no-frame` opens the app in its own tab instead of inside Your Space, and `--frame` shows it inside
-again. `install-app <kit-link> --publish`, with the same `--port`, `--bind`, `--link` and `--no-frame`,
-installs an app published.
+`install-app <kit-link> --publish`, with the same `--port`, `--bind` and `--link`, installs an app
+published.
 
 **Settings.** An app's page shows its settings, the variables its kit defines. Saving restarts the
 app with the new values and keeps its data. A value the kit asks for can be replaced but not

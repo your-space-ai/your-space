@@ -4,8 +4,6 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("yourSpace", Object.freeze({
   appearance: () => ipcRenderer.invoke("launcher:appearance"),
-  previewTheme: text => ipcRenderer.invoke("launcher:previewTheme", text),
-  saveTheme: ({ id, text }) => ipcRenderer.invoke("launcher:saveTheme", { id, text }),
   engines: () => ipcRenderer.invoke("launcher:engines"),
   start: ({ engine, expectedSocket }) => ipcRenderer.invoke("launcher:start", { engine, expectedSocket }),
   createOwner: ({ name, username }) => ipcRenderer.invoke("launcher:createOwner", { name, username }),

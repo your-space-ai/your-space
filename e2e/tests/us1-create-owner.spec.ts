@@ -30,7 +30,7 @@ test("a fresh install offers no way to create an account, and create-owner makes
   // No email: the owner signs in with a username, stored in lower case.
   const created = await createOwner("Sam", "Sam Rivera");
   expect(created.username).toBe("sam");
-  expect(created.email).toBeNull();
+  expect(created).not.toHaveProperty("email");
   // The link uses the address the stack serves, which YS_PORT can move.
   expect(created.url.startsWith(`${testInfo.project.use.baseURL}/reset-password#token=`)).toBe(true);
   expect(created.url).toMatch(/#token=[A-Za-z0-9]{24}$/);

@@ -120,8 +120,7 @@ with it.
 - **Running the command changes nothing by itself.** The old password keeps working, and nobody is
   signed out, until someone uses the link.
 - **Using the link signs out every device.** Sign in again with the new password on each.
-- **Your account stays the same.** It keeps its username, workspace and ownership. An email you
-  gave stays unverified: server access doesn't prove you control the mailbox.
+- **Your account stays the same.** It keeps its username, workspace and ownership.
 
 For scripts, add `--json`, and `-T` so Docker doesn't attach a terminal:
 

@@ -658,7 +658,7 @@ export function interfaceTarget(
 
 export function interfaceAddress(...args: Parameters<typeof interfaceTarget>): string {
   const target = interfaceTarget(...args);
-  if (target.legacy) throw new EngineError("The app interface needs its installation labels refreshed.", 503);
+  if (target.legacy) throw new EngineError("This app was installed before Your Space labelled app interfaces. In Apps, remove it and keep its data, then install it again with Reuse kept data, which applies it with its labels.", 503);
   return target.address;
 }
 
@@ -673,34 +673,6 @@ async function inspectInterface(project: string) {
 export async function resolveInterface(project: string, appId: string, service: string, port: number) {
   const { containers, network } = await inspectInterface(project);
   return { address: interfaceAddress(project, appId, service, port, containers, network) };
-}
-
-/** The operator may upgrade only the previously unlabelled, running interface of this installation. */
-export async function refreshInterface(spec: AppSpec): Promise<"current" | "refreshed"> {
-  if (stopping) throw new EngineError("Your Space is stopping.", 409);
-  const { appId, project, interface: iface } = spec;
-  if (!appId || !iface) throw new SpecError("An installed app and its interface are required.");
-  const { containers, network } = await inspectInterface(project);
-  const target = interfaceTarget(project, appId, iface.service, iface.port, containers, network);
-  if (!target.legacy) return "current";
-
-  const { adapted } = await checkWithImages(spec);
-  if (!adapted) throw new SpecError("The installed app no longer passes the runtime checks.");
-  const dir = mkdtempSync("/tmp/ys-refresh-interface-");
-  try {
-    const file = join(dir, "compose.json");
-    writeFileSync(file, JSON.stringify(adapted), { mode: 0o600 });
-    const result = await docker([
-      "compose", "-p", project, "--project-directory", dir, "-f", file,
-      "up", "-d", "--no-deps", "--no-build", "--pull", "never", iface.service,
-    ], {}, dir);
-    // Keep settings, upstream output and process diagnostics inside the runtime.
-    if (result.code !== 0) throw new EngineError("Compose could not refresh this app's interface.", 503);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-  await resolveInterface(project, appId, iface.service, iface.port);
-  return "refreshed";
 }
 
 export async function logs(project: string, service: string, tail: number): Promise<string[]> {

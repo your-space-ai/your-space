@@ -7,7 +7,7 @@ An owner can pick a starter in Appearance, then make a personal version without 
 1. Open Appearance from the dashboard. Preview all three starters and apply one. The dashboard uses its colors, typography and light or dark controls.
 2. Make a copy, name it, edit its colors and choose fonts. Preview changes before saving. Rerunning the dashboard or connecting to the same server in another browser restores the owner's selection.
 3. Export a theme as a small JSON file. Another person can review it, import it and use it in their own workspace. Theme files are editable in a text editor. [File format](../../docs/appearance.md)
-4. The Mac launcher offers the same starters and can import a file before connecting. That preference belongs to the device. On connection the dashboard takes its appearance from the selected server.
+4. The Mac launcher offers the same starters and can import a file before connecting. That preference belongs to the device. On connection the dashboard takes its appearance from the selected server. (Superseded 2026-11-23: the launcher shows the default theme and keeps no theme of its own; see the [alpha scope](../../docs/architecture/decisions.md#alpha-scope).)
 
 The owner manages workspace themes. An unauthenticated sign-in page may receive the active presentation values. The custom theme catalog, names and editing controls require an owner session. Apps remain responsible for their own interface inside their panes. This feature does not authorize a theme to read app data or change a grant, approval, route, or install.
 

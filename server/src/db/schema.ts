@@ -83,8 +83,6 @@ export interface Adaptation {
 export interface Kit {
   kit: 1 | 2;
   agentAccess?: AgentAccess;
-  /** Verified independently by the registry lookup; never accepted in kit YAML. */
-  agentReview?: { source: string };
   /**
    * The app's Compose file on GitHub, at the exact commit Your Space reads it at. Required, except in a
    * kit given with a Compose file on this machine. Kits stored before 2026-11-23 may lack `commit`.
@@ -154,6 +152,8 @@ export const app = pgTable(
     pane: boolean("pane").notNull().default(true),
     publish: jsonb("publish").$type<Publish>(),
     /** Whether Your Space shows the app in its pane when it is published with a link (decision 2026-11-20). */
+    // Since the owner's "Show inside Your Space" switch left (2026-11-23, Alpha scope), only the
+    // server's start reads it: an app left with it off is applied once and set to true.
     frame: boolean("frame").notNull().default(true),
     limits: jsonb("limits").$type<Record<string, { memory: number; cpus: number }>>().notNull(),
     desired: text("desired", { enum: ["running", "stopped", "removed"] }).notNull().default("running"),
@@ -287,6 +287,7 @@ export const agentGrant = pgTable(
       .notNull()
       .references(() => externalAgent.id),
     roles: text("roles").array().notNull(),
+    // Unread since agents became read-only (2026-11-23, Alpha scope); new grants store false.
     askAllWrites: boolean("ask_all_writes").notNull(),
     overrides: jsonb("overrides").notNull(),
     revision: integer("revision").notNull(),
@@ -305,6 +306,7 @@ export const agentRequest = pgTable(
       .references(() => agentKey.id),
     appId: uuid("app_id").notNull(),
     route: text("route").notNull(),
+    // Unset since agents became read-only (2026-11-23, Alpha scope): only writes carried one.
     operationId: text("operation_id"),
     fingerprint: text("fingerprint"),
     input: text("input"),

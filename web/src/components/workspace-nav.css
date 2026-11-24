@@ -41,17 +41,6 @@
   opacity: 0.4;
   cursor: default;
 }
-.workspace-nav-row[draggable="true"] {
-  cursor: grab;
-}
-.workspace-nav-row[draggable="true"] a {
-  cursor: grab;
-}
-.workspace-nav-arrows {
-  display: inline-flex;
-  gap: 0.1rem;
-}
-.workspace-nav-arrows button,
 .workspace-nav-section .workspace-nav-options {
   min-width: 1.65rem;
   min-height: 1.65rem;

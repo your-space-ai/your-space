@@ -65,9 +65,9 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
 7. **Apps.** Each managed app runs as a Compose project with its own network and declared storage. Owner-approved outbound hosts and opt-in publishing are described in [running apps and reaching them](decisions.md#running-apps-and-reaching-them). The connector for externally hosted apps belongs to 007.
 8. **Host.** The owner supplies a Docker-compatible engine on their personal machine or server. Only the workspace host needs Docker. A Mac connecting to an existing server needs its URL and the owner's sign-in. A bundled engine or VM follows publication.
 
-The dashboard reads presentation tokens from its workspace server. The Mac launcher uses the same portable theme format with a local device preference before connection. [Appearance](../appearance.md)
+The dashboard reads presentation tokens from its workspace server. The Mac launcher shows the default theme before connection. [Appearance](../appearance.md)
 
-The signed-in dashboard arranges installed app panes in a resizable grid. A named view stores app names, arrangement and divider percentages on the selected workspace server. Shortcut order is a separate owner preference. Each app continues through its own existing pane or published link. [Multi-app layouts](https://github.com/your-space-ai/your-space/blob/main/specs/012-multi-app-layouts/spec.md)
+The signed-in dashboard arranges installed app panes in a resizable grid. A named view stores app names, arrangement and divider percentages on the selected workspace server. Apps opened together are laid out by count. The sidebar lists apps in the order the owner saved before reordering left, else in the order they were installed. Each app continues through its own existing pane or published link. [Multi-app layouts](https://github.com/your-space-ai/your-space/blob/main/specs/012-multi-app-layouts/spec.md)
 
 ## Request Paths
 
@@ -82,8 +82,8 @@ The signed-in dashboard arranges installed app panes in a resizable grid. A name
 - **A person reaching a published app:** the owner's proxy or tunnel (such as `tailscale serve`) →
   the app's port on this machine → its `ys-publish` Caddy → the app's interface on its sealed
   network. Your Space's gate isn't on this path; the app's own sign-in is. Your Space's pane loads
-  the app this way, at the owner's link, unless the owner turned "Show inside Your Space" off; then
-  the app opens there in its own tab.
+  the app this way, at the owner's link, wherever a browser can show it there; otherwise the app
+  opens there in its own tab.
 - **Installing an app:** the owner pastes the GitHub link to the app's kit → the server reads the
   kit, then the Compose file it names, each at an exact commit on public GitHub → the runtime
   manager resolves, checks, and pins it → after the owner confirms, it starts the app's Compose

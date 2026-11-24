@@ -19,7 +19,7 @@ async function cli(url: string, args: string[], input?: string) {
   return { code, json: JSON.parse(out) };
 }
 
-it("uses agent credentials without an installation folder and passes exact input and revision", async () => {
+it("uses agent credentials without an installation folder and passes exact input", async () => {
   let sent: unknown;
   let authorization: string | undefined;
   const server = createServer(async (req, res) => {
@@ -37,10 +37,11 @@ it("uses agent credentials without an installation folder and passes exact input
   const url = "http://127.0.0.1:" + (server.address() as AddressInfo).port;
   try {
     expect((await cli(url, ["actions"])).json.actions).toEqual([]);
-    expect((await cli(url, ["invoke", "install", "edit", "--input-stdin", "--operation-id", "op", "--expected-revision", "2"],
-      '{"body":{"title":"example"}}')).json.status).toBe("pending");
+    expect((await cli(url, ["invoke", "install", "show", "--input-stdin"], '{"path":{"id":"7"}}')).json.status).toBe("pending");
     expect(authorization).toBe("Bearer " + credential);
-    expect(sent).toEqual({ installationId: "install", actionId: "edit", operationId: "op", expectedRevision: "2", input: { body: { title: "example" } } });
+    expect(sent).toEqual({ installationId: "install", actionId: "show", input: { path: { id: "7" } } });
+    // Agents only read, so a write's operation ID and expected revision are gone.
+    expect((await cli(url, ["invoke", "install", "show", "--input-stdin", "--operation-id", "op"], "{}")).json.error).toBe("usage");
   } finally { server.close(); }
 });
 

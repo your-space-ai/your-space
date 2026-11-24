@@ -14,11 +14,14 @@ trap 'rm -rf "$work"' EXIT
 
 cp -r "$deploy/compose.yaml" "$deploy/stack.yaml" "$deploy/modes" "$work/"
 cp "$deploy/.env.example" "$work/env.example"
-sed "s/\${YS_VERSION:-latest}/\${YS_VERSION:-$version}/g" "$deploy/stack.yaml" > "$work/stack.yaml"
+# The release's own images, with no variable an .env could set to run other ones (decision
+# 2026-11-23, Alpha scope).
+image='ghcr\.io/your-space-ai/your-space-(server|web|runtime)'
+sed -E "s#($image):latest\$#\1:$version#" "$deploy/stack.yaml" > "$work/stack.yaml"
 # Every Your Space image: the secrets step, Caddy, the server and the runtime manager.
-images=$(grep -c "YS_VERSION:-$version}" "$work/stack.yaml")
+images=$(grep -Ec "$image:$version\$" "$work/stack.yaml")
 if [ "$images" -ne 4 ]; then echo "Expected 4 images pinned to $version in stack.yaml, found $images." >&2; exit 1; fi
-if grep -rq "YS_VERSION:-latest" "$work"; then echo "A file still runs the latest images." >&2; exit 1; fi
+if grep -Erq "$image:latest" "$work"; then echo "A file still runs the latest images." >&2; exit 1; fi
 mkdir -p "$out"
 # Owned by root in the archive, not by the build machine's user. Only GNU tar takes these options;
 # the CLI and the guide unpack with --no-same-owner anyway, so the Mac build's bsdtar needs nothing.

@@ -8,6 +8,16 @@ import { run } from "./process.ts";
 
 const RELEASES = "https://github.com/your-space-ai/your-space/releases/download";
 export const TARBALL = "your-space.tar.gz";
+/**
+ * A Your Space image in stack.yaml and the release it runs. No variable can change it (decision
+ * 2026-11-23, Alpha scope); files from before name it `${YS_VERSION:-<release>}`, read as the release.
+ */
+export const RELEASE_IMAGE = /ghcr\.io\/your-space-ai\/your-space-(?:server|web|runtime):(?:\$\{YS_VERSION:-([^}\s]+)\}|([^\s"'$]+))/g;
+
+/** The releases stack.yaml's Your Space images run. */
+export function releasePins(stack: string): string[] {
+  return Array.from(stack.matchAll(RELEASE_IMAGE), (match) => (match[1] ?? match[2])!);
+}
 
 /** Where a release's files are. YS_E2E_RELEASES points the browser tests at a local release. */
 export function releaseUrl(version: string, file: string): string {
@@ -76,7 +86,7 @@ export async function fetchRelease(version: string, folder: string, releaseDir?:
     }
     if (releaseDir) {
       const stack = await run("tar", ["-xzOf", path, "stack.yaml"]);
-      const pins = Array.from(stack.stdout.matchAll(/\$\{YS_VERSION:-([^}]+)\}/g), (match) => match[1]);
+      const pins = releasePins(stack.stdout);
       if (stack.code !== 0 || !pins.length || pins.some((pin) => pin !== version)) {
         throw new CliError("checksum_mismatch", "The bundled installation files belong to a different CLI version.");
       }

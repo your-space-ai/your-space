@@ -71,7 +71,6 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
   const action = useAgentAction();
   const [credential, setCredential] = useState("");
   const [roles, setRoles] = useState(app.enabledRoles);
-  const reviewUrl = app.reviewedBy?.startsWith("https://github.com/") ? app.reviewedBy : null;
   const path = agentPath + "/installations/" + encodeURIComponent(app.id);
   return (
     <details className="agent-details">
@@ -80,15 +79,6 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
       </summary>
       <p className="muted small">
         Kit source: <code>{app.source || "Unknown"}</code>
-      </p>
-      <p className="small">
-        {reviewUrl ? (
-          <a href={reviewUrl} target="_blank" rel="noreferrer">
-            Community review for this kit revision
-          </a>
-        ) : (
-          "No verified review for this kit revision."
-        )}
       </p>
       <form
         onSubmit={(e) => {
@@ -151,7 +141,6 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
 export function GrantEditor({ agent, app, grant }: { agent: Agent; app: AgentInstallation; grant?: AgentGrant }) {
   const action = useAgentAction();
   const [roles, setRoles] = useState(grant?.roles ?? []);
-  const [allWrites, setAllWrites] = useState(grant?.askAllWrites ?? false);
   const [overrides, setOverrides] = useState<Record<string, Approval>>(grant?.overrides ?? {});
   const routes = [...new Set(roles.flatMap((id) => app.roles[id]?.routes ?? []))].sort();
   return (
@@ -172,7 +161,6 @@ export function GrantEditor({ agent, app, grant }: { agent: Agent; app: AgentIns
                 agentPath + "/" + encodeURIComponent(agent.id) + "/grants/" + encodeURIComponent(app.id),
                 {
                   roles,
-                  askAllWrites: allWrites,
                   overrides: Object.fromEntries(Object.entries(overrides).filter(([id]) => routes.includes(id))),
                   bindingRevision: app.revision,
                   revision: grant?.revision ?? 0,
@@ -185,16 +173,10 @@ export function GrantEditor({ agent, app, grant }: { agent: Agent; app: AgentIns
             <legend>Granted roles</legend>
             <RoleChoices app={app} choices={app.enabledRoles} selected={roles} change={setRoles} />
           </fieldset>
-          <label className="checkbox">
-            <input type="checkbox" checked={allWrites} onChange={(e) => setAllWrites(e.target.checked)} /> Ask for
-            all writes
-            <small>Requires approval even for writes set to Allow.</small>
-          </label>
           {routes.map((id) => {
             const route = app.routes[id];
             if (!route) return null;
-            const write = route.effect === "write" || !["GET", "HEAD"].includes(route.method);
-            const asks = overrides[id] ?? route.approval ?? (write ? "ask" : "allow");
+            const asks = overrides[id] ?? route.approval ?? "allow";
             return (
               <label className="agent-route" key={id}>
                 <span>
@@ -213,17 +195,11 @@ export function GrantEditor({ agent, app, grant }: { agent: Agent; app: AgentIns
                     setOverrides(next);
                   }}
                 >
-                  <option value="">Use default ({route.approval ?? (write ? "ask" : "allow")})</option>
+                  <option value="">Use default ({route.approval ?? "allow"})</option>
                   <option value="ask">Ask</option>
                   <option value="allow">Allow</option>
                 </select>
-                <small>
-                  {allWrites && write
-                    ? "Approval required by Ask for all writes."
-                    : asks === "ask"
-                      ? "Approval required."
-                      : "Runs directly."}
-                </small>
+                <small>{asks === "ask" ? "Approval required." : "Runs directly."}</small>
               </label>
             );
           })}

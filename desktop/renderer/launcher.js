@@ -16,7 +16,6 @@ function show(view, focus = true) {
   checking = false;
   for (const id of views) byId(id).hidden = id !== view;
   byId("back").hidden = view === "welcome";
-  byId("open-appearance").hidden = view !== "welcome";
   byId("status").textContent = "";
   byId("problem").textContent = "";
   active = view;

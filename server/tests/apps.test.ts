@@ -342,7 +342,6 @@ describe("apps API", () => {
     server = await startServer(t.db, {
       apps: {
         runtime,
-        kitsRepository: "ys-fixtures/catalog",
         fetch: fakeGithub({
           "ys-fixtures/whoami/compose.yaml": WHOAMI,
           "ys-fixtures/catalog/apps/ys-fixtures/whoami.yaml": KIT,

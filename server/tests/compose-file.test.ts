@@ -3,7 +3,7 @@
 // the app's file, even as written, in every form Compose takes them in.
 import { describe, expect, it } from "vitest";
 import { otherComposeFiles } from "../src/apps/compose-file.ts";
-import { refreshRuntimeInterface, RuntimeError, socketRuntime, type AppSpec } from "../src/apps/runtime-client.ts";
+import { RuntimeError, socketRuntime, type AppSpec } from "../src/apps/runtime-client.ts";
 
 const ONE_FILE = `x-base: &base
   image: traefik/whoami:latest
@@ -56,7 +56,6 @@ describe("the runtime client", () => {
   it.each([
     ["check", () => runtime.check(spec)],
     ["apply", () => runtime.apply(spec, () => {})],
-    ["an interface refresh", () => refreshRuntimeInterface(spec)],
   ])("refuses it for %s without sending it", async (_, send) => {
     const refused = await send().catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(RuntimeError);

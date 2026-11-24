@@ -3,11 +3,15 @@
 A kit is an app's complete definition in Your Space: what installs it and how it is shown
 ([Kits define apps](../../../docs/architecture/decisions.md#kits-define-apps)). Every installed app
 has one, and Your Space installs only from a kit. A kit is a YAML file anywhere on GitHub, in the
-app's repository or apart from it, installed from its link, such as one listed in an optional
-operator-configured directory at `apps/<owner>/<repo>.yaml`, or a file on this machine given to
-`install-app --kit`, such as one from a private kits repository. It refers to the app's own Compose
-file and never copies it. A kit can also go with a Compose file given on this machine
-(`install-app --compose <file> --kit <file>`); giving both in one command is what binds them.
+app's repository or apart from it, installed from its link, wherever that link was found, or a
+file on this machine given to `install-app --kit`, such as one from a private kits repository.
+(Superseded 2026-11-23: a kit could also be listed in an optional operator-configured directory at
+`apps/<owner>/<repo>.yaml`, set with `YS_KITS_REPOSITORY`; the directory left with the
+[alpha scope](../../../docs/architecture/decisions.md#alpha-scope).) It refers to the app's own Compose
+file and never copies it. (Superseded 2026-11-23: a kit could also go with a Compose file given on
+this machine, `install-app --compose <file> --kit <file>`. That left the alpha; see the
+[alpha scope](../../../docs/architecture/decisions.md#alpha-scope), as did `install-app --files-stdin`
+with journey 011's creator features. Such a kit could leave out `source`.)
 
 **Exact commits, no drift.** The kit pins the app's Compose file: `source.repo`, `source.path` and
 `source.commit`, the full 40-character commit, are all required. Your Space reads the Compose file at

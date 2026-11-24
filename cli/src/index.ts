@@ -3,7 +3,6 @@
 // current folder, or the one --workdir names (contracts/cli-commands.md).
 import { Command, CommanderError, Option } from "commander";
 import { registerAgentCommands } from "./commands/agent.ts";
-import { upgradeAgentKit, type UpgradeFlags } from "./commands/app-kit.ts";
 import { configure } from "./commands/configure.ts";
 import { init } from "./commands/init.ts";
 import { logs } from "./commands/logs.ts";
@@ -105,8 +104,7 @@ program
   .description("start Your Space, create the owner the first time, and show how to reach it")
   .option("--owner-name <name>", "the owner's name, when there is no owner yet")
   .option("--owner-username <username>", "the owner's username")
-  .option("--owner-email <email>", "the owner's email address (optional)")
-  .addOption(new Option("--defer-owner", "start the server and create the first owner separately").conflicts(["ownerName", "ownerUsername", "ownerEmail"]))
+  .addOption(new Option("--defer-owner", "start the server and create the first owner separately").conflicts(["ownerName", "ownerUsername"]))
   .option("--no-open", "don't open the set-password link in the browser")
   .option("--ignore-checks", "start even when the domain's names don't resolve")
   .option("--require-project-check", "fail if Docker cannot list existing installation folders")
@@ -117,7 +115,6 @@ program
       await start(ui, g.workdir, {
         ownerName: o.ownerName,
         ownerUsername: o.ownerUsername,
-        ownerEmail: o.ownerEmail,
         open: o.open,
         ignoreChecks: o.ignoreChecks,
         newSecrets: o.newSecrets,
@@ -157,28 +154,16 @@ owner
   .description("create the owner, when start didn't")
   .requiredOption("--name <name>", "the owner's name")
   .requiredOption("--username <username>", "the owner's username")
-  .option("--email <email>", "an email address (optional)")
   .action(
     action(async (ui, g) => {
       const o = owner.commands.find((c) => c.name() === "create")!.opts();
-      await ownerCreate(ui, g.workdir, { name: o.name, username: o.username, email: o.email });
+      await ownerCreate(ui, g.workdir, { name: o.name, username: o.username });
     }),
   );
 owner
   .command("reset-link")
   .description("print a new set-password link for the owner")
   .action(action(async (ui, g) => ownerResetLink(ui, g.workdir)));
-
-const app = program.command("app").description("manage an installed app");
-app
-  .command("upgrade-agent-kit <name>")
-  .description("inspect the installed kit or add agent access declarations from a version 2 kit")
-  .option("--inspect", "show the installation token, app ID, kit version and kit source")
-  .option("--kit <file>", "read the new kit from a local file or - for stdin")
-  .option("--refresh", "retry the interface refresh for an already upgraded kit")
-  .option("--expect-kit <source>", "current kit source from --inspect")
-  .option("--expect-installation <token>", "installation token from --inspect")
-  .action(action(async (ui, g, name: string, flags: UpgradeFlags) => upgradeAgentKit(ui, g.workdir, name, flags)));
 
 const secrets = program.command("secrets").description("the auth secret and the database password");
 secrets

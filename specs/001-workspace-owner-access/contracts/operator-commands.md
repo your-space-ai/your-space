@@ -8,7 +8,7 @@ spec 008's desktop app wrap these commands without a separate path, so their out
 are a contract.
 
 ```sh
-docker compose exec server create-owner --username <username> --name <name> [--email <email>] [--json]
+docker compose exec server create-owner --username <username> --name <name> [--json]
 docker compose exec server reset-link [--json]
 docker compose exec server show-secrets [--json]
 docker compose run --rm secrets [--new auth-secret] [--new database-password]
@@ -27,7 +27,7 @@ command's own process ([research R4](../research.md#r4-owner-first-then-invite-o
 | Code | Meaning | Applies to |
 | --- | --- | --- |
 | 0 | Success | all three |
-| 1 | Usage error, or a name, username or email that fails the account rules | all three |
+| 1 | Usage error, or a name or username that fails the account rules | all three |
 | 2 | Not applicable in the current state: an owner already exists (`create-owner`) or doesn't exist yet (`reset-link`) | `create-owner`, `reset-link` |
 | 3 | Storage unavailable or unreadable. No owner was created and no link was printed; for `create-owner`, running it again finishes the job | `create-owner`, `reset-link` |
 | 4 | Unexpected error; nothing was reported as successful | both |
@@ -81,11 +81,13 @@ If it expires, run: docker compose exec server reset-link
 `--json` output, exit 0:
 
 ```json
-{ "ok": true, "username": "sam", "email": null, "url": "https://…/reset-password#token=…", "token": "…", "expiresAt": "2026-11-04T02:45:00Z" }
+{ "ok": true, "username": "sam", "url": "https://…/reset-password#token=…", "token": "…", "expiresAt": "2026-11-04T02:45:00Z" }
 ```
 
-With `--email sam@example.com`, the first line reads `Owner created: Sam Rivera (username sam, email
-sam@example.com, unverified)` and `email` is that address. `email` is `null` when none was given.
+(Superseded 2026-11-23: `--email` stored an optional, unverified address, reported as `email`. Your
+Space sends no email, so the option and the field left with the
+[alpha scope](../../../docs/architecture/decisions.md#alpha-scope); `--email` is refused as an
+unknown option.)
 
 `token` is included so the CLI and desktop app can set the password for the user without opening the
 link.
@@ -103,9 +105,9 @@ Rules:
 - **Name:** 1 to 100 characters after trimming.
 - **Username:** 3 to 30 letters, digits, `_` or `.`, with each `.` between other characters, stored
   lowercase. The owner signs in with it, without regard to case.
-- **Email (optional):** a valid address of up to 254 characters, stored lowercase and unverified.
-  It never signs in. Without one, the account holds `<username>@users.invalid`, a reserved address
-  that can't receive mail and is never shown or reported; an address at `users.invalid` is refused.
+- **Email:** none. The account holds `<username>@users.invalid`, a reserved address that can't
+  receive mail and is never shown or reported. An owner created with `--email` before keeps that
+  address stored, and nothing shows or uses it.
 - **Initial password:** the account starts with a random password that is never shown or stored
   anywhere else, so the set-password link is the only way in.
 - **Workspace name:** "&lt;name&gt;'s space".

@@ -3,17 +3,18 @@
 **Spec**: [spec.md](../spec.md) · **Plan**: [plan.md](../plan.md)
 
 The desktop app (journey 008) and people's scripts drive these commands, so their options, JSON
-output and exit statuses are a contract. Human output may change; JSON fields are only added.
+output and exit statuses are a contract. Human output may change; JSON fields are only added,
+except for a removal this contract records.
 
 ```text
 your-space engine check
 your-space init       [--require-project-check] [--release-dir <folder>] [--this-machine | --domain <name> | --proxy-url <url>] [--port <n>] [--yes]
-your-space start      [--owner-name <name>] [--owner-username <username>] [--owner-email <email>]
+your-space start      [--owner-name <name>] [--owner-username <username>]
                       [--require-project-check] [--defer-owner] [--no-open] [--ignore-checks] [--new-secrets] [--yes]
 your-space stop       [--yes]
 your-space status     [--require-running]
 your-space logs       [<service>] [--follow] [--tail <n>]
-your-space owner create      --name <name> --username <username> [--email <email>]
+your-space owner create      --name <name> --username <username>
 your-space owner reset-link
 your-space secrets show      [--reveal]
 your-space secrets replace   <auth-secret | database-password> [--yes]
@@ -105,9 +106,10 @@ code and the server's exit status, with the server's other fields.
 - `setup.kind` is `this-machine`, `domain` or `proxy`; `address` is Your Space's address.
 - `link` appears only from the `start` that created the owner.
 - `apps` is `null` when Your Space isn't running. A published app (decision 2026-11-19) also has
-  `"publish": { "port": 8081, "bind": "127.0.0.1", "link": "https://notes.example.com", "frame": true, "inPane": true }`,
-  and its `address` is its link when it has one. `frame` is the owner's choice to show it inside Your
-  Space, and `inPane` whether Your Space shows it in its pane at its link (decision 2026-11-20).
+  `"publish": { "port": 8081, "bind": "127.0.0.1", "link": "https://notes.example.com", "inPane": true }`,
+  and its `address` is its link when it has one. `inPane` is whether Your Space shows it in its pane
+  at its link (decision 2026-11-20). `publish.frame`, the owner's switch to show the app inside Your
+  Space, was removed with the alpha scope (2026-11-23).
 - `forward` (proxy setup): `{ "to": "http://127.0.0.1:8080", "network": "your-space_edge", "names": ["space.example.com", "notes.space.example.com"], "wildcard": "*.space.example.com" }`.
   An app with its own link isn't in `names`: the proxy or tunnel sends its link to its published port.
 - `certificate` (domain setup): `{ "state": "valid" | "waiting" | "failed", "issuer": "...", "message": "..." }`.
@@ -118,7 +120,7 @@ code and the server's exit status, with the server's other fields.
 
 `init --release-dir <folder>` reads `your-space.tar.gz` and `SHA256SUMS` from the supplied folder. It checks the archive hash and the version pins in `stack.yaml` before unpacking. Without this option, the CLI downloads the matching release.
 
-`start --defer-owner` starts the stack and reports its owner state. An unclaimed installation stays available for `owner create`. This flag conflicts with the `--owner-name`, `--owner-username` and `--owner-email` options.
+`start --defer-owner` starts the stack and reports its owner state. An unclaimed installation stays available for `owner create`. This flag conflicts with the `--owner-name` and `--owner-username` options.
 
 `init --require-project-check` and `start --require-project-check` require a successful Compose project listing before changing the installation or starting containers. The desktop uses this check to find an installation managed from another folder. Ordinary CLI calls continue with the requested operation if the optional listing is unavailable.
 
@@ -131,7 +133,7 @@ code and the server's exit status, with the server's other fields.
 | `engine check` | `{ ok, engine: { version, os, arch, endpoint, compose } }` |
 | `init` | `{ ok, folder, version, setup, env: ["YS_DOMAIN=space.example.com"] }`: the lines written |
 | `stop` | `{ ok, stopped: ["notes"] }`: the apps stopped; `null` when Your Space couldn't list its apps, after `--yes` or a yes to the question |
-| `owner create`, `owner reset-link` | The server command's own JSON (`username`, `url`, `token`, `expiresAt`) |
+| `owner create`, `owner reset-link` | The server command's own JSON (`username`, `url`, `token`, `expiresAt`). `owner create`'s `email` was removed with the alpha scope (2026-11-23), with the owner's optional email |
 | `secrets show` | `{ ok, secrets: [{ name, source }] }`, with `value` only with `--reveal` |
 | `secrets replace` | `{ ok, replaced: "auth-secret" }` |
 | `configure` | `{ ok, setup, env, summary }` |

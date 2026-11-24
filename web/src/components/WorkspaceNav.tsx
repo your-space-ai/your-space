@@ -1,19 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import type { AppSummary } from "../apps-api.ts";
-import { deleteView, saveAppOrder, updateView, workspaceLayoutQuery, type SavedView } from "../workspace-layout.ts";
+import { deleteView, updateView, workspaceLayoutQuery, type SavedView } from "../workspace-layout.ts";
 import "./workspace-nav.css";
 
 export function WorkspaceNav({ apps, close }: { apps: AppSummary[]; close: () => void }) {
   const catalog = useQuery(workspaceLayoutQuery);
   const cache = useQueryClient();
-  const [arranging, setArranging] = useState(false);
   const [editing, setEditing] = useState<SavedView | null>(null);
   const [name, setName] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [message, setMessage] = useState("");
-  const dragging = useRef<string | null>(null);
+  // An order saved before reordering left with the alpha scope (decision 2026-11-23) still applies.
   const positions = new Map(catalog.data?.appOrder.map((key, i) => [key, i]));
   const ordered = apps
     .filter((app) => app.hasInterface)
@@ -26,29 +25,6 @@ export function WorkspaceNav({ apps, close }: { apps: AppSummary[]; close: () =>
     setMessage("");
   }
 
-  const reorder = useMutation({
-    mutationFn: (order: string[]) => saveAppOrder(catalog.data!.revision, order),
-    onSuccess: (value) => {
-      cache.setQueryData(workspaceLayoutQuery.queryKey, value);
-    },
-    onError: async (error: Error) => {
-      setMessage(error.message);
-      await catalog.refetch();
-    },
-  });
-  function move(source: string, target: string) {
-    if (!catalog.data || reorder.isPending || source === target) return;
-    const order = ordered.map((app) => app.name);
-    const start = order.indexOf(source),
-      end = order.indexOf(target);
-    if (start < 0 || end < 0) return;
-    order.splice(start, 1);
-    order.splice(end, 0, source);
-    setMessage("");
-    reorder.mutate(order, {
-      onSuccess: () => setMessage("Moved " + ordered[start]!.title + " to position " + (end + 1) + "."),
-    });
-  }
   const change = useMutation({
     mutationFn: async (action: "rename" | "delete") => {
       if (!editing) return;
@@ -73,44 +49,10 @@ export function WorkspaceNav({ apps, close }: { apps: AppSummary[]; close: () =>
         <section className="workspace-nav-section" aria-label="Installed apps">
           <div className="workspace-nav-heading">
             <span>Your apps</span>
-            {ordered.length > 1 && catalog.data && (
-              <button
-                type="button"
-                aria-pressed={arranging}
-                onClick={() => {
-                  setArranging(!arranging);
-                  setMessage("");
-                }}
-              >
-                {arranging ? "Done" : "Reorder"}
-              </button>
-            )}
           </div>
           <ul aria-label="Your apps">
-            {ordered.map((app, index) => (
-              <li
-                key={app.name}
-                className="workspace-nav-row"
-                draggable={arranging && !reorder.isPending}
-                onDragStart={(event) => {
-                  if (!arranging) return;
-                  dragging.current = app.name;
-                  event.dataTransfer.effectAllowed = "move";
-                  event.dataTransfer.setData("text/plain", app.name);
-                }}
-                onDragEnd={() => {
-                  dragging.current = null;
-                }}
-                onDragOver={(event) => {
-                  if (arranging && dragging.current) event.preventDefault();
-                }}
-                onDrop={(event) => {
-                  if (!arranging || !dragging.current) return;
-                  event.preventDefault();
-                  move(dragging.current, app.name);
-                  dragging.current = null;
-                }}
-              >
+            {ordered.map((app) => (
+              <li key={app.name} className="workspace-nav-row">
                 <Link to="/open/$name" params={{ name: app.name }} search={{}} onClick={close}>
                   {app.title}
                   {app.pendingRequests > 0 && (
@@ -119,26 +61,6 @@ export function WorkspaceNav({ apps, close }: { apps: AppSummary[]; close: () =>
                     </span>
                   )}
                 </Link>
-                {arranging && (
-                  <span className="workspace-nav-arrows">
-                    <button
-                      type="button"
-                      aria-label={"Move " + app.title + " up"}
-                      disabled={!index || reorder.isPending}
-                      onClick={() => move(app.name, ordered[index - 1]!.name)}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={"Move " + app.title + " down"}
-                      disabled={index === ordered.length - 1 || reorder.isPending}
-                      onClick={() => move(app.name, ordered[index + 1]!.name)}
-                    >
-                      ↓
-                    </button>
-                  </span>
-                )}
               </li>
             ))}
           </ul>
