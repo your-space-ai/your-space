@@ -99,6 +99,13 @@
       "when": 1795482587965,
       "tag": "0013_remove_creator_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795530850233,
+      "tag": "0014_theme_mode",
+      "breakpoints": true
     }
   ]
 }
