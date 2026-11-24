@@ -21,7 +21,7 @@ The dashboard gets a new structure and a component kit that every theme can rest
 - The style sets component shape and adds no colors of its own: Crisp uses hairline borders and small corners, Soft uses larger corners and tints surfaces with the palette's accent, and Bold uses heavy rules and square corners. Every component reads its colors, fonts and shape from the active theme and mode, so an owner's theme restyles the whole dashboard.
 - The workspace stores the selected theme and mode. **Match my device** follows the browser's color scheme preference.
 - The built-in themes are Cerulean (blue, Bold, Instrument Sans), Cinder (orange, Crisp, Space Grotesk headings) and Fern (green, Soft, Fraunces headings). Their fonts and IBM Plex Mono ship with the dashboard under the SIL Open Font License, so no theme loads remote fonts.
-- Version 1 files still import: their single palette applies in both modes and they use the Crisp style. Workspaces using Canopy, Tide or Ember keep that theme as their own copy.
+- Version 1 files still import: their single palette applies in both modes and they use the Crisp style. Workspaces using Canopy, Tide or Ember keep that theme as their own copy. (Superseded 2026-11-23: themes have one format. Version 1 files don't import, and a workspace's version 1 themes and starter choice don't carry over, so it starts on Cerulean; [decision](../../docs/architecture/decisions.md#portable-workspace-appearance).)
 
 ## Voice
 
@@ -29,7 +29,7 @@ Copy follows the good-neighbor voice: welcoming, plain-spoken and specific. Erro
 
 ## Acceptance
 
-- Each built-in theme meets a 4.5:1 contrast ratio for ordinary text and primary button labels in light and dark. Verify every screen in all three themes and both modes, and with an imported version 1 theme.
+- Each built-in theme meets a 4.5:1 contrast ratio for ordinary text and primary button labels in light and dark. Verify every screen in all three themes and both modes, and with an imported version 1 theme. (2026-11-23: version 1 files no longer import; verify that one is refused.)
 - Switch mode between Match my device, Light and Dark, and verify the setting persists across browsers for the workspace.
 - Import, export and re-import a version 2 theme. Reject malformed, oversized and unknown-version files without changing the current theme.
 - Open three apps as tabs, merge them into a view, swap two panes, drag one to an edge, resize a divider and use each pane menu action with pointer and keyboard. Save, pin, unpin and delete a view, and reopen it from the sidebar and from All views. App documents stay open while panes move and resize.
@@ -40,3 +40,5 @@ Copy follows the good-neighbor voice: welcoming, plain-spoken and specific. Erro
 ## Delivery
 
 Separate pull requests, each with its tests and docs: theme format version 2 and the built-in themes; the component kit; the shell with tabs; views; Home; Apps; Agents and Approvals; Settings and Appearance; sign-in and first run; and a copy pass in the new voice. Moving owner creation into the first-run screen and agents requesting more access are separate features that need their own specifications.
+
+**Alpha scope (2026-11-23).** The first alpha ships with only the first of these, theme format version 2 and the built-in themes. The rest, from the component kit through the copy pass, is parked for alpha.2, and this journey keeps its acceptance for then ([decision](../../docs/architecture/decisions.md#personal-dashboard-release-boundary)).
