@@ -55,11 +55,6 @@
       "parent": "The your-space CLI"
     },
     {
-      "title": "App Kit Commands",
-      "purpose": "your-space app upgrade-agent-kit, which adds agent access declarations to an installed app's kit.",
-      "parent": "The your-space CLI"
-    },
-    {
       "title": "Deployment Stack: Compose, Caddy and Modes",
       "purpose": "deploy/: compose.yaml, stack.yaml, the setup modes, the Caddyfile and how release files pin image versions.",
       "parent": "Installation and Operations"
@@ -115,8 +110,8 @@
       "parent": "Apps Subsystem"
     },
     {
-      "title": "Kit Links and Kit Directory",
-      "purpose": "Reviewing an app from its kit's link and the optional kit directory, both read from public GitHub, and kit files given to the server command.",
+      "title": "Kit Links",
+      "purpose": "Reviewing an app from its kit's link, read from public GitHub, and kit files given to the server command. There is no kit directory.",
       "parent": "Apps Subsystem"
     },
     {
@@ -126,7 +121,7 @@
     },
     {
       "title": "Agent Store, Grants and Gateway",
-      "purpose": "Kit-defined roles, grants, approvals, the gateway and attribution.",
+      "purpose": "Kit-defined read-only roles, grants, approvals, the gateway and attribution. Agents only read: kits can't declare write routes.",
       "parent": "Agent Delegation"
     },
     {
