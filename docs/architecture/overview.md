@@ -67,7 +67,7 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
 
 The dashboard reads presentation tokens from its workspace server. The Mac launcher shows the default theme before connection. [Appearance](../appearance.md)
 
-The signed-in dashboard arranges installed app panes in a resizable grid. A named view stores app names, arrangement and divider percentages on the selected workspace server. Shortcut order is a separate owner preference. Each app continues through its own existing pane or published link. [Multi-app layouts](https://github.com/your-space-ai/your-space/blob/main/specs/012-multi-app-layouts/spec.md)
+The signed-in dashboard arranges installed app panes in a resizable grid. A named view stores app names, arrangement and divider percentages on the selected workspace server. Apps opened together are laid out by count. The sidebar lists apps in the order the owner saved before reordering left, else in the order they were installed. Each app continues through its own existing pane or published link. [Multi-app layouts](https://github.com/your-space-ai/your-space/blob/main/specs/012-multi-app-layouts/spec.md)
 
 ## Request Paths
 

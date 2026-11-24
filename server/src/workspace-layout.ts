@@ -14,7 +14,7 @@ import type { Db } from "./db/client.ts";
 import { member } from "./db/auth-schema.ts";
 import { actor, app, installation, ownerLayout } from "./db/schema.ts";
 
-function invalid(message = "Check the saved view or sidebar order."): never {
+function invalid(message = "Check the saved view."): never {
   throw new AppError(400, "invalid_layout", message);
 }
 function conflict(): never {
@@ -108,25 +108,6 @@ export function workspaceLayoutRoutes(auth: Auth, db: Db) {
   };
 
   router.get("/", handle([]));
-  router.put(
-    "/app-order",
-    handle(["revision", "appOrder"], (current, body) => {
-      if (body.revision !== current.revision) conflict();
-      const names = body.appOrder;
-      if (
-        !Array.isArray(names) ||
-        names.length !== current.appOrder.length ||
-        !names.every((name) => typeof name === "string")
-      )
-        invalid("Include every available sidebar app once.");
-      if (new Set(names).size !== names.length || names.some((name) => !current.appOrder.includes(name))) {
-        throw new AppError(409, "apps_changed", "The list of apps changed. Refresh it before reordering.");
-      }
-      current.appOrder = names;
-      current.revision++;
-      return current;
-    }),
-  );
   router.post(
     "/views",
     handle(["name", "composition"], (current, body) => {
