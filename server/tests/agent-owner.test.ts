@@ -82,7 +82,7 @@ it("binds an app without granting access and rejects a stale grant or binding re
     agentAccess: {
       credential: { binding: "catalog", inject: { location: "header", name: "X-API-Key" } },
       roles: { reader: { title: "Reader", routes: ["list"] } },
-      routes: { list: { method: "GET", path: "/items", effect: "read", outputFields: ["id"] } },
+      routes: { list: { method: "GET", path: "/items", effect: "read" } },
     },
   }));
   const [installation] = await database.db.insert(app).values({

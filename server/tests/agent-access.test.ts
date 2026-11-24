@@ -15,17 +15,18 @@ vi.mock("../src/agents/transport.ts", () => ({ dispatchAppAction: vi.fn() }));
 let t: TestDatabase;
 let agent: string, installation: string, owner: string, verifier: string, credentialId: string;
 const secret = "synthetic-app-key-1";
+// A wrapped, nested response, as REST APIs such as Twenty's return one; it reaches the agent unchanged.
+const item = { data: { item: { id: "item-1", name: { firstName: "Ada" }, tags: ["x"] } }, totalCount: 1 };
 const access = parseAgentAccess({
   credential: { binding: "service", inject: { location: "header", name: "X-API-Key" } },
   routes: {
-    list: { method: "GET", path: "/items", effect: "read", outputFields: ["id"] },
+    list: { method: "GET", path: "/items", effect: "read" },
     show: {
       method: "GET",
       path: "/items/{id}",
       effect: "read",
       approval: "ask",
       pathParams: { id: "string" },
-      outputFields: ["id"],
     },
   },
   roles: { manager: { title: "Manager", routes: ["list", "show"] }, reader: { title: "Reader", routes: ["list"] } },
@@ -64,7 +65,7 @@ beforeEach(async () => {
   });
   vi.mocked(dispatchAppAction)
     .mockReset()
-    .mockResolvedValue({ status: 200, body: { id: "item-1", internal: "ignored" } });
+    .mockResolvedValue({ status: 200, body: item });
 });
 afterEach(async () => {
   await t?.destroy();
@@ -108,7 +109,7 @@ it("admits only active granted routes, persists exact approval and dispatches on
   expect(await requestOutcome(t.db, verifier, first.id, key)).toEqual({
     id: first.id,
     status: "succeeded",
-    result: { id: "item-1" },
+    result: item,
   });
   expect(dispatchAppAction).toHaveBeenCalledTimes(1);
   expect(JSON.stringify(await transaction(t.db, (c) => activity(c, owner)))).not.toContain("private-fixture");
@@ -211,7 +212,7 @@ it("isolates two actors and unrelated installation catalogs through discovery, i
   const telemetry = parseAgentAccess({
     credential: { binding: "sensor", inject: { location: "header", name: "Authorization", scheme: "Bearer" } },
     roles: { observer: { title: "Observer", routes: ["temperature"] } },
-    routes: { temperature: { method: "GET", path: "/observations", effect: "read", outputFields: ["degrees"] } },
+    routes: { temperature: { method: "GET", path: "/observations", effect: "read" } },
   });
   const [sensor] = await t.db
     .insert(app)
@@ -260,9 +261,9 @@ it("isolates two actors and unrelated installation catalogs through discovery, i
   );
   expect(dispatchAppAction).not.toHaveBeenCalled();
 
-  vi.mocked(dispatchAppAction).mockResolvedValueOnce({ status: 200, body: { degrees: 19, raw: "internal" } });
+  vi.mocked(dispatchAppAction).mockResolvedValueOnce({ status: 200, body: [{ degrees: 19, sensor: { room: "hall" } }] });
   const outcome = await invoke(t.db, key, secondVerifier, reading);
-  expect(outcome).toMatchObject({ status: "succeeded", result: { degrees: 19 } });
+  expect(outcome).toMatchObject({ status: "succeeded", result: [{ degrees: 19, sensor: { room: "hall" } }] });
   expect(dispatchAppAction).toHaveBeenCalledWith(
     expect.objectContaining({
       installation: expect.objectContaining({ id: sensorId, interfaceService: "sensor" }),
@@ -367,7 +368,7 @@ it("leaves out the write routes of a kit stored before agents became read-only",
     ...access,
     routes: {
       ...access.routes,
-      create: { method: "POST", path: "/items", effect: "write", bodyFields: { title: "string" }, outputFields: ["id"] },
+      create: { method: "POST", path: "/items", effect: "write", bodyFields: { title: "string" } },
     },
     roles: { ...access.roles, manager: { title: "Manager", routes: ["list", "show", "create"] } },
   };
@@ -388,4 +389,54 @@ it("leaves out the write routes of a kit stored before agents became read-only",
   const create = { installationId: installation, actionId: "create", input: { body: { title: "x" } } };
   expect((await invoke(t.db, key, verifier, create)).status).toBe("denied");
   expect(dispatchAppAction).not.toHaveBeenCalled();
+});
+
+it("passes a direct read's response through and saves it for the request", async () => {
+  await setGrant(0);
+  const list = { installationId: installation, actionId: "list" };
+  const outcome = await invoke(t.db, key, verifier, list);
+  expect(outcome).toEqual({ id: outcome.id, status: "succeeded", result: item });
+  expect(await requestOutcome(t.db, verifier, outcome.id, key)).toEqual(outcome);
+  const saved = (await t.pool.query("select result from agent_request where id=$1", [outcome.id])).rows[0].result;
+  expect(saved).not.toContain("Ada");
+});
+
+it("saves no result when the app echoes its credential, answers too much or answers with no JSON", async () => {
+  await setGrant(0);
+  const list = { installationId: installation, actionId: "list" };
+  const echoes = [
+    { data: { items: [{ note: "Bad key " + secret }] } },
+    { error: JSON.stringify({ header: "X-API-Key: " + secret }) },
+    { text: "x".repeat(256 * 1024) },
+  ];
+  for (const body of echoes) {
+    vi.mocked(dispatchAppAction).mockResolvedValueOnce({ status: 200, body });
+    const outcome = await invoke(t.db, key, verifier, list);
+    expect(outcome).toEqual({ id: outcome.id, status: "unknown" });
+    expect(JSON.stringify(await requestOutcome(t.db, verifier, outcome.id, key))).not.toContain(secret);
+  }
+  // The transport refuses a body that isn't JSON.
+  vi.mocked(dispatchAppAction).mockRejectedValueOnce(new Error("App returned an invalid result"));
+  expect(await invoke(t.db, key, verifier, list)).toMatchObject({ status: "unknown" });
+  const results = (await t.pool.query("select result from agent_request where status='unknown'")).rows;
+  expect(results).toHaveLength(4);
+  expect(results.every((row) => row.result === null)).toBe(true);
+});
+
+it("keeps loading a kit stored with outputFields and passes the response through", async () => {
+  // Stored as written before 2026-11-24; parseKit refuses outputFields now.
+  const stored = {
+    ...access,
+    routes: Object.fromEntries(Object.entries(access.routes).map(([id, route]) => [id, { ...route, outputFields: ["id"] }])),
+  };
+  await t.pool.query("update app set kit=$2 where id=$1", [installation, JSON.stringify({ kit: 2, agentAccess: stored })]);
+  await transaction(t.db, async (c) => {
+    // Changing the stored kit retired the binding (retire_agent_binding), so it is bound again.
+    const rebound = await bind(c, installation, { revision: 2, credential: secret, enabledRoles: ["manager"] }, key);
+    await grant(c, owner, agent, installation, { revision: 0, bindingRevision: rebound.revision, roles: ["manager"], overrides: {} });
+  });
+  const offered = await transaction(t.db, async (c) => discover(c, await identity(c, verifier)));
+  expect(offered.actions.map((action) => action.actionId).sort()).toEqual(["list", "show"]);
+  const outcome = await invoke(t.db, key, verifier, { installationId: installation, actionId: "list" });
+  expect(outcome).toMatchObject({ status: "succeeded", result: item });
 });
