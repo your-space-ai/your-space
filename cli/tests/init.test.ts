@@ -19,7 +19,7 @@ describe(".env", () => {
       const files = join(dir, "files"), release = join(dir, "release"), bin = join(dir, "bin"), folder = join(dir, "install");
       for (const path of [join(files, "modes"), release, bin]) mkdirSync(path, { recursive: true });
       writeFileSync(join(files, "compose.yaml"), "name: your-space\n");
-      writeFileSync(join(files, "stack.yaml"), `image: example:\${YS_VERSION:-${VERSION}}\n`);
+      writeFileSync(join(files, "stack.yaml"), `image: ghcr.io/your-space-ai/your-space-server:${VERSION}\n`);
       writeFileSync(join(files, "modes", "mode.yaml"), "services: {}\n");
       writeFileSync(join(files, "env.example"), "# YS_PORT=8081\n");
       chmodSync(join(files, "env.example"), 0o644);

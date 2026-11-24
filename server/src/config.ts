@@ -33,7 +33,7 @@ export class ConfigError extends Error {
   }
 }
 
-const OWNER_KEYS = ["YS_DOMAIN", "YS_PROXY_URL", "YS_PORT", "YS_VERSION", "YS_ENGINE_SOCKET", "YS_DATA_KEY"];
+const OWNER_KEYS = ["YS_DOMAIN", "YS_PROXY_URL", "YS_PORT", "YS_ENGINE_SOCKET", "YS_DATA_KEY"];
 
 /**
  * This machine's address. Apps are at <app>.space.localhost, a subdomain of it, so they are same-site

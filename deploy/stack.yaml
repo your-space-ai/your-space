@@ -11,7 +11,7 @@ services:
     # (research R16): a value set in .env is used as given and never copied; otherwise the copy in
     # ys-secrets; otherwise, for a new installation, a generated one. No network, and root only to
     # give each file to the user that reads it.
-    image: ghcr.io/your-space-ai/your-space-server:${YS_VERSION:-latest}
+    image: ghcr.io/your-space-ai/your-space-server:latest
     entrypoint: ["node", "src/commands/secrets-step.ts"]
     user: "0:0"
     network_mode: none
@@ -30,7 +30,7 @@ services:
       - ys-postgres:/pgdata:ro
 
   caddy:
-    image: ghcr.io/your-space-ai/your-space-web:${YS_VERSION:-latest}
+    image: ghcr.io/your-space-ai/your-space-web:latest
     restart: unless-stopped
     volumes:
       - ys-caddy-data:/data
@@ -42,7 +42,7 @@ services:
         condition: service_healthy
 
   server:
-    image: ghcr.io/your-space-ai/your-space-server:${YS_VERSION:-latest}
+    image: ghcr.io/your-space-ai/your-space-server:latest
     restart: unless-stopped
     env_file:
       # The whole .env, so the server can refuse a misspelled or unknown setting by name instead of
@@ -88,7 +88,7 @@ services:
     # has no network at all; the server reaches it on a socket in the ys-runtime volume. Root, to
     # use the engine's socket whatever group owns it. YS_ENGINE_SOCKET points at another engine's
     # socket, such as rootless Docker's or Colima's.
-    image: ghcr.io/your-space-ai/your-space-runtime:${YS_VERSION:-latest}
+    image: ghcr.io/your-space-ai/your-space-runtime:latest
     restart: unless-stopped
     network_mode: none
     user: "0:0"

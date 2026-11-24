@@ -146,14 +146,15 @@ describe("loadConfig: setting names", () => {
     ["YS_PROXYURL", /Did you mean YS_PROXY_URL\?/],
     ["YS_PORTS", /Did you mean YS_PORT\?/],
     ["YS_SOMETHING_ELSE", /YS_SOMETHING_ELSE isn't a setting\. Remove it from \.env\./],
-    // No kit directory since 2026-11-23 (decisions: Alpha scope).
+    // No kit directory, and no version override, since 2026-11-23 (decisions: Alpha scope).
     ["YS_KITS_REPOSITORY", /YS_KITS_REPOSITORY isn't a setting\. Remove it from \.env\./],
+    ["YS_VERSION", /YS_VERSION isn't a setting\. Remove it from \.env\./],
   ])("refuses the unknown setting %s, so a typo can't pick the wrong setup", (key, message) => {
     expect(only({ [key]: "space.example.com" })).toMatch(message);
   });
 
   it("ignores settings that aren't Your Space's", () => {
-    expect(problems({ PATH: "/usr/bin", POSTGRES_PASSWORD: "x", HOME: "/root", YS_VERSION: "1.0.0" })).toEqual([]);
+    expect(problems({ PATH: "/usr/bin", POSTGRES_PASSWORD: "x", HOME: "/root" })).toEqual([]);
   });
 
   it("lists every problem at once", () => {

@@ -4,13 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { checkSum, fetchRelease, parseSums, releaseUrl, safeEntries } from "../src/release.ts";
+import { checkSum, fetchRelease, parseSums, releasePins, releaseUrl, safeEntries } from "../src/release.ts";
 
 // Every program the CLI runs, still run for real.
 const ran = vi.hoisted(() => [] as string[][]);
 vi.mock("../src/process.ts", async (original) => {
   const actual = await original<typeof import("../src/process.ts")>();
   return { ...actual, run: (program: string, args: string[], options?: object) => (ran.push([program, ...args]), actual.run(program, args, options)) };
+});
+
+it("reads the release from stack.yaml's image pins, and from a file pinned before 2026-11-23", () => {
+  expect(releasePins("image: ghcr.io/your-space-ai/your-space-server:0.2.0\n  image: ghcr.io/your-space-ai/your-space-web:0.2.0\n")).toEqual(["0.2.0", "0.2.0"]);
+  expect(releasePins("image: ghcr.io/your-space-ai/your-space-server:${YS_VERSION:-0.1.0}\n")).toEqual(["0.1.0"]);
+  expect(releasePins("image: postgres:18\n")).toEqual([]);
 });
 
 describe("release files", () => {
@@ -38,7 +44,7 @@ describe("release files", () => {
       const assets = join(root, "release"), install = join(root, "install");
       mkdirSync(assets);
       mkdirSync(install);
-      writeFileSync(join(root, "stack.yaml"), "image: example:${YS_VERSION:-0.1.0}\n");
+      writeFileSync(join(root, "stack.yaml"), "image: ghcr.io/your-space-ai/your-space-server:0.1.0\n");
       const archive = join(assets, "your-space.tar.gz");
       execFileSync("tar", ["-czf", archive, "-C", root, "stack.yaml"]);
       const digest = createHash("sha256").update(readFileSync(archive)).digest("hex");

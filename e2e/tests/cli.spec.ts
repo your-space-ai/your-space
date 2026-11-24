@@ -48,7 +48,7 @@ test("init and start install Your Space on this machine, and the owner signs in"
   expect(init).toMatchObject({ version: CLI_VERSION, setup: { kind: "this-machine" }, env: [] });
   for (const file of ["compose.yaml", "stack.yaml", "modes/mode.yaml", "env.example", ".env"]) expect(existsSync(join(cli.folder, file))).toBe(true);
   // The release's own files, unchanged, and a .env with no settings line, as the manual install has.
-  expect(readFileSync(join(cli.folder, "stack.yaml"), "utf8")).toContain(`your-space-server:\${YS_VERSION:-${CLI_VERSION}}`);
+  expect(readFileSync(join(cli.folder, "stack.yaml"), "utf8")).toContain(`your-space-server:${CLI_VERSION}\n`);
   expect(readFileSync(join(cli.folder, ".env"), "utf8")).toBe(readFileSync(join(cli.folder, "env.example"), "utf8"));
 
   // A question with no answer and no terminal fails, naming its flag.
