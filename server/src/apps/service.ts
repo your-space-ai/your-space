@@ -364,8 +364,8 @@ export class AppsService {
     return this.previewResolved(source, found, appName);
   }
 
-  /** Internal handoff from the owner-authorized GitHub source reader. HTTP callers
-   * never supply trusted source, commit, or review metadata. */
+  /** The review of a kit and the Compose file it names, both already read. HTTP callers never
+   * supply trusted source, commit, or review metadata. */
   async previewResolved(source: SourceFile, found: FoundKit, appName?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
     for (const [id, p] of this.previews) if (p.expiresAt < Date.now()) this.previews.delete(id);
     const kit = found.kit;

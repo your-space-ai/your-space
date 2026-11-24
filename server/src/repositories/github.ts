@@ -1,8 +1,7 @@
-// Fixed-origin GitHub OAuth/REST transport. Public-facing errors never include
-// GitHub response bodies, credentials, remote text or the authenticated URL.
+// Fixed-origin, unauthenticated GitHub REST reads for the kit directory's listing. Public-facing
+// errors never include GitHub response bodies or remote text.
 import { AppError } from "../apps/service.ts";
 
-export type GithubScope = "public_repo" | "repo";
 export interface GithubRepo {
   id: string;
   fullName: string;
@@ -11,7 +10,6 @@ export interface GithubRepo {
 }
 type Json = Record<string, unknown>;
 const rest = "https://api.github.com";
-const limit = 256 * 1024;
 const badInput = () =>
   new AppError(400, "invalid_repository_input", "Check the repository, path, revision and file size.");
 const badResponse = () =>
@@ -31,23 +29,17 @@ async function request(url: string, options: RequestInit): Promise<Json> {
   }
   if (!result.ok || !result.body) {
     await result.body?.cancel().catch(() => {});
-    if (result.status === 404)
+    if (result.status === 404 || result.status === 422)
       throw new AppError(
         404,
         "github_not_found",
-        "GitHub could not find that repository, revision or file with this connection.",
+        "GitHub can't find the kit directory's repository or branch. It must be a public repository.",
       );
-    if (result.status === 409 || result.status === 422)
-      throw new AppError(
-        409,
-        "github_conflict",
-        "GitHub rejected the change. Refresh the repository state before retrying.",
-      );
-    if (result.status === 401 || result.status === 403)
+    if (result.status === 401 || result.status === 403 || result.status === 429)
       throw new AppError(
         403,
         "github_forbidden",
-        "GitHub declined this connection or request. Check repository permissions and rate limits.",
+        "GitHub declined the request for the kit directory. It may be limiting requests from this machine; try again in a few minutes.",
       );
     throw badResponse();
   }
@@ -70,17 +62,6 @@ async function request(url: string, options: RequestInit): Promise<Json> {
   }
 }
 
-export function deviceRequest(
-  path: "device/code" | "oauth/access_token",
-  fields: Record<string, string>,
-): Promise<Json> {
-  return request("https://github.com/login/" + path, {
-    method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(fields),
-  });
-}
-
 function segment(value: string): string {
   if (typeof value !== "string" || !/^[a-z\d_.-]{1,100}$/i.test(value) || value === "." || value === "..")
     throw badInput();
@@ -100,17 +81,6 @@ function repositoryId(value: string): string {
 
 function repositoryPath(value: string): string {
   return typeof value === "string" && /^\d+$/.test(value) ? repositoryId(value) : "/repos/" + repoParts(value);
-}
-
-function pathParts(path: string): string {
-  if (typeof path !== "string" || path.length > 512 || /[\x00-\x1f\x7f\\]/.test(path)) throw badInput();
-  return path
-    .split("/")
-    .map((p) => {
-      if (!p || p === "." || p === ".." || p.toLowerCase() === ".git") throw badInput();
-      return encodeURIComponent(p);
-    })
-    .join("/");
 }
 
 function ref(value: string): string {
@@ -147,32 +117,15 @@ function repository(data: Json): GithubRepo {
 }
 
 export class GithubClient {
-  #token: string | null;
-  readonly accountId: string;
-  readonly scope: GithubScope;
-
-  constructor(token: string | null, accountId: string, scope: GithubScope) {
-    this.#token = token;
-    this.accountId = accountId;
-    this.scope = scope;
-  }
-
-  // Your Space only reads from GitHub: kits, the Compose files they name and the kit directory.
+  // Your Space only reads public repositories here: the kit directory's default branch and its kits.
   private api(path: string) {
     return request(rest + path, {
       headers: {
-        ...(this.#token ? { Authorization: "Bearer " + this.#token } : {}),
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "Your-Space",
       },
     });
-  }
-
-  async account() {
-    const data = await this.api("/user");
-    if (typeof data.login !== "string") throw badResponse();
-    return { id: id(data.id), login: data.login };
   }
 
   async repo(nameOrNumericId: string) {
@@ -182,32 +135,6 @@ export class GithubClient {
   async resolve(fullName: string, revision: string) {
     const result = await this.api(repositoryPath(fullName) + "/commits/" + encodeURIComponent(ref(revision)));
     return sha(result.sha);
-  }
-
-  async file(fullName: string, path: string, revision: string) {
-    const result = await this.api(
-      repositoryPath(fullName) + "/contents/" + pathParts(path) + "?ref=" + encodeURIComponent(ref(revision)),
-    );
-    if (
-      result.type !== "file" ||
-      result.encoding !== "base64" ||
-      result.submodule_git_url ||
-      result.target ||
-      typeof result.size !== "number" ||
-      result.size > limit ||
-      typeof result.content !== "string"
-    ) {
-      throw new AppError(422, "unsupported_repository_file", "Choose a regular UTF-8 file of at most 256 KiB.");
-    }
-    const data = Buffer.from(result.content, "base64");
-    if (data.length !== result.size || data.length > limit) throw badResponse();
-    let content: string;
-    try {
-      content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(data);
-    } catch {
-      throw new AppError(422, "unsupported_repository_file", "Choose a UTF-8 text file.");
-    }
-    return { content, sha: sha(result.sha) };
   }
 
   async kitPaths(nameOrId: string, commit: string): Promise<string[]> {
@@ -234,12 +161,6 @@ export class GithubClient {
   }
 }
 
-export function publicGithubClient(): Pick<GithubClient, "repo" | "resolve" | "file" | "kitPaths"> {
-  const client = new GithubClient(null, "", "public_repo");
-  return {
-    repo: (key) => client.repo(key),
-    resolve: (key, revision) => client.resolve(key, revision),
-    file: (key, path, revision) => client.file(key, path, revision),
-    kitPaths: (key, commit) => client.kitPaths(key, commit),
-  };
+export function publicGithubClient(): Pick<GithubClient, "repo" | "resolve" | "kitPaths"> {
+  return new GithubClient();
 }

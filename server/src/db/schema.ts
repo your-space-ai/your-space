@@ -312,41 +312,6 @@ export const workspaceAppearance = pgTable("workspace_appearance", {
   themes: jsonb("themes").$type<{ id: string; theme: Theme }[]>().notNull(),
 });
 
-/** An absent selection always opens the built-in Home. Grants are bound to the installed target's revision. */
-export const workspaceHome = pgTable("workspace_home", {
-  workspaceId: uuid("workspace_id").primaryKey().references(() => organization.id, { onDelete: "cascade" }),
-  selectedId: uuid("selected_id").references(() => app.id, { onDelete: "set null" }),
-  generation: text("generation"),
-  revision: integer("revision").notNull(),
-  grants: jsonb("grants").$type<{ installationId: string; bindingRevision: number; roles: string[] }[]>().notNull(),
-});
-
-/** Last successful read per delegated route, without copies of request data, results, or credentials. */
-export const homeReadActivity = pgTable("home_read_activity", {
-  homeId: uuid("home_id").notNull().references(() => app.id, { onDelete: "cascade" }),
-  targetId: uuid("target_id").notNull().references(() => app.id, { onDelete: "cascade" }),
-  action: text("action").notNull(),
-  ownerId: uuid("owner_id").notNull().references(() => actor.id),
-  lastRead: timestamp("last_read", { withTimezone: true }).notNull().defaultNow(),
-}, t => [primaryKey({ columns: [t.homeId, t.targetId, t.action] })]);
-
-export const githubConnection = pgTable("github_connection", {
-  ownerId: uuid("owner_id").primaryKey().references(() => actor.id, {onDelete:"cascade"}),
-  githubUserId: text("github_user_id").notNull(),
-  login: text("login").notNull(),
-  credential: text("credential").notNull(),
-  scope: text("scope").notNull(),
-});
-export const githubDevice = pgTable("github_device", {
-  ownerId: uuid("owner_id").primaryKey().references(() => actor.id,{onDelete:"cascade"}),
-  sessionId: text("session_id").notNull(),
-  attemptId: uuid("attempt_id").notNull(),
-  deviceCode: text("device_code").notNull(),
-  expiresAt: timestamp("expires_at",{withTimezone:true}).notNull(),
-  nextPollAt: timestamp("next_poll_at",{withTimezone:true}).notNull(),
-  intervalSeconds: integer("interval_seconds").notNull(),
-  scope: text("scope").notNull(),
-});
 export const ownerLayout = pgTable("owner_layout", {
   workspaceId: uuid("workspace_id").notNull().references(() => organization.id, {onDelete:"cascade"}),
   ownerId: uuid("owner_id").notNull().references(() => actor.id, {onDelete:"cascade"}),

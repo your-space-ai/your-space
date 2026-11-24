@@ -75,7 +75,7 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
   router.get("/apps", owner(async (_req, res) => void res.json(await apps.list())));
 
   // An app is reviewed from its kit's link at POST /api/kits/preview (repositories/kits.ts), which
-  // reads a kit in a private repository through the owner's GitHub connection (decision 2026-11-23).
+  // reads public GitHub; a kit in a private repository installs with the server command (decision 2026-11-23).
 
   router.post(
     "/apps",

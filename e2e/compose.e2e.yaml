@@ -12,7 +12,6 @@ services:
     volumes:
       - ../e2e/github:/github:ro
     environment:
-      GITHUB_OAUTH_CLIENT_ID: your-space-e2e
       NODE_OPTIONS: --import=/github/api-fetch.mjs
       YS_KITS_REPOSITORY: ys-fixtures/catalog
       YS_E2E_GITHUB_API: http://github:8080

@@ -527,10 +527,10 @@ describe("apps API", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: "kit_required", message: expect.stringMatching(/not a Your Space kit.*Give the link to the app's kit/) });
     expect((await post("/api/kits/preview", { kitUrl: "https://example.com/kit.yaml" })).status).toBe(400);
-    // A kit GitHub doesn't show this machine, as in a private repository, needs the GitHub connection.
+    // A kit GitHub doesn't show this machine, as in a private repository, installs with the server command.
     const hidden = await post("/api/kits/preview", { kitUrl: "https://github.com/ys-fixtures/private-kits/blob/main/kit.yaml" });
     expect(hidden.status).toBe(404);
-    expect(await hidden.json()).toMatchObject({ error: "kit_not_found", message: expect.stringMatching(/repository must be public\. If the kit is in a private repository, connect GitHub/) });
+    expect(await hidden.json()).toMatchObject({ error: "kit_not_found", message: expect.stringMatching(/repository must be public\. If the kit is in a private repository, install it from this machine.*install-app --kit - < kit\.yaml/) });
     expect((await post("/api/kits/preview", {})).status).toBe(400);
     expect((await post("/api/apps/preview", { link: COMPOSE_LINK })).status).toBe(404);
   });

@@ -8,8 +8,6 @@ import { errorFields, log } from "./log.ts";
 import { workspaceLayoutRoutes } from "./workspace-layout.ts";
 import { appearanceRoutes } from "./appearance.ts";
 import { kitRoutes } from "./repositories/kits.ts";
-import { githubConnectionRoutes } from "./repositories/connection.ts";
-import { homeRoutes } from "./home.ts";
 import { ownerRoutes } from "./owner/routes.ts";
 import { appRoutes } from "./apps/routes.ts";
 import type { Handoffs } from "./apps/gate.ts";
@@ -67,9 +65,7 @@ export function createApp({ auth, db, apps, dataKey }: AppDeps): express.Express
   app.use("/api/appearance", appearanceRoutes(auth, db));
   if (dataKey) {
     app.use("/api", agentRoutes(auth, db, dataKey));
-    app.use("/api/repositories/connection", githubConnectionRoutes(auth, db, dataKey));
-    if (apps) app.use("/api/kits", kitRoutes(auth, db, dataKey, apps.service));
-    app.use("/api/home", homeRoutes(auth, db, dataKey, apps?.service));
+    if (apps) app.use("/api/kits", kitRoutes(auth, db, apps.service));
   }
   if (apps) app.use("/api", appRoutes(auth, db, apps.service, apps.handoffs));
 
