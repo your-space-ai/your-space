@@ -8,12 +8,12 @@ output and exit statuses are a contract. Human output may change; JSON fields ar
 ```text
 your-space engine check
 your-space init       [--require-project-check] [--release-dir <folder>] [--this-machine | --domain <name> | --proxy-url <url>] [--port <n>] [--yes]
-your-space start      [--owner-name <name>] [--owner-username <username>] [--owner-email <email>]
+your-space start      [--owner-name <name>] [--owner-username <username>]
                       [--require-project-check] [--defer-owner] [--no-open] [--ignore-checks] [--new-secrets] [--yes]
 your-space stop       [--yes]
 your-space status     [--require-running]
 your-space logs       [<service>] [--follow] [--tail <n>]
-your-space owner create      --name <name> --username <username> [--email <email>]
+your-space owner create      --name <name> --username <username>
 your-space owner reset-link
 your-space secrets show      [--reveal]
 your-space secrets replace   <auth-secret | database-password> [--yes]
@@ -118,7 +118,7 @@ code and the server's exit status, with the server's other fields.
 
 `init --release-dir <folder>` reads `your-space.tar.gz` and `SHA256SUMS` from the supplied folder. It checks the archive hash and the version pins in `stack.yaml` before unpacking. Without this option, the CLI downloads the matching release.
 
-`start --defer-owner` starts the stack and reports its owner state. An unclaimed installation stays available for `owner create`. This flag conflicts with the `--owner-name`, `--owner-username` and `--owner-email` options.
+`start --defer-owner` starts the stack and reports its owner state. An unclaimed installation stays available for `owner create`. This flag conflicts with the `--owner-name` and `--owner-username` options.
 
 `init --require-project-check` and `start --require-project-check` require a successful Compose project listing before changing the installation or starting containers. The desktop uses this check to find an installation managed from another folder. Ordinary CLI calls continue with the requested operation if the optional listing is unavailable.
 

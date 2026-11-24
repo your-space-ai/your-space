@@ -8,12 +8,6 @@ import { ErrorState } from "../components/ErrorState.tsx";
 import { AppError, failureForStatus, failureKind } from "../errors.ts";
 import { sessionQuery, workspaceQuery } from "../queries.ts";
 
-// An owner created without an email holds a reserved address that can't receive mail; it isn't
-// the owner's, so it isn't shown. The server's owner rules use the same domain.
-function hasOwnEmail(email: string): boolean {
-  return !email.endsWith("@users.invalid");
-}
-
 export function Home() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -88,12 +82,6 @@ export function Home() {
         <dd data-field="name">{user.name}</dd>
         <dt>Username</dt>
         <dd data-field="username">{user.username}</dd>
-        {hasOwnEmail(user.email) ? (
-          <>
-            <dt>Email</dt>
-            <dd data-field="email">{user.email}</dd>
-          </>
-        ) : null}
       </dl>
       {signOut.isError ? (
         <p className="notice error" role="alert">

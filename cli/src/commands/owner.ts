@@ -5,9 +5,9 @@ import { Installation } from "../installation.ts";
 import { expectOk, serverCommand } from "../server.ts";
 import type { Ui } from "../ui.ts";
 
-export async function ownerCreate(ui: Ui, workdir: string, flags: { name: string; username: string; email?: string }): Promise<void> {
+export async function ownerCreate(ui: Ui, workdir: string, flags: { name: string; username: string }): Promise<void> {
   const compose = new Compose(Installation.open(workdir).folder);
-  const args = ["--name", flags.name, "--username", flags.username, ...(flags.email ? ["--email", flags.email] : [])];
+  const args = ["--name", flags.name, "--username", flags.username];
   const json = expectOk(await serverCommand(compose, "create-owner", args));
   const { ok: _ok, ...body } = json;
   ui.result(body, () => {

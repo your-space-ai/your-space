@@ -11,10 +11,10 @@ import { isStorageError } from "../db/client.ts";
 import { member, organization, user } from "../db/auth-schema.ts";
 import { installation } from "../db/schema.ts";
 import { readInstallation, StorageUnavailable } from "./installation.ts";
-import { ownEmail, placeholderEmail, validateOwnerInput, type FieldErrors, type OwnerInput } from "./rules.ts";
+import { placeholderEmail, validateOwnerInput, type FieldErrors, type OwnerInput } from "./rules.ts";
 
 export type CreateOwnerResult =
-  | { ok: true; name: string; username: string; email: string | null; url: string; token: string; expiresAt: Date }
+  | { ok: true; name: string; username: string; url: string; token: string; expiresAt: Date }
   | { ok: false; error: "invalid_input"; fields: FieldErrors }
   | { ok: false; error: "owner_exists" }
   | { ok: false; error: "storage_unavailable" };
@@ -24,7 +24,7 @@ const CREATE_OWNER_LOCK_KEY = 7_959_002;
 
 export async function createOwner(
   deps: AuthDeps,
-  input: { name?: string; username?: string; email?: string },
+  input: { name?: string; username?: string },
 ): Promise<CreateOwnerResult> {
   const valid = validateOwnerInput(input);
   if (!valid.ok) return { ok: false, error: "invalid_input", fields: valid.fields };
@@ -51,7 +51,7 @@ export async function createOwner(
   }
 }
 
-async function createOwnerLocked(deps: AuthDeps, { name, username, email }: OwnerInput): Promise<CreateOwnerResult> {
+async function createOwnerLocked(deps: AuthDeps, { name, username }: OwnerInput): Promise<CreateOwnerResult> {
   const { db } = deps;
 
   let link: IssuedLink | undefined;
@@ -64,7 +64,7 @@ async function createOwnerLocked(deps: AuthDeps, { name, username, email }: Owne
     if ((await readInstallation(db)).state === "claimed") return { ok: false, error: "owner_exists" };
 
     // 2. The account, with a random password that is never shown. The set-password link is the way in.
-    // Without an email, the account holds a reserved address that can't receive mail.
+    // The account holds a reserved address that can't receive mail.
     const existing = await db.select().from(user).where(eq(user.username, username)).limit(1);
     let owner = existing[0];
     if (!owner) {
@@ -81,11 +81,10 @@ async function createOwnerLocked(deps: AuthDeps, { name, username, email }: Owne
       }
       const password = randomBytes(64).toString("base64url");
       try {
-        const body = { name, username, email: email ?? placeholderEmail(username), password };
+        const body = { name, username, email: placeholderEmail(username), password };
         owner = (await auth.api.signUpEmail({ body })).user as typeof user.$inferSelect;
       } catch (error) {
         const code = error instanceof APIError ? (error.body as { code?: string } | undefined)?.code : undefined;
-        if (code === "INVALID_EMAIL") return { ok: false, error: "invalid_input", fields: { email: "Not a valid email address." } };
         // The rules above match the username plugin's, so these are a backstop.
         if (code === "INVALID_USERNAME" || code === "USERNAME_TOO_SHORT" || code === "USERNAME_TOO_LONG") {
           return { ok: false, error: "invalid_input", fields: { username: "Not a valid username." } };
@@ -127,7 +126,6 @@ async function createOwnerLocked(deps: AuthDeps, { name, username, email }: Owne
       ok: true,
       name: owner.name,
       username: owner.username ?? username,
-      email: ownEmail(owner.email),
       url: issued.url,
       token: issued.token,
       expiresAt: issued.expiresAt,

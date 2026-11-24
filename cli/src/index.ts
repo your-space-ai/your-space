@@ -104,8 +104,7 @@ program
   .description("start Your Space, create the owner the first time, and show how to reach it")
   .option("--owner-name <name>", "the owner's name, when there is no owner yet")
   .option("--owner-username <username>", "the owner's username")
-  .option("--owner-email <email>", "the owner's email address (optional)")
-  .addOption(new Option("--defer-owner", "start the server and create the first owner separately").conflicts(["ownerName", "ownerUsername", "ownerEmail"]))
+  .addOption(new Option("--defer-owner", "start the server and create the first owner separately").conflicts(["ownerName", "ownerUsername"]))
   .option("--no-open", "don't open the set-password link in the browser")
   .option("--ignore-checks", "start even when the domain's names don't resolve")
   .option("--require-project-check", "fail if Docker cannot list existing installation folders")
@@ -116,7 +115,6 @@ program
       await start(ui, g.workdir, {
         ownerName: o.ownerName,
         ownerUsername: o.ownerUsername,
-        ownerEmail: o.ownerEmail,
         open: o.open,
         ignoreChecks: o.ignoreChecks,
         newSecrets: o.newSecrets,
@@ -156,11 +154,10 @@ owner
   .description("create the owner, when start didn't")
   .requiredOption("--name <name>", "the owner's name")
   .requiredOption("--username <username>", "the owner's username")
-  .option("--email <email>", "an email address (optional)")
   .action(
     action(async (ui, g) => {
       const o = owner.commands.find((c) => c.name() === "create")!.opts();
-      await ownerCreate(ui, g.workdir, { name: o.name, username: o.username, email: o.email });
+      await ownerCreate(ui, g.workdir, { name: o.name, username: o.username });
     }),
   );
 owner

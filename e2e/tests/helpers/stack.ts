@@ -121,7 +121,6 @@ export async function up(env: Record<string, string> = {}): Promise<void> {
 export interface LinkOutput {
   ok: true;
   username: string;
-  email?: string | null;
   url: string;
   token: string;
   expiresAt: string;
