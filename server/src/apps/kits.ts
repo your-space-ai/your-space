@@ -108,7 +108,7 @@ export function parseKit(text: string): Kit {
   }
   if (data.kit !== 1 && data.kit !== 2) throw new KitError("it is for a kit format this Your Space doesn't know (use kit: 1 or kit: 2).");
   // The source names the app's Compose file at an exact commit (contracts/kit-format.md). Only a kit
-  // given with a Compose file on this machine (install-app --compose) may leave it out (composeOf).
+  // given with a Compose file on this machine, as apps were before the alpha scope, may leave it out (composeOf).
   const source = data.source;
   if (source !== undefined) {
     if (!isObject(source) || typeof source.repo !== "string" || typeof source.path !== "string") {
@@ -256,7 +256,7 @@ function misfit(kit: Kit, repo: string, path: string): KitError {
   return new KitError(
     kit.source
       ? `it is for ${kit.source.repo}/${kit.source.path}, not ${repo}/${path}.`
-      : "it names no Compose file in source, so it goes only with a Compose file given on this machine (install-app --compose).",
+      : "it names no Compose file in source. Add source with the app's Compose file's repo, path and commit.",
   );
 }
 
@@ -282,7 +282,7 @@ export function kitFromFile(text: string, file: { repo: string; path: string } |
 export function composeOf(kit: Kit): { repo: string; path: string; commit: string } {
   if (!kit.source) {
     throw new KitError(
-      "it names no Compose file. Add source with the app's Compose file's repo, path and commit. Only a kit given with a Compose file on this machine (install-app --compose) leaves out source.",
+      "it names no Compose file. Add source with the app's Compose file's repo, path and commit.",
     );
   }
   // parseKit refuses a source without its commit; only a kit stored before kits pinned one lacks it.

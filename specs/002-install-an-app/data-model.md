@@ -11,7 +11,7 @@ One row per app on this installation, kept after removal as the record of its re
 | id | uuid | Primary key |
 | name | text, unique | The app's short name: 1 to 30 of `a-z`, `0-9`, `-`, starting with a letter. Its origin is `<name>.<Your Space's host>` and its Compose project `ys-<name>`. |
 | title | text | Shown in the interface |
-| source_url | text | The link as given, or `sha256:<digest>` for a Compose file given on this machine (`install-app --compose`) |
+| source_url | text | The link as given, or `sha256:<digest>` for a Compose file given on this machine (`install-app --compose`, removed 2026-11-23; such apps keep their record) |
 | repo, path, ref | text | Parsed from the link. For a Compose file on this machine, `path` is its file name (empty from standard input), and `repo` and `ref` are empty |
 | commit | text | The exact commit the Compose file was read at (FR-003): since 2026-11-23, the commit the kit's `source.commit` pins; empty for a Compose file on this machine |
 | compose | text | The app's file at that commit, or as given on this machine, unchanged |

@@ -1,25 +1,24 @@
-// install-app <kit-link> | --kit <file | -> | --compose <file | -> --kit <file | -> [--name <name>],
-// then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
-// (FR-009, contracts/http-api.md). Every app installs with a kit (decision 2026-11-23). Reviews the
-// app, installs it as the operator, and waits until it runs or the install fails.
+// install-app <kit-link> | --kit <file | ->, then [--reuse-data] [--publish [--port <n>]
+// [--bind <address>] [--link <url>] [--no-frame]] [--json] (FR-009, contracts/http-api.md). Every app
+// installs from its kit, which names its Compose file on GitHub (decision 2026-11-23; a Compose file
+// on this machine, --compose, left with the alpha scope). Reviews the app, installs it as the
+// operator, and waits until it runs or the install fails.
 import { parseArgs } from "node:util";
 import { operatorActorId } from "../actors.ts";
 import { errorFields, log } from "../log.ts";
 import { SourceError } from "../apps/github.ts";
 import { KitFileError, readLocalKit } from "../apps/kits.ts";
-import { ComposeFileError, isLocalSource, readLocalCompose, sourcesProblem } from "../apps/local.ts";
+import { isLocalSource, sourcesProblem } from "../apps/local.ts";
 import { socketRuntime } from "../apps/runtime-client.ts";
 import { AppError, AppsService } from "../apps/service.ts";
 import { EXIT, localFileLine, openForCommand, output, publishedLine } from "./output.ts";
 
 const USAGE =
-  "Usage: install-app <github-link-to-kit> | --kit <file | -> | --compose <file | -> --kit <file | -> [--name <name>], then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]";
+  "Usage: install-app <github-link-to-kit> | --kit <file | ->, then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]";
 
 async function main(argv: string[]): Promise<number> {
   let values: {
     kit?: string;
-    compose?: string;
-    name?: string;
     json?: boolean;
     help?: boolean;
     "reuse-data"?: boolean;
@@ -35,8 +34,6 @@ async function main(argv: string[]): Promise<number> {
       args: argv,
       options: {
         kit: { type: "string" },
-        compose: { type: "string" },
-        name: { type: "string" },
         "reuse-data": { type: "boolean", default: false },
         publish: { type: "boolean", default: false },
         port: { type: "string" },
@@ -66,7 +63,7 @@ async function main(argv: string[]): Promise<number> {
     return values.help ? EXIT.ok : EXIT.usage;
   }
   const link = positionals[0];
-  const problem = sourcesProblem({ link, compose: values.compose, kit: values.kit, name: values.name });
+  const problem = sourcesProblem({ link, kit: values.kit });
   if (problem) {
     out.failure({ ok: false, error: "usage", message: `${problem} ${USAGE}` }, `${problem}\n${USAGE}`);
     return EXIT.usage;
@@ -77,12 +74,11 @@ async function main(argv: string[]): Promise<number> {
   const { config, database } = opened;
   const apps = new AppsService(database.db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey });
   try {
-    // The command runs in the server's container, so standard input (`--kit -` or `--compose -`) is
-    // how a file on the host reaches it. A kit's link is read from GitHub, and the kit names the
-    // app's Compose file there; a kit file on this machine names it too, unless --compose gives it.
-    const compose = values.compose !== undefined ? readLocalCompose(values.compose) : undefined;
+    // The command runs in the server's container, so standard input (`--kit -`) is how a file on the
+    // host reaches it. A kit's link is read from GitHub, and the kit names the app's Compose file
+    // there; a kit file on this machine names it too.
     const kitText = values.kit !== undefined ? readLocalKit(values.kit) : undefined;
-    const review = await apps.preview(kitText !== undefined ? { text: kitText } : { link: link! }, compose, values.name);
+    const review = await apps.preview(kitText !== undefined ? { text: kitText } : { link: link! });
     if (!review.ok) {
       const reasons = review.refusals.map((r) => `  - ${r.service ? `${r.service}: ` : ""}${r.reason}`);
       out.failure({ ok: false, error: "refused", name: review.name, refusals: review.refusals }, [`Your Space can't run ${review.title} as it is:`, ...reasons].join("\n"));
@@ -138,15 +134,11 @@ async function main(argv: string[]): Promise<number> {
       out.failure({ ok: false, error: "kit_file", message: error.message }, error.message);
       return EXIT.notApplicable;
     }
-    if (error instanceof ComposeFileError) {
-      out.failure({ ok: false, error: "compose_file", message: error.message }, error.message);
-      return EXIT.notApplicable;
-    }
     if (error instanceof AppError) {
       // A kit Your Space can't read from GitHub, as in a private repository, can come from this machine.
       const message =
         error.code === "kit_not_found"
-          ? `${error.message} If the kit is in a private repository, give the kit file instead: install-app --kit - < kit.yaml. A kit that names no source file goes with its Compose file: install-app --compose <file> --kit <file>.`
+          ? `${error.message} If the kit is in a private repository, give the kit file instead: install-app --kit - < kit.yaml. The kit names the app's Compose file in a public repository.`
           : error.message;
       out.failure({ ok: false, error: error.code, message }, message);
       return error.status >= 500 ? EXIT.storage : EXIT.notApplicable;

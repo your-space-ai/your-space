@@ -341,10 +341,11 @@ export class AppsService {
    * Reviews an app from its kit (decision 2026-11-23): the kit's GitHub link, read at the commit the
    * link resolves to now, or a kit file's text given on this machine. The kit names the app's Compose
    * file on GitHub at an exact commit (composeOf), and the review reads it there. With a Compose file
-   * given on this machine, the kit is a file given with it, nothing is read from GitHub, and the app's
-   * name is the one the owner gives, else its kit's.
+   * given on this machine, the kit is a file given with it, nothing is read from GitHub, and the app
+   * takes its kit's name. No command gives one since the alpha scope (2026-11-23); it stands for an
+   * app installed that way before, which keeps running from its stored file.
    */
-  async preview(kit: { link: string } | { text: string }, compose?: LocalCompose, appName?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
+  async preview(kit: { link: string } | { text: string }, compose?: LocalCompose): Promise<ReturnType<AppsService["reviewOf"]>> {
     const github = this.config.github ?? githubEndpoints();
     const fetcher = this.config.fetch ?? fetch;
     let source: SourceFile;
@@ -374,16 +375,16 @@ export class AppsService {
       if (error instanceof SourceError || error instanceof KitError) throw new AppError(400, "source", error.message);
       throw error;
     }
-    return this.previewResolved(source, found, appName);
+    return this.previewResolved(source, found);
   }
 
   /** The review of a kit and the Compose file it names, both already read. HTTP callers never
    * supply trusted source, commit, or review metadata. */
-  async previewResolved(source: SourceFile, found: FoundKit, appName?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
+  async previewResolved(source: SourceFile, found: FoundKit): Promise<ReturnType<AppsService["reviewOf"]>> {
     for (const [id, p] of this.previews) if (p.expiresAt < Date.now()) this.previews.delete(id);
     const kit = found.kit;
-    const name = source.repo ? (kit.name ?? slug(source.repo.split("/")[1]!)) : (appName ?? kit.name);
-    if (!name) throw new AppError(400, "name_required", "Name the app with --name, or give a kit that names it.");
+    const name = source.repo ? (kit.name ?? slug(source.repo.split("/")[1]!)) : kit.name;
+    if (!name) throw new AppError(400, "name_required", "Give a kit that names the app.");
     if (!/^[a-z][a-z0-9-]{0,29}$/.test(name)) throw new AppError(400, "bad_name", "An app's name is 1 to 30 lower-case letters, digits and dashes, starting with a letter.");
     if (RESERVED_NAMES.has(name)) throw new AppError(400, "name_reserved", `The name ${name} is reserved by Your Space.`);
     const existing = (await this.db.select().from(app).where(eq(app.name, name)))[0];

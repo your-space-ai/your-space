@@ -73,7 +73,6 @@ never shown in the pane.
 ```bash
 docker compose exec -T server install-app <github-link-to-kit> [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
 docker compose exec -T server install-app --kit <file | -> [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
-docker compose exec -T server install-app --compose <file | -> --kit <file | -> [--name <name>] [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
 docker compose exec server publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--frame | --no-frame] [--off] [--json]
 docker compose exec server list-apps [--json]
 docker compose exec runtime stop-apps
@@ -90,19 +89,12 @@ must have `source`, with its `commit`. Given a Compose file's link, or a Compose
 nothing and says that installs need a kit. With `--json`, the result has the kit's `kit` source: its
 link at its commit, or its digest.
 
-`--compose` installs from a Compose file on this machine instead of the one a kit names on GitHub,
-for an app whose own file doesn't fit Your Space's rules: `-` reads it from standard input, and any
-other value is the file, at most 256 KB. It is checked and adapted like a file from GitHub, and
-recorded as `sha256:<digest>` with its file name; Your Space reads nothing from GitHub for it, not
-even the kits repository, and later starts use the stored text. It needs a kit, which is only the
-one `--kit <file | ->` gives: giving both in one command is what binds them, so the kit's `source`
-isn't matched and may be left out. The app's name is `--name`, else the kit's `name`; with neither, the command refuses. The two
-share standard input, so only one of `--compose` and `--kit` can be `-`; put the other in the
-server's container first, for example with `docker compose exec -T server sh -c 'cat > /tmp/kit.yaml'
-< kit.yaml`. Data kept under the name can be reused with `--reuse-data` whichever source it came
-from, since a file on this machine has no repository to compare. With `--json`, the result has
-`source: "sha256:<digest>"` in place of `commit`, and `list-apps --json` gives each app's `source`:
-the link to its Compose file, or the digest; its `commit` is the exact commit read. An installed app
+`--compose` and `--name` are gone (2026-11-23, [alpha scope](../../../docs/architecture/decisions.md#alpha-scope)):
+the owner no longer gives the command a Compose file on this machine, and `--files-stdin` left with
+journey 011's creator features. An app installed from one
+before is recorded as `sha256:<digest>` and keeps starting from its stored text; `list-apps --json`
+gives each app's `source`: the link to its Compose file, or that digest, and its `commit` is the
+exact commit read. Data kept under a name can be reused with `--reuse-data`. An installed app
 follows no branch: a newer kit, or the newer Compose commit it pins, reaches it only when the owner
 chooses to install it. Offering a newer kit as an update is left to journey 006.
 
