@@ -23,8 +23,20 @@ const messages = {
   invalid_input: "Enter a name of up to 100 characters and a username of 3–30 letters, digits, underscores, or periods.",
   invalid_workspace: "The selected installation did not report a running local Your Space workspace.",
   busy: "A local setup operation is already in progress.",
+  downgrade_refused: "This workspace was set up by a newer version of Your Space. Install the latest Your Space app to open it.",
+  installation_busy: "Another Your Space command is changing the local workspace. Wait for it to finish, then retry.",
+  upgrade_interrupted: "An earlier upgrade of the local workspace stopped part way. Use the upgrade guide to recover it, then retry.",
+  upgrade_failed: "Your Space could not upgrade the local workspace to this version. Check your internet connection and Docker, then retry.",
   unexpected: "The local setup command could not finish. Check Docker and retry.",
 };
+
+// Failures `upgrade` can report in the launcher's own words; any other becomes upgrade_failed.
+const upgradeCodes = new Set(["docker_missing", "engine_missing", "engine_unsupported", "compose_missing", "permission_denied",
+  "checksum_mismatch", "downgrade_refused", "installation_busy", "upgrade_interrupted"]);
+// Failures `upgrade` reports before it stops, changes or starts anything.
+const upgradeRefusals = new Set(["usage", "installation_busy", "upgrade_interrupted", "version_unknown",
+  "downgrade_refused", "checksum_mismatch", "download_failed"]);
+const minutes = 60_000;
 
 export function localSetupError(code) {
   const safe = Object.hasOwn(messages, code) ? code : "unexpected";
@@ -32,9 +44,9 @@ export function localSetupError(code) {
 }
 
 // Capture operator JSON only in this process. Docker's stderr or the CLI's raw output can contain secrets.
-function runProcess(program, args, { env, timeout = 30_000 }) {
+function runProcess(program, args, { env, timeout = 30_000, signal }) {
   return new Promise((accept, reject) => {
-    execFile(program, args, { env, shell: false, timeout, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
+    execFile(program, args, { env, shell: false, timeout, signal, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
       if (error && typeof error.code !== "number") {
         reject(localSetupError(error.code === "ENOENT" && program === "docker" ? "docker_missing" : "unexpected"));
       } else accept({ code: error?.code ?? 0, stdout });
@@ -59,7 +71,9 @@ function localOrigin(summary) {
   return url.origin;
 }
 
-export function createLocalSetup({ folder, cli, releaseDir, run = runProcess, env = process.env }) {
+// `version` is the app's own, which its bundled CLI shares. After the app changes version, the next
+// start first runs `upgrade` so the installation matches it; `versionFile` records the last match.
+export function createLocalSetup({ folder, cli, releaseDir, version, versionFile, run = runProcess, env = process.env }) {
   if (!isAbsolute(folder) || !cli || !isAbsolute(cli.program)) throw localSetupError("unexpected");
   const stateFile = ".desktop-engine.json";
   const installation = resolve(folder);
@@ -69,22 +83,68 @@ export function createLocalSetup({ folder, cli, releaseDir, run = runProcess, en
     env.HOME && join(env.HOME, ".orbstack/bin")].filter(Boolean).join(":") };
   for (const key of ["HOME", "USER", "TMPDIR", "LANG", "DOCKER_CONFIG"]) if (env[key]) base[key] = env[key];
   let busy = false;
+  let pending = Promise.resolve();
+  // Whether this process has asked the CLI to start the installation since it last stopped it.
+  let started = false;
 
   async function exclusive(fn) {
     if (busy) throw localSetupError("busy");
     busy = true;
-    try { return await fn(); } finally { busy = false; }
+    const work = fn();
+    pending = work.catch(() => {});
+    try { return await work; } finally { busy = false; }
   }
 
-  async function command(socket, workdir, args) {
+  async function invoke(socket, workdir, args, options = {}) {
     const result = await run(cli.program, [...(cli.args ?? []), "--json", "--workdir", workdir, ...args], {
       env: { ...base, DOCKER_HOST: "unix://" + socket },
-      timeout: args.includes("start") ? 10 * 60_000 : 30_000,
+      timeout: options.timeout ?? (["start", "upgrade"].includes(args[0]) ? 10 * minutes : 30_000),
+      signal: options.signal,
     });
     let value;
-    try { value = JSON.parse(result.stdout); } catch { throw localSetupError("unexpected"); }
-    if (result.code !== 0 || value.ok !== true) throw localSetupError(value.error);
+    try { value = JSON.parse(result.stdout); } catch { value = undefined; }
+    return { code: result.code, value };
+  }
+
+  async function command(socket, workdir, args, options) {
+    const { code, value } = await invoke(socket, workdir, args, options);
+    if (!value) throw localSetupError("unexpected");
+    if (code !== 0 || value.ok !== true) throw localSetupError(value.error);
     return value;
+  }
+
+  async function recordedVersion() {
+    try { return JSON.parse(await readFile(versionFile, "utf8")).version; } catch { return undefined; }
+  }
+
+  async function recordVersion() {
+    if (!versionFile) return;
+    await mkdir(dirname(versionFile), { recursive: true, mode: 0o700 });
+    const temporary = versionFile + "." + process.pid + ".tmp";
+    try {
+      await writeFile(temporary, JSON.stringify({ version }), { mode: 0o600 });
+      await rename(temporary, versionFile);
+    } finally { await rm(temporary, { force: true }); }
+  }
+
+  // Brings an existing installation to the app's version: the shared `upgrade` contract with the CLI,
+  // from the release files bundled with the app, as `init` uses them.
+  async function upgrade(socket) {
+    if (!version || !versionFile || await recordedVersion() === version) return;
+    // `upgrade` starts the installation, and one that fails after changing it starts the previous
+    // version again, so the installation counts as started while it runs. A refusal leaves it as it was.
+    const before = started;
+    started = true;
+    const bundled = releaseDir && isAbsolute(releaseDir) ? ["--release-dir", releaseDir] : [];
+    const { code, value } = await invoke(socket, installation, ["upgrade", "--yes", ...bundled]);
+    if (value?.ok === true && code === 0) {
+      if (value.to === version) await recordVersion();
+      return;
+    }
+    if (upgradeRefusals.has(value?.error)) started = before;
+    // A CLI built before `upgrade` existed answers with a usage error. Start as before and retry next time.
+    if (value?.error === "usage" && /unknown command/i.test(String(value.message))) return;
+    throw localSetupError(upgradeCodes.has(value?.error) ? value.error : "upgrade_failed");
   }
 
   async function contexts() {
@@ -183,6 +243,7 @@ export function createLocalSetup({ folder, cli, releaseDir, run = runProcess, en
       await writeFile(join(stage, stateFile), JSON.stringify(engine), { mode: 0o600, flag: "wx" });
       await rename(stage, installation);
     } finally { await rm(stage, { recursive: true, force: true }); }
+    if (version) await recordVersion();
   }
 
   function sameEngine(saved, requested) {
@@ -196,14 +257,33 @@ export function createLocalSetup({ folder, cli, releaseDir, run = runProcess, en
         const saved = await record();
         const pick = await selected(engine);
         if (expectedSocket !== undefined && expectedSocket !== pick.socket) throw localSetupError("engine_changed");
-        if (saved) sameEngine(saved, pick);
-        else await install(pick);
-        const started = await command(pick.socket, installation, ["start", "--require-project-check", "--defer-owner", "--no-open", "--yes"]);
-        const origin = localOrigin(started);
+        if (saved) {
+          sameEngine(saved, pick);
+          await upgrade(pick.socket);
+        } else await install(pick);
+        started = true;
+        const result = await command(pick.socket, installation, ["start", "--require-project-check", "--defer-owner", "--no-open", "--yes"]);
+        const origin = localOrigin(result);
         const status = await command(pick.socket, installation, ["status", "--require-running"]);
-        if (localOrigin(status) !== origin || Boolean(status.owner) !== Boolean(started.owner)) throw localSetupError("invalid_workspace");
+        if (localOrigin(status) !== origin || Boolean(status.owner) !== Boolean(result.owner)) throw localSetupError("invalid_workspace");
         return { state: status.owner ? "ready" : "owner-needed", origin };
       });
+    },
+    // True once this process has started the installation, until stop() succeeds. Quitting uses it to
+    // decide synchronously whether there is a workspace to stop.
+    mayBeRunning: () => started,
+    // Stops the installation this process started, with the engine it was set up on. It waits for a
+    // start in progress to finish first, so the two never run at once; the caller bounds the wait.
+    async stop({ timeout = 2 * minutes, signal } = {}) {
+      while (busy) await pending;
+      if (!started) return { stopped: [] };
+      const saved = await record();
+      if (!saved) throw localSetupError("invalid_workspace");
+      // Like start, act only on the daemon the installation was set up on.
+      sameEngine(saved, { socket: saved.socket, id: await preflight(saved.socket) });
+      const result = await command(saved.socket, installation, ["stop", "--yes"], { timeout, signal });
+      started = false;
+      return result;
     },
     createOwner({ name, username }) {
       return exclusive(async () => {

@@ -49,6 +49,24 @@ test('native launcher opens a workspace, isolates its app and reopens the saved 
     await expect(child).toHaveURL(origin + '/app');
     assert.equal(await child.evaluate(() => typeof window.yourSpace), 'undefined');
     assert.deepEqual(JSON.parse(await readFile(join(userData, 'connection.json'), 'utf8')), {origin, local:false});
+    // From source, Playwright also reaches the main process: closing the workspace window keeps the app
+    // running with the window hidden, the Dock icon shows it again, and the app menu offers updates.
+    if (typeof client.evaluate === 'function') {
+      const windows = () => client.evaluate(({BrowserWindow}, address) => BrowserWindow.getAllWindows()
+        .map(win => ({url: win.webContents.getURL(), visible: win.isVisible()})).filter(win => win.url.startsWith(address)), origin);
+      await child.close();
+      await client.evaluate(({BrowserWindow}, address) => BrowserWindow.getAllWindows()
+        .find(win => win.webContents.getURL() === address + '/').close(), origin);
+      await expect.poll(windows).toEqual([{url: origin + '/', visible: false}]);
+      await client.evaluate(({app}) => app.emit('activate'));
+      await expect.poll(windows).toEqual([{url: origin + '/', visible: true}]);
+      const menu = await client.evaluate(({Menu}) => Menu.getApplicationMenu().items[0].submenu.items
+        .filter(item => /Update/.test(item.label)).map(({label, type, checked}) => ({label, type, checked})));
+      assert.deepEqual(menu, [
+        {label:'Check for Updates…', type:'normal', checked:false},
+        {label:'Check for Updates Automatically', type:'checkbox', checked:false},
+      ]);
+    }
     await client.close();
     client = await launch();
     const reopened = await client.firstWindow();

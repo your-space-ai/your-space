@@ -60,6 +60,8 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 - [x] Build preview DMGs for Apple Silicon and Intel. Both copies launched after copying to Applications and ejecting the image. The Intel preview ran under Rosetta. With Docker stopped, a native Mac reached the remote HTTPS sign-in page. On disposable Linux, local setup created and resumed a workspace. The packaged Mac app connected to it, installed a fixture kit, and opened its app. (2026-11-21, [PR #68](https://github.com/your-space-ai/your-space/pull/68)) [Mac preview verification](https://github.com/your-space-ai/your-space/blob/main/specs/008-desktop-entry/verification.md)
 - [ ] **First packaged release.** Download the signed and notarized DMGs from GitHub Releases. On clean Apple Silicon and native Intel Macs, verify the signature and notarization, drag the app to Applications, eject the image, and run the installed app and CLI.
 - [ ] Set up Docker on the same Mac with the published images and sign in to a remote server on a Mac without Docker. Review, install and open an independent kit through each path on the candidate. [Desktop journey](https://github.com/your-space-ai/your-space/blob/main/specs/008-desktop-entry/spec.md)
+- [ ] **First packaged release.** Close and quit like a Mac app: closing the window keeps the app and its local workspace running, and quitting stops the local workspace it started, without holding up logout or shutdown. Built in [PR #108](https://github.com/your-space-ai/your-space/pull/108); verify on Apple Silicon and Intel Macs. [Desktop journey](https://github.com/your-space-ai/your-space/blob/main/specs/008-desktop-entry/spec.md#what-the-owner-does)
+- [ ] **First packaged release.** Update the Mac app from GitHub Releases, prereleases included: **Check for Updates…** and a daily automatic check the owner can turn off, then the local workspace upgraded to the app's version with the CLI. Built in [PR #108](https://github.com/your-space-ai/your-space/pull/108); verify by updating from one signed release to the next.
 
 - [ ] **008 · Extend desktop support beyond the first Mac release** · *Deferred journey*
   - **Platforms and distribution**
@@ -74,7 +76,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
     - [ ] Distribute `.deb` and `.rpm` packages, standalone macOS CLI downloads and a Homebrew formula.
   - **Desktop experience**
     - [ ] Show installed apps in native views, one per app, instead of iframes.
-    - [ ] Update the desktop app itself, checking GitHub for new releases.
+    - [ ] Update the desktop app itself, checking GitHub for new releases. *Moved to the first packaged release for the Mac app (2026-11-23); the other operating systems' apps follow their builds.*
     - [ ] Provide a Docker-compatible engine: Your Space's own virtual machine by default on macOS (and later Windows), or an engine the owner already runs as an advanced option.
     - [ ] Streamline local owner setup with one desktop form that drives the existing owner command and sets the password on the user's behalf.
   - **Local workspace operations**

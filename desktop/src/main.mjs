@@ -1,12 +1,17 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, autoUpdater as nativeUpdater, powerMonitor, session, shell } from 'electron';
+import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { launcherTheme } from './appearance.mjs';
 import { createLocalSetup, localSetupError } from './local-setup.mjs';
+import { createQuitControl, stopTimeouts } from './quit.mjs';
+import { createUpdates } from './updates.mjs';
 import { checkWorkspace, lastWorkspace, linkTarget, ownerDestination, rememberWorkspace, webDestination, WorkspaceError, workspaceOrigin, workspacePartition } from './workspace.mjs';
 
 const desktop = fileURLToPath(new URL('..', import.meta.url));
 const launcherURL = pathToFileURL(join(desktop, 'renderer/index.html')).href;
+const openingURL = pathToFileURL(join(desktop, 'renderer/opening.html')).href;
+const stoppingURL = pathToFileURL(join(desktop, 'renderer/stopping.html')).href;
 const preferences = { sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false, webSecurity: true, navigateOnDragDrop: false };
 app.setName('Your Space');
 if (!app.commandLine.hasSwitch('user-data-dir')) {
@@ -18,10 +23,85 @@ const local = createLocalSetup({
     { program: '/usr/bin/env', args: ['node', resolve(desktop, '../cli/dist/your-space.cjs')] },
   releaseDir: app.isPackaged ? join(process.resourcesPath, 'release') :
     resolve(process.env.YS_DESKTOP_RELEASE_DIR || join(desktop, 'dist/release')),
+  version: app.getVersion(),
+  versionFile: join(app.getPath('userData'), 'local-version.json'),
 });
 const savedFile = join(app.getPath('userData'), 'connection.json');
 let launcher;
+// The workspace window the launcher opened last. Closing it hides it, and the Dock icon shows it again.
+let primary;
 let busy = false;
+
+// A sheet on a visible window when there is one: on macOS a message box without a parent window
+// runs synchronously and can't be closed by its signal.
+function message(options, parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows().find(win => win.isVisible())) {
+  const settings = { type: 'info', buttons: ['OK'], ...options };
+  return parent ? dialog.showMessageBox(parent, settings) : dialog.showMessageBox(settings);
+}
+
+// Quitting stops the local workspace this app started; closing a window doesn't (quit.mjs).
+const quitControl = createQuitControl({
+  needsStop: () => local.mayBeRunning(),
+  stop: signal => local.stop({ timeout: stopTimeouts.quit, signal }),
+  onStopping: () => {
+    busy = true;
+    for (const win of BrowserWindow.getAllWindows()) if (win !== launcher) win.hide();
+    showLauncher(stoppingURL);
+    launcher.setProgressBar(2);
+  },
+  onFailed: async (error, timedOut, signal) => {
+    // On the stopping window, shown again if the owner closed it, so logout can close the sheet.
+    showLauncher(stoppingURL);
+    await message({
+      signal,
+      type: 'warning', message: 'Your Space could not stop the local workspace',
+      detail: (timedOut ? `It was still stopping after ${stopTimeouts.quit / 60_000} minutes. ` : '') +
+        'Your Space quits anyway, and the workspace and its apps may still be running in Docker. ' +
+        'To stop them, open Your Space and quit it again.',
+      buttons: ['Quit'],
+    }, launcher);
+  },
+  quit: () => app.quit(),
+});
+
+const updates = createUpdates({
+  // Only the packaged app carries the updater and the app-update.yml it reads (package-macos.sh).
+  load: () => app.isPackaged ? createRequire(import.meta.url)(join(desktop, 'vendor/electron-updater.cjs')).autoUpdater : null,
+  settingsFile: join(app.getPath('userData'), 'updates.json'),
+  beforeInstall: install => quitControl.beforeInstall(install),
+  squirrel: nativeUpdater,
+  ui: {
+    unavailable: () => message({ message: 'Updates work only in the installed app',
+      detail: 'This copy of Your Space runs from its source, so it doesn’t check for new versions.' }),
+    upToDate: () => message({ message: 'Your Space is up to date', detail: `Version ${app.getVersion()} is the newest available.` }),
+    busy: () => message({ message: 'Your Space is already checking for updates' }),
+    failed: (error, stage) => message({
+      type: 'warning',
+      message: {check: 'Your Space could not check for updates', download: 'Your Space could not download the update',
+        install: 'Your Space could not install the update'}[stage],
+      detail: (stage === 'install' ?
+        'macOS didn’t accept the downloaded version. Download Your Space again from its GitHub releases.' :
+        'Check your internet connection, then try again from Your Space › Check for Updates…') +
+        (typeof error?.code === 'string' && /^ERR_[A-Z_]+$/.test(error.code) ? ` (${error.code})` : ''),
+    }),
+    available: async info => (await message({
+      message: `Your Space ${info.version} is available`,
+      detail: `You have version ${app.getVersion()}. Download it now? Your Space installs it when you restart or quit.`,
+      buttons: ['Download', 'Not Now'], defaultId: 0, cancelId: 1,
+    })).response === 0,
+    downloaded: async info => (await message({
+      message: `Your Space ${info.version} is ready to install`,
+      detail: local.mayBeRunning() ?
+        'Restarting stops your local workspace, updates Your Space, then starts the workspace again on the new version.' :
+        'Restart Your Space to finish updating, or it updates when you quit.',
+      buttons: ['Restart Now', 'Later'], defaultId: 0, cancelId: 1,
+    })).response === 0,
+    progress: fraction => {
+      const win = launcher && !launcher.isDestroyed() ? launcher : BrowserWindow.getAllWindows()[0];
+      win?.setProgressBar(fraction);
+    },
+  },
+});
 
 function secureSession(partition, origin) {
   const browser = session.fromPartition(partition);
@@ -40,6 +120,8 @@ function secureSession(partition, origin) {
 
 function showLauncher(page = launcherURL) {
   if (typeof page !== 'string') page = launcherURL;
+  // While the app stops its local workspace to quit, the launcher shows only that.
+  if (quitControl.stopping && page !== stoppingURL) return;
   if (launcher && !launcher.isDestroyed()) {
     if (launcher.webContents.getURL() !== page) void launcher.loadURL(page).catch(() => {});
     launcher.show();
@@ -104,6 +186,20 @@ async function openWorkspace(value, {ownerLink, localInstall = false} = {}) {
     win.destroy();
     throw new WorkspaceError('open_failed', 'Could not open this workspace. Check the connection and try again.');
   }
+  if (quitControl.stopping) {
+    win.destroy();
+    throw new WorkspaceError('open_failed', 'Your Space is quitting.');
+  }
+  // A hidden earlier workspace window could never be shown again; one still open stays open.
+  if (primary && !primary.isDestroyed() && !primary.isVisible()) primary.destroy();
+  primary = win;
+  win.on('close', event => {
+    if (win !== primary || quitControl.quitting) return;
+    // Closing the window keeps the app, and any local workspace, running, as on any Mac.
+    event.preventDefault();
+    win.hide();
+  });
+  win.on('closed', () => { if (primary === win) primary = undefined; });
   win.show();
   launcher?.hide();
   return {state: 'ready', origin};
@@ -119,7 +215,9 @@ async function startLocal(input) {
 }
 
 async function reopen() {
-  if (busy) return;
+  // Nothing starts while the app stops its local workspace to quit or update.
+  const quitting = () => quitControl.stopping || quitControl.quitting;
+  if (busy || quitting()) return;
   busy = true;
   let openingLocal = false;
   try {
@@ -128,17 +226,17 @@ async function reopen() {
     if (!last.local) return await openWorkspace(last.origin);
     // Local Docker startup can take minutes. Show progress while reconnecting on launch.
     openingLocal = true;
-    showLauncher(pathToFileURL(join(desktop, 'renderer/opening.html')).href);
+    showLauncher(openingURL);
     launcher.setProgressBar(2);
     const {saved} = await local.engines();
-    if (saved) {
+    if (saved && !quitting()) {
       const result = await startLocal({engine: saved.name, expectedSocket: saved.socket});
       if (result.state === 'ready') return;
     }
   } catch { /* The launcher lets the owner retry local setup or enter an address. */ }
   finally {
     busy = false;
-    if (openingLocal && launcher && !launcher.isDestroyed()) {
+    if (openingLocal && launcher && !launcher.isDestroyed() && !quitControl.stopping) {
       launcher.setProgressBar(-1);
       await launcher.loadURL(launcherURL).catch(() => {});
     }
@@ -177,24 +275,44 @@ function installHandlers() {
   }
 }
 
+function buildMenu() {
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {label: app.name, submenu: [
+      {role: 'about'},
+      {label: 'Check for Updates…', click: () => void updates.check()},
+      {label: 'Check for Updates Automatically', type: 'checkbox', checked: updates.automatic,
+        click: item => void updates.setAutomatic(item.checked).catch(() => {}).finally(buildMenu)},
+      {type: 'separator'}, {role: 'services'},
+      {type: 'separator'}, {role: 'hide'}, {role: 'hideOthers'}, {role: 'unhide'},
+      {type: 'separator'}, {role: 'quit'},
+    ]},
+    {label: 'Workspace', submenu: [
+      {label: 'Choose a workspace…', accelerator: 'CmdOrCtrl+Shift+O', click: showLauncher},
+      {label: 'Reopen last workspace', click: () => void reopen()},
+      {type: 'separator'}, {role: 'close'},
+    ]},
+    {role: 'editMenu'}, {role: 'windowMenu'},
+  ]));
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => { if (app.isReady()) showLauncher(); });
+  app.on('second-instance', () => { if (app.isReady() && !quitControl.stopping) showLauncher(); });
   app.on('activate', () => {
-    if (app.isReady() && !BrowserWindow.getAllWindows().some(win => win.isVisible()) && !busy) showLauncher();
+    if (!app.isReady() || quitControl.stopping || BrowserWindow.getAllWindows().some(win => win.isVisible())) return;
+    if (primary && !primary.isDestroyed()) primary.show();
+    else if (!busy) showLauncher();
   });
-  app.whenReady().then(() => {
+  // Without this handler Electron quits when the last window closes. On a Mac, the app stays open.
+  app.on('window-all-closed', () => {});
+  app.on('before-quit', event => quitControl.beforeQuit(event));
+  app.whenReady().then(async () => {
     installHandlers();
-    Menu.setApplicationMenu(Menu.buildFromTemplate([
-      {role: 'appMenu'},
-      {label: 'Workspace', submenu: [
-        {label: 'Choose a workspace…', accelerator: 'CmdOrCtrl+Shift+O', click: showLauncher},
-        {label: 'Reopen last workspace', click: () => void reopen()},
-        {type: 'separator'}, {role: 'close'},
-      ]},
-      {role: 'editMenu'}, {role: 'windowMenu'},
-    ]));
+    // Logout, restart and shutdown stop the local workspace with a short bound and no dialog.
+    powerMonitor.on('shutdown', () => quitControl.systemEnding());
+    await updates.start().catch(() => {});
+    buildMenu();
     void reopen();
   });
 }

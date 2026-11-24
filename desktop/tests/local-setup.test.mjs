@@ -47,11 +47,21 @@ async function fixture(t) {
         assert.ok(command.includes("--require-project-check"));
         assert.ok(command.includes("--defer-owner"));
         assert.ok(command.includes("--no-open"));
+        if (app.startFailure) return failed(app.startFailure);
         break;
       case "status":
         assert.ok(command.includes("--require-running"));
         if (app.statusFailure) return failed(app.statusFailure);
         break;
+      case "upgrade":
+        assert.deepEqual(command, ["upgrade", "--yes", "--release-dir", "/bundle/release"]);
+        if (app.upgrade) return app.upgrade();
+        return { code: 1, stdout: JSON.stringify({ ok: false, error: "usage", message: "unknown command 'upgrade'" }) };
+      case "stop":
+        assert.deepEqual(command, ["stop", "--yes"]);
+        app.stopped = (app.stopped ?? 0) + 1;
+        if (app.stopFailure) return failed(app.stopFailure);
+        return ok({ stopped: [] });
       case "owner":
         app.owner = { name: command[2].slice("--name=".length), username: command[3].slice("--username=".length) };
         if (app.racingUsername) app.owner.username = app.racingUsername;
@@ -62,11 +72,13 @@ async function fixture(t) {
     return ok({ running: app.ready, setup: { kind: "this-machine", address: app.address ?? "http://space.localhost:8081" },
       services: ["caddy", "server"].map(name => ({ name, state: "running" })), owner: app.owner });
   }
-  function service() {
+  const versionFile = join(root, "local-version.json");
+  function service(version) {
     return createLocalSetup({ folder, cli: { program: "/bundle/your-space" }, releaseDir: "/bundle/release", run,
+      version, versionFile: version ? versionFile : undefined,
       env: { HOME: root, DOCKER_CONTEXT: "local", COMPOSE_PROJECT_NAME: "other", YS_E2E_RELEASES: "http://elsewhere.invalid" } });
   }
-  return { app, folder, calls, service };
+  return { app, folder, calls, service, versionFile };
 }
 
 test("discovers only available Unix engines and skips remote contexts without contacting them", async t => {
@@ -147,4 +159,142 @@ test("a different owner claiming during setup returns to recovery", async t => {
   app.racingClaim = true;
   app.racingUsername = "another";
   await assert.rejects(service().createOwner({name:"-Sam",username:"sam"}),{code:"invalid_workspace"});
+});
+
+test("after the app changes version, upgrades the installation before starting it, once", async t => {
+  const { app, calls, service, versionFile } = await fixture(t);
+  await service("0.1.0-alpha.1").start({ engine: app.socket });
+  assert.deepEqual(JSON.parse(await readFile(versionFile, "utf8")), { version: "0.1.0-alpha.1" });
+  assert.equal(calls.filter(c => c.args[3] === "upgrade").length, 0, "a fresh installation is already at the app's version");
+  await service("0.1.0-alpha.1").start({ engine: app.socket });
+  assert.equal(calls.filter(c => c.args[3] === "upgrade").length, 0);
+
+  app.upgrade = () => ({ code: 0, stdout: JSON.stringify({ ok: true, from: "0.1.0-alpha.1", to: "0.1.0-alpha.2", backup: "/backups/1" }) });
+  await service("0.1.0-alpha.2").start({ engine: app.socket });
+  const order = calls.map(c => c.args[3]).filter(name => ["upgrade", "start"].includes(name));
+  assert.deepEqual(order.slice(-2), ["upgrade", "start"]);
+  assert.deepEqual(JSON.parse(await readFile(versionFile, "utf8")), { version: "0.1.0-alpha.2" });
+  await service("0.1.0-alpha.2").start({ engine: app.socket });
+  assert.equal(calls.filter(c => c.args[3] === "upgrade").length, 1);
+  assert.equal(calls.find(c => c.args[3] === "upgrade").args[2], calls.find(c => c.args[3] === "start").args[2]);
+});
+
+test("starts as before when the bundled CLI has no upgrade command, and asks again next time", async t => {
+  const { app, calls, service, versionFile } = await fixture(t);
+  await service().start({ engine: app.socket });
+  assert.deepEqual(await service("0.1.0-alpha.2").start({ engine: app.socket }), { state: "owner-needed", origin: "http://space.localhost:8081" });
+  await assert.rejects(readFile(versionFile, "utf8"), { code: "ENOENT" });
+  await service("0.1.0-alpha.2").start({ engine: app.socket });
+  assert.equal(calls.filter(c => c.args[3] === "upgrade").length, 2);
+
+  app.upgrade = () => ({ code: 0, stdout: JSON.stringify({ ok: true, from: "0.1.0-alpha.2", to: "0.1.0-alpha.2", upToDate: true }) });
+  await service("0.1.0-alpha.2").start({ engine: app.socket });
+  assert.deepEqual(JSON.parse(await readFile(versionFile, "utf8")), { version: "0.1.0-alpha.2" });
+});
+
+test("refuses to open an installation newer than the app, and reports other upgrade failures without starting", async t => {
+  const { app, calls, service, versionFile } = await fixture(t);
+  await service().start({ engine: app.socket });
+  const starts = () => calls.filter(c => c.args[3] === "start").length;
+  const before = starts();
+  app.upgrade = () => ({ code: 2, stdout: JSON.stringify({ ok: false, error: "downgrade_refused", message: "newer" }) });
+  await assert.rejects(service("0.1.0-alpha.1").start({ engine: app.socket }),
+    error => error.code === "downgrade_refused" && /newer version of Your Space/.test(error.message));
+  app.upgrade = () => ({ code: 3, stdout: JSON.stringify({ ok: false, error: "download_failed", detail: "private" }) });
+  await assert.rejects(service("0.1.0-alpha.3").start({ engine: app.socket }), { code: "upgrade_failed" });
+  app.upgrade = () => ({ code: 2, stdout: JSON.stringify({ ok: false, error: "engine_missing" }) });
+  await assert.rejects(service("0.1.0-alpha.3").start({ engine: app.socket }), { code: "engine_missing" });
+  app.upgrade = () => ({ code: 4, stdout: "not json" });
+  await assert.rejects(service("0.1.0-alpha.3").start({ engine: app.socket }), { code: "upgrade_failed" });
+  app.upgrade = () => ({ code: 1, stdout: JSON.stringify({ ok: false, error: "usage", message: "unknown option '--yes'" }) });
+  await assert.rejects(service("0.1.0-alpha.3").start({ engine: app.socket }), { code: "upgrade_failed" });
+  // The bundled release files failing their check, another command holding the installation and an
+  // earlier upgrade killed part way each get their own words; retrying alone fixes none.
+  for (const code of ["checksum_mismatch", "installation_busy", "upgrade_interrupted"]) {
+    app.upgrade = () => ({ code: 2, stdout: JSON.stringify({ ok: false, error: code, message: "private" }) });
+    await assert.rejects(service("0.1.0-alpha.3").start({ engine: app.socket }),
+      error => error.code === code && !/internet/.test(error.message) && !error.message.includes("private"));
+  }
+  assert.equal(starts(), before);
+  await assert.rejects(readFile(versionFile, "utf8"), { code: "ENOENT" });
+});
+
+test("start refuses an installation an earlier upgrade left part way, or one another command is changing", async t => {
+  const { app, service } = await fixture(t);
+  await service().start({ engine: app.socket });
+  app.startFailure = "upgrade_interrupted";
+  await assert.rejects(service().start({ engine: app.socket }),
+    error => error.code === "upgrade_interrupted" && /upgrade guide/.test(error.message));
+  app.startFailure = "installation_busy";
+  await assert.rejects(service().start({ engine: app.socket }),
+    error => error.code === "installation_busy" && /Wait for it to finish/.test(error.message));
+});
+
+test("a failed upgrade may have started the workspace again, so quitting still stops it", async t => {
+  const { app, service } = await fixture(t);
+  await service().start({ engine: app.socket });
+  const local = service("0.1.0-alpha.2");
+  // For example, the new version didn't become ready and the previous one was started again.
+  app.upgrade = () => ({ code: 2, stdout: JSON.stringify({ ok: false, error: "start_failed", rolledBack: true, restored: false }) });
+  await assert.rejects(local.start({ engine: app.socket }), { code: "upgrade_failed" });
+  assert.equal(local.mayBeRunning(), true);
+  await local.stop();
+  assert.equal(app.stopped, 1);
+  assert.equal(local.mayBeRunning(), false);
+});
+
+test("an upgrade refused before it changed anything leaves the workspace as started as it was", async t => {
+  const { app, service, versionFile } = await fixture(t);
+  await service().start({ engine: app.socket });
+  for (const error of ["downgrade_refused", "installation_busy", "upgrade_interrupted", "checksum_mismatch", "download_failed"]) {
+    const local = service("0.1.0-alpha.2");
+    app.upgrade = () => {
+      // Counted as started while it runs, in case the app quits meanwhile.
+      assert.equal(local.mayBeRunning(), true);
+      return { code: 2, stdout: JSON.stringify({ ok: false, error, message: "private" }) };
+    };
+    await assert.rejects(local.start({ engine: app.socket }));
+    assert.equal(local.mayBeRunning(), false);
+    assert.deepEqual(await local.stop(), { stopped: [] });
+  }
+  assert.equal(app.stopped, undefined);
+
+  // A workspace this process already started stays counted as started.
+  const local = service("0.1.0-alpha.2");
+  app.upgrade = () => ({ code: 0, stdout: JSON.stringify({ ok: true, from: "0.1.0-alpha.1", to: "0.1.0-alpha.2", backup: "/backups/1" }) });
+  await local.start({ engine: app.socket });
+  await rm(versionFile);
+  app.upgrade = () => ({ code: 2, stdout: JSON.stringify({ ok: false, error: "installation_busy" }) });
+  await assert.rejects(local.start({ engine: app.socket }), { code: "installation_busy" });
+  assert.equal(local.mayBeRunning(), true);
+});
+
+test("stops only an installation this process started, on its saved engine, after a start in progress", async t => {
+  const { app, calls, service } = await fixture(t);
+  const local = service();
+  assert.equal(local.mayBeRunning(), false);
+  assert.deepEqual(await local.stop(), { stopped: [] });
+  assert.equal(app.stopped, undefined);
+
+  const starting = local.start({ engine: "local" });
+  const stopping = local.stop({ timeout: 5000 });
+  await starting;
+  assert.equal(local.mayBeRunning(), true);
+  await stopping;
+  assert.equal(app.stopped, 1);
+  const stop = calls.find(c => c.args[3] === "stop");
+  assert.equal(stop.env.DOCKER_HOST, "unix://" + app.socket);
+  assert.equal(calls.indexOf(stop) > calls.findIndex(c => c.args[3] === "status"), true);
+  assert.equal(local.mayBeRunning(), false);
+
+  await local.start({ engine: "local" });
+  app.id = "replacement-daemon";
+  const before = app.stopped;
+  await assert.rejects(local.stop(), { code: "engine_changed" });
+  assert.equal(app.stopped, before, "never stops a same-named project on another daemon");
+  app.id = "daemon-aabbcc";
+  app.stopFailure = "engine_missing";
+  await assert.rejects(local.stop(), { code: "engine_missing" });
+  assert.equal(local.mayBeRunning(), true, "a failed stop leaves the workspace possibly running");
+  assert.equal(service().mayBeRunning(), false, "another process never started it");
 });

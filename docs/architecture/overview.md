@@ -5,6 +5,7 @@ title: "Your Space Architecture Overview"
 **Current release view · 2026-11-21**
 
     Mac launcher → local setup via CLI or existing server by URL → dashboard
+    Mac launcher → GitHub Releases (update check the owner can turn off) → update, then CLI upgrade
     Owner's browser → localhost / HTTPS proxy or domain → dashboard and server
     Owner's CLI → Docker Compose → server, runtime, installed apps
     External AI agent → CLI → gateway → permitted action in one connected app
