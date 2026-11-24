@@ -98,15 +98,16 @@ address to. Choose it when installing the app, or later on the app's page, under
   `https://notes.example.com`. The app's own address settings, such as the URL it puts in its links,
   use it, and Your Space shows the app there, in its pane. A changed link reaches them when the app
   restarts, which saving does.
-- **Show inside Your Space:** on by default, on the app's page once the app has a link. Many apps
-  refuse to be shown inside another site's page, to protect you from a site that shows the app
-  invisibly and tricks you into clicking in it. With this on, the app's Caddy replaces that rule
-  with one that lets only Your Space show the app; every other site is still refused. Turn it off
-  to keep the app's own rule; Your Space then opens the app at its link in its own tab, as it does
-  for a plain-HTTP link while you reach Your Space over HTTPS (browsers don't show one inside the
-  other, apart from a link on this machine). The app's cookies are its own, so if your link is on
-  another site than Your Space's, a browser that blocks other sites' cookies may not keep you signed
-  in to the app in the pane: open it in its own tab, or turn this off.
+
+Your Space shows an app with a link inside its pane wherever it can. Many apps refuse to be shown
+inside another site's page, to protect you from a site that shows the app invisibly and tricks you
+into clicking in it. The app's Caddy replaces that rule with one that lets only Your Space show the
+app; every other site is still refused. Your Space opens the app at its link in its own tab instead
+when its kit says it can't run in a pane, or for a plain-HTTP link while you reach Your Space over
+HTTPS (browsers don't show one inside the other, apart from a link on this machine). The app's
+cookies are its own, so if your link is on another site than Your Space's, a browser that blocks
+other sites' cookies may not keep you signed in to the app in the pane: open it in its own tab
+from the pane.
 
 Saving restarts the app only if its address settings use a link you changed; any other change
 recreates at most the app's Caddy. Its data is kept. The pane shows the app once the change is
@@ -126,13 +127,11 @@ From the server:
 
 ```sh
 docker compose exec server publish-app notes --port 8081 --link https://notes.example.com
-docker compose exec server publish-app notes --no-frame
 docker compose exec server publish-app notes --off
 ```
 
-`--no-frame` opens the app in its own tab instead of inside Your Space, and `--frame` shows it inside
-again. `install-app <kit-link> --publish`, with the same `--port`, `--bind`, `--link` and `--no-frame`,
-installs an app published.
+`install-app <kit-link> --publish`, with the same `--port`, `--bind` and `--link`, installs an app
+published.
 
 **Settings.** An app's page shows its settings, the variables its kit defines. Saving restarts the
 app with the new values and keeps its data. A value the kit asks for can be replaced but not

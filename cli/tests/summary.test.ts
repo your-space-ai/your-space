@@ -69,7 +69,7 @@ describe("the summary", () => {
       engine,
       owner: null,
       apps: [
-        { name: "plane", state: "running", publish: { port: 8081, bind: "127.0.0.1", link: "https://plane.tail1.ts.net", frame: true, inPane: true } },
+        { name: "plane", state: "running", publish: { port: 8081, bind: "127.0.0.1", link: "https://plane.tail1.ts.net", inPane: true } },
         { name: "sure", state: "running" },
       ],
       certificate: null,

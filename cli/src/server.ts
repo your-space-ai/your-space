@@ -80,7 +80,7 @@ export interface App {
    * owner's choice to show it inside Your Space, and whether Your Space shows it in its pane at its
    * link (decision 2026-11-20).
    */
-  publish?: { port: number; bind: string; link: string | null; frame: boolean; inPane: boolean } | null;
+  publish?: { port: number; bind: string; link: string | null; inPane: boolean } | null;
 }
 
 export async function listApps(compose: Compose): Promise<App[]> {

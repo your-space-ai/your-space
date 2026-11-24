@@ -43,23 +43,22 @@ proxy that rewrote `Host`, with the API's `421` `wrong_host` answer
 ([Host Check](../../001-workspace-owner-access/contracts/http-api.md#host-check)): as JSON when
 `X-Forwarded-Uri` is under `/api`, and as its message in plain text otherwise.
 
-`publish` (decision 2026-11-19) is `{ port, bind, link, frame, inPane }` or null: the app's interface on
+`publish` (decision 2026-11-19) is `{ port, bind, link, inPane }` or null: the app's interface on
 `bind:port` of this machine, for the owner's own proxy or tunnel, outside the gate. `port` defaults to
 the port the app's file publishes for its interface, else the interface's port; `bind` is an IP
 address, `127.0.0.1` by default; `link` is an `http` or `https` origin, or null. With a link, the
 settings a kit derives with `app_origin` and `app_host` take the link's values whenever the app
 starts, and the app's `origin` in `GET /api/apps` and `GET /api/apps/{name}` is the link; otherwise it
 is the app's built-in address, `<app>.<Your Space's address>`. The gate, `/open` and the handoff
-always use the built-in address. `frame` (decision 2026-11-20), `true` by default, is the owner's
-choice to show the app at its link in Your Space's pane, where the app's Caddy lets only Your Space's
-origin frame it. `inPane`, which the server only reports, says whether Your Space does: `frame` is on,
+always use the built-in address. `inPane`, which the server only reports, says whether Your Space
+shows the app at its link in its pane, where the app's Caddy lets only Your Space's origin frame it:
 the app has a link, its kit lets it run in a pane, and the link isn't plain HTTP inside an HTTPS Your
 Space (one on this machine, like `http://127.0.0.1:8081`, is fine). The server sends the same answer to
 the runtime manager, so the Caddy replaces the app's framing rules exactly when the pane frames the
 link; otherwise it passes the app's framing headers on unchanged, and the web client opens the app at
-its link in its own tab. Like the other fields, `frame` is back to its default when the app is
-published again after publishing stopped; any other value than `true` or `false` is refused with
-`400 bad_frame`.
+its link in its own tab. (Superseded 2026-11-23: `frame`, the owner's switch to keep the app out of
+the pane, left with the [alpha scope](../../../docs/architecture/decisions.md#alpha-scope); a `frame`
+an older client sends is ignored.)
 
 `framing`, for an app with `inPane`, is the short ID of the app's Caddy while it runs and lets Your
 Space's origin frame the app, as the runtime manager reports it, and null until then: while a change
@@ -71,9 +70,9 @@ never shown in the pane.
 ## Commands
 
 ```bash
-docker compose exec -T server install-app <github-link-to-kit> [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
-docker compose exec -T server install-app --kit <file | -> [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]
-docker compose exec server publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--frame | --no-frame] [--off] [--json]
+docker compose exec -T server install-app <github-link-to-kit> [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]
+docker compose exec -T server install-app --kit <file | -> [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]
+docker compose exec server publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--off] [--json]
 docker compose exec server list-apps [--json]
 docker compose exec runtime stop-apps
 ```
@@ -102,8 +101,6 @@ chooses to install it. Offering a newer kit as an update is left to journey 006.
 or stops publishing it with `--off`, and waits until the change is applied: it restarts the app's
 services only when their address settings follow a link that changed, and otherwise recreates at most
 the app's Caddy.
-`--no-frame` sets
-`frame` to `false`, so Your Space opens the app at its link in its own tab, and `--frame` sets it to
-`true` again; `install-app --publish --no-frame` installs an app published that way. The `publish`
-these commands and `list-apps --json` print includes `frame` and `inPane`, and both the commands' line
+The `publish`
+these commands and `list-apps --json` print includes `inPane`, and both the commands' line
 and `list-apps` say when an app published with a link opens in its own tab rather than in its pane. With `--json`, one JSON object on stdout and logs on stderr, as `create-owner` does.

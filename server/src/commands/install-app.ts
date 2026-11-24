@@ -1,5 +1,5 @@
 // install-app <kit-link> | --kit <file | ->, then [--reuse-data] [--publish [--port <n>]
-// [--bind <address>] [--link <url>] [--no-frame]] [--json] (FR-009, contracts/http-api.md). Every app
+// [--bind <address>] [--link <url>]] [--json] (FR-009, contracts/http-api.md). Every app
 // installs from its kit, which names its Compose file on GitHub (decision 2026-11-23; a Compose file
 // on this machine, --compose, left with the alpha scope). Reviews the app, installs it as the
 // operator, and waits until it runs or the install fails.
@@ -14,7 +14,7 @@ import { AppError, AppsService } from "../apps/service.ts";
 import { EXIT, localFileLine, openForCommand, output, publishedLine } from "./output.ts";
 
 const USAGE =
-  "Usage: install-app <github-link-to-kit> | --kit <file | ->, then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]";
+  "Usage: install-app <github-link-to-kit> | --kit <file | ->, then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]";
 
 async function main(argv: string[]): Promise<number> {
   let values: {
@@ -26,7 +26,6 @@ async function main(argv: string[]): Promise<number> {
     port?: string;
     bind?: string;
     link?: string;
-    "no-frame"?: boolean;
   };
   let positionals: string[];
   try {
@@ -39,7 +38,6 @@ async function main(argv: string[]): Promise<number> {
         port: { type: "string" },
         bind: { type: "string" },
         link: { type: "string" },
-        "no-frame": { type: "boolean", default: false },
         json: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
@@ -53,8 +51,8 @@ async function main(argv: string[]): Promise<number> {
     return EXIT.usage;
   }
   const out = output(values.json === true);
-  if (!values.publish && (values.port !== undefined || values.bind !== undefined || values.link !== undefined || values["no-frame"])) {
-    out.failure({ ok: false, error: "usage", message: `--port, --bind, --link and --no-frame need --publish. ${USAGE}` }, `--port, --bind, --link and --no-frame need --publish.\n${USAGE}`);
+  if (!values.publish && (values.port !== undefined || values.bind !== undefined || values.link !== undefined)) {
+    out.failure({ ok: false, error: "usage", message: `--port, --bind and --link need --publish. ${USAGE}` }, `--port, --bind and --link need --publish.\n${USAGE}`);
     return EXIT.usage;
   }
   if (values.help || positionals.length > 1) {
@@ -101,7 +99,6 @@ async function main(argv: string[]): Promise<number> {
           ...(values.port !== undefined ? { port: Number(values.port) } : {}),
           ...(values.bind !== undefined ? { bind: values.bind } : {}),
           ...(values.link !== undefined ? { link: values.link } : {}),
-          ...(values["no-frame"] ? { frame: false } : {}),
         }
       : null;
     const { name, jobId, done } = await apps.install(review.previewId, {}, values["reuse-data"] === true, actorId, publish);

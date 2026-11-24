@@ -374,9 +374,7 @@ function Pane({ app, onClose }: { app: AppSummary; onClose?: () => void }) {
           <p>
             {!app.pane
               ? `${app.title} can't run inside Your Space, so it opens in its own tab.`
-              : !app.publish!.frame
-                ? `${app.title} is published at its own link, outside Your Space, so it opens there in its own tab.`
-                : `${app.title}'s link is plain HTTP, which browsers don't show inside Your Space's HTTPS page, so it opens in its own tab.`}
+              : `${app.title}'s link is plain HTTP, which browsers don't show inside Your Space's HTTPS page, so it opens in its own tab.`}
           </p>
           <a className="button" href={app.origin} target="_blank" rel={rel}>
             Open in its own tab

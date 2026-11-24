@@ -1,7 +1,7 @@
 // Publishing an app on a port of this machine (decision 2026-11-19): the owner's own proxy or tunnel
 // reaches it there, at the link the owner gives, and the app's address settings follow the link. Your
 // Space shows it in its pane unless the owner turns that off (decision 2026-11-20).
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { AppError, appOrigin, AppsService, defaultPort, inPane, linkOrigin, publishFrom, publishOf, stateFromServices } from "../src/apps/service.ts";
 import { publishedLine } from "../src/commands/output.ts";
@@ -45,15 +45,15 @@ const PLAIN = kitLink("plain");
 const THIRD = kitLink("third");
 
 describe("publishing choices", () => {
-  const current = { port: 8000, bind: "127.0.0.1", link: null, frame: true };
+  const current = { port: 8000, bind: "127.0.0.1", link: null };
 
   it("keeps what the owner doesn't change, and checks what they do", () => {
     expect(publishFrom({}, current)).toEqual(current);
-    expect(publishFrom({ port: 8443, bind: " ::1 ", link: "https://Plane.Example.com/", frame: false }, current)).toEqual({ port: 8443, bind: "::1", link: "https://plane.example.com", frame: false });
+    // An older client's frame choice is ignored: Your Space shows the app inside it wherever it can.
+    expect(publishFrom({ port: 8443, bind: " ::1 ", link: "https://Plane.Example.com/", frame: false }, current)).toEqual({ port: 8443, bind: "::1", link: "https://plane.example.com" });
     expect(publishFrom({ link: "" }, { ...current, link: "https://a.example" }).link).toBeNull();
     expect(publishFrom({ link: null }, { ...current, link: "https://a.example" }).link).toBeNull();
-    expect(publishFrom({ port: 8001 }, { ...current, frame: false }).frame).toBe(false);
-    for (const bad of [null, [], { port: 0 }, { port: 70000 }, { port: "80" }, { port: 1.5 }, { bind: "localhost" }, { bind: 1 }, { link: 3 }, { frame: "no" }, { frame: null }, { frame: 0 }]) {
+    for (const bad of [null, [], { port: 0 }, { port: 70000 }, { port: "80" }, { port: 1.5 }, { bind: "localhost" }, { bind: 1 }, { link: 3 }]) {
       expect(() => publishFrom(bad, current), JSON.stringify(bad)).toThrow(AppError);
     }
   });
@@ -66,21 +66,19 @@ describe("publishing choices", () => {
   });
 
   it("shows whether Your Space frames the app only while it is published", () => {
-    expect(publishOf("https://space.example.com", { publish: { port: 8000, bind: "127.0.0.1", link: null }, frame: false, pane: true })).toEqual({
+    expect(publishOf("https://space.example.com", { publish: { port: 8000, bind: "127.0.0.1", link: null }, pane: true })).toEqual({
       port: 8000,
       bind: "127.0.0.1",
       link: null,
-      frame: false,
       inPane: false,
     });
-    expect(publishOf("https://space.example.com", { publish: null, frame: false, pane: true })).toBeNull();
+    expect(publishOf("https://space.example.com", { publish: null, pane: true })).toBeNull();
   });
 
   it("shows an app at its link in its pane only where Your Space's page can frame the link, by one rule", () => {
-    const at = (link: string | null, more: { frame?: boolean; pane?: boolean } = {}) => ({ publish: { port: 8000, bind: "127.0.0.1", link }, frame: true, pane: true, ...more });
+    const at = (link: string | null, more: { pane?: boolean } = {}) => ({ publish: { port: 8000, bind: "127.0.0.1", link }, pane: true, ...more });
     expect(inPane("https://space.example.com", at("https://plane.example.com"))).toBe(true);
-    // The owner's setting, a kit that can't run in a pane, or no link.
-    expect(inPane("https://space.example.com", at("https://plane.example.com", { frame: false }))).toBe(false);
+    // A kit that can't run in a pane, or no link.
     expect(inPane("https://space.example.com", at("https://plane.example.com", { pane: false }))).toBe(false);
     expect(inPane("https://space.example.com", at(null))).toBe(false);
     // A plain-HTTP link inside an HTTPS Your Space, which browsers don't show, apart from one on this machine.
@@ -197,7 +195,7 @@ describe("publishing an app", () => {
     expect((await waitForJob(((await installed.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
 
     const spec = lastApply();
-    // Shown inside Your Space unless the owner says otherwise.
+    // Shown inside Your Space.
     expect(spec.publish).toEqual({ port: 8000, bind: "127.0.0.1", frame: true });
     expect(spec.env).toMatchObject({ APP_URL: "https://linked.tail1234.ts.net", APP_DOMAIN: "linked.tail1234.ts.net", CORS_ORIGINS: "https://linked.tail1234.ts.net,https://extra.example" });
     // Your Space's Caddy, which publishes it, runs Your Space's own image: nothing more to pin.
@@ -206,7 +204,7 @@ describe("publishing an app", () => {
     expect(runtime.calls.filter((c) => c.method === "checkPort").at(-1)).toEqual({ method: "checkPort", project: "ys-linked", publish: { port: 8000, bind: "127.0.0.1" } });
 
     const detail = (await (await api("/api/apps/linked")).json()) as any;
-    expect(detail.publish).toEqual({ port: 8000, bind: "127.0.0.1", link: "https://linked.tail1234.ts.net", frame: true, inPane: true });
+    expect(detail.publish).toEqual({ port: 8000, bind: "127.0.0.1", link: "https://linked.tail1234.ts.net", inPane: true });
     // Your Space sends the owner to the link, not to the built-in address it may not reach.
     expect(detail.origin).toBe("https://linked.tail1234.ts.net");
     expect(detail.settings.find((s: { name: string }) => s.name === "APP_URL").value).toBe("https://linked.tail1234.ts.net");
@@ -258,7 +256,7 @@ describe("publishing an app", () => {
     await waitForJob(((await other.json()) as { jobId: string }).jobId);
     // Without a link, the pane frames the app at its built-in address, so its Caddy keeps the app's own rules.
     expect(lastApply().publish).toEqual({ port: 8001, bind: "127.0.0.1", frame: false });
-    expect(((await (await api("/api/apps/other")).json()) as any).publish).toMatchObject({ frame: true, inPane: false });
+    expect(((await (await api("/api/apps/other")).json()) as any).publish).toMatchObject({ inPane: false });
     // Published without a link, the app stays at its built-in address.
     expect(((await (await api("/api/apps/other")).json()) as { origin: string }).origin).toBe(`http://other.${new URL(server.publicUrl).host}`);
     // A port on another single address doesn't collide.
@@ -316,7 +314,7 @@ describe("publishing an app", () => {
   });
 
   it("refuses bad choices and leaves the app as it was", async () => {
-    for (const publish of [{ port: 0 }, { bind: "localhost" }, { link: "https://tasks.example.com/app" }, { frame: "off" }, "yes"]) {
+    for (const publish of [{ port: 0 }, { bind: "localhost" }, { link: "https://tasks.example.com/app" }, "yes"]) {
       const response = await send("/api/apps/linked/publish", { publish }, "PUT");
       expect(response.status, JSON.stringify(publish)).toBe(400);
     }
@@ -325,54 +323,51 @@ describe("publishing an app", () => {
     expect(row).toEqual({ publish: { port: 8000, bind: "127.0.0.1", link: "https://tasks.example.com" }, frame: true });
   });
 
-  it("stops showing the app inside Your Space, and shows it again, with only that changed", async () => {
-    const off = await send("/api/apps/linked/publish", { publish: { frame: false } }, "PUT");
-    expect(off.status).toBe(202);
-    expect((await waitForJob(((await off.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
-    // The app restarts with the same spec but its Caddy's framing, which Compose recreates alone.
-    expect(lastApply().publish).toEqual({ port: 8000, bind: "127.0.0.1", frame: false });
-    expect(lastApply().env).toMatchObject({ APP_URL: "https://tasks.example.com" });
-    const detail = (await (await api("/api/apps/linked")).json()) as any;
-    expect(detail.publish).toEqual({ port: 8000, bind: "127.0.0.1", link: "https://tasks.example.com", frame: false, inPane: false });
-    expect(detail.origin).toBe("https://tasks.example.com");
-    const list = (await (await api("/api/apps")).json()) as any;
-    expect(list.apps.find((a: { name: string }) => a.name === "linked")).toMatchObject({ publish: { frame: false, inPane: false }, framing: null });
-    expect((await t.db.select().from(event)).filter((e) => e.type === "app.publish_changed").length).toBeGreaterThan(1);
-
-    // Changing something else keeps it off.
-    const moved = await send("/api/apps/linked/publish", { publish: { link: "https://tasks.example.com" } }, "PUT");
-    await waitForJob(((await moved.json()) as { jobId: string }).jobId);
-    expect(lastApply().publish).toEqual({ port: 8000, bind: "127.0.0.1", frame: false });
-
-    const on = await send("/api/apps/linked/publish", { publish: { frame: true } }, "PUT");
-    await waitForJob(((await on.json()) as { jobId: string }).jobId);
+  it("ignores an older client's choice not to show the app inside Your Space, on install and after", async () => {
+    const kept = await send("/api/apps/linked/publish", { publish: { frame: false } }, "PUT");
+    expect(kept.status).toBe(202);
+    expect((await waitForJob(((await kept.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
     expect(lastApply().publish).toEqual({ port: 8000, bind: "127.0.0.1", frame: true });
-  });
+    const detail = (await (await api("/api/apps/linked")).json()) as any;
+    expect(detail.publish).toEqual({ port: 8000, bind: "127.0.0.1", link: "https://tasks.example.com", inPane: true });
 
-  it("installs an app published with the owner's choice not to show it inside Your Space", async () => {
     const installed = await install(kitLink("fourth"), { port: 8104, link: "https://fourth.example.com", frame: false });
     expect(installed.status).toBe(202);
     expect((await waitForJob(((await installed.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
-    expect(lastApply().publish).toEqual({ port: 8104, bind: "127.0.0.1", frame: false });
-    expect(((await (await api("/api/apps/fourth")).json()) as any).publish).toEqual({ port: 8104, bind: "127.0.0.1", link: "https://fourth.example.com", frame: false, inPane: false });
-    // Installed without publishing, an app is shown inside Your Space once it is published.
-    const [plain] = await t.db.select({ frame: app.frame }).from(app).where(eq(app.name, "third"));
-    expect(plain!.frame).toBe(true);
+    expect(lastApply().publish).toEqual({ port: 8104, bind: "127.0.0.1", frame: true });
+    expect(((await (await api("/api/apps/fourth")).json()) as any).publish).toEqual({ port: 8104, bind: "127.0.0.1", link: "https://fourth.example.com", inPane: true });
+  });
+
+  it("applies once an app whose owner had turned Show inside Your Space off, so its pane frames it", async () => {
+    await t.db.update(app).set({ frame: false }).where(eq(app.name, "fourth"));
+    const before = runtime.calls.filter((c) => c.method === "apply").length;
+    await server.apps!.reconcile();
+    await waitForIdle();
+    expect(runtime.calls.filter((c) => c.method === "apply").length).toBe(before + 1);
+    expect(lastApply()).toMatchObject({ project: "ys-fourth", publish: { port: 8104, bind: "127.0.0.1", frame: true } });
+    // Set once the apply succeeded.
+    await vi.waitFor(async () => {
+      const [row] = await t.db.select({ frame: app.frame }).from(app).where(eq(app.name, "fourth"));
+      expect(row!.frame).toBe(true);
+    });
+    await server.apps!.reconcile();
+    await waitForIdle();
+    expect(runtime.calls.filter((c) => c.method === "apply").length).toBe(before + 1);
   });
 
   it("keeps the framing rules of an app whose kit says it can't run in a pane", async () => {
     const installed = await install(kitLink("nopane"), { port: 8106, link: "https://nopane.example.com" });
     expect((await waitForJob(((await installed.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
     expect(lastApply().publish).toEqual({ port: 8106, bind: "127.0.0.1", frame: false });
-    // The setting stays on, but Your Space opens it in its own tab.
-    expect(((await (await api("/api/apps/nopane")).json()) as any).publish).toMatchObject({ frame: true, inPane: false });
+    // Your Space opens it in its own tab.
+    expect(((await (await api("/api/apps/nopane")).json()) as any).publish).toMatchObject({ inPane: false });
   });
 
   it("keeps the framing rules of an app whose plain-HTTP link an HTTPS Your Space can't frame", async () => {
     // The same app record, as an HTTPS Your Space sees it.
     const https = new AppsService(t.db, runtime, { publicUrl: "https://space.example.com", dataKey: TEST_DATA_KEY });
     const [row] = await t.db.select().from(app).where(eq(app.name, "linked"));
-    const at = (link: string) => ({ ...row!, frame: true, publish: { port: 8000, bind: "127.0.0.1", link } });
+    const at = (link: string) => ({ ...row!, publish: { port: 8000, bind: "127.0.0.1", link } });
     expect((await https.specFor(at("http://tasks.example.com"))).publish).toEqual({ port: 8000, bind: "127.0.0.1", frame: false });
     expect((await https.specFor(at("http://127.0.0.1:8000"))).publish).toEqual({ port: 8000, bind: "127.0.0.1", frame: true });
     expect((await https.specFor(at("https://tasks.example.com"))).publish).toEqual({ port: 8000, bind: "127.0.0.1", frame: true });
@@ -396,8 +391,8 @@ describe("publishing an app", () => {
       expect(response.status).toBe(202);
       expect((await waitForJob(((await response.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
     };
-    await put({ port: 8105, link: "https://tasks.example.com", frame: false });
-    expect(lastApply().publish).toEqual({ port: 8105, bind: "127.0.0.1", frame: false });
+    await put({ port: 8105, link: "https://tasks.example.com" });
+    expect(lastApply().publish).toEqual({ port: 8105, bind: "127.0.0.1", frame: true });
     await put(null);
     await put({ port: 8105, link: "https://tasks.example.com" });
     expect(lastApply().publish).toEqual({ port: 8105, bind: "127.0.0.1", frame: true });

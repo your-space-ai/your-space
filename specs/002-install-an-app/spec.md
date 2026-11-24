@@ -287,8 +287,9 @@ use it; then try to reach its address while signed out of Your Space.
    shows, and no other site can frame it.
 8. **Given** an app published on a port with a link (2026-11-20), **When** the owner opens it, **Then**
    it shows at its link in its pane, framed only by Your Space even when it sends a header forbidding
-   framing; with "Show inside Your Space" off, its headers reach the browser unchanged and it opens at
-   its link in its own tab.
+   framing. When its kit says it can't run in a pane, or its link is plain HTTP inside an HTTPS Your
+   Space, its headers reach the browser unchanged and it opens at its link in its own tab.
+   (2026-11-23: the "Show inside Your Space" switch, whose off state did the same, is gone.)
 
 ### User Story 5 - Change an App's Settings (Priority: P2)
 
@@ -517,14 +518,17 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
   notices and offers the app in its own tab instead of failing silently. WebKit does this on the
   plain-HTTP local setup, where it treats each `*.localhost` name as a separate site (research R3).
   (2026-11-20: an app published with a link opens at the link in its pane unless the owner turns
-  "Show inside Your Space" off for it; then it opens there in its own tab.)
+  "Show inside Your Space" off for it; then it opens there in its own tab. Superseded 2026-11-23:
+  the switch left with the alpha scope, and the app opens at its link in its pane wherever a browser
+  can show it there.)
 - **FR-017**: Your Space must not require apps to change their code, their requests or their sign-in
   to open in a pane. The proxy may change only what every app needs the same way: it replaces an
   app's framing headers so that only Your Space can frame it, and applies FR-014a. It doesn't change
   an app's own cookies otherwise; an app that can't run in a pane opens in its own tab, and its
   installation kit can say so. (2026-11-20: a published app's own Caddy replaces its framing headers
   the same way, and only them, while "Show inside Your Space" is on, as it is by default; see the
-  decision record's "Running Apps and Reaching Them".)
+  decision record's "Running Apps and Reaching Them". Since 2026-11-23 there is no switch: it does
+  so whenever the pane frames the link.)
 
 **Settings, outbound access and isolation (slices 5 to 7)**
 

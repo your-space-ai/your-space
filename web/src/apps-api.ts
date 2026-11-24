@@ -77,8 +77,6 @@ export interface Publish {
   port: number;
   bind: string;
   link: string | null;
-  /** The owner's choice to show the app inside Your Space, where the app's Caddy lets only Your Space frame it (decision 2026-11-20). */
-  frame: boolean;
   /**
    * Whether Your Space shows the app at its link in its pane, as the server decides for both the pane
    * and the app's Caddy: the owner's choice is on, the kit lets the app run in a pane, and the link

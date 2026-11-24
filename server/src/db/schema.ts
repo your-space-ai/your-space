@@ -152,6 +152,8 @@ export const app = pgTable(
     pane: boolean("pane").notNull().default(true),
     publish: jsonb("publish").$type<Publish>(),
     /** Whether Your Space shows the app in its pane when it is published with a link (decision 2026-11-20). */
+    // Since the owner's "Show inside Your Space" switch left (2026-11-23, Alpha scope), only the
+    // server's start reads it: an app left with it off is applied once and set to true.
     frame: boolean("frame").notNull().default(true),
     limits: jsonb("limits").$type<Record<string, { memory: number; cpus: number }>>().notNull(),
     desired: text("desired", { enum: ["running", "stopped", "removed"] }).notNull().default("running"),

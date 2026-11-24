@@ -82,8 +82,8 @@ The signed-in dashboard arranges installed app panes in a resizable grid. A name
 - **A person reaching a published app:** the owner's proxy or tunnel (such as `tailscale serve`) →
   the app's port on this machine → its `ys-publish` Caddy → the app's interface on its sealed
   network. Your Space's gate isn't on this path; the app's own sign-in is. Your Space's pane loads
-  the app this way, at the owner's link, unless the owner turned "Show inside Your Space" off; then
-  the app opens there in its own tab.
+  the app this way, at the owner's link, wherever a browser can show it there; otherwise the app
+  opens there in its own tab.
 - **Installing an app:** the owner pastes the GitHub link to the app's kit → the server reads the
   kit, then the Compose file it names, each at an exact commit on public GitHub → the runtime
   manager resolves, checks, and pins it → after the owner confirms, it starts the app's Compose
