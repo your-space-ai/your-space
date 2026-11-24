@@ -121,6 +121,11 @@ jobs:
     uses: ./.github/workflows/release-macos-app.yml
     with:
       release_tag: ${{ inputs.tag }}
+    # Its signing job reads the `macos-release` environment's secrets, which a called workflow gets
+    # only when its caller passes them: without this they are empty, and nothing reports it. This
+    # passes all of this workflow's secrets; the environment's resolve only in the job that sets
+    # `environment: macos-release`, and none reach the unsigned build it calls in turn.
+    secrets: inherit
 
   draft:
     needs: [check-tag, install-test, macos-app]

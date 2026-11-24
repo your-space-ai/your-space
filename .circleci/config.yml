@@ -87,6 +87,27 @@ commands:
               circleci-agent step halt
             fi
 
+  product-changes:
+    description: >-
+      Stops the job early, as passed, when only CI configuration (.github/, .circleci/) or
+      documentation changed, since its tests would run the same code again. main compares its last
+      commit, because pull requests merge into it as one squashed commit; any other branch compares
+      everything since main.
+    steps:
+      - run:
+          name: Product changes
+          command: |
+            if [ "${CIRCLE_BRANCH:-}" = main ]; then
+              range=HEAD~1...HEAD
+            else
+              git fetch -q origin main && range=origin/main...HEAD
+            fi
+            # A commit git can't find counts as a change, so the job runs.
+            if git diff --quiet "$range" -- . ':!.github/' ':!.circleci/' ':!*.md' ':!docs/' ':!specs/' ':!.specify/'; then
+              echo "Only CI configuration or documentation changed, so this job stops here and passes."
+              circleci-agent step halt
+            fi
+
 jobs:
   check-arm64:
     machine:
@@ -95,6 +116,7 @@ jobs:
     steps:
       - ready-pull-request
       - checkout
+      - product-changes
       - run:
           name: PostgreSQL 18
           command: |
@@ -120,6 +142,7 @@ jobs:
     steps:
       - ready-pull-request
       - checkout
+      - product-changes
       - run:
           # A pull request runs the journeys in Chromium, whose screenshots Argos compares; main runs
           # them in Firefox and WebKit too, so a bug only those browsers show turns up after the
@@ -238,6 +261,11 @@ jobs:
     resource_class: arm.medium
     steps:
       - checkout
+      # A pipeline started with arm-e2e runs the tests whatever changed.
+      - unless:
+          condition: << pipeline.parameters.arm-e2e >>
+          steps:
+            - product-changes
       - node26:
           arch: arm64
       - run: npm ci
@@ -263,8 +291,8 @@ parameters:
     description: Run the Arm browser tests on a branch other than main.
 
 workflows:
-  # Every pull request and every push to main; the job stops early on drafts and on code that
-  # already passed it.
+  # Every pull request and every push to main; the job stops early on drafts, on changes to CI
+  # configuration or documentation alone, and on code that already passed it.
   e2e:
     jobs:
       - e2e
