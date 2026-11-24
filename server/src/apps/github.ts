@@ -1,10 +1,13 @@
-// Turns a GitHub link into one file at an exact commit (component C, FR-003, FR-026). Only public
-// repositories; GitHub answers 404 for private ones.
+// Turns a GitHub link into one file at an exact commit (component C, FR-003, FR-026): an app's kit,
+// and the Compose file the kit names. Only public repositories; GitHub answers 404 for private ones.
 
 export class SourceError extends Error {
-  constructor(message: string) {
+  /** GitHub has no such repository, ref or file for this machine, as for a private repository. */
+  readonly missing: boolean;
+  constructor(message: string, missing = false) {
     super(message);
     this.name = "SourceError";
+    this.missing = missing;
   }
 }
 
@@ -49,7 +52,7 @@ export function parseLink(link: string): FileLink {
   try {
     url = new URL(link.trim());
   } catch {
-    throw new SourceError("That isn't a link. Paste the GitHub link to the app's Compose file.");
+    throw new SourceError("That isn't a link. Paste the GitHub link to the app's kit.");
   }
   const segments = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
   if (url.protocol === "https:" && url.hostname === "github.com") {
@@ -63,7 +66,7 @@ export function parseLink(link: string): FileLink {
     if (owner && name && NAME.test(owner) && NAME.test(name) && rest.length >= 2) return { repo: `${owner}/${name}`, rest };
   }
   throw new SourceError(
-    "Your Space installs from a file in a public GitHub repository. Open the app's Compose file on GitHub and paste its link, like https://github.com/owner/repo/blob/main/compose.yaml.",
+    "Your Space installs an app from its kit, a file in a public GitHub repository. Open the kit on GitHub and paste its link, like https://github.com/owner/repo/blob/main/kit.yaml.",
   );
 }
 
@@ -95,7 +98,7 @@ async function resolveRef(fetcher: Fetch, endpoints: GithubEndpoints, link: File
     if (rateLimited(res)) throw new SourceError("GitHub is limiting requests from this machine. Try again in a few minutes.");
     if (res.status !== 404 && res.status !== 422) throw new SourceError(`GitHub answered ${res.status}. Try again later.`);
   }
-  throw new SourceError(`Your Space can't find that branch, tag or commit in ${link.repo}. The repository must be public.`);
+  throw new SourceError(`Your Space can't find that branch, tag or commit in ${link.repo}. The repository must be public.`, true);
 }
 
 export async function fetchSource(link: string, endpoints: GithubEndpoints = githubEndpoints(), fetcher: Fetch = fetch): Promise<SourceFile> {
@@ -104,29 +107,38 @@ export async function fetchSource(link: string, endpoints: GithubEndpoints = git
   return readResolvedFile(parsed.repo, ref, path, commit, link.trim(), endpoints, fetcher);
 }
 
-/** GitHub lists commits on the repository's default branch when no sha is requested. */
-export async function fetchDirectoryFile(repo: string, path: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
+/**
+ * A file at the head of its repository's default branch, read at that exact commit. GitHub lists
+ * commits on the default branch when no sha is requested.
+ */
+export async function fetchLatestFile(repo: string, path: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
   const response = await get(fetcher, `${endpoints.api}/repos/${repo}/commits?per_page=1`, "application/vnd.github+json");
-  if (!response.ok) throw new SourceError("GitHub could not read the configured kit directory.");
+  if (rateLimited(response)) throw new SourceError("GitHub is limiting requests from this machine. Try again in a few minutes.");
+  if (!response.ok) throw new SourceError(`Your Space can't read ${repo} on GitHub. The repository must be public.`);
   const commits: unknown = await response.json().catch(() => null);
   const commit = Array.isArray(commits) ? commits[0]?.sha : null;
-  if (typeof commit !== "string" || !/^[0-9a-f]{40}$/.test(commit)) throw new SourceError("GitHub did not return a directory commit.");
+  if (typeof commit !== "string" || !/^[0-9a-f]{40}$/.test(commit)) throw new SourceError(`GitHub didn't say which commit ${repo} is at.`);
   return fetchPinnedFile(repo, path, commit, endpoints, fetcher);
 }
 
+/** A path's segments, each encoded for a URL. */
+function encodePath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
 export function fetchPinnedFile(repo: string, path: string, commit: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
-  const link = `https://github.com/${repo}/blob/${commit}/${path}`;
+  const link = `https://github.com/${repo}/blob/${commit}/${encodePath(path)}`;
   return readResolvedFile(repo, commit, path, commit, link, endpoints, fetcher);
 }
 
 async function readResolvedFile(repo: string, ref: string, path: string, commit: string, link: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
-  const res = await get(fetcher, `${endpoints.raw}/${repo}/${commit}/${path.split("/").map(encodeURIComponent).join("/")}`, "text/plain");
-  if (res.status === 404) throw new SourceError(`There is no file ${path} in ${repo} at ${ref}.`);
+  const res = await get(fetcher, `${endpoints.raw}/${repo}/${commit}/${encodePath(path)}`, "text/plain");
+  if (res.status === 404) throw new SourceError(`There is no file ${path} in ${repo} at ${ref}.`, true);
   if (!res.ok) throw new SourceError(`GitHub answered ${res.status} for the file. Try again later.`);
   const length = Number(res.headers.get("content-length") ?? 0);
-  if (length > MAX_FILE_BYTES) throw new SourceError("The file is larger than a Compose file should be.");
+  if (length > MAX_FILE_BYTES) throw new SourceError(`${path} is larger than a kit or Compose file should be.`);
   const bytes = await res.arrayBuffer();
-  if (bytes.byteLength > MAX_FILE_BYTES) throw new SourceError("The file is larger than a Compose file should be.");
+  if (bytes.byteLength > MAX_FILE_BYTES) throw new SourceError(`${path} is larger than a kit or Compose file should be.`);
   let text: string;
   try {
     // Preserve a byte-order mark when hashing the exact kit file.
@@ -134,5 +146,5 @@ async function readResolvedFile(repo: string, ref: string, path: string, commit:
   } catch {
     throw new SourceError("Choose a UTF-8 file.");
   }
-  return { link, repo, ref, path, commit, text, pinnedLink: `https://github.com/${repo}/blob/${commit}/${path}` };
+  return { link, repo, ref, path, commit, text, pinnedLink: `https://github.com/${repo}/blob/${commit}/${encodePath(path)}` };
 }

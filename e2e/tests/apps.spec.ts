@@ -1,19 +1,24 @@
-// Journey 002: install apps from their own Compose files and use them in Your Space. A stand-in for
-// GitHub serves the fixture apps (e2e/github); Sure and Twenty run by hand (verification record).
+// Journey 002: install apps from their kits, which name their own Compose files, and use them in Your
+// Space (decision 2026-11-23). A stand-in for GitHub serves the fixture apps and their kits
+// (e2e/github); Sure and Twenty run by hand (verification record).
 import { Agent, request } from "node:http";
 import { createServer } from "node:net";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { fixtureCommit } from "../github/commits.mjs";
 import { evidence } from "./helpers/evidence.ts";
 import { compose, createOwner, docker, resetStack, serverCommand, up } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
 
 test.describe.configure({ mode: "serial" });
 
-const WHOAMI = "https://github.com/ys-fixtures/whoami/blob/main/compose.yaml";
-const PROBE = "https://github.com/ys-fixtures/probe/blob/main/compose.yaml";
-const NOFRAME = "https://github.com/ys-fixtures/noframe/blob/main/compose.yaml";
-const REQUIRED = "https://github.com/ys-fixtures/required/blob/main/compose.yaml";
-const LINK_LABEL = "Link to the app's Compose file";
+const kit = (app: string) => `https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/${app}.yaml`;
+const WHOAMI = kit("whoami");
+const PROBE = kit("probe");
+const NOFRAME = kit("noframe");
+const REQUIRED = kit("required");
+// A bare Compose file's link, which Your Space no longer installs from.
+const WHOAMI_COMPOSE = "https://github.com/ys-fixtures/whoami/blob/main/compose.yaml";
+const LINK_LABEL = "Link to the app's kit";
 
 // The owner signs in once: sign-in allows three attempts per address in 10 seconds (journey 001).
 let ownerCookies: Awaited<ReturnType<BrowserContext["cookies"]>> = [];
@@ -65,9 +70,21 @@ test("the owner installs an app from its link, after a review and a trust warnin
   await expect(page.getByRole("heading", { name: "Apps", exact: true })).toBeVisible();
   await expect(page.locator("li[data-app]")).toHaveCount(0);
 
+  // A bare Compose file's link gets an explanation of kits, and nothing to install.
+  await page.getByLabel(LINK_LABEL).fill(WHOAMI_COMPOSE);
+  await page.getByRole("button", { name: "Review" }).click();
+  await expect(page.getByRole("alert")).toContainText("That's a Compose file, not a Your Space kit.");
+  await expect(page.getByRole("alert")).toContainText("Give the link to the app's kit instead.");
+  await expect(page.getByRole("heading", { name: "Review" })).toHaveCount(0);
+  await evidence(page, testInfo, "002-us3-0-compose-link-refused");
+
   await page.getByLabel(LINK_LABEL).fill(WHOAMI);
   await page.getByRole("button", { name: "Review" }).click();
   await expect(page.getByRole("heading", { name: "Review" })).toBeVisible();
+  // The review names the kit at the commit its main link resolves to now, and the Compose file at the
+  // exact commit the kit pins.
+  await expect(page.getByRole("link", { name: "ys-fixtures/catalog/apps/ys-fixtures/whoami.yaml" })).toHaveAttribute("href", new RegExp(`/blob/${fixtureCommit("ys-fixtures/catalog")}/`));
+  await expect(page.getByRole("link", { name: "ys-fixtures/whoami/compose.yaml" })).toHaveAttribute("href", new RegExp(`/blob/${fixtureCommit("ys-fixtures/whoami")}/`));
   await expect(page.getByText("Published ports removed")).toBeVisible();
   await expect(page.getByText(/trusts it with everything/)).toBeVisible();
   await expect(page.getByText("example.com")).toBeVisible();
@@ -85,7 +102,7 @@ test("the owner installs an app from its link, after a review and a trust warnin
   const stranger = await browser.newContext();
   const refused = await stranger.request.get("/api/apps");
   expect(refused.status()).toBe(401);
-  expect((await stranger.request.post("/api/apps/preview", { headers: { origin: "http://space.localhost" }, data: { link: PROBE } })).status()).toBe(401);
+  expect((await stranger.request.post("/api/kits/preview", { headers: { origin: "http://space.localhost" }, data: { kitUrl: PROBE } })).status()).toBe(401);
   await stranger.close();
 
   // The container publishes no port of its own (FR-015).
@@ -447,6 +464,13 @@ test("removing an app keeps its data, which a reinstall reuses or the owner dele
 });
 
 test("an app whose file requires settings is reviewed, and installs once the owner fills them in", async ({ page }) => {
+  // The command installs only from a kit: a bare Compose file's link is refused, and says why.
+  const bare = await serverCommand("install-app", [WHOAMI_COMPOSE]);
+  expect(bare.code, bare.stderr).not.toBe(0);
+  expect(bare.json).toMatchObject({ ok: false, error: "kit_required", message: expect.stringMatching(/not a Your Space kit/) });
+  // A kit it can't read from GitHub, as in a private repository, can come from this machine instead.
+  const missing = await serverCommand("install-app", [kit("nope")]);
+  expect(missing.json).toMatchObject({ ok: false, error: "kit_not_found", message: expect.stringMatching(/install-app --kit - < kit\.yaml/) });
   // The command gives no values, so the install it reviews is refused.
   const refused = await serverCommand("install-app", [REQUIRED]);
   expect(refused.code, refused.stderr).not.toBe(0);

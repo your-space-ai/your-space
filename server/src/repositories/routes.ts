@@ -7,7 +7,7 @@ import { applyReplacement, pendingReplacement, previewReplacement } from "../app
 import { AgencyError, hash, identity, object, transaction, uuid } from "../agents/store.ts";
 import { getGithubClient } from "./connection.ts";
 import type { GithubClient, GithubRepo } from "./github.ts";
-import { loadSnapshot, previewSnapshot } from "./sources.ts";
+import { loadSnapshot, previewManagedKit } from "./sources.ts";
 
 const denied = () => new AppError(403, "forbidden", "This operation is outside your repository access.");
 const bad = () => new AppError(400, "invalid_repository_input", "Check the repository and request fields.");
@@ -235,7 +235,8 @@ export function repoRoutes(
       route(async (p, r, g) => {
         const id = repoId(r.params.id);
         await managed(db, p, g, id);
-        return previewSnapshot(apps, await loadSnapshot(g, id, object(r.body)));
+        // Every app installs with a kit: kit.yaml, unless the owner names another. It names the Compose file.
+        return previewManagedKit(db, p.owner, g, apps, id, object(r.body));
       }),
     );
     router.post(

@@ -1,5 +1,6 @@
 // Installing an app from a Compose file on this machine, for an app whose own file doesn't fit Your
-// Space's rules (install-app --compose <file | -> [--kit <file | ->] [--name <name>]).
+// Space's rules (install-app --compose <file | -> --kit <file | -> [--name <name>]). Every app
+// installs with a kit (decision 2026-11-23), this one included.
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,7 +16,7 @@ import { app, installJob } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY } from "./helpers/env.ts";
 import { runCommand } from "./helpers/commands.ts";
-import { fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
+import { COMMIT, fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
 
 const COMPOSE = `services:
   web:
@@ -32,24 +33,28 @@ outbound: [example.com]
 `;
 // A kit written for an app's file on GitHub, given with a Compose file adapted from it.
 const GITHUB_KIT = `kit: 1
-source: { repo: ys-fixtures/notes, path: compose.yaml }
+source: { repo: ys-fixtures/notes, path: compose.yaml, commit: ${COMMIT} }
 name: notes
 title: Notes
 `;
-const LINK = "https://github.com/ys-fixtures/notes/blob/main/compose.yaml";
+const KIT_LINK = "https://github.com/ys-fixtures/kits/blob/main/apps/ys-fixtures/notes.yaml";
+// A kit with no name, so the name comes from --name.
+const NAMELESS = "kit: 1\n";
 
 describe("install-app's sources", () => {
-  it("are a GitHub link or --compose, with at most one of --compose and --kit on standard input", () => {
-    expect(sourcesProblem({ link: LINK })).toBeNull();
-    expect(sourcesProblem({ link: LINK, kit: "-" })).toBeNull();
-    expect(sourcesProblem({ compose: "compose.yaml" })).toBeNull();
+  it("are a kit's link, a kit file, or --compose with a kit file, with at most one of them on standard input", () => {
+    expect(sourcesProblem({ link: KIT_LINK })).toBeNull();
+    expect(sourcesProblem({ kit: "-" })).toBeNull();
     expect(sourcesProblem({ compose: "-", kit: "/tmp/kit.yaml", name: "notes" })).toBeNull();
     expect(sourcesProblem({ compose: "/tmp/compose.yaml", kit: "-" })).toBeNull();
-    expect(sourcesProblem({})).toMatch(/GitHub link .* or --compose/);
-    expect(sourcesProblem({ link: LINK, compose: "-" })).toMatch(/not both/);
+    expect(sourcesProblem({})).toMatch(/link to the app's kit, or --kit/);
+    expect(sourcesProblem({ compose: "compose.yaml" })).toMatch(/--compose needs --kit: every app installs with a kit/);
+    expect(sourcesProblem({ link: KIT_LINK, kit: "-" })).toMatch(/not both/);
+    expect(sourcesProblem({ link: KIT_LINK, compose: "-", kit: "/tmp/kit.yaml" })).toMatch(/not a link/);
     expect(sourcesProblem({ compose: "-", kit: "-" })).toMatch(/can't both be -/);
-    expect(sourcesProblem({ compose: "-", kit: "https://github.com/o/r/blob/main/kit.yaml" })).toMatch(/kit is on this machine too/);
-    expect(sourcesProblem({ link: LINK, name: "notes" })).toMatch(/--name goes with --compose/);
+    expect(sourcesProblem({ compose: "-", kit: "https://github.com/o/r/blob/main/kit.yaml" })).toMatch(/--kit takes a kit file/);
+    expect(sourcesProblem({ kit: "https://github.com/o/r/blob/main/kit.yaml" })).toMatch(/first argument/);
+    expect(sourcesProblem({ link: KIT_LINK, name: "notes" })).toMatch(/--name goes with --compose/);
   });
 
   it("are checked by the command before it reads anything, and a file it can't read is named", async () => {
@@ -57,9 +62,15 @@ describe("install-app's sources", () => {
     const both = await runCommand("install-app", ["--compose", "-", "--kit", "-", "--json"], options);
     expect(both.code).toBe(1);
     expect(both.json).toMatchObject({ ok: false, error: "usage", message: expect.stringMatching(/can't both be -/) });
-    const missing = await runCommand("install-app", ["--compose", "/nope/compose.yaml", "--name", "notes", "--json"], options);
+    const kitless = await runCommand("install-app", ["--compose", "/nope/compose.yaml", "--name", "notes", "--json"], options);
+    expect(kitless.code).toBe(1);
+    expect(kitless.json).toMatchObject({ ok: false, error: "usage", message: expect.stringMatching(/--compose needs --kit/) });
+    const missing = await runCommand("install-app", ["--compose", "/nope/compose.yaml", "--kit", "/nope/kit.yaml", "--name", "notes", "--json"], options);
     expect(missing.code).toBe(2);
     expect(missing.json).toEqual({ ok: false, error: "compose_file", message: "The Compose file /nope/compose.yaml can't be read (ENOENT)." });
+    const noKit = await runCommand("install-app", ["--kit", "/nope/kit.yaml", "--json"], options);
+    expect(noKit.code).toBe(2);
+    expect(noKit.json).toEqual({ ok: false, error: "kit_file", message: "The kit file /nope/kit.yaml can't be read (ENOENT)." });
   });
 });
 
@@ -87,7 +98,7 @@ describe("a Compose file on this machine", () => {
     const source = localSource({ text: COMPOSE, name: "compose.yaml" });
     expect(source).toEqual({ link: DIGEST, repo: "", ref: "", path: "compose.yaml", commit: "", text: COMPOSE, pinnedLink: DIGEST });
     expect(isLocalSource(source)).toBe(true);
-    expect(isLocalSource({ link: LINK })).toBe(false);
+    expect(isLocalSource({ link: "https://github.com/ys-fixtures/notes/blob/main/compose.yaml" })).toBe(false);
     expect(() => localSource({ text: " \n", name: "" })).toThrow(SourceError);
   });
 
@@ -95,9 +106,9 @@ describe("a Compose file on this machine", () => {
     expect(parseKit(KIT).source).toBeUndefined();
     expect(kitFromFile(KIT, null).kit).toMatchObject({ name: "notes", outbound: ["example.com"] });
     expect(kitFromFile(GITHUB_KIT, null).kit.name).toBe("notes");
-    expect(() => kitFromFile(KIT, { repo: "ys-fixtures/notes", path: "compose.yaml" })).toThrow(/names no source file/);
-    // A kits folder is found by the app's GitHub repository, which a Compose file on this machine has none of.
-    expect(() => readLocalKit(folder, null)).toThrow(KitFileError);
+    expect(() => kitFromFile(KIT, { repo: "ys-fixtures/notes", path: "compose.yaml" })).toThrow(/names no Compose file in source/);
+    // The kit is a file, never a folder of kits.
+    expect(() => readLocalKit(folder)).toThrow(KitFileError);
   });
 });
 
@@ -133,7 +144,7 @@ describe("installing from a Compose file on this machine", () => {
   });
 
   it("installs from a file with its kit, records the file by its digest, and reads nothing from GitHub", async () => {
-    const review = await apps.preview({ text: COMPOSE, name: "compose.yaml" }, undefined, KIT);
+    const review = await apps.preview({ text: KIT }, { text: COMPOSE, name: "compose.yaml" });
     expect(review).toMatchObject({
       name: "notes",
       title: "Notes",
@@ -144,7 +155,7 @@ describe("installing from a Compose file on this machine", () => {
     const { done } = await apps.install(review.previewId, {}, false, actor);
     await done;
     const [row] = await t.db.select().from(app).where(eq(app.name, "notes"));
-    expect(row).toMatchObject({ sourceUrl: DIGEST, repo: "", path: "compose.yaml", ref: "", commit: "", compose: COMPOSE, kitSource: review.kit!.source, state: "running" });
+    expect(row).toMatchObject({ sourceUrl: DIGEST, repo: "", path: "compose.yaml", ref: "", commit: "", compose: COMPOSE, kitSource: review.kit.source, state: "running" });
     expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.compose).toBe(COMPOSE);
     expect(fetches).toBe(0);
   });
@@ -166,7 +177,7 @@ describe("installing from a Compose file on this machine", () => {
     // A file stands in for standard input, as `--compose - < compose.yaml` gives it.
     const compose = readLocalCompose("-", join(dir, "stdin"));
     rmSync(dir, { recursive: true, force: true });
-    const review = await apps.preview(compose, undefined, GITHUB_KIT, "journal");
+    const review = await apps.preview({ text: GITHUB_KIT }, compose, "journal");
     expect(review).toMatchObject({ name: "journal", title: "Notes", source: { link: DIGEST, path: "" } });
     await (await apps.install(review.previewId, {}, false, actor)).done;
     const [row] = await t.db.select().from(app).where(eq(app.name, "journal"));
@@ -175,28 +186,31 @@ describe("installing from a Compose file on this machine", () => {
   });
 
   it("needs a valid name from --name or the kit", async () => {
-    await expect(apps.preview({ text: COMPOSE, name: "" })).rejects.toMatchObject({ code: "name_required" });
-    await expect(apps.preview({ text: COMPOSE, name: "" }, undefined, undefined, "Not A Name")).rejects.toMatchObject({ code: "bad_name" });
-    await expect(apps.preview({ text: COMPOSE, name: "" }, undefined, undefined, "admin")).rejects.toMatchObject({ code: "name_reserved" });
-    await expect(apps.preview({ text: COMPOSE, name: "" }, undefined, undefined, "notes")).rejects.toMatchObject({ code: "already_installed" });
-    await expect(apps.preview({ text: "", name: "" }, undefined, undefined, "empty")).rejects.toThrow(AppError);
-    await expect(apps.preview({ text: COMPOSE, name: "" }, undefined, "kit: 3\n", "x")).rejects.toThrow(/kit format/);
+    const compose = { text: COMPOSE, name: "" };
+    await expect(apps.preview({ text: NAMELESS }, compose)).rejects.toMatchObject({ code: "name_required" });
+    await expect(apps.preview({ text: NAMELESS }, compose, "Not A Name")).rejects.toMatchObject({ code: "bad_name" });
+    await expect(apps.preview({ text: NAMELESS }, compose, "admin")).rejects.toMatchObject({ code: "name_reserved" });
+    await expect(apps.preview({ text: NAMELESS }, compose, "notes")).rejects.toMatchObject({ code: "already_installed" });
+    await expect(apps.preview({ text: NAMELESS }, { text: "", name: "" }, "empty")).rejects.toThrow(AppError);
+    await expect(apps.preview({ text: "kit: 3\n" }, compose, "x")).rejects.toThrow(/kit format/);
+    // A Compose file given as the kit says what a kit is.
+    await expect(apps.preview({ text: COMPOSE }, compose, "x")).rejects.toMatchObject({ code: "kit_required" });
     expect(fetches).toBe(0);
   });
 
   it("can reuse data kept under its name, from an app installed from GitHub too, only when asked", async () => {
-    // A kit without source is for a Compose file on this machine, not for an app's file on GitHub.
-    await expect(apps.preview(LINK, undefined, KIT)).rejects.toThrow(/names no source file/);
-    const linked = await apps.preview(LINK, undefined, GITHUB_KIT.replace("name: notes", "name: shared"));
+    // A kit file without source is for a Compose file on this machine, not for an app's file on GitHub.
+    await expect(apps.preview({ text: KIT })).rejects.toThrow(/names no Compose file/);
+    const linked = await apps.preview({ text: GITHUB_KIT.replace("name: notes", "name: shared") });
     await (await apps.install(linked.previewId, {}, false, actor)).done;
     await apps.remove("shared", actor);
     await settled();
     fetches = 0;
 
-    const review = await apps.preview({ text: COMPOSE, name: "" }, undefined, undefined, "shared");
+    const review = await apps.preview({ text: NAMELESS }, { text: COMPOSE, name: "" }, "shared");
     expect(review.retained).toBe(true);
     await expect(apps.install(review.previewId, {}, false, actor)).rejects.toMatchObject({ code: "retained_data" });
-    const again = await apps.preview({ text: COMPOSE, name: "" }, undefined, undefined, "shared");
+    const again = await apps.preview({ text: NAMELESS }, { text: COMPOSE, name: "" }, "shared");
     await (await apps.install(again.previewId, {}, true, actor)).done;
     const [row] = await t.db.select().from(app).where(eq(app.name, "shared"));
     expect(row).toMatchObject({ sourceUrl: DIGEST, repo: "", state: "running" });

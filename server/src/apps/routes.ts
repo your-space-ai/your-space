@@ -74,14 +74,8 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
 
   router.get("/apps", owner(async (_req, res) => void res.json(await apps.list())));
 
-  router.post(
-    "/apps/preview",
-    owner(async (req, res) => {
-      const { link, kit } = body(req);
-      if (typeof link !== "string" || !link.trim()) throw new AppError(400, "link_required", "Paste the GitHub link to the app's Compose file.");
-      res.json(await apps.preview(link, typeof kit === "string" && kit.trim() ? kit : undefined));
-    }),
-  );
+  // An app is reviewed from its kit's link at POST /api/kits/preview (repositories/kits.ts), which
+  // reads a kit in a private repository through the owner's GitHub connection (decision 2026-11-23).
 
   router.post(
     "/apps",

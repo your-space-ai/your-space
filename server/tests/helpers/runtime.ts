@@ -102,10 +102,36 @@ export class FakeRuntime implements Runtime {
   }
 }
 
+/** The commit every stand-in repository's `main` is at. */
 export const COMMIT = "0123456789abcdef0123456789abcdef01234567";
+/** An older commit, which a kit can pin its Compose file to (`owner/repo@PINNED/path` in `fakeGithub`). */
+export const PINNED = "fedcba9876543210fedcba9876543210fedcba98";
 
-/** GitHub's commits API and raw files for a few fixture repositories. */
+/** The link to an app's kit in the stand-in kits repository that `plainKit` fills. */
+export function kitLink(name: string): string {
+  return `https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/${name}.yaml`;
+}
+
+/**
+ * A kit for ys-fixtures/<name>'s compose.yaml at `main`'s commit, for `fakeGithub`: every app installs
+ * with one. Its interface is the fixture's web service; `more` adds kit fields.
+ */
+export function plainKit(name: string, more = ""): Record<string, string> {
+  return {
+    [`ys-fixtures/catalog/apps/ys-fixtures/${name}.yaml`]: `kit: 1\nsource: { repo: ys-fixtures/${name}, path: compose.yaml, commit: ${COMMIT} }\ninterface: { service: web, port: 80 }\n${more}`,
+  };
+}
+
+/**
+ * A stand-in for GitHub. A file keyed `owner/repo/path` is at `COMMIT`, which `main` resolves to; one
+ * keyed `owner/repo@<commit>/path` is only at that commit.
+ */
 export function fakeGithub(files: Record<string, string>): typeof fetch {
+  const at = (key: string) => {
+    const [, repo, commit, path] = /^([^/@]+\/[^/@]+)(?:@([0-9a-f]{40}))?\/(.+)$/.exec(key)!;
+    return { repo: repo!, commit: commit ?? COMMIT, path: path! };
+  };
+  const stored = Object.entries(files).map(([key, text]) => ({ ...at(key), text }));
   return (async (input: string | URL | Request) => {
     const url = new URL(String(input));
     const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
@@ -114,14 +140,15 @@ export function fakeGithub(files: Record<string, string>): typeof fetch {
         return Response.json([{ sha: COMMIT }]);
       const ref = parts.slice(4).join("/");
       const repo = `${parts[1]}/${parts[2]}`;
-      const known = Object.keys(files).some((k) => k.startsWith(`${repo}/`));
-      if (known && (ref === "main" || ref === "feature/x" || ref === COMMIT)) return new Response(COMMIT);
+      const commits = new Set(stored.filter((f) => f.repo === repo).map((f) => f.commit));
+      if (commits.size && (ref === "main" || ref === "feature/x")) return new Response(COMMIT);
+      if (commits.has(ref) || (commits.size && ref === COMMIT)) return new Response(ref);
       return new Response("", { status: 404 });
     }
     if (url.hostname === "raw.github.test") {
       const [owner, repo, commit, ...path] = parts;
-      const text = files[`${owner}/${repo}/${path.join("/")}`];
-      if (commit === COMMIT && text !== undefined) return new Response(text);
+      const file = stored.find((f) => f.repo === `${owner}/${repo}` && f.commit === commit && f.path === path.join("/"));
+      if (file) return new Response(file.text);
       return new Response("", { status: 404 });
     }
     return new Response("", { status: 404 });

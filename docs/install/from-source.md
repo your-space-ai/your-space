@@ -37,13 +37,13 @@ demo exec server create-owner --username you --name "You"
 
 Open the single-use link printed in your terminal, choose a password, and sign in as `you`. If the link expires, `demo exec server reset-link` prints a fresh one.
 
-1. Open **Apps**. Paste this address into **Link to the app's Compose file** and select **Review**.
+1. Open **Apps**. Paste this address of the sample app's kit into **Link to the app's kit** and select **Review**.
 
    ```text
-   https://github.com/ys-fixtures/whoami/blob/main/compose.yaml
+   https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/whoami.yaml
    ```
 
-   This address works only inside the demo. No such repository exists on GitHub: the demo answers it with the [sample app's Compose file in this repository](https://github.com/your-space-ai/your-space/blob/main/e2e/github/fixtures/ys-fixtures/whoami/compose.yaml).
+   This address works only inside the demo. No such repository exists on GitHub: the demo answers it with the [sample app's kit in this repository](https://github.com/your-space-ai/your-space/blob/main/e2e/github/fixtures/ys-fixtures/catalog/apps/ys-fixtures/whoami.yaml), which names the [sample app's Compose file](https://github.com/your-space-ai/your-space/blob/main/e2e/github/fixtures/ys-fixtures/whoami/compose.yaml).
 
 2. Read the kit details, including the removed host port and requested outbound access. Choose **Install** and wait for the app to finish starting.
 3. Open **Who Am I**. Its pane shows the hostname and request headers received by the sample app. If your browser offers **Open in its own tab**, follow that link to view it.

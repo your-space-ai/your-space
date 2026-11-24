@@ -1,16 +1,35 @@
 # Installation Kit Format
 
-A kit is a YAML file in an optional operator-configured directory at `apps/<owner>/<repo>.yaml`, or anywhere on GitHub when
-the owner gives its link, or a file on this machine given to `install-app --kit`, such as one from a
-private kits repository. It refers to the app's own file and never copies it. A kit can also go with
-a Compose file given on this machine (`install-app --compose <file> --kit <file>`); giving both in
-one command is what binds them.
+A kit is an app's complete definition in Your Space: what installs it and how it is shown
+([Kits define apps](../../../docs/architecture/decisions.md#kits-define-apps)). Every installed app
+has one, and Your Space installs only from a kit. A kit is a YAML file anywhere on GitHub, in the
+app's repository or apart from it, installed from its link, such as one listed in an optional
+operator-configured directory at `apps/<owner>/<repo>.yaml`, or a file on this machine given to
+`install-app --kit`, such as one from a private kits repository. It refers to the app's own Compose
+file and never copies it. A kit can also go with a Compose file given on this machine
+(`install-app --compose <file> --kit <file>`); giving both in one command is what binds them.
+
+**Exact commits, no drift.** The kit pins the app's Compose file: `source.repo`, `source.path` and
+`source.commit`, the full 40-character commit, are all required. Your Space reads the Compose file at
+exactly `source.commit`, never at a branch's latest commit, and records it. A kit's link resolves to
+the kit's commit when the owner reviews the install, even a link to a branch such as
+`blob/main/kit.yaml`, and the review and the install use exactly that kit. A kit in the same
+repository as its Compose file names an earlier commit than its own, since a file can't contain the
+commit it is in: commit the Compose file, then the kit that names that commit. A newer kit, or a kit
+that pins a newer Compose commit, reaches an installed app only when the owner chooses to install it;
+nothing follows a branch by itself. Your Space doesn't yet show that a newer kit exists: offering it
+as an update the owner chooses to install is on the [roadmap](../../../docs/roadmap.md). The one
+exception is **Update installed app** for a repository the owner manages (journey 011): after the
+owner's review, it deploys the Compose file at the commit the owner selects there, so the app's
+recorded commit can then differ from its kit's `source.commit`. Only a kit given with a Compose file on this machine leaves out
+`source`, since that file is the app's Compose file.
 
 ```yaml
 kit: 1                        # format version
-source:
+source:                       # required, except with a Compose file on this machine
   repo: <owner>/<repo>        # the app's repository
-  path: compose.yaml          # the file this kit fits
+  path: compose.yaml          # its Compose file
+  commit: <40-character sha>  # the exact commit Your Space reads it at
 name: finance                 # the app's short name and address
 title: Finance
 interface:
@@ -43,7 +62,11 @@ owner types is not encoded. Use a template when the app's file reads one setting
 another, such as a database URL with a password the kit generates.
 
 Every field except `kit` and `source` is optional. A kit given with a Compose file on this machine
-may leave out `source`, and its `source` isn't matched; a kit without `source` fits no file on
-GitHub. Unknown fields are refused, so a kit written for a
-newer format doesn't half-apply. A kit can't change the Docker adapter's rules: it can only name
-values, hosts, limits and the interface.
+may leave out `source`, and its `source` isn't matched. Any other kit without `source` is refused, as
+is a `source` without `repo`, `path` or `commit`, or with a commit that isn't a full 40-character
+one, such as a branch, a tag or a short commit; the message names the missing field. This holds for
+`kit: 1` and `kit: 2` alike: a kit written before kits pinned their Compose file is refused until it
+adds `source.commit`. Unknown fields are refused, in `source` too, so a kit written for a newer
+format doesn't half-apply. A Compose file given where a kit belongs is refused with a message that
+explains kits. A kit can't change the Docker adapter's rules: it can only name values, hosts, limits
+and the interface.

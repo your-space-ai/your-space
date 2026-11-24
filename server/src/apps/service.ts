@@ -20,8 +20,8 @@ import {
   type Publish,
 } from "../db/schema.ts";
 import { errorFields, log } from "../log.ts";
-import { fetchSource, githubEndpoints, SourceError, type GithubEndpoints, type SourceFile } from "./github.ts";
-import { findKit, kitFromFile, KitError, type FoundKit } from "./kits.ts";
+import { fetchPinnedFile, githubEndpoints, SourceError, type GithubEndpoints, type SourceFile } from "./github.ts";
+import { composeOf, kitFromFile, kitFromLink, KitError, kitIdentity, NotAKitError, type FoundKit } from "./kits.ts";
 import { localSource, type LocalCompose } from "./local.ts";
 import { RuntimeError, type AppSpec, type CheckAnswer, type Runtime, type ServiceState } from "./runtime-client.ts";
 import { buildSettings, decrypt, encrypt, publicSetting, resolveTemplates, type Setting } from "./settings.ts";
@@ -64,8 +64,8 @@ interface Preview {
   id: string;
   expiresAt: number;
   source: SourceFile;
-  kit: Kit | null;
-  kitSource: string | null;
+  kit: Kit;
+  kitSource: string;
   name: string;
   title: string;
   check: CheckAnswer;
@@ -326,25 +326,39 @@ export class AppsService {
   // ----- Preview and install (FR-011) -----
 
   /**
-   * Reviews an app from its GitHub link, or from a Compose file given on this machine. A linked app's
-   * kit is the one the owner linked or gave as a file's text, else the kits repository's. A local
-   * file's kit is only the one given with it, and nothing is read from GitHub; its name is the one
-   * the owner gives, else its kit's.
+   * Reviews an app from its kit (decision 2026-11-23): the kit's GitHub link, read at the commit the
+   * link resolves to now, or a kit file's text given on this machine. The kit names the app's Compose
+   * file on GitHub at an exact commit (composeOf), and the review reads it there. With a Compose file
+   * given on this machine, the kit is a file given with it, nothing is read from GitHub, and the app's
+   * name is the one the owner gives, else its kit's.
    */
-  async preview(from: string | LocalCompose, kitLink?: string, kitText?: string, appName?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
+  async preview(kit: { link: string } | { text: string }, compose?: LocalCompose, appName?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
     const github = this.config.github ?? githubEndpoints();
     const fetcher = this.config.fetch ?? fetch;
     let source: SourceFile;
-    let found;
+    let found: FoundKit;
     try {
-      if (typeof from === "string") {
-        source = await fetchSource(from, github, fetcher);
-        found = kitText !== undefined ? kitFromFile(kitText, source) : await findKit(source.repo, source.path, kitLink, this.config.kitsRepository, github, fetcher);
+      if (compose) {
+        if (!("text" in kit)) throw new KitError("give the kit as a file on this machine with a Compose file on this machine.");
+        source = localSource(compose);
+        found = kitFromFile(kit.text, null);
       } else {
-        source = localSource(from);
-        found = kitText !== undefined ? kitFromFile(kitText, null) : null;
+        if ("link" in kit) {
+          try {
+            found = await kitFromLink(kit.link, this.config.kitsRepository, github, fetcher);
+          } catch (error) {
+            // Its caller says how to reach a kit in a private repository instead.
+            if (error instanceof SourceError && error.missing) throw new AppError(404, "kit_not_found", error.message);
+            throw error;
+          }
+        } else {
+          found = kitFromFile(kit.text, null);
+        }
+        const file = composeOf(found.kit);
+        source = await fetchPinnedFile(file.repo, file.path, file.commit, github, fetcher);
       }
     } catch (error) {
+      if (error instanceof NotAKitError) throw new AppError(400, "kit_required", error.message);
       if (error instanceof SourceError || error instanceof KitError) throw new AppError(400, "source", error.message);
       throw error;
     }
@@ -353,10 +367,10 @@ export class AppsService {
 
   /** Internal handoff from the owner-authorized GitHub source reader. HTTP callers
    * never supply trusted source, commit, or review metadata. */
-  async previewResolved(source: SourceFile, found: FoundKit | null, appName?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
+  async previewResolved(source: SourceFile, found: FoundKit, appName?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
     for (const [id, p] of this.previews) if (p.expiresAt < Date.now()) this.previews.delete(id);
-    const kit = found?.kit ?? null;
-    const name = source.repo ? (kit?.name ?? slug(source.repo.split("/")[1]!)) : (appName ?? kit?.name);
+    const kit = found.kit;
+    const name = source.repo ? (kit.name ?? slug(source.repo.split("/")[1]!)) : (appName ?? kit.name);
     if (!name) throw new AppError(400, "name_required", "Name the app with --name, or give a kit that names it.");
     if (!/^[a-z][a-z0-9-]{0,29}$/.test(name)) throw new AppError(400, "bad_name", "An app's name is 1 to 30 lower-case letters, digits and dashes, starting with a letter.");
     if (RESERVED_NAMES.has(name)) throw new AppError(400, "name_reserved", `The name ${name} is reserved by Your Space.`);
@@ -375,14 +389,14 @@ export class AppsService {
     // A first check reads the settings the file uses; the second resolves the file with them. A
     // setting the file requires and nothing fills gets a placeholder in both, so the review shows
     // the file and the owner fills the setting in; installing needs a real value (install).
-    const spec: AppSpec = { project: `ys-${name}`, app: name, compose: source.text, env: {}, interface: kit?.interface ?? null, placeholders: true };
+    const spec: AppSpec = { project: `ys-${name}`, app: name, compose: source.text, env: {}, interface: kit.interface ?? null, placeholders: true };
     const first = await this.check(spec);
     const settings = buildSettings(first.variables, kit, address, previous);
     const check = await this.check({ ...spec, env: this.envOf(settings) });
 
     const limits: Record<string, { memory: number; cpus: number }> = {};
     for (const service of check.services) {
-      const fromKit = kit?.limits?.[service.name];
+      const fromKit = kit.limits?.[service.name];
       limits[service.name] = { memory: fromKit?.memory ?? DEFAULT_MEMORY, cpus: fromKit?.cpus ?? DEFAULT_CPUS };
     }
     const preview: Preview = {
@@ -390,16 +404,16 @@ export class AppsService {
       expiresAt: Date.now() + PREVIEW_LIFETIME_MS,
       source,
       kit,
-      kitSource: found?.source ?? null,
+      kitSource: found.source,
       name,
-      title: kit?.title ?? (source.repo ? source.repo.split("/")[1]! : name),
+      title: kit.title ?? (source.repo ? source.repo.split("/")[1]! : name),
       check,
       settings,
-      outbound: kit?.outbound ?? [],
+      outbound: kit.outbound ?? [],
       limits,
-      interface: kit?.interface ?? this.guessInterface(check),
-      publishPort: defaultPort(check.services, kit?.interface ?? this.guessInterface(check)),
-      pane: kit?.pane ?? true,
+      interface: kit.interface ?? null,
+      publishPort: defaultPort(check.services, kit.interface ?? null),
+      pane: kit.pane ?? true,
       retained: Boolean(existing),
     };
     this.previews.set(preview.id, preview);
@@ -415,13 +429,6 @@ export class AppsService {
     }
   }
 
-  /** Without a kit, the interface is the one service that publishes a port, if there is exactly one. */
-  private guessInterface(check: CheckAnswer): { service: string; port: number } | null {
-    const published = check.services.filter((s) => s.ports.length > 0);
-    if (published.length !== 1) return null;
-    return { service: published[0]!.name, port: published[0]!.ports[0]! };
-  }
-
   private reviewOf(p: Preview) {
     return {
       previewId: p.id,
@@ -429,7 +436,7 @@ export class AppsService {
       title: p.title,
       origin: this.address(p.name).origin,
       source: { link: p.source.link, repo: p.source.repo, path: p.source.path, ref: p.source.ref, commit: p.source.commit, pinnedLink: p.source.pinnedLink },
-      kit: p.kitSource ? { source: p.kitSource } : null,
+      kit: kitIdentity(p.kitSource),
       ok: p.check.ok,
       services: p.check.services,
       images: p.check.images.map((i) => ({ ref: i.ref, digest: i.digest, runsHere: i.runsHere })),
@@ -454,7 +461,7 @@ export class AppsService {
     publishWith: unknown = null,
   ): Promise<{ name: string; jobId: string; done: Promise<void> }> {
     const p = this.previews.get(previewId);
-    if (!p || p.expiresAt < Date.now()) throw new AppError(404, "preview_expired", "This review has expired. Paste the link again.");
+    if (!p || p.expiresAt < Date.now()) throw new AppError(404, "preview_expired", "This review has expired. Paste the kit's link again.");
     const review = this.reviewOf(p);
     if (!review.ok) throw new AppError(400, "refused", "Your Space can't run this app as it is.", review.refusals);
     if (p.retained && !reuseData) {
@@ -477,7 +484,7 @@ export class AppsService {
     // Then the file is checked again with the owner's values, so its images and changes are the real ones.
     let check = p.check;
     if (placeheld) {
-      check = await this.check({ project: `ys-${p.name}`, app: p.name, compose: p.source.text, env: this.envOf(settings), interface: p.kit?.interface ?? null });
+      check = await this.check({ project: `ys-${p.name}`, app: p.name, compose: p.source.text, env: this.envOf(settings), interface: p.kit.interface ?? null });
       if (!check.ok) {
         const reasons = check.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`).join(" ");
         throw new AppError(400, "refused", `Your Space can't run this app with these settings: ${reasons}`, check.refusals);
@@ -521,7 +528,7 @@ export class AppsService {
       let id: string;
       if (p.retained) {
         const updated = await tx.update(app).set(values).where(and(eq(app.name, p.name), eq(app.state, "removed"))).returning({ id: app.id });
-        if (!updated[0]) throw new AppError(409, "conflict", "The app changed while you were reviewing it. Paste the link again.");
+        if (!updated[0]) throw new AppError(409, "conflict", "The app changed while you were reviewing it. Paste the kit's link again.");
         id = updated[0].id;
         await tx.delete(appSetting).where(eq(appSetting.appId, id));
         await tx.delete(appOutbound).where(eq(appOutbound.appId, id));

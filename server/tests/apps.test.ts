@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { createGate, Handoffs, readCookie, safeReturn, signPass, verifyPass } from "../src/apps/gate.ts";
 import { fetchSource, parseLink, SourceError } from "../src/apps/github.ts";
-import { KitError, parseKit, parseMemory } from "../src/apps/kits.ts";
+import { composeOf, KitError, kitIdentity, NotAKitError, parseKit, parseMemory } from "../src/apps/kits.ts";
 import { appNameFromHost, stateFromServices, underOwnName } from "../src/apps/service.ts";
 import { buildSettings, decrypt, encrypt, looksSecret, resolveTemplates } from "../src/apps/settings.ts";
 import { session } from "../src/db/auth-schema.ts";
@@ -12,7 +12,7 @@ import { app, appAccessRequest, appSetting, event, installJob } from "../src/db/
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY, TEST_SECRET } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
-import { COMMIT, fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
+import { COMMIT, fakeGithub, FakeRuntime, kitLink, PINNED, plainKit } from "./helpers/runtime.ts";
 import { cookieHeader, send, startServer, type TestServer } from "./helpers/server.ts";
 
 const WHOAMI = `services:
@@ -25,7 +25,7 @@ const WHOAMI = `services:
       PAGE: \${PAGE:-}
 `;
 const KIT = `kit: 1
-source: { repo: ys-fixtures/whoami, path: compose.yaml }
+source: { repo: ys-fixtures/whoami, path: compose.yaml, commit: ${COMMIT} }
 name: whoami
 title: Who Am I
 interface: { service: web, port: 80 }
@@ -39,11 +39,19 @@ outbound: [example.com]
 limits:
   web: { memory: 64M, cpus: 0.5 }
 `;
-const LINK = "https://github.com/ys-fixtures/whoami/blob/main/compose.yaml";
+// Apps install from their kits' links (decision 2026-11-23); the kit names the app's Compose file.
+const LINK = kitLink("whoami");
+const COMPOSE_LINK = "https://github.com/ys-fixtures/whoami/blob/main/compose.yaml";
+// A kit beside its app's Compose file, with no source: it names no Compose file, so it is refused.
+const BESIDE = "kit: 1\nname: beside\ninterface: { service: web, port: 80 }\n";
+// The Compose file at a newer commit than the one its kits pin.
+const NEWER = `${WHOAMI}    labels: { newer: "true" }\n`;
+// A kit beside its app's Compose file, pinning it to an older commit than the kit's own.
+const PINNED_KIT = `kit: 1\nsource: { repo: ys-fixtures/pinned, path: compose.yaml, commit: ${PINNED} }\nname: pinned\ninterface: { service: web, port: 80 }\n`;
 
 describe("links, kits and settings", () => {
   it("reads GitHub file links and refuses anything else", () => {
-    expect(parseLink(LINK)).toEqual({ repo: "ys-fixtures/whoami", rest: ["main", "compose.yaml"] });
+    expect(parseLink(COMPOSE_LINK)).toEqual({ repo: "ys-fixtures/whoami", rest: ["main", "compose.yaml"] });
     expect(parseLink("https://raw.githubusercontent.com/a/b/main/x/compose.yml").rest).toEqual(["main", "x", "compose.yml"]);
     for (const bad of ["not a link", "http://github.com/a/b/blob/main/c.yml", "https://gitlab.com/a/b/blob/main/c.yml", "https://github.com/a/b", "https://github.com/a/b/tree/main"]) {
       expect(() => parseLink(bad), bad).toThrow(SourceError);
@@ -67,13 +75,51 @@ describe("links, kits and settings", () => {
     expect(parseMemory("1.5G")).toBe(1.5 * 1024 ** 3);
 
     // Templates build a value from settings the kit itself names, never from each other.
-    const templated = (derive: string) => `kit: 1\nsource: { repo: a/b, path: c }\ngenerate: { DB_PASSWORD: {} }\nset: { DB_USER: app }\nderive:\n  APP_URL: app_origin\n${derive}`;
+    const templated = (derive: string) => `kit: 1\nsource: { repo: a/b, path: c, commit: ${COMMIT} }\ngenerate: { DB_PASSWORD: {} }\nset: { DB_USER: app }\nderive:\n  APP_URL: app_origin\n${derive}`;
     expect(parseKit(templated('  DATABASE_URL: { template: "postgresql://${DB_USER}:${DB_PASSWORD}@db/app" }')).derive!.DATABASE_URL).toEqual({ template: "postgresql://${DB_USER}:${DB_PASSWORD}@db/app" });
     expect(() => parseKit(templated('  DATABASE_URL: { template: "postgresql://${NOPE}@db" }'))).toThrow(/uses NOPE/);
     expect(() => parseKit(templated('  A: { template: "${APP_URL}" }\n  B: { template: "${A}" }'))).toThrow(/uses A/);
     expect(() => parseKit(templated('  A: { template: "${lower-case}" }'))).toThrow(/placeholder/);
     expect(() => parseKit(templated('  A: { template: "x", extra: 1 }'))).toThrow(/template/);
     expect(() => parseMemory("lots")).toThrow(KitError);
+  });
+
+  it("explains kits when it is given a Compose file instead", () => {
+    expect(() => parseKit(WHOAMI)).toThrow(NotAKitError);
+    expect(() => parseKit(WHOAMI)).toThrow(/not a Your Space kit/);
+    // A kit with a field it doesn't know is still a kit.
+    expect(() => parseKit(`${KIT}services: {}\n`)).toThrow(/unknown field services/);
+  });
+
+  it("names the Compose file: the kit's source, at exactly the commit it pins", () => {
+    expect(parseKit(KIT).source).toEqual({ repo: "ys-fixtures/whoami", path: "compose.yaml", commit: COMMIT });
+    expect(composeOf(parseKit(KIT))).toEqual({ repo: "ys-fixtures/whoami", path: "compose.yaml", commit: COMMIT });
+    expect(composeOf(parseKit(PINNED_KIT))).toEqual({ repo: "ys-fixtures/pinned", path: "compose.yaml", commit: PINNED });
+    // Without source, a kit names no Compose file: not even the compose.yaml beside it.
+    expect(() => composeOf(parseKit(BESIDE))).toThrow(/names no Compose file/);
+    // A source without its exact commit is refused, in both kit formats, naming the field.
+    for (const version of ["kit: 1", "kit: 2\nagentAccess: { roles: {}, routes: {} }"]) {
+      expect(() => parseKit(`${version}\nsource: { repo: a/b, path: compose.yaml }\n`), version).toThrow(/source has no commit\. Add source\.commit/);
+    }
+    for (const commit of ["main", "v1.2.0", COMMIT.slice(0, 12), COMMIT.toUpperCase(), "1234"]) {
+      expect(() => parseKit(`kit: 1\nsource: { repo: a/b, path: compose.yaml, commit: "${commit}" }\n`), commit).toThrow(/source\.commit must be a full 40-character commit/);
+    }
+    // A source names a file at a commit and nothing else, such as a branch to follow.
+    expect(() => parseKit(`kit: 1\nsource: { repo: a/b, path: compose.yaml, commit: ${COMMIT}, ref: main }\n`)).toThrow(/source has the unknown field ref/);
+    // The source is a repository and a file in it, which can't step out of the commit it is read at.
+    for (const [repo, path] of [["a/b", "../dev/compose.yaml"], ["a/b", "deploy/./compose.yaml"], ["a/b", "/compose.yaml"], ["a/b/c", "compose.yaml"], ["../b", "compose.yaml"], ["a", "compose.yaml"]]) {
+      expect(() => parseKit(`kit: 1\nsource: { repo: "${repo}", path: "${path}", commit: ${COMMIT} }\n`), `${repo} ${path}`).toThrow(/source\.(repo|path) must/);
+    }
+  });
+
+  it("identifies a kit by its repository, path and commit, or by its digest", async () => {
+    // A file whose name has a literal %20 keeps it: the pinned link encodes it, and the identity decodes it once.
+    const github = fakeGithub({ "a/kits/x%20y.yaml": "kit: 1\n" });
+    const file = await fetchSource("https://github.com/a/kits/blob/main/x%2520y.yaml", { api: "https://api.github.test", raw: "https://raw.github.test" }, github);
+    expect(file.pinnedLink).toBe(`https://github.com/a/kits/blob/${COMMIT}/x%2520y.yaml`);
+    expect(kitIdentity(file.pinnedLink).path).toBe("x%20y.yaml");
+    expect(kitIdentity(`https://github.com/a/kits/blob/${COMMIT}/apps/x%20y.yaml`)).toEqual({ source: `https://github.com/a/kits/blob/${COMMIT}/apps/x%20y.yaml`, repo: "a/kits", path: "apps/x y.yaml", commit: COMMIT });
+    expect(kitIdentity(`sha256:${"a".repeat(64)}`)).toEqual({ source: `sha256:${"a".repeat(64)}` });
   });
 
   it("never uses a published default for a secret", () => {
@@ -90,14 +136,28 @@ describe("links, kits and settings", () => {
     expect(password.value!.length).toBeGreaterThanOrEqual(40);
     expect(withoutKit.find((s) => s.name === "GREETING")).toMatchObject({ secret: false, value: null, publishedDefault: "hello" });
     expect(withoutKit.find((s) => s.name === "OPENAI_ACCESS_TOKEN")).toMatchObject({ secret: true, generated: false, value: null });
+    // With a kit too: a setting it doesn't generate, derive or set still gets a generated value.
+    const silent = buildSettings(variables, parseKit("kit: 1\nsecrets: [OPENAI_ACCESS_TOKEN]\n"), address);
+    expect(silent.find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ secret: true, generated: true, publishedDefault: null });
+    expect(silent.find((s) => s.name === "POSTGRES_PASSWORD")!.value).not.toBe("sure_password");
+    expect(silent.find((s) => s.name === "OPENAI_ACCESS_TOKEN")).toMatchObject({ secret: true, generated: false, value: null });
+    // Data kept from a removed app was written with its settings then: a kept unset one stays unset,
+    // even when the kit installed now generates or sets it, and a kept value stays as it was.
+    const keptUnset = new Map([["POSTGRES_PASSWORD", null]]);
+    for (const kit of ["kit: 1\n", "kit: 1\ngenerate: { POSTGRES_PASSWORD: {} }\n", "kit: 1\nset: { POSTGRES_PASSWORD: chosen }\n"]) {
+      expect(buildSettings(variables, parseKit(kit), address, keptUnset).find((s) => s.name === "POSTGRES_PASSWORD"), kit).toMatchObject({ value: null, generated: false });
+    }
+    expect(buildSettings(variables, parseKit("kit: 1\ngenerate: { POSTGRES_PASSWORD: {} }\n"), address, new Map([["POSTGRES_PASSWORD", "kept"]])).find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ value: "kept", generated: true });
+    // A value the kit sets is the kit's choice.
+    expect(buildSettings(variables, parseKit("kit: 1\nset: { POSTGRES_PASSWORD: chosen }\n"), address).find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ value: "chosen", generated: false });
 
-    const kit = parseKit(`kit: 1\nsource: { repo: a/b, path: c }\ngenerate: { APP_SECRET: { encoding: hex } }\nderive: { SERVER_URL: app_origin }\nset: { STORAGE_TYPE: local }`);
+    const kit = parseKit(`kit: 1\nsource: { repo: a/b, path: c, commit: ${COMMIT} }\ngenerate: { APP_SECRET: { encoding: hex } }\nderive: { SERVER_URL: app_origin }\nset: { STORAGE_TYPE: local }`);
     const withKit = buildSettings([{ name: "SERVER_URL", required: false, default: "http://localhost:3000" }, { name: "STORAGE_TYPE", required: false, default: "" }], kit, address);
     expect(withKit.find((s) => s.name === "STORAGE_TYPE")).toMatchObject({ value: "local", generated: false, secret: false });
     expect(withKit.find((s) => s.name === "SERVER_URL")).toMatchObject({ derived: true, value: "http://x.space.localhost" });
     expect(withKit.find((s) => s.name === "APP_SECRET")!.value).toMatch(/^[0-9a-f]{64}$/);
     // A template is filled from the values it uses, and is secret when any of them is.
-    const urlKit = parseKit(`kit: 1\nsource: { repo: a/b, path: c }\ngenerate: { DB_PASSWORD: {} }\nset: { DB_HOST: db, GREETING: hi }\nderive:\n  DATABASE_URL: { template: "postgresql://app:\${DB_PASSWORD}@\${DB_HOST}/app" }\n  PAGE: { template: "\${GREETING} there" }`);
+    const urlKit = parseKit(`kit: 1\nsource: { repo: a/b, path: c, commit: ${COMMIT} }\ngenerate: { DB_PASSWORD: {} }\nset: { DB_HOST: db, GREETING: hi }\nderive:\n  DATABASE_URL: { template: "postgresql://app:\${DB_PASSWORD}@\${DB_HOST}/app" }\n  PAGE: { template: "\${GREETING} there" }`);
     const urlSettings = buildSettings([{ name: "DATABASE_URL", required: false, default: "postgresql://app:app@db/app" }], urlKit, address);
     const dbPassword = urlSettings.find((s) => s.name === "DB_PASSWORD")!.value!;
     expect(urlSettings.find((s) => s.name === "DATABASE_URL")).toMatchObject({ derived: true, secret: true, publishedDefault: null, value: `postgresql://app:${dbPassword}@db/app` });
@@ -184,6 +244,15 @@ describe("apps API", () => {
           "ys-fixtures/whoami/compose.yaml": WHOAMI,
           "ys-fixtures/catalog/apps/ys-fixtures/whoami.yaml": KIT,
           "ys-fixtures/plain/compose.yaml": WHOAMI,
+          ...plainKit("plain"),
+          "ys-fixtures/beside/kit.yaml": BESIDE,
+          "ys-fixtures/beside/compose.yaml": WHOAMI,
+          // main is at COMMIT, where the Compose file is newer than the one the kits pin.
+          "ys-fixtures/pinned/kit.yaml": PINNED_KIT,
+          "ys-fixtures/pinned/compose.yaml": NEWER,
+          [`ys-fixtures/pinned@${PINNED}/compose.yaml`]: WHOAMI,
+          "ys-fixtures/catalog/apps/ys-fixtures/pinned.yaml": PINNED_KIT.replace("name: pinned", "name: elsewhere"),
+          "ys-fixtures/catalog/apps/ys-fixtures/unpinned.yaml": "kit: 1\nsource: { repo: ys-fixtures/pinned, path: compose.yaml }\n",
         }),
       },
     });
@@ -210,7 +279,7 @@ describe("apps API", () => {
   }
 
   async function install(link = LINK): Promise<{ name: string; jobId: string }> {
-    const review = await (await post("/api/apps/preview", { link })).json() as any;
+    const review = await (await post("/api/kits/preview", { kitUrl: link })).json() as any;
     const installed = await post("/api/apps", { previewId: review.previewId });
     expect(installed.status).toBe(202);
     const body = await installed.json() as any;
@@ -223,7 +292,7 @@ describe("apps API", () => {
   }
 
   it("refuses everyone but the signed-in owner, and changes nothing", async () => {
-    for (const [method, path] of [["GET", "/api/apps"], ["POST", "/api/apps/preview"], ["POST", "/api/apps"], ["GET", "/api/engine"], ["DELETE", "/api/apps/x/data"]]) {
+    for (const [method, path] of [["GET", "/api/apps"], ["POST", "/api/kits/preview"], ["POST", "/api/apps"], ["GET", "/api/engine"], ["DELETE", "/api/apps/x/data"]]) {
       const response = await server.request(path!, { method, body: method === "GET" ? undefined : "{}" });
       expect(response.status, `${method} ${path}`).toBe(401);
     }
@@ -231,13 +300,13 @@ describe("apps API", () => {
   });
 
   it("reviews an app without showing generated secrets, then installs it", async () => {
-    const response = await post("/api/apps/preview", { link: LINK });
+    const response = await post("/api/kits/preview", { kitUrl: LINK });
     expect(response.status).toBe(200);
     const text = await response.text();
     const review = JSON.parse(text);
     expect(review).toMatchObject({ name: "whoami", title: "Who Am I", ok: true, origin: `http://whoami.${new URL(server.publicUrl).host}`, outbound: ["example.com"], interface: { service: "web", port: 80 } });
     expect(review.source).toMatchObject({ repo: "ys-fixtures/whoami", commit: COMMIT });
-    expect(review.kit.source).toContain(`ys-fixtures/catalog/blob/${COMMIT}/apps/ys-fixtures/whoami.yaml`);
+    expect(review.kit).toEqual({ source: `https://github.com/ys-fixtures/catalog/blob/${COMMIT}/apps/ys-fixtures/whoami.yaml`, repo: "ys-fixtures/catalog", path: "apps/ys-fixtures/whoami.yaml", commit: COMMIT });
     expect(review.settings.find((s: { name: string }) => s.name === "API_TOKEN")).toMatchObject({ secret: true, generated: true, set: true });
     expect(text).not.toContain("published-default-token");
     expect(review.warning).toMatch(/trusts it/);
@@ -281,7 +350,7 @@ describe("apps API", () => {
   });
 
   it("refuses to install an app twice", async () => {
-    const response = await post("/api/apps/preview", { link: LINK });
+    const response = await post("/api/kits/preview", { kitUrl: LINK });
     expect(response.status).toBe(409);
     expect((await response.json() as any).error).toBe("already_installed");
   });
@@ -394,7 +463,7 @@ describe("apps API", () => {
     const [kept] = await t.db.select().from(appSetting).where(eq(appSetting.name, "API_TOKEN"));
     expect(kept!.value).not.toBeNull();
 
-    const review = await (await post("/api/apps/preview", { link: LINK })).json() as any;
+    const review = await (await post("/api/kits/preview", { kitUrl: LINK })).json() as any;
     expect(review.retained).toBe(true);
     expect((await post("/api/apps", { previewId: review.previewId })).status).toBe(409);
     const reused = await post("/api/apps", { previewId: review.previewId, reuseData: true });
@@ -413,10 +482,57 @@ describe("apps API", () => {
     expect(await t.db.select().from(appAccessRequest)).toEqual([]);
   });
 
-  it("guesses the interface of an app without a kit, and generates its secret", async () => {
-    const review = await (await post("/api/apps/preview", { link: "https://github.com/ys-fixtures/plain/blob/main/compose.yaml" })).json() as any;
-    expect(review).toMatchObject({ name: "plain", kit: null, interface: { service: "web", port: 80 }, outbound: [] });
+  it("generates a secret the kit doesn't mention, and takes the interface only from the kit", async () => {
+    const review = await (await post("/api/kits/preview", { kitUrl: kitLink("plain") })).json() as any;
+    expect(review).toMatchObject({ name: "plain", title: "plain", interface: { service: "web", port: 80 }, outbound: [] });
     expect(review.settings.find((s: { name: string }) => s.name === "API_TOKEN")).toMatchObject({ generated: true, secret: true });
+  });
+
+  it("resolves a kit's branch link to its commit, and reads the Compose file at the commit the kit pins", async () => {
+    // The kit's link names main, which resolves to its commit now; the kit pins an older Compose commit.
+    for (const [kitUrl, name, kitRepo, kitPath] of [
+      ["https://github.com/ys-fixtures/pinned/blob/main/kit.yaml", "pinned", "ys-fixtures/pinned", "kit.yaml"],
+      [kitLink("pinned"), "elsewhere", "ys-fixtures/catalog", "apps/ys-fixtures/pinned.yaml"],
+    ] as const) {
+      const review = await (await post("/api/kits/preview", { kitUrl })).json() as any;
+      expect(review, kitUrl).toMatchObject({
+        name,
+        source: { repo: "ys-fixtures/pinned", path: "compose.yaml", commit: PINNED, pinnedLink: `https://github.com/ys-fixtures/pinned/blob/${PINNED}/compose.yaml` },
+        kit: { source: `https://github.com/${kitRepo}/blob/${COMMIT}/${kitPath}`, repo: kitRepo, path: kitPath, commit: COMMIT },
+      });
+      expect((await post("/api/apps", { previewId: review.previewId })).status).toBe(202);
+      await settled();
+      const [row] = await t.db.select().from(app).where(eq(app.name, name));
+      // The record keeps both exact commits, and the Compose file read at the pinned one.
+      expect(row).toMatchObject({ commit: PINNED, compose: WHOAMI, kitSource: review.kit.source, kit: { source: { repo: "ys-fixtures/pinned", path: "compose.yaml", commit: PINNED } } });
+      expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.compose).toBe(WHOAMI);
+      await post(`/api/apps/${name}/remove`, {});
+      await settled();
+      await api(`/api/apps/${name}/data`, { method: "DELETE", body: JSON.stringify({ confirm: name }) });
+    }
+  });
+
+  it("refuses a kit that doesn't pin its Compose file: no source, or a source without its commit", async () => {
+    const beside = await post("/api/kits/preview", { kitUrl: "https://github.com/ys-fixtures/beside/blob/main/kit.yaml" });
+    expect(beside.status).toBe(400);
+    expect(await beside.json()).toMatchObject({ error: "source", message: expect.stringMatching(/names no Compose file\. Add source/) });
+    const unpinned = await post("/api/kits/preview", { kitUrl: kitLink("unpinned") });
+    expect(unpinned.status).toBe(400);
+    expect(await unpinned.json()).toMatchObject({ error: "source", message: expect.stringMatching(/source has no commit\. Add source\.commit/) });
+    expect(await t.db.select().from(app).where(eq(app.name, "beside"))).toEqual([]);
+  });
+
+  it("refuses a bare Compose link, and says what a kit is; the old Compose-link review is gone", async () => {
+    const response = await post("/api/kits/preview", { kitUrl: COMPOSE_LINK });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "kit_required", message: expect.stringMatching(/not a Your Space kit.*Give the link to the app's kit/) });
+    expect((await post("/api/kits/preview", { kitUrl: "https://example.com/kit.yaml" })).status).toBe(400);
+    // A kit GitHub doesn't show this machine, as in a private repository, needs the GitHub connection.
+    const hidden = await post("/api/kits/preview", { kitUrl: "https://github.com/ys-fixtures/private-kits/blob/main/kit.yaml" });
+    expect(hidden.status).toBe(404);
+    expect(await hidden.json()).toMatchObject({ error: "kit_not_found", message: expect.stringMatching(/repository must be public\. If the kit is in a private repository, connect GitHub/) });
+    expect((await post("/api/kits/preview", {})).status).toBe(400);
+    expect((await post("/api/apps/preview", { link: COMPOSE_LINK })).status).toBe(404);
   });
 
   describe("gate", () => {

@@ -1,7 +1,9 @@
 // Loaded only by compose.e2e.yaml. The production transport keeps its fixed GitHub origins.
-// Synthetic responses cover the device exchange, directory, and file operations.
+// Synthetic responses cover the device exchange, directory, and file operations. Each repository
+// keeps every commit's files, so a kit can pin a Compose file to an earlier commit.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { fixtureCommit } from "./commits.mjs";
 
 const realFetch = globalThis.fetch;
 const fixture = (repo, path) => readFileSync(new URL("./fixtures/" + repo + "/" + path, import.meta.url), "utf8");
@@ -11,12 +13,13 @@ const repositories = new Map();
 let nextId = 10;
 let requestedScope;
 let pollCount = 0;
-function repo(fullName, privateRepo, files = {}) {
+function repo(fullName, privateRepo, files = {}, head = initial, history = new Map([[head, { ...files }]])) {
   const id = nextId++;
   const record = {
     metadata: { id, full_name: fullName, default_branch: "main", private: privateRepo },
     files: { ...files },
-    head: initial,
+    head,
+    history,
   };
   repositories.set(String(id), record);
   return record;
@@ -24,8 +27,9 @@ function repo(fullName, privateRepo, files = {}) {
 const kits = "ys-fixtures/catalog";
 const upstream = "ys-fixtures/whoami";
 const kitPath = "apps/ys-fixtures/whoami.yaml";
-repo(kits, false, { [kitPath]: fixture(kits, kitPath) });
-repo(upstream, false, { "compose.yaml": fixture(upstream, "compose.yaml"), "README.md": "A fixture app.\n" });
+// The fixture repositories are at the commits the other stand-in serves them at.
+repo(kits, false, { [kitPath]: fixture(kits, kitPath) }, fixtureCommit(kits));
+repo(upstream, false, { "compose.yaml": fixture(upstream, "compose.yaml"), "README.md": "A fixture app.\n" }, fixtureCommit(upstream));
 const ok = (value, status = 200) => Response.json(value, { status });
 const missing = () => ok({}, 404);
 
@@ -72,30 +76,35 @@ globalThis.fetch = async function (input, options = {}) {
   const [operation, ...rest] = parts.slice(byId ? 2 : 3);
   if (!operation) return ok(target.metadata);
   if (operation === "forks" && method === "POST")
-    return ok(repo("fixture-owner/" + body.name, target.metadata.private, target.files).metadata, 202);
-  if (operation === "commits" && ["main", target.head].includes(rest[0])) return ok({ sha: target.head });
-  if (operation === "git" && rest[0] === "trees" && rest[1] === target.head)
+    return ok(repo("fixture-owner/" + body.name, target.metadata.private, target.files, target.head, new Map(target.history)).metadata, 202);
+  // `main` is the head; any earlier commit of the repository can be read too.
+  const at = (ref) => target.history.get(ref === "main" ? target.head : ref);
+  if (operation === "commits" && at(rest[0])) return ok({ sha: rest[0] === "main" ? target.head : rest[0] });
+  if (operation === "git" && rest[0] === "trees" && at(rest[1]))
     return ok({
       truncated: false,
-      tree: Object.keys(target.files).map((path) => ({ path, type: "blob", mode: "100644" })),
+      tree: Object.keys(at(rest[1])).map((path) => ({ path, type: "blob", mode: "100644" })),
     });
   if (operation !== "contents") return missing();
   const path = rest.join("/");
   const contents = Object.hasOwn(target.files, path) ? target.files[path] : undefined;
-  if (method === "GET" && contents !== undefined && ["main", target.head].includes(url.searchParams.get("ref"))) {
+  const files = method === "GET" ? at(url.searchParams.get("ref")) : undefined;
+  if (files && Object.hasOwn(files, path)) {
+    const text = files[path];
     return ok({
       type: "file",
       encoding: "base64",
-      content: Buffer.from(contents).toString("base64"),
-      size: Buffer.byteLength(contents),
-      sha: hash(contents),
+      content: Buffer.from(text).toString("base64"),
+      size: Buffer.byteLength(text),
+      sha: hash(text),
     });
   }
   if (method === "PUT" && body.branch === "main") {
     if (body.sha !== (contents === undefined ? undefined : hash(contents))) return ok({}, 409);
     const next = Buffer.from(body.content, "base64").toString("utf8");
-    target.files[path] = next;
+    target.files = { ...target.files, [path]: next };
     target.head = hash(target.head + next);
+    target.history.set(target.head, target.files);
     return ok({ content: { sha: hash(next) }, commit: { sha: target.head } });
   }
   return missing();

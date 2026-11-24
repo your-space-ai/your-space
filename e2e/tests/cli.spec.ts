@@ -14,7 +14,7 @@ import { setPassword, signIn } from "./helpers/ui.ts";
 test.skip(({ browserName }) => browserName !== "chromium", "The CLI doesn't depend on the browser; run it once.");
 test.describe.configure({ mode: "serial", timeout: 300_000 });
 
-const WHOAMI = "https://github.com/ys-fixtures/whoami/blob/main/compose.yaml";
+const WHOAMI = "https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/whoami.yaml";
 
 let release: { url: string; close(): Promise<void> };
 let cli: Cli;

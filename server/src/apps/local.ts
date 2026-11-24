@@ -1,6 +1,7 @@
 // An app's Compose file given on this machine (install-app --compose), for an app whose own file
-// doesn't fit Your Space's rules, so the owner supplies one that does. It is checked and adapted like
-// a file from GitHub, and recorded by its digest; nothing is read from GitHub for it.
+// doesn't fit Your Space's rules, so the owner supplies one that does, with a kit given the same way.
+// It is checked and adapted like a file from GitHub, and recorded by its digest; nothing is read from
+// GitHub for it.
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
@@ -20,21 +21,25 @@ export interface LocalCompose {
 }
 
 /**
- * Why install-app's sources can't be used together, or null. An app comes from a GitHub link or from
- * `--compose`; `--compose` and `--kit` share standard input, so only one of them can be `-`; and a
- * Compose file on this machine takes its kit from this machine too.
+ * Why install-app's sources can't be used together, or null. Every app installs with a kit (decision
+ * 2026-11-23): the link to its kit, a kit file on this machine with `--kit`, or `--compose` with
+ * `--kit`. `--compose` and `--kit` share standard input, so only one of them can be `-`.
  */
 export function sourcesProblem(o: { link?: string; compose?: string; kit?: string; name?: string }): string | null {
+  if (o.kit !== undefined && /^https?:\/\//i.test(o.kit)) {
+    return "--kit takes a kit file on this machine, or - for standard input. Give a kit's link as the first argument instead.";
+  }
   if (o.compose === undefined) {
-    if (o.link === undefined) return "Give the GitHub link to the app's Compose file, or --compose with a Compose file on this machine.";
+    if (o.link === undefined && o.kit === undefined) return "Give the link to the app's kit, or --kit with a kit file on this machine.";
+    if (o.link !== undefined && o.kit !== undefined) return "Give the link to the app's kit or --kit with a kit file, not both: the kit names the app's Compose file.";
     if (o.name !== undefined) return "--name goes with --compose. An app from GitHub takes its name from its kit or its repository.";
     return null;
   }
-  if (o.link !== undefined) return "Give the GitHub link to the app's Compose file or --compose, not both.";
+  if (o.link !== undefined) return "With --compose, give the kit with --kit, not a link.";
+  if (o.kit === undefined) return "--compose needs --kit: every app installs with a kit. Give the kit file with --kit <file>, or --kit -.";
   if (o.compose === "-" && o.kit === "-") {
     return "--compose and --kit can't both be -, since they share standard input. Give one of them as a file in the server's container.";
   }
-  if (o.kit !== undefined && /^https?:\/\//i.test(o.kit)) return "With --compose, the kit is on this machine too: --kit <file> or --kit -.";
   return null;
 }
 

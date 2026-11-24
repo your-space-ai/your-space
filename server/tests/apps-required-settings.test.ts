@@ -5,7 +5,7 @@ import { operatorActorId } from "../src/actors.ts";
 import { AppsService } from "../src/apps/service.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY } from "./helpers/env.ts";
-import { fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
+import { COMMIT, fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
 
 const COMPOSE = `services:
   web:
@@ -16,7 +16,9 @@ const COMPOSE = `services:
       ADMIN_EMAIL: \${ADMIN_EMAIL?Set ADMIN_EMAIL}
       GREETING: \${GREETING:-hello}
 `;
-const LINK = "https://github.com/ys-fixtures/needs/blob/main/compose.yaml";
+// The app's kit says nothing about these settings, so the file's own rules apply.
+const KIT_LINK = "https://github.com/ys-fixtures/kits/blob/main/needs.yaml";
+const KIT = `kit: 1\nsource: { repo: ys-fixtures/needs, path: compose.yaml, commit: ${COMMIT} }\n`;
 
 describe("an app whose file requires settings", () => {
   let t: TestDatabase;
@@ -36,7 +38,7 @@ describe("an app whose file requires settings", () => {
       publicUrl: "http://space.localhost",
       dataKey: TEST_DATA_KEY,
       github: { api: "https://api.github.test", raw: "https://raw.github.test" },
-      fetch: fakeGithub({ "ys-fixtures/needs/compose.yaml": COMPOSE }),
+      fetch: fakeGithub({ "ys-fixtures/needs/compose.yaml": COMPOSE, "ys-fixtures/kits/needs.yaml": KIT }),
     });
     actor = await operatorActorId(t.db);
   });
@@ -45,7 +47,7 @@ describe("an app whose file requires settings", () => {
   });
 
   it("is reviewed, with each required setting for the owner to fill in", async () => {
-    const review = await apps.preview(LINK);
+    const review = await apps.preview({ link: KIT_LINK });
     expect(review.ok).toBe(true);
     const setting = (name: string) => review.settings.find((s) => s.name === name);
     expect(setting("SECRET_KEY_BASE")).toMatchObject({ required: true, set: false, secret: true, generated: false });
@@ -59,7 +61,7 @@ describe("an app whose file requires settings", () => {
   });
 
   it("isn't installed until each required setting has a value", async () => {
-    const review = await apps.preview(LINK);
+    const review = await apps.preview({ link: KIT_LINK });
     await expect(apps.install(review.previewId, {}, false, actor)).rejects.toMatchObject({
       status: 400,
       code: "settings_required",
@@ -74,7 +76,7 @@ describe("an app whose file requires settings", () => {
 
   it("is checked again with the owner's values, and isn't installed when that check refuses it", async () => {
     runtime.refuse = (spec) => (spec.env.ADMIN_EMAIL === "refused@example.com" ? [{ service: "web", setting: "image", reason: "No image has this tag." }] : []);
-    const review = await apps.preview(LINK);
+    const review = await apps.preview({ link: KIT_LINK });
     expect(review.ok).toBe(true);
     const checks = runtime.calls.filter((c) => c.method === "check").length;
     await expect(apps.install(review.previewId, { ADMIN_EMAIL: "refused@example.com", SECRET_KEY_BASE: "a-real-secret" }, false, actor)).rejects.toMatchObject({
@@ -92,7 +94,7 @@ describe("an app whose file requires settings", () => {
   });
 
   it("runs with the owner's values, checked again without placeholders before it starts", async () => {
-    const review = await apps.preview(LINK);
+    const review = await apps.preview({ link: KIT_LINK });
     const { name, done } = await apps.install(review.previewId, { ADMIN_EMAIL: "owner@example.com", SECRET_KEY_BASE: "a-real-secret" }, false, actor);
     await done;
     expect((await apps.detail(name)).state).toBe("running");

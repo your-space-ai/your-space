@@ -13,7 +13,7 @@ your-space --workdir ./workspace app install-local morning-board
 
 Open **Home settings**, choose Morning Board, select the apps and read roles it can use, and save. Open Home. The starter lists the available reads and renders the selected result. Edit the HTML to give the data the presentation you want. The built-in Home and its settings remain accessible outside the app frame.
 
-The starter has three files. `index.html` holds the interface. `kit.yaml` identifies the app and its web service. `app pack` embeds that HTML in the generated `compose.yaml` so a new commit can deploy without a separate image build. Commit all three files when sharing it on GitHub. An app with a backend can bring its own Compose file and published images.
+The starter has three files. `index.html` holds the interface. `kit.yaml` is the app's kit: it identifies the app and its web service. `app pack` embeds that HTML in the generated `compose.yaml` so a new commit can deploy without a separate image build. To share it on GitHub, commit `index.html` and `compose.yaml`, then add a `source` to `kit.yaml` that names `compose.yaml` and that commit, and commit the kit. Others install it from the GitHub link to its `kit.yaml`, and Your Space reads `compose.yaml` at exactly that commit. An app with a backend can bring its own Compose file and published images, with a kit that names them.
 
 ## Read another app from Home
 

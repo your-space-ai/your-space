@@ -6,6 +6,15 @@
 
 **Implementation**: The [task record](tasks.md) lists the delivered slices and outstanding real-source installation checks.
 
+**Updated 2026-11-23**: Apps install only from the link to their kit, which names the app's Compose
+file and pins it to an exact commit
+([Kits define apps](../../docs/architecture/decisions.md#kits-define-apps)). Where this
+specification has the owner or operator give the link to an app's Compose file, they now give the
+link to the app's kit; a bare Compose link is refused with an explanation of kits. Every installed
+app has a kit, a Compose file given on this machine included. The kit's link resolves to the kit's
+commit at review, and Your Space reads the Compose file at exactly the commit the kit's
+`source.commit` names, never at a branch's latest commit; both commits are recorded.
+
 **Journey**: 002 "Install an app and use it" in the
 [spec map](../README.md)
 
@@ -16,9 +25,10 @@ an existing open-source personal finance app, called the finance app below.
 ## At a Glance
 
 - **Who:** the owner of a Your Space installation from journey 001.
-- **Done when:** the owner pastes the link to the finance app's Compose file, reviews what will run,
-  confirms, and uses it in a pane inside Your Space. The app keeps its data across restarts, reaches
-  only the internet hosts the owner approved, and can be removed without losing its data.
+- **Done when:** the owner pastes the link to the finance app's Compose file (2026-11-23: to its
+  kit, which names that file), reviews what will run, confirms, and uses it in a pane inside Your
+  Space. The app keeps its data across restarts, reaches only the internet hosts the owner approved,
+  and can be removed without losing its data.
 - **Covers:** running apps' containers, installing from a GitHub link, adapting an app's own
   Compose file to Your Space's rules, generated secrets and settings, opening apps in panes on their
   own origins, access only through Your Space, outbound access approval, isolation, limits, status
@@ -30,11 +40,12 @@ an existing open-source personal finance app, called the finance app below.
 
 ## Objective and Scope
 
-An owner can install an app from a link to its Compose file in a public GitHub repository. Your
-Space reads the file at an exact commit, adapts it to its rules or refuses it with reasons, shows
-the owner what will run and the trust warning, and runs the app's containers on its runtime.
-The owner opens the app in a pane inside Your Space, and only people signed in to Your Space can
-reach it.
+An owner can install an app from a link to its Compose file in a public GitHub repository
+(2026-11-23: from the link to the app's kit, which names its Compose file; see the update at the
+top). Your Space reads the file at an exact commit, adapts it to its rules or refuses it with
+reasons, shows the owner what will run and the trust warning, and runs the app's containers on its
+runtime. The owner opens the app in a pane inside Your Space, and only people signed in to Your
+Space can reach it.
 
 Apps are not written for Your Space. An app keeps its own interface, its own accounts and its own
 data; Your Space runs it, protects the platform and other apps from it, and controls who can reach
@@ -79,7 +90,14 @@ lists the adjustments; it never copies the app's code or files, so the app's lic
 A kit can set a setting to a value Your Space works out itself, such as the app's own address (the
 second app, a CRM, needs it in a setting), so the owner isn't asked for it.
 Your Space reads a kit as another input, and contains no app-specific logic. An app with no kit
-installs if its own files are enough.
+installs if its own files are enough. (Superseded 2026-11-23: a kit is the app's definition, and
+every app installs with one: from the kit's link, or, with the server command, a kit file on this
+machine, alone or with a Compose file given there. The kit's `source` names the Compose file by
+repository, path and exact commit, and is required; only a kit given with a Compose file on this
+machine leaves it out and goes with that file. A kit can live anywhere, apart from the app's
+repository or in it, and never names "the file beside it" by default. See the
+[kit format](contracts/kit-format.md). The configured directory lists kits and holds review evidence;
+it no longer finds a kit from a Compose link.)
 
 ## Slices and Their Dependencies
 
@@ -132,22 +150,26 @@ the stack has six pull requests after it. The user stories below are numbered by
 
 ### User Story 1 - Run an App From a Link (Priority: P1)
 
-As the operator, I can give Your Space the GitHub link to an app's Compose file, and Your Space runs
-the app's containers on its runtime and keeps them running across restarts.
+As the operator, I can give Your Space the GitHub link to an app's Compose file (2026-11-23: to its
+kit, which names that file), and Your Space runs the app's containers on its runtime and keeps them
+running across restarts.
 
 **Why this priority**: Everything else in this journey depends on Your Space running containers
 safely. Controlling Docker is the most security-sensitive part of the journey, so it comes first and
 on its own.
 
 **Independent Test**: In a running stack, run the install command with the link to a small fixture
-app's Compose file, check its status, restart the stack, and check it again.
+app's Compose file (2026-11-23: to its kit, which names that file), check its status, restart the
+stack, and check it again.
 
 **Acceptance Scenarios**:
 
 1. **Given** a running Your Space with an owner, **When** the operator runs the install command with
-   the GitHub link to a public repository's Compose file, **Then** Your Space records the file at the
-   exact commit the link resolves to, pins each image to an exact version, starts the app's
-   containers, and reports the app as running.
+   the GitHub link to a public repository's Compose file, **Then** Your Space records the file at
+   the exact commit the link resolves to, pins each image to an exact version, starts the app's
+   containers, and reports the app as running. (2026-11-23: the command takes the link to the app's
+   kit, and Your Space records the kit at the commit its link resolves to and the Compose file it
+   names at exactly the commit the kit pins; see the [kit format](contracts/kit-format.md).)
 2. **Given** an installed app, **When** the operator lists apps, **Then** each app's name, source,
    commit and state are shown, and the state matches what is running.
 3. **Given** an installed app, **When** Your Space is restarted or the stack is recreated with
@@ -159,30 +181,32 @@ app's Compose file, check its status, restart the stack, and check it again.
    running throughout, and Your Space reports its state correctly once it is back.
 6. **Given** a link that isn't a public GitHub file, a file that isn't Compose, or an image missing
    for this machine's architecture, **When** the operator runs the install command, **Then** nothing
-   is installed, nothing runs, and the message says what is wrong.
+   is installed, nothing runs, and the message says what is wrong. (2026-11-23: the command takes
+   the link to the app's kit, and the file that must be Compose is the one the kit names; given a
+   Compose file's link, it installs nothing and says that installs need a kit's link.)
 7. **Given** two installs of apps with the same service names, **When** both run, **Then** their
    containers, networks and volumes don't collide.
 
 ### User Story 2 - Run the Finance App (Priority: P1)
 
 As the operator, I can install the finance app from the link to its own example Compose file, which
-its authors wrote for running by hand, and Your Space adapts it, generates its secrets and runs
-every service.
+its authors wrote for running by hand (2026-11-23: from the link to its kit, which names that file),
+and Your Space adapts it, generates its secrets and runs every service.
 
 **Why this priority**: Real apps' Compose files are written for people, not for Your Space. Running
 one unchanged is the point of the journey.
 
 **Independent Test**: Run the install command with the link to the finance app's example Compose
-file and check that its web, worker, database and Redis services are running and healthy. The
-runtime manager's tests keep the file's resolved form, and the
-[README of those fixtures](../../runtime/tests/README.md) records its source and commit.
+file (2026-11-23: to its kit, which names that file) and check that its web, worker, database and
+Redis services are running and healthy. The runtime manager's tests keep the file's resolved form,
+and the [README of those fixtures](../../runtime/tests/README.md) records its source and commit.
 
 **Acceptance Scenarios**:
 
-1. **Given** the link to the finance app's Compose file, **When** the operator installs it, **Then**
-   Your Space reports what it changed (for example the published port, moving image tags and the
-   fixed DNS servers) and what it left out (for example the backup services behind profiles, which
-   mount host folders), and runs the rest.
+1. **Given** the link to the finance app's Compose file (2026-11-23: to its kit, which names that
+   file), **When** the operator installs it, **Then** Your Space reports what it changed (for
+   example the published port, moving image tags and the fixed DNS servers) and what it left out
+   (for example the backup services behind profiles, which mount host folders), and runs the rest.
 2. **Given** the file sets a secret's default in plain text (the finance app's `SECRET_KEY_BASE` and
    `POSTGRES_PASSWORD`), **When** Your Space installs it, **Then** it generates a new value for each,
    as the finance app's installation kit says, and never uses the published default.
@@ -210,7 +234,11 @@ watch it reach running.
    state, or that no app is installed yet.
 2. **Given** the owner pastes a link, **When** Your Space has read the file, **Then** it shows the
    app's services, the images and versions it will run, what it changed and left out, the settings it
-   needs, and the warning that installing an app trusts it with its own data.
+   needs, and the warning that installing an app trusts it with its own data. (2026-11-23: the link
+   is the kit's; the review also shows the kit's repository, path and commit, and the Compose file at
+   the commit the kit pins. A pasted Compose file's link gets a message that explains kits and that
+   installs need a kit's link, and a kit that doesn't pin its Compose file's commit is refused with
+   a message naming `source.commit`.)
 3. **Given** the review, **When** the owner confirms, **Then** the install runs in the background and
    the page shows its progress, including image downloads, until the app is running or the install
    fails with a reason.
@@ -292,7 +320,8 @@ approve it, and check that the host is now reachable and every other host still 
    review lists the kit's starter hosts, the ones the app needs to work at all, and confirming the
    install approves exactly those.
 2. **Given** an app without a kit, **When** it is installed, **Then** it starts with no outbound
-   access.
+   access. (2026-11-23: every app installs with a kit; one whose kit names no hosts starts with no
+   outbound access.)
 3. **Given** an installed app, **When** it tries to reach a host it hasn't been allowed, **Then** the
    attempt fails, and Your Space shows an access request naming the app, the host, and when and how
    often it was tried.
@@ -384,7 +413,9 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
 ### Edge Cases
 
 - The GitHub link points to a branch that moves after install; the install keeps the exact commit
-  it read.
+  it read. (2026-11-23: the kit's link resolves to the kit's commit at review, and the kit pins the
+  Compose file's commit, so a branch that moves after the review changes nothing until the owner
+  chooses to install a newer kit.)
 - GitHub or the image registry is unreachable or rate-limits the request during install.
 - An image's tag exists only for one architecture, or its digest changes between preview and
   install.
@@ -415,7 +446,9 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
 - **FR-002a**: App-specific adjustments come only from installation kits, kept outside Your Space.
   Your Space contains no logic for a particular app.
 - **FR-003**: An install must record the source link, the exact commit it resolved to, the adapted
-  Compose file, each image's exact version, and the actor who installed it.
+  Compose file, each image's exact version, and the actor who installed it. (2026-11-23: the kit's
+  link at the commit it resolved to at review, and the Compose file at the commit the kit's
+  `source.commit` pins; nothing is read at a branch's latest commit.)
 - **FR-004**: Every image must be pinned to an exact version. An app installs if its images run on
   the runtime's processor type (ARM or Intel/AMD); if not, the install stops with a clear message.
 - **FR-005**: Your Space runs only what its rules allow. It may adapt an app's file only by a
@@ -424,6 +457,9 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
 - **FR-006**: Published defaults for secrets are never used. An installation kit can say which
   values Your Space generates; generated values never appear in output, logs or the review. How the
   owner sees and sets these values is designed with the review screen in slice 3 (see Q3).
+  (2026-11-23: one exception, a reinstall that reuses a removed app's data. A setting kept with the
+  data keeps its value, even an unset one, so a secret never set before leaves the app on its
+  published default until the owner gives it a value; see Q3.)
 - **FR-007**: Apps must come back when Your Space starts, and Your Space must not report a state that
   doesn't match what is running.
 - **FR-008**: Stopping Your Space on purpose stops the apps it manages, and starting it brings them
@@ -557,7 +593,8 @@ What is specific to the first runtime adapter. The research behind it is
 - **Runtime connection**: the one runtime Your Space runs apps on; for the Docker adapter, a Docker
   engine.
 - **Installation kit**: the adjustments that make a particular app fit Your Space, kept outside Your
-  Space and referring to the app's own files.
+  Space and referring to the app's own files. Since 2026-11-23, the app's complete definition in Your
+  Space: what installs it and how it is shown.
 - **Outbound approval**: an internet host an app may reach, from its kit's starter hosts or approved
   by the owner.
 - **Access request**: an attempt by an app to reach a host it isn't allowed, waiting for the owner.
@@ -567,7 +604,8 @@ What is specific to the first runtime adapter. The research behind it is
 ## Success Criteria
 
 - **SC-001**: An owner installs the finance app from the link to its own Compose file, unchanged,
-  and uses it in a pane, with no command line after journey 001's setup.
+  and uses it in a pane, with no command line after journey 001's setup. (2026-11-23: from the link
+  to the app's kit, which names its own Compose file, still unchanged.)
 - **SC-002**: The finance app keeps its data across a restart and a `docker compose down` and `up`.
 - **SC-003**: No generated secret appears in any output, log or review screen.
 - **SC-004**: An installed app can't reach the platform, other apps, the host or unapproved internet
@@ -597,7 +635,8 @@ request after agreement.
    own Compose file and applies rules that hold for every app, instead of requiring a Your
    Space-specific deployment file with an `x-your-space` section. Help a particular app needs comes
    from an installation kit supplied directly or found in the operator’s configured directory; the kit
-   refers to the app's files without copying them.
+   refers to the app's files without copying them. (2026-11-23: the kit is required, and the owner
+   installs from its link; see the update at the top.)
 3. **The first app is an existing open-source app**, a personal finance app, instead of a Tasks app
    written for Your Space.
 4. **No Docker Desktop dependency**: Your Space needs a Docker-compatible engine, not Docker Desktop.
@@ -653,11 +692,14 @@ request after agreement.
 3. **Q3, secrets (decided 2026-11-14)**: published secret defaults are never used, and a kit says
    which values to generate, which to work out (such as the app's own address) and which plain
    values to set from the app's own example settings. Without a kit, any setting whose name says it
-   holds a secret and that has a published default gets a generated value. The review shows each
-   setting; secrets show only as set or generated, never their values, and the owner can give a
-   value for any setting before installing. How to keep less experienced owners safe with apps that
-   have no kit (for example, clearer warnings, or installing only apps with kits by default) is
-   left for later.
+   holds a secret and that has a published default gets a generated value (2026-11-23: every app has
+   a kit, and this applies to the settings its kit doesn't generate, derive or set; a reinstall that
+   reuses a removed app's data keeps each setting's kept value instead, even an unset one, since the
+   data was written with it). The review shows each setting; secrets show only as set or generated,
+   never their values, and the owner can give a value for any setting before installing. How to keep
+   less experienced owners safe with apps that have no kit (for example, clearer warnings, or
+   installing only apps with kits by default) is left for later. (Decided 2026-11-23: Your Space
+   installs only apps with kits.)
 4. **Q4, processor types (decided 2026-11-14)**: an app installs if its images run on the runtime's
    processor type; nothing more is required.
 5. **Q5, app addresses (decided 2026-11-14)**: every app is at `<app>.<Your Space's address>` in

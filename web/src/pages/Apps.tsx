@@ -1,5 +1,5 @@
 // Apps (journey 002, US3, US9, FR-011): the installed apps, data kept from removed ones, and
-// installing an app from a link after reviewing what will run.
+// installing an app from the link to its kit after reviewing what will run (decision 2026-11-23).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
@@ -89,9 +89,9 @@ function AppTable({ list }: { list: AppList }) {
 
 export function Install({ repository }: { repository?: { id: string; fullName: string; defaultBranch: string } }) {
   const queryClient = useQueryClient();
-  const [link, setLink] = useState(repository ? "compose.yaml" : "");
+  const [link, setLink] = useState("");
   const [ref, setRef] = useState(repository?.defaultBranch ?? "");
-  const [kit, setKit] = useState("");
+  const [kit, setKit] = useState(repository ? "kit.yaml" : "");
   const [review, setReview] = useState<Review | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [reuse, setReuse] = useState(true);
@@ -100,11 +100,11 @@ export function Install({ repository }: { repository?: { id: string; fullName: s
   const [installing, setInstalling] = useState<{ name: string; title: string; jobId: string } | null>(null);
   const [finished, setFinished] = useState<boolean | null>(null);
 
+  // Every app installs with a kit: from its link, a kit in the directory, or a repository's kit file.
   const preview = useMutation({
-    mutationFn: (kitUrl: string | undefined) => kitUrl
-      ? api<Review>("POST", "/api/kits/preview", { kitUrl })
-      : repository ? api<Review>("POST", `/api/repositories/${repository.id}/install/preview`, { ref: ref.trim(), composePath: link.trim(), ...(kit.trim() ? { kitPath: kit.trim() } : {}) })
-      : api<Review>("POST", "/api/apps/preview", { link, ...(kit.trim() ? { kit } : {}) }),
+    mutationFn: (kitUrl: string) => repository
+      ? api<Review>("POST", `/api/repositories/${repository.id}/install/preview`, { ref: ref.trim(), kitPath: kit.trim() })
+      : api<Review>("POST", "/api/kits/preview", { kitUrl: kitUrl.trim() }),
     onSuccess: (data) => {
       setReview(data);
       setValues({});
@@ -126,17 +126,19 @@ export function Install({ repository }: { repository?: { id: string; fullName: s
       setInstalling({ name: data.name, title: r.title, jobId: data.jobId });
       setFinished(null);
       setReview(null);
-      setLink("");
-      setKit("");
+      if (!repository) setLink("");
       void queryClient.invalidateQueries({ queryKey: ["apps"] });
     },
   });
 
-  const onReview = (event: FormEvent) => {
-    event.preventDefault();
+  const reviewKit = (kitUrl: string) => {
     setReview(null);
     install.reset();
-    preview.mutate(undefined);
+    preview.mutate(kitUrl);
+  };
+  const onReview = (event: FormEvent) => {
+    event.preventDefault();
+    reviewKit(link);
   };
 
   return (
@@ -144,31 +146,21 @@ export function Install({ repository }: { repository?: { id: string; fullName: s
       <h2 id="install-heading">{repository ? "Install from this repository" : "Install an app"}</h2>
       <form onSubmit={onReview}>
         {repository ? <><label>Branch, tag, or commit<input required value={ref} onChange={(event) => setRef(event.target.value)} /></label>
-          <label>Compose file path<input required value={link} onChange={(event) => setLink(event.target.value)} /></label>
-          <label>Kit file path (optional)<input value={kit} onChange={(event) => setKit(event.target.value)} /></label></> : <><label>
-          Link to the app's Compose file
-          <small>The file on GitHub, in a public repository, like https://github.com/owner/repo/blob/main/compose.yaml</small>
+          <label>Kit file path<small>Every app installs with a kit, which names the app's Compose file at an exact commit and says what Your Space needs to run and show it.</small><input required value={kit} onChange={(event) => setKit(event.target.value)} /></label></> : <label>
+          Link to the app's kit
+          <small>
+            A kit is a small file that names the app's Compose file at an exact commit and says what Your Space needs to run and show the app.
+            Your Space installs apps from their kits. Paste the kit's GitHub link, like https://github.com/owner/repo/blob/main/kit.yaml
+          </small>
           <input type="url" required value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://github.com/…" />
-        </label>
-        <details>
-          <summary>Advanced</summary>
-          <label>
-            Link to an installation kit
-            <small>Only if you want a kit other than the one Your Space finds for this app.</small>
-            <input type="url" value={kit} onChange={(e) => setKit(e.target.value)} placeholder="https://github.com/…" />
-          </label>
-        </details></>}
+        </label>}
         <div>
           <button type="submit" disabled={preview.isPending || install.isPending}>
-            {preview.isPending ? "Reading the file…" : "Review"}
+            {preview.isPending ? "Reading the kit…" : "Review"}
           </button>
         </div>
       </form>
-      {!repository ? <KitDirectory busy={preview.isPending || install.isPending} onPreview={(kitUrl) => {
-        setReview(null);
-        install.reset();
-        preview.mutate(kitUrl);
-      }} /> : null}
+      {!repository ? <KitDirectory busy={preview.isPending || install.isPending} onPreview={reviewKit} /> : null}
       {preview.isError ? (
         <p className="notice error" role="alert">
           {errorMessage(preview.error)}
@@ -244,17 +236,16 @@ function ReviewPanel(props: {
         <a href={review.source.pinnedLink} target="_blank" rel="noreferrer">
           {review.source.repo}/{review.source.path}
         </a>{" "}
-        at commit <code>{review.source.commit.slice(0, 12)}</code>
-        {review.kit ? (
+        at commit <code>{review.source.commit.slice(0, 12)}</code>, with its kit
+        {review.kit.repo && review.kit.commit ? (
           <>
-            , with its{" "}
+            {" "}
             <a href={review.kit.source} target="_blank" rel="noreferrer">
-              installation kit
-            </a>
+              {review.kit.repo}/{review.kit.path}
+            </a>{" "}
+            at commit <code>{review.kit.commit.slice(0, 12)}</code>
           </>
-        ) : (
-          ", without an installation kit"
-        )}
+        ) : null}
         . It will be at <code>{(props.publishing && publishBody(props.publish).link) || review.origin}</code>.
       </p>
 

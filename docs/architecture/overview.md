@@ -45,7 +45,7 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
    is a `__Host-` cookie over HTTPS and host-only on the plain-HTTP local setup. The access gate is
    a second server listener on port 3001 that only Caddy reaches: it checks an app's pass, turns a
    one-time code into a pass on the app's own host, and allows certificates only for installed
-   apps' names. The app manager installs from a GitHub link and an installation kit, keeps
+   apps' names. The app manager installs from an installation kit's link, keeps
    settings and access requests, and drives the runtime manager. See
    [agent access through Your Space](decisions.md#agent-access-through-your-space),
    [Your Space updates, backup, and restore](decisions.md#your-space-updates-backup-and-restore), and
@@ -84,9 +84,10 @@ The signed-in dashboard arranges installed app panes in a resizable grid. A name
   network. Your Space's gate isn't on this path; the app's own sign-in is. Your Space's pane loads
   the app this way, at the owner's link, unless the owner turned "Show inside Your Space" off; then
   the app opens there in its own tab.
-- **Installing an app:** the owner pastes a GitHub link → the server reads the file at an exact
-  commit and its installation kit → the runtime manager resolves, checks, and pins it → after the
-  owner confirms, it starts the app's Compose project.
+- **Installing an app:** the owner pastes the GitHub link to the app's kit → the server reads the
+  kit, then the Compose file it names, each at an exact commit (through the owner's GitHub
+  connection when there is one) → the runtime manager resolves, checks, and pins it → after the
+  owner confirms, it starts the app's Compose project. A Compose file's link alone is refused.
 - **An app reaching the internet:** app → its egress proxy → approved host, or a denial the
   runtime manager reads and the server turns into an access request.
 - **An agent.** The CLI sends the agent’s key and requested action to the server through the edge.
@@ -114,7 +115,7 @@ aligned box borders. Rationale belongs in the decision record, not here.
 Authorized agent on host → setup CLI → Docker workspace → private owner claim
 Home app frame → exact-origin message → dashboard → Home read policy → installed app
 Owner or scoped agent → repository API → server-held OAuth connection → GitHub
-Kit URL or directory → pinned kit and Compose → standard install preview
+Kit URL or directory → pinned kit, then the Compose file it names → install preview
 Owner → confirmed replacement preview → runtime → same installation and volumes
 ```
 

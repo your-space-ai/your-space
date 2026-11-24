@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { expect, it } from "vitest";
-import { findKit, kitFromFile } from "../src/apps/kits.ts";
+import { kitFromFile, kitFromLink } from "../src/apps/kits.ts";
 
 const kit = "\uFEFF" + JSON.stringify({
   kit: 2,
-  source: { repo: "example/app", path: "compose.yaml" },
+  source: { repo: "example/app", path: "compose.yaml", commit: "c".repeat(40) },
   agentAccess: { credential: { binding: "service", inject: { location: "header", name: "X-API-Key" } }, roles: {}, routes: {} },
 });
 const revision = "a".repeat(40);
@@ -30,9 +30,9 @@ it("recognizes only a registry review matching the kit digest and pinned source"
         return Response.json({ status: "reviewed", sha256: recordDigest, kit: expectedKit });
       throw Error("Unexpected GitHub URL: " + path);
     };
-    const found = await findKit("example/app","compose.yaml","https://github.com/example/kits/blob/feature/app.yaml", directory,
+    const found = await kitFromLink("https://github.com/example/kits/blob/feature/app.yaml", directory,
       {api:"https://api.example.test",raw:"https://raw.example.test"},fetcher);
-    expect(Boolean(found?.kit.agentReview)).toBe(reviewed);
+    expect(Boolean(found.kit.agentReview)).toBe(reviewed);
   }
   expect(kitFromFile(kit,null).kit.agentReview).toBeUndefined();
   expect(() => kitFromFile(JSON.stringify({...JSON.parse(kit.trimStart()),agentReview:{source:pinned}}),null)).toThrow();
@@ -54,36 +54,17 @@ it("carries a later directory review only across identical bytes at the same pat
     const fetcher: typeof fetch = async (input) => {
       const url = new URL(String(input));
       if (url.pathname === `/repos/${directory}/commits` && url.search === "?per_page=1") return Response.json([{ sha: later }]);
+      if (url.pathname === `/repos/${directory}/commits/main`) return new Response(later);
       if (url.pathname === `/${directory}/${later}/${path}`) return new Response(kit);
       if (url.pathname === `/${directory}/${revision}/${path}`) { reads++; return new Response(earlierText); }
       if (url.pathname === `/${directory}/${later}/reviews/sha256/${digest}.json`)
         return Response.json({ kit: attestedUrl, sha256: digest, status: "reviewed" });
       throw Error("Unexpected GitHub request: " + url.pathname);
     };
-    const found = await findKit("example/app", "compose.yaml", undefined, directory,
+    const found = await kitFromLink(`https://github.com/${directory}/blob/main/${path}`, directory,
       { api: "https://api.example.test", raw: "https://raw.example.test" }, fetcher);
-    expect(found?.source).toBe(`https://github.com/${directory}/blob/${later}/${path}`);
-    expect(Boolean(found?.kit.agentReview)).toBe(reviewed);
+    expect(found.source).toBe(`https://github.com/${directory}/blob/${later}/${path}`);
+    expect(Boolean(found.kit.agentReview)).toBe(reviewed);
     expect(reads).toBe(earlierReads);
   }
-});
-
-it.each([undefined, "  \t "])("skips discovery without a directory or an explicit kit (%j)", async (link) => {
-  const fetcher = () => { throw Error("Unexpected network access"); };
-  expect(await findKit("example/app", "compose.yaml", link, undefined, undefined, fetcher)).toBeNull();
-});
-
-it("discovers a kit in the configured directory when the optional link is blank", async () => {
-  const directory = "community/catalog";
-  const path = "apps/example/app.yaml";
-  const fetcher: typeof fetch = async (input) => {
-    const url = new URL(String(input));
-    if (url.pathname === `/repos/${directory}/commits`) return Response.json([{ sha: revision }]);
-    if (url.pathname === `/${directory}/${revision}/${path}`) {
-      return new Response("kit: 1\nsource: { repo: example/app, path: compose.yaml }");
-    }
-    throw Error("Unexpected GitHub request: " + url.pathname);
-  };
-  const found = await findKit("example/app", "compose.yaml", "  \t ", directory, undefined, fetcher);
-  expect(found?.source).toBe(`https://github.com/${directory}/blob/${revision}/${path}`);
 });

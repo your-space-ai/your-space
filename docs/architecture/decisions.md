@@ -32,6 +32,22 @@ One useful action in a real connected app, with attribution, denial, and revocat
 
 The owner chooses from three starters, customizes colors and local font families, and imports or exports versioned theme files. The dashboard uses its selected server’s appearance. The disconnected Mac launcher stores its own device preference and reads the same file format. Theme data controls visual presentation. The server keeps roles, approvals, installed apps and their permissions independent of theme selection. [Journey 010](https://github.com/your-space-ai/your-space/blob/main/specs/010-personal-themes/spec.md)
 
+### Kits define apps
+
+**Owner decision, 2026-11-23.** A kit is an app's complete definition in Your Space: everything needed to install an open-source app and to show it properly. For installing, it names the app's source Compose file by repository and path, its interface, the settings Your Space generates, derives or sets and the ones it requires, the internet hosts the app needs and its limits. For showing it, it gives the app's name and title, and later its description, icon and links. A kit isn't tied to any store. An app store, when it comes, is a page that shows a chosen group of kits; it adds no format of its own.
+
+For now Your Space installs only from a link to a kit, so every installed app has one. A bare Compose link is no longer accepted for review or install; the kit's `source`, its repository, path and exact commit, names the Compose file, which Your Space reads at that commit and records. In the web client, a kit in a private repository installs through the owner's GitHub connection with private access.
+
+The earlier direction let an app with no kit install when its own files were enough: Your Space picked the interface from the one service that published a port and generated values for settings whose names look secret. With a kit for every app, each install says what runs and how the app is shown. This supersedes the 2026-11-14 statement that an app with no kit installs if its own files are enough, and the owner pasting the link to the app's Compose file. Drafting a kit from a bare Compose file during the review, an app store, and display fields in the kit (description, icon, links) are future work on the [roadmap](../roadmap.md#custom-apps-and-sources). [Kit format](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md)
+
+**Owner decisions on the implementation, 2026-11-23.** The pull request that builds it listed its own choices for confirmation. The owner decided:
+
+- **Exact commits, no drift.** Everything is pinned to an exact commit. A kit's link, even one to a branch such as `blob/main/kit.yaml`, resolves to the kit's commit when the owner reviews the install, and that commit is recorded; the review and the install use exactly that kit. The kit names its Compose file's exact commit: `source.repo`, `source.path` and `source.commit`, the full 40-character commit, are all required, and Your Space reads the Compose file at exactly `source.commit`. Nothing is read at the latest commit or the default branch when installing. A kit without `source.commit` is refused, in either kit format, with a message that names the field. A newer kit commit reaches an installed app only as an update the owner chooses to install; showing that one exists is on the [roadmap](../roadmap.md#backups-and-updates). This replaces the proposed choice to read the Compose file at the kit's own commit, or else at the head of the source repository's default branch.
+- **`source` is required.** Kits can live anywhere, apart from the app's repository or in it, so a kit names its Compose file and never defaults to the `compose.yaml` beside it. This replaces the proposed choice that a linked kit without `source` names that file. A kit in the same repository as its Compose file names an earlier commit than its own, since a file can't contain the commit it is in. Only a kit given with a Compose file on this machine (`install-app --compose`, or the files an app's starter installs from) leaves out `source`, since that file is the app's Compose file. An install from a repository the owner manages also reads the Compose file the kit names, at its pinned commit.
+- **Confirmed as proposed.** The server command takes a kit's link, or a kit file on this machine (`--kit`) for one Your Space can't read from GitHub, which must name its source; a Compose file given on this machine still installs, only with a kit given with it, and `--kit <folder>` and a Compose link with `--kit` are gone. An install from a repository the owner manages uses a kit in that repository: `kit.yaml`, unless the owner names another path. The safety rule for secrets applies with a kit: a setting the kit doesn't generate, derive or set, whose name says it holds a secret and that has a published default, gets a generated value. A reinstall that reuses a removed app's data keeps each kept setting, even an unset one, rather than one the kit installed now generates or sets. Display fields in the kit (description, icon, links) come in a separate change.
+- **Kit directory.** The directory in `YS_KITS_REPOSITORY` stays for listing kits and for review evidence; it no longer finds a kit from a Compose link. Its listing and evidence are read at the commit its default branch resolves to then, and pinned to that commit.
+- **No example link yet.** The kit repository stays private for now, so the documentation's install example gives no kit link until it is public.
+
 ### Kit-defined roles, server-held credentials and approvals
 
 **Owner decision, 2026-11-21.** Extend installation kits to define app roles as sets of allowed HTTP method/route pairs. An agent may hold any number of roles per installation. The delegable subset is drawn from kit roles the owner enables in Your Space for that installation. The bound credential’s native app scope is an independent ceiling. Your Space checks the union of current grants and injects the bound app credential server-side. The agent uses only its Your Space key. Owners choose when to approve requests, with route-level controls, an all-writes setting and recommended defaults from vetted community kits. This settles the gateway’s route-level responsibility left open below. Native app authorization still applies. [Journey 005](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/spec.md) specifies the exact-request approval flow. The owner confirmed that Ask for all writes overrides any per-route Allow.
@@ -557,9 +573,9 @@ of technical parts. The [glossary](../glossary.md) records the terms.
 
 ## Accepted Future App Distribution Direction
 
-**Current scope (2026-11-21).** Journey 011 includes direct kit URLs, an optional operator-selected GitHub kit directory, private GitHub sources, and owner-confirmed compatible replacements. Journey 006 covers broader updates and backup-based data rollback after publication. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
+**Current scope (2026-11-21).** Journey 011 includes direct kit URLs, an optional operator-selected GitHub kit directory, private GitHub sources, and owner-confirmed compatible replacements. (2026-11-23: apps install only from a kit's link; see [Kits define apps](#kits-define-apps).) Journey 006 covers broader updates and backup-based data rollback after publication. Earlier release dates and requirements below are superseded where they differ from the [personal dashboard decision](#personal-dashboard-release-boundary).
 
-- For the first public release, an owner installs a compatible app by pasting the GitHub URL of the app's deployment file in a public repository into Your Space. (Since 2026-11-14 that file is the app's own Compose file; see below.)
+- For the first public release, an owner installs a compatible app by pasting the GitHub URL of the app's deployment file in a public repository into Your Space. (Since 2026-11-14 that file is the app's own Compose file; see below. Superseded 2026-11-23: the owner pastes the link to the app's kit, which names the Compose file; see [Kits define apps](#kits-define-apps).)
 - The owner can connect GitHub to install authorized private repositories in 011.
 - Curated app listings provide discovery and use the same installation contract as direct repository installation.
 - The official curated listing is optional, rather than a prerequisite for installing compatible apps.
@@ -580,14 +596,17 @@ of technical parts. The [glossary](../glossary.md) records the terms.
 written by its authors for people to run, instead of a Your Space-specific deployment file (see
 [app deployment](#accepted-future-app-deployment-direction)). Your Space records the exact commit
 the link resolves to, the commit of the installation kit it applied, if any, and each image's
-digest, which Your Space resolves itself rather than reading from the app's files.
+digest, which Your Space resolves itself rather than reading from the app's files. (Superseded
+2026-11-23: the owner pastes the link to the app's kit, and Your Space records the commits of both
+the kit and the Compose file it names; see [Kits define apps](#kits-define-apps).)
 
 **Decision update (2026-11-20):** When an app's own Compose file doesn't fit Your Space's rules, for
 example because it builds its images, mounts host folders or adds capabilities, the operator can
 install the app from a Compose file they write and give the server command on this machine, with a
 kit given the same way. Your Space checks and adapts it like a file from GitHub, records its digest
 in place of a link and commit, keeps its text, and reads nothing from GitHub for it. The web client
-still installs from a GitHub link only.
+still installs from a GitHub link only. (2026-11-23: a kit given with the file is now required; see
+[Kits define apps](#kits-define-apps).)
 
 Public, community, and private discovery experiences can coexist without redefining installed app ownership or update routing.
 No catalog federation protocol or marketplace implementation is selected here.
@@ -642,8 +661,11 @@ which outbound hosts it needs, its limits, and whether it can run in a pane. A k
 app's files by link and exact commit and never copies them, so the app's license is untouched. Your
 Space contains no logic for a particular app, and an app with no kit installs if its own files are
 enough. App authors can't be expected to add a section for Your Space, and requiring one would leave
-almost no existing app installable. The format is in the
-[kit contract](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
+almost no existing app installable. (Superseded in part 2026-11-23: every installed app has a kit,
+installed from the kit's link, and the directory no longer finds a kit from a Compose link. A kit
+can still live outside the app's repository, so its authors needn't change anything, or beside the
+app's Compose file in its own repository. See [Kits define apps](#kits-define-apps).) The format
+is in the [kit contract](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
 
 **Decision update (2026-11-14):** The [002 plan](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/plan.md#runtime-manager-docker-adapter)
 sets the approved list of Compose settings for every app, checked against the first two apps'
@@ -689,7 +711,8 @@ about 16 MB of memory per app. See [research R3](https://github.com/your-space-a
 
 **Decision update (2026-11-14):** An app reaches only the internet hosts approved for it. Its
 installation kit names starter hosts, the ones it needs to work at all; the install review lists
-them, and confirming the install approves exactly those. An app without a kit starts with none. Any
+them, and confirming the install approves exactly those. An app without a kit starts with none
+(2026-11-23: every app now installs with a kit; one that names no hosts starts with none). Any
 other host an app tries is blocked and shown to the owner as an access request naming the app and
 the host and when and how often it was tried; the owner approves or dismisses it, and can remove an
 approval later. There is no "all internet" option yet. This supersedes declaring outbound access in
@@ -703,7 +726,8 @@ them in its database, encrypted with AES-256-GCM under a key derived from the au
 them only to the runtime manager over its local socket. This decides the mechanism the bullet above
 left to the app specification. Published defaults for secrets are never used: an installation kit
 says which values to generate, and without a kit a variable whose name suggests a secret and has a
-published default is generated. Generated values never appear in output, logs or the review. What
+published default is generated. (2026-11-23: every app now has a kit, and this rule applies to the
+variables its kit doesn't generate, derive or set; see [Kits define apps](#kits-define-apps).) Generated values never appear in output, logs or the review. What
 the owner sees and sets for them in the review is still open and is designed with the review screen.
 
 **Decision update (2026-11-14):** Each app service runs with a fixed default memory and CPU limit,
@@ -1169,9 +1193,9 @@ app roles. The [spec map](https://github.com/your-space-ai/your-space/blob/main/
 | Agent access | Agents reach apps only through the Your Space gateway, using the CLI in the first release; a workspace MCP endpoint is post-open-source. Journey 005 defines [gateway requests](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/contracts/gateway.md) and [kit-declared routes and roles](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/contracts/kit-agent-access.md). |
 | App identity protocol | Apps keep their own sign-in in journey 002 (level 0). Level 1 is OpenID Connect with Your Space as the provider, likely through Better Auth's OAuth provider plugin; the protocol for level 2 and where each level lands are settled with journeys 004, 005 and 007. |
 | App integration | TypeScript and Python SDKs are planned for post-public journey 007, for apps that opt into level 2; other languages are post-open-source. Neither is part of journey 002 (2026-11-14). Role registration, authorization compatibility, and revocation mechanics need a later specification. |
-| App deployment file | The app's own Compose file, with an optional installation kit from a separate repository, replaces a Your Space-specific file with an `x-your-space` section (2026-11-14). The owner installs by pasting the file's GitHub URL. The approved settings list and the kit format are set in the [002 plan](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/plan.md) and its contracts. Source builds and alternative formats are post-open-source. |
+| App deployment file | The app's own Compose file, with an optional installation kit from a separate repository, replaces a Your Space-specific file with an `x-your-space` section (2026-11-14). The owner installs by pasting the file's GitHub URL. Since 2026-11-23 the kit is required: it is the app's definition, and the owner installs by pasting the kit's link ([Kits define apps](#kits-define-apps)). The approved settings list and the kit format are set in the [002 plan](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/plan.md) and its contracts. Source builds and alternative formats are post-open-source. |
 | App runtime and data | Designed in the [002 plan](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/plan.md) (2026-11-14): a runtime manager with no network alone holds the engine socket; each app is a Compose project on a sealed network with its own egress proxy and named volumes; removal keeps data until the owner deletes it. Verification is journey 002's delivery. Engines on other machines, apps someone already runs, and server hardening (Sysbox, rootless Docker) are later work. Found in journey 003 (2026-11-17), and settled by [spec 009](https://github.com/your-space-ai/your-space/blob/main/specs/009-encrypt-stored-data/spec.md): apps' settings are encrypted with a data key of their own, a third generated secret, so replacing the auth secret only signs people out. Encrypting the whole database or its disk stays the owner's responsibility for now; the guide recommends disk encryption on the host. |
-| App distribution | Installation from the app's own Compose file's GitHub URL, exact commit recording (with the kit's commit), and images pinned by digest are accepted for initial installation. 011 pins compatible owner-confirmed replacements, retains the existing volumes and restores previous artifacts on startup failure. General upstream and automatic updates, backup-based data recovery, and multiple catalogs remain future work. |
+| App distribution | Installation from the app's own Compose file's GitHub URL, exact commit recording (with the kit's commit), and images pinned by digest are accepted for initial installation. Since 2026-11-23 the owner installs from the kit's link, and the kit names the Compose file ([Kits define apps](#kits-define-apps)). 011 pins compatible owner-confirmed replacements, retains the existing volumes and restores previous artifacts on startup failure. General upstream and automatic updates, backup-based data recovery, and multiple catalogs remain future work. |
 
 These open choices do not erase the accepted requirements above.
 Resolve implementation-critical choices in the relevant technical plan and future app-contract decisions in their own specifications.
