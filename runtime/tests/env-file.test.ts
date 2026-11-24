@@ -59,6 +59,13 @@ describe("the settings and label files an app's file names", () => {
     expect(envFiles({})).toEqual({ settings: [], reset: {}, refusals: [] });
   });
 
+  it("are reset for a service of any name, __proto__ included", () => {
+    const files = envFiles(JSON.parse('{"services":{"__proto__":{"env_file":"/etc/passwd"}}}'));
+    expect(Object.keys(files.reset)).toEqual(["__proto__"]);
+    expect(resetFiles(files.reset)).toBe('services:\n  "__proto__":\n    env_file: !reset []\n');
+    expect(files.refusals.map((r) => r.service)).toEqual(["__proto__"]);
+  });
+
   it("are left unread by a Compose file of names only", () => {
     expect(resetFiles({ web: ["env_file"], "db.1": ["env_file", "label_file"] })).toBe(
       'services:\n  "web":\n    env_file: !reset []\n  "db.1":\n    env_file: !reset []\n    label_file: !reset []\n',

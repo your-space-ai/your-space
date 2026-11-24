@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { operatorActorId } from "../src/actors.ts";
 import { AppsService } from "../src/apps/service.ts";
+import { encrypt } from "../src/apps/settings.ts";
 import { app, appSetting, installJob } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY } from "./helpers/env.ts";
@@ -130,5 +131,25 @@ describe("an app whose file loads .env", () => {
     await settled(t);
     const spec = await apps.specFor((await t.db.select().from(app).where(eq(app.name, "notes")))[0]!);
     expect(spec.env).toMatchObject({ OWNER_NAME: "Alex", OWNER_LINE: "Alex at http://notes.space.localhost" });
+  });
+
+  it("refuses to reuse kept data written with a value the kit no longer defines", async () => {
+    const [row] = await t.db.select().from(app).where(eq(app.name, "notes"));
+    // Installed before env, the app's file read OLD_TOKEN, which was a setting then.
+    await t.db.insert(appSetting).values({ appId: row!.id, name: "OLD_TOKEN", value: encrypt(TEST_DATA_KEY, "kept-token"), secret: true, generated: true });
+    await apps.remove("notes", actor);
+    await settled(t);
+    runtime.variables = [{ name: "OLD_TOKEN", required: false, default: "published" }];
+    try {
+      const review = await apps.preview({ link: kitLink("notes") });
+      expect(review).toMatchObject({ retained: true, ok: false });
+      expect(review.refusals).toContainEqual({
+        service: "",
+        setting: "env",
+        reason: "Data kept from notes was written with a value for OLD_TOKEN, which the kit doesn't define. Add it to the kit's env, or delete the kept data.",
+      });
+    } finally {
+      runtime.variables = [];
+    }
   });
 });

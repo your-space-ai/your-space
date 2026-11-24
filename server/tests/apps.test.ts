@@ -129,6 +129,7 @@ describe("links, kits and settings", () => {
       ["  A: { generate: { size: 32 } }", /generate has the unknown field size/],
       ["  A: { derive: app_url }", /app_origin, app_host or/],
       ["  lower-case: x", /isn't a variable name/],
+      ["  __proto__: x", /isn't a variable name/],
     ] as const) {
       expect(() => env(entry), entry).toThrow(message);
     }
@@ -266,6 +267,8 @@ describe("links, kits and settings", () => {
     );
     expect(withEnv(stored)).toEqual(parsed);
     expect(withEnv({ kit: 1, name: "plain" })).toEqual({ kit: 1, name: "plain" });
+    // Empty earlier fields named nothing, as a kit without env does.
+    expect(withEnv({ kit: 1, name: "plain", generate: {}, secrets: [] })).toEqual({ kit: 1, name: "plain" });
   });
 
   it("encrypts settings so the stored form never contains the value", () => {

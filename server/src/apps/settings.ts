@@ -75,7 +75,9 @@ export function kitEnv(kit: StoredKit | null | undefined): Record<string, EnvSou
 export function withEnv(kit: StoredKit): Kit {
   const { generate, derive, set, secrets, ...rest } = kit;
   if (generate === undefined && derive === undefined && set === undefined && secrets === undefined) return rest;
-  return { ...rest, env: kitEnv(kit) };
+  // Empty earlier fields, such as `secrets: []`, named nothing, as a kit without `env` does.
+  const env = kitEnv(kit);
+  return Object.keys(env).length > 0 ? { ...rest, env } : rest;
 }
 
 /** The template a variable is derived with, if it is one. */

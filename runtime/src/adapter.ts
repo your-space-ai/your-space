@@ -242,7 +242,8 @@ function filePaths(value: unknown): string[] {
 const SETTINGS_FILE = new Set([".env", "./.env"]);
 
 export function envFiles(unresolved: Json): EnvFiles {
-  const files: EnvFiles = { settings: [], reset: {}, refusals: [] };
+  // Service names come from the app's file, so `__proto__` must be a key like any other.
+  const files: EnvFiles = { settings: [], reset: Object.create(null) as EnvFiles["reset"], refusals: [] };
   const services = isObject(unresolved.services) ? unresolved.services : {};
   for (const [name, service] of Object.entries(services)) {
     if (!isObject(service)) continue;

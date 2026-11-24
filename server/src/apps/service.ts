@@ -406,9 +406,23 @@ export class AppsService {
     let check = await this.check({ project: `ys-${name}`, app: name, compose: source.text, env: this.envOf(settings), interface: kit.interface ?? null, placeholders: true });
     withFileDefaults(settings, check.variables);
     // A variable the file needs, with no default, is one the kit must define.
-    const missing = undefinedVariables(check.variables, kitEnv(kit));
-    if (missing.length) {
-      const refusals = missing.map((variable) => ({ service: "", setting: "env", reason: `The kit doesn't define ${variable}, which the Compose file needs. Add it to the kit's env.` }));
+    const env = kitEnv(kit);
+    const missing = undefinedVariables(check.variables, env);
+    // Data kept from a removed app was written with its settings then. A value kept for a variable the
+    // file uses that the kit no longer defines would give way to the file's default, so it is refused.
+    const dropped = [...previous]
+      .filter(([variable, value]) => value !== null && !Object.hasOwn(env, variable) && check.variables.some((v) => v.name === variable))
+      .map(([variable]) => variable)
+      .sort();
+    if (missing.length || dropped.length) {
+      const refusals = [
+        ...missing.map((variable) => ({ service: "", setting: "env", reason: `The kit doesn't define ${variable}, which the Compose file needs. Add it to the kit's env.` })),
+        ...dropped.map((variable) => ({
+          service: "",
+          setting: "env",
+          reason: `Data kept from ${name} was written with a value for ${variable}, which the kit doesn't define. Add it to the kit's env, or delete the kept data.`,
+        })),
+      ];
       check = { ...check, ok: false, refusals: [...check.refusals, ...refusals] };
     }
 

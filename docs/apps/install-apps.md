@@ -167,7 +167,9 @@ shows the engine Your Space uses and what each app uses.
 again offers to reuse the data, with the settings it was written with: a setting kept with the data
 keeps its value, even one that was never set, rather than one the kit generates or gives now. A
 value never set this way leaves the app on its Compose file's default, if it has one, so give it a
-value in the review. Deleting kept data is a separate step, and can't be undone.
+value in the review. The review refuses kept data with a value for a variable the app's file uses
+that the kit no longer defines: add it to the kit's `env`, or delete the data. Deleting kept data is
+a separate step, and can't be undone.
 
 **Stop Your Space and its apps.** `docker compose restart` and updates leave apps running.
 `your-space stop` stops everything, apps first; by hand:

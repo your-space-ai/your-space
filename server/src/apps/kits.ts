@@ -166,7 +166,8 @@ export function parseKit(text: string): Kit {
     if (!isObject(data.env)) throw new KitError("env must map the app's variables to their values.");
     const env: Record<string, EnvSource> = {};
     for (const [name, entry] of Object.entries(data.env)) {
-      if (!VARIABLE.test(name)) throw new KitError(`${name} isn't a variable name.`);
+      // `__proto__` can't be a key of an ordinary object, so it can't be a variable Your Space keeps.
+      if (!VARIABLE.test(name) || name === "__proto__") throw new KitError(`${name} isn't a variable name.`);
       env[name] = envSource(name, entry);
     }
     for (const [name, source] of Object.entries(env)) {
