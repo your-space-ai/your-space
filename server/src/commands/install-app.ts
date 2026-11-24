@@ -75,7 +75,7 @@ async function main(argv: string[]): Promise<number> {
   const opened = openForCommand(out);
   if (!opened) return EXIT.unexpected;
   const { config, database } = opened;
-  const apps = new AppsService(database.db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey, kitsRepository: config.kitsRepository });
+  const apps = new AppsService(database.db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey });
   try {
     // The command runs in the server's container, so standard input (`--kit -` or `--compose -`) is
     // how a file on the host reaches it. A kit's link is read from GitHub, and the kit names the

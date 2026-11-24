@@ -44,15 +44,6 @@ describe("loadConfig: YS_PROXY_URL's form", () => {
   });
 });
 
-it("accepts an optional GitHub kit directory and rejects ambiguous repository names", () => {
-  const config = (value?: string) => loadConfig({ ...SECRETS, YS_KITS_REPOSITORY: value }, { secretsDir: NO_SECRETS });
-  expect(config().kitsRepository).toBeUndefined();
-  expect(config("  ").kitsRepository).toBeUndefined();
-  expect(config("Community/my.kits").kitsRepository).toBe("Community/my.kits");
-  for (const invalid of ["owner", "https://github.com/owner/kits", "owner/..", "./kits", "owner/one/two", "owner/kits?ref=x"])
-    expect(() => config(invalid)).toThrow(/YS_KITS_REPOSITORY/);
-});
-
 describe("loadConfig: which setup", () => {
   it("with nothing set, serves this machine at http://space.localhost", () => {
     expect(loadConfig(SECRETS)).toMatchObject({ mode: "local", publicUrl: "http://space.localhost" });
@@ -155,6 +146,8 @@ describe("loadConfig: setting names", () => {
     ["YS_PROXYURL", /Did you mean YS_PROXY_URL\?/],
     ["YS_PORTS", /Did you mean YS_PORT\?/],
     ["YS_SOMETHING_ELSE", /YS_SOMETHING_ELSE isn't a setting\. Remove it from \.env\./],
+    // No kit directory since 2026-11-23 (decisions: Alpha scope).
+    ["YS_KITS_REPOSITORY", /YS_KITS_REPOSITORY isn't a setting\. Remove it from \.env\./],
   ])("refuses the unknown setting %s, so a typo can't pick the wrong setup", (key, message) => {
     expect(only({ [key]: "space.example.com" })).toMatch(message);
   });

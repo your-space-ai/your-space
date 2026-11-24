@@ -141,7 +141,6 @@ export async function dashboard(client: pg.PoolClient, owner: string, dataKey: s
       bound: current && !!row.credential,
       enabledRoles: current ? row.enabled_roles : [],
       revision: row.revision ?? 0,
-      reviewedBy: row.kit?.agentReview?.source ?? null,
     });
   }
   const requests = (

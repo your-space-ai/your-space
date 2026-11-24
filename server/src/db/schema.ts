@@ -83,8 +83,6 @@ export interface Adaptation {
 export interface Kit {
   kit: 1 | 2;
   agentAccess?: AgentAccess;
-  /** Verified independently by the registry lookup; never accepted in kit YAML. */
-  agentReview?: { source: string };
   /**
    * The app's Compose file on GitHub, at the exact commit Your Space reads it at. Required, except in a
    * kit given with a Compose file on this machine. Kits stored before 2026-11-23 may lack `commit`.

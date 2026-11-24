@@ -67,7 +67,6 @@ export interface AppsConfig {
   publicUrl: string;
   /** Encrypts apps' settings (spec 009). */
   dataKey: string;
-  kitsRepository?: string;
   github?: GithubEndpoints;
   fetch?: typeof fetch;
 }
@@ -358,7 +357,7 @@ export class AppsService {
       } else {
         if ("link" in kit) {
           try {
-            found = await kitFromLink(kit.link, this.config.kitsRepository, github, fetcher);
+            found = await kitFromLink(kit.link, github, fetcher);
           } catch (error) {
             // Its caller says how to reach a kit in a private repository instead.
             if (error instanceof SourceError && error.missing) throw new AppError(404, "kit_not_found", error.message);

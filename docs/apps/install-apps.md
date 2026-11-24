@@ -35,8 +35,7 @@ file isn't enough: Your Space says so and asks for the kit's link. The review sh
 Compose file it names, each at its exact commit, the image versions that will run, what Your Space
 changes or leaves out of the file, the settings its kit defines, and the internet hosts it may
 reach. Values Your Space generates, and secrets you give, are never shown. Install runs in the
-background; you can leave the page. If Your Space is set up with a kit directory, Apps lists its
-kits too.
+background; you can leave the page.
 
 **Exact commits.** A kit pins the app's Compose file: its `source` gives the repository, the path
 and the full commit, and Your Space reads the file at exactly that commit, never at a branch's latest
@@ -58,16 +57,6 @@ name the commit it is in: commit the Compose file, then the kit with that commit
 
 Your Space reads kits and Compose files from public GitHub. A kit in a private repository installs
 from this machine instead, with the server command (see below).
-
-**Kit directory.** To offer a directory of kits, set `YS_KITS_REPOSITORY=owner/repository` in the
-workspace's `.env` and recreate the server with `docker compose up -d`. Choose a repository you
-trust to publish kit reviews. Your Space lists `apps/<upstream-owner>/<upstream-repo>.yaml` from its
-default branch, pins each entry to the commit that branch is at, and reads it from public GitHub, so
-the directory must be a public repository. The directory lists kits and holds their reviews; it doesn't
-find a kit from a Compose link. A kit counts as reviewed when the directory has a matching record in
-`reviews/sha256/<digest>.json` on its default branch: the same repository, path and content digest
-for the reviewed kit commit. A review still applies across unrelated commits only while the kit's
-bytes are unchanged. You still choose every agent grant.
 
 From the server, `docker compose exec server install-app <kit-link>` does the same. A kit Your Space
 can't read on GitHub, such as one in a private repository, can come from this machine instead, and

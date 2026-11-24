@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { api, appsQuery, errorMessage, ownTabLink, shortDigest, STATE_LABEL, type AppList, type Review } from "../apps-api.ts";
-import { KitDirectory } from "../components/KitDirectory.tsx";
 import { JobProgress } from "../components/JobProgress.tsx";
 import { PUBLISH_NOTE, publishBody, PublishFields, type PublishForm } from "../components/PublishFields.tsx";
 import { DeleteData } from "./AppDetail.tsx";
@@ -155,7 +154,6 @@ function Install() {
           </button>
         </div>
       </form>
-      <KitDirectory busy={preview.isPending || install.isPending} onPreview={reviewKit} />
       {preview.isError ? (
         <p className="notice error" role="alert">
           {errorMessage(preview.error)}

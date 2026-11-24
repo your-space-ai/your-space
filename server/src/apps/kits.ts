@@ -6,7 +6,7 @@ import { readFileSync, statSync } from "node:fs";
 import { parse } from "yaml";
 import { parseAgentAccess, AgentKitError } from "./agent-kit.ts";
 import type { EnvSource, Kit } from "../db/schema.ts";
-import { fetchLatestFile, fetchPinnedFile, fetchSource, githubEndpoints, MAX_FILE_BYTES, SourceError, type GithubEndpoints, type SourceFile } from "./github.ts";
+import { fetchSource, githubEndpoints, MAX_FILE_BYTES, type GithubEndpoints, type SourceFile } from "./github.ts";
 import { TEMPLATE_REFERENCE, templateNames, templateOf } from "./settings.ts";
 
 export class KitError extends Error {
@@ -289,51 +289,12 @@ export function composeOf(kit: Kit): { repo: string; path: string; commit: strin
   return { repo: kit.source.repo, path: kit.source.path, commit: kit.source.commit! };
 }
 
-/** A review can follow unchanged kit bytes through an unrelated repository commit.
- * Fetch older bytes only from the already authorized repository and path. */
-export async function matchesKitReview(
-  record: unknown, digest: string, file: { repo: string; path: string; commit: string; text: string },
-  readAt: (commit: string) => Promise<string>,
-): Promise<boolean> {
-  if (!isObject(record) || record.status !== "reviewed" || record.sha256 !== digest || typeof record.kit !== "string") return false;
-  const pin = /^https:\/\/github\.com\/([^/?#]+\/[^/?#]+)\/blob\/([0-9a-f]{40})\/([^?#]+)$/.exec(record.kit);
-  if (!pin || pin[1].toLowerCase() !== file.repo.toLowerCase()) return false;
-  let path: string;
-  try {
-    path = decodeURIComponent(pin[3]);
-  } catch {
-    return false;
-  }
-  if (path !== file.path) return false;
-  const attested = pin[2];
-  return attested === file.commit || await readAt(attested) === file.text;
-}
-
-/**
- * The kit at a GitHub link, read at the exact commit the link resolves to, with the directory's
- * review evidence for its agent access when the directory has a review of these exact bytes.
- */
+/** The kit at a GitHub link, read at the exact commit the link resolves to. */
 export async function kitFromLink(
   link: string,
-  directory: string | undefined,
   endpoints: GithubEndpoints = githubEndpoints(),
   fetcher: typeof fetch = fetch,
 ): Promise<FoundKit & { file: SourceFile }> {
   const file = await fetchSource(link, endpoints, fetcher);
-  const kit = parseKit(file.text);
-  if (kit.agentAccess && directory) {
-    const digest = createHash("sha256").update(file.text).digest("hex");
-    try {
-      const review = await fetchLatestFile(directory, `reviews/sha256/${digest}.json`, endpoints, fetcher);
-      const record: unknown = JSON.parse(review.text);
-      if (await matchesKitReview(record, digest, file, async (commit) =>
-        (await fetchPinnedFile(file.repo, file.path, commit, endpoints, fetcher)).text)) {
-        kit.agentReview = { source: review.pinnedLink };
-      }
-    } catch (error) {
-      // Missing, unreadable and malformed evidence all leave the kit unreviewed.
-      if (!(error instanceof SourceError || error instanceof SyntaxError)) throw error;
-    }
-  }
-  return { kit, source: file.pinnedLink, file };
+  return { kit: parseKit(file.text), source: file.pinnedLink, file };
 }

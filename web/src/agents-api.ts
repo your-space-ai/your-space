@@ -17,7 +17,6 @@ export interface AgentInstallation {
   name: string;
   title?: string;
   source: string | null;
-  reviewedBy?: string | null;
   roles: Record<string, { title: string; routes: string[] }>;
   routes: Record<string, AgentRoute>;
   bound: boolean;

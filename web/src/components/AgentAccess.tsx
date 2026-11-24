@@ -71,7 +71,6 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
   const action = useAgentAction();
   const [credential, setCredential] = useState("");
   const [roles, setRoles] = useState(app.enabledRoles);
-  const reviewUrl = app.reviewedBy?.startsWith("https://github.com/") ? app.reviewedBy : null;
   const path = agentPath + "/installations/" + encodeURIComponent(app.id);
   return (
     <details className="agent-details">
@@ -80,15 +79,6 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
       </summary>
       <p className="muted small">
         Kit source: <code>{app.source || "Unknown"}</code>
-      </p>
-      <p className="small">
-        {reviewUrl ? (
-          <a href={reviewUrl} target="_blank" rel="noreferrer">
-            Community review for this kit revision
-          </a>
-        ) : (
-          "No verified review for this kit revision."
-        )}
       </p>
       <form
         onSubmit={(e) => {

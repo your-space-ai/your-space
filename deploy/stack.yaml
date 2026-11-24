@@ -54,7 +54,6 @@ services:
       YS_DOMAIN: ${YS_DOMAIN:-}
       YS_PROXY_URL: ${YS_PROXY_URL:-}
       YS_PORT: ${YS_PORT:-}
-      YS_KITS_REPOSITORY: ${YS_KITS_REPOSITORY:-}
       # Used when set in .env; otherwise the server reads the generated copies in ys-secrets.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}

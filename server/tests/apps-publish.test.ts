@@ -149,7 +149,7 @@ describe("publishing an app", () => {
       "ys-fixtures/nopane/compose.yaml": COMPOSE,
       "ys-fixtures/catalog/apps/ys-fixtures/nopane.yaml": NOPANE_KIT,
     });
-    server = await startServer(t.db, { apps: { runtime, fetch, kitsRepository: "ys-fixtures/catalog" } });
+    server = await startServer(t.db, { apps: { runtime, fetch } });
     await createOwnerWithPassword(t.db, OWNER, server.publicUrl);
     const signedIn = await server.request("/api/auth/sign-in/username", { method: "POST", body: JSON.stringify({ username: OWNER.username, password: OWNER.password }) });
     cookie = cookieHeader(signedIn);

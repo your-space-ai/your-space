@@ -85,7 +85,9 @@ Compose.
 **Installation kits.** Some apps need help to fit: which service is the interface, which values
 must be generated rather than taken from published defaults, which outbound hosts a feature needs.
 An owner can supply a kit from a local file or a GitHub link. They can configure
-`YS_KITS_REPOSITORY` to discover kits in a GitHub repository of their choice. A kit refers to the app's own files by link and exact commit and
+`YS_KITS_REPOSITORY` to discover kits in a GitHub repository of their choice. (Superseded
+2026-11-23: the alpha has no kit directory and no `YS_KITS_REPOSITORY`; see the
+[alpha scope](../../docs/architecture/decisions.md#alpha-scope).) A kit refers to the app's own files by link and exact commit and
 lists the adjustments; it never copies the app's code or files, so the app's license is untouched.
 A kit can set a setting to a value Your Space works out itself, such as the app's own address (the
 second app, a CRM, needs it in a setting), so the owner isn't asked for it.

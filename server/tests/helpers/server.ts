@@ -27,7 +27,6 @@ export interface AppsOptions {
   runtime: Runtime;
   /** Stands in for GitHub. */
   fetch: typeof fetch;
-  kitsRepository?: string;
 }
 
 export async function startServer(db: Db, options: { publicUrl?: string; apps?: AppsOptions } = {}): Promise<TestServer> {
@@ -45,7 +44,6 @@ export async function startServer(db: Db, options: { publicUrl?: string; apps?: 
         publicUrl,
         dataKey: TEST_DATA_KEY,
         fetch: options.apps.fetch,
-        kitsRepository: options.apps.kitsRepository,
         github: { api: "https://api.github.test", raw: "https://raw.github.test" },
       })
     : undefined;
