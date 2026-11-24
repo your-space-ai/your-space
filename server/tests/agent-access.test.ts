@@ -7,7 +7,7 @@ import { parseAgentAccess } from "../src/apps/agent-kit.ts";
 import { app } from "../src/db/schema.ts";
 import { activity, dashboard, hash, identity, transaction } from "../src/agents/store.ts";
 import { bind, createAgent, grant, manageKey } from "../src/agents/owner.ts";
-import { decide, discover, invoke, receipt } from "../src/agents/invoke.ts";
+import { decide, discover, invoke, requestOutcome } from "../src/agents/invoke.ts";
 import { dispatchAppAction } from "../src/agents/transport.ts";
 import { moveSettingsToDataKey } from "../src/apps/keys.ts";
 
@@ -19,16 +19,16 @@ const access = parseAgentAccess({
   credential: { binding: "service", inject: { location: "header", name: "X-API-Key" } },
   routes: {
     list: { method: "GET", path: "/items", effect: "read", outputFields: ["id"] },
-    create: {
-      method: "POST",
-      path: "/items",
-      effect: "write",
-      operationId: { in: "header", name: "Idempotency-Key" },
-      bodyFields: { title: "string" },
+    show: {
+      method: "GET",
+      path: "/items/{id}",
+      effect: "read",
+      approval: "ask",
+      pathParams: { id: "string" },
       outputFields: ["id"],
     },
   },
-  roles: { manager: { title: "Manager", routes: ["list", "create"] }, reader: { title: "Reader", routes: ["list"] } },
+  roles: { manager: { title: "Manager", routes: ["list", "show"] }, reader: { title: "Reader", routes: ["list"] } },
 });
 beforeEach(async () => {
   t = await createTestDatabase();
@@ -69,11 +69,11 @@ beforeEach(async () => {
 afterEach(async () => {
   await t?.destroy();
 });
-const write = () => ({
+// The kit asks the owner before each show.
+const show = () => ({
   installationId: installation,
-  actionId: "create",
-  operationId: "op-001",
-  input: { body: { title: "private fixture title" } },
+  actionId: "show",
+  input: { path: { id: "private-fixture-item" } },
 });
 async function setGrant(revision: number, isRead = false) {
   return transaction(t.db, (c) =>
@@ -81,44 +81,46 @@ async function setGrant(revision: number, isRead = false) {
       revision,
       roles: isRead ? ["reader"] : ["manager", "reader"],
       bindingRevision: 1,
-      askAllWrites: true,
-      overrides: { create: "allow" },
+      overrides: { list: "allow" },
     }),
   );
 }
 it("admits only active granted routes, persists exact approval and dispatches one time under concurrent decisions", async () => {
   expect(await transaction(t.db, async (c) => discover(c, await identity(c, verifier)))).toEqual({ actions: [] });
-  expect((await invoke(t.db, key, verifier, write())).status).toBe("denied");
+  expect((await invoke(t.db, key, verifier, show())).status).toBe("denied");
   await setGrant(0);
-  const first = await invoke(t.db, key, verifier, write());
+  const first = await invoke(t.db, key, verifier, show());
   expect(first.status).toBe("pending");
-  expect(await invoke(t.db, key, verifier, write())).toEqual(first);
   expect(dispatchAppAction).not.toHaveBeenCalled();
   const saved = (await t.pool.query("select input from agent_request where id=$1", [first.id])).rows[0].input;
   expect(saved).not.toContain("fixture");
   const preview = await transaction(t.db, (c) => dashboard(c, owner, key));
-  expect(preview.requests[0]?.input).toEqual(write().input);
+  expect(preview.requests[0]?.input).toEqual(show().input);
   const approval = () => decide(t.db, key, owner, first.id, { revision: 1, approve: true });
   const decisions = await Promise.allSettled([approval(), approval()]);
   expect(decisions.filter((r) => r.status === "fulfilled")).toHaveLength(1);
   expect(dispatchAppAction).toHaveBeenCalledTimes(1);
-  expect(vi.mocked(dispatchAppAction).mock.calls[0]?.[0].headers["X-API-Key"]).toBe(secret);
-  expect(await invoke(t.db, key, verifier, write())).toEqual({
+  expect(vi.mocked(dispatchAppAction).mock.calls[0]?.[0]).toMatchObject({
+    method: "GET",
+    path: "/items/private-fixture-item",
+    headers: { "X-API-Key": secret },
+  });
+  expect(await requestOutcome(t.db, verifier, first.id, key)).toEqual({
     id: first.id,
     status: "succeeded",
     result: { id: "item-1" },
   });
   expect(dispatchAppAction).toHaveBeenCalledTimes(1);
-  expect(JSON.stringify(await transaction(t.db, (c) => activity(c, owner)))).not.toContain("private fixture");
+  expect(JSON.stringify(await transaction(t.db, (c) => activity(c, owner)))).not.toContain("private-fixture");
 });
 it("invalidates stale approvals on role narrowing, key rotation, and uninstall including retained app rows", async () => {
   await setGrant(0);
-  const first = await invoke(t.db, key, verifier, write());
+  const first = await invoke(t.db, key, verifier, show());
   await setGrant(1, true);
   await expect(decide(t.db, key, owner, first.id, { approve: true, revision: 1 })).rejects.toMatchObject({
     status: 409,
   });
-  await expect(receipt(t.db, verifier, first.id, key)).rejects.toMatchObject({ status: 403 });
+  await expect(requestOutcome(t.db, verifier, first.id, key)).rejects.toMatchObject({ status: 403 });
   await transaction(t.db, (c) => manageKey(c, owner, agent, credentialId));
   await expect(transaction(t.db, (c) => identity(c, verifier))).rejects.toMatchObject({ status: 401 });
   await t.pool.query("update app set desired='removed' where id=$1", [installation]);
@@ -129,99 +131,16 @@ it("invalidates stale approvals on role narrowing, key rotation, and uninstall i
   );
   expect(dispatchAppAction).not.toHaveBeenCalled();
 });
-it("keeps rejected writes terminal and pending previews readable after installation key replacement", async () => {
+it("keeps rejected requests terminal and pending previews readable after installation key replacement", async () => {
   await setGrant(0);
-  const pending = await invoke(t.db, key, verifier, write());
+  const pending = await invoke(t.db, key, verifier, show());
   const next = key + "-new";
   await moveSettingsToDataKey(t.db, { authSecret: "test", dataKey: next, previousDataKey: key });
-  expect((await transaction(t.db, (c) => dashboard(c, owner, next))).requests[0]?.input).toEqual(write().input);
+  expect((await transaction(t.db, (c) => dashboard(c, owner, next))).requests[0]?.input).toEqual(show().input);
   expect((await decide(t.db, next, owner, pending.id, { approve: false, revision: 1 })).status).toBe("rejected");
-  expect((await invoke(t.db, next, verifier, write())).status).toBe("rejected");
+  expect((await requestOutcome(t.db, verifier, pending.id, next)).status).toBe("rejected");
+  await expect(decide(t.db, next, owner, pending.id, { approve: true, revision: 2 })).rejects.toMatchObject({ status: 409 });
   expect(dispatchAppAction).not.toHaveBeenCalled();
-});
-
-it("reconciles an unknown write using its scoped upstream receipt and never repeats the write", async () => {
-  const catalog = parseAgentAccess({
-    ...access,
-    roles: { manager: { title: "Manager", routes: ["create", "lookup"] } },
-    routes: {
-      create: { ...access.routes.create, receipt: { route: "lookup", param: "operation" } },
-      lookup: {
-        method: "GET",
-        path: "/receipts/{operation}",
-        pathParams: { operation: "string" },
-        effect: "read",
-        outputFields: ["id"],
-      },
-    },
-  });
-  await t.pool.query("update app set kit=$2 where id=$1", [
-    installation,
-    JSON.stringify({ kit: 2, agentAccess: catalog }),
-  ]);
-  await transaction(t.db, async (c) => {
-    await bind(c, installation, { revision: 2, enabledRoles: ["manager"], credential: secret }, key);
-    await grant(c, owner, agent, installation, {
-      revision: 0,
-      roles: ["manager"],
-      bindingRevision: 3,
-      askAllWrites: false,
-      overrides: { create: "allow" },
-    });
-  });
-  vi.mocked(dispatchAppAction).mockRejectedValueOnce(new Error("Lost response"));
-  const outcome = await invoke(t.db, key, verifier, write());
-  expect(outcome.status).toBe("unknown");
-  // Saving the same upstream binding and changing approval preferences neither
-  // dispatches another write nor strands its receipt when both routes remain allowed.
-  await transaction(t.db, async (c) => {
-    const updated = await bind(c, installation, { revision: 3, enabledRoles: ["manager"] }, key);
-    await grant(c, owner, agent, installation, {
-      revision: 1,
-      bindingRevision: updated.revision,
-      roles: ["manager"],
-      askAllWrites: true,
-      overrides: { lookup: "ask" },
-    });
-  });
-  expect((await receipt(t.db, verifier, outcome.id, key)).status).toBe("unknown");
-  expect(dispatchAppAction).toHaveBeenCalledTimes(1);
-  await transaction(t.db, (c) =>
-    grant(c, owner, agent, installation, {
-      revision: 2,
-      bindingRevision: 4,
-      roles: ["manager"],
-      askAllWrites: true,
-      overrides: { lookup: "allow" },
-    }),
-  );
-  expect((await invoke(t.db, key, verifier, write())).status).toBe("unknown");
-  expect(dispatchAppAction).toHaveBeenCalledTimes(1);
-  expect(await receipt(t.db, verifier, outcome.id, key)).toMatchObject({
-    status: "succeeded",
-    result: { id: "item-1" },
-  });
-  const [writeCall, lookupCall] = vi.mocked(dispatchAppAction).mock.calls;
-  expect(lookupCall![0].method).toBe("GET");
-  expect(lookupCall![0].path).toBe("/receipts/" + writeCall![0].headers["Idempotency-Key"]);
-  await transaction(t.db, async (c) => {
-    const changed = await bind(
-      c,
-      installation,
-      { revision: 4, credential: "another-principal", enabledRoles: ["manager"] },
-      key,
-    );
-    await grant(c, owner, agent, installation, {
-      revision: 0,
-      bindingRevision: changed.revision,
-      roles: ["manager"],
-      askAllWrites: false,
-      overrides: {},
-    });
-  });
-  await expect(receipt(t.db, verifier, outcome.id, key)).rejects.toMatchObject({ status: 403 });
-  await expect(invoke(t.db, key, verifier, write())).rejects.toMatchObject({ status: 409 });
-  expect(dispatchAppAction).toHaveBeenCalledTimes(2);
 });
 
 it("keeps owner cookies and agent credentials on separate authority paths", async () => {
@@ -261,9 +180,9 @@ it("keeps owner cookies and agent credentials on separate authority paths", asyn
   }
 });
 
-it("cannot retrieve a previous receipt after removing and reinstalling an app with the same retained ID", async () => {
+it("cannot read a request's outcome after removing and reinstalling an app with the same retained ID", async () => {
   await setGrant(0);
-  const pending = await invoke(t.db, key, verifier, write());
+  const pending = await invoke(t.db, key, verifier, show());
   await decide(t.db, key, owner, pending.id, { approve: true, revision: 1 });
   await t.pool.query("update app set desired='removed' where id=$1", [installation]);
   await t.pool.query("update app set desired='running' where id=$1", [installation]);
@@ -274,7 +193,6 @@ it("cannot retrieve a previous receipt after removing and reinstalling an app wi
         revision: 0,
         bindingRevision: 1,
         roles: ["manager"],
-        askAllWrites: true,
         overrides: {},
       }),
     ).rejects.toMatchObject({ status: 409 });
@@ -282,16 +200,14 @@ it("cannot retrieve a previous receipt after removing and reinstalling an app wi
       revision: 0,
       bindingRevision: fresh.revision,
       roles: ["manager"],
-      askAllWrites: true,
       overrides: {},
     });
   });
-  await expect(receipt(t.db, verifier, pending.id, key)).rejects.toMatchObject({ status: 403 });
-  await expect(invoke(t.db, key, verifier, write())).rejects.toMatchObject({ status: 409 });
+  await expect(requestOutcome(t.db, verifier, pending.id, key)).rejects.toMatchObject({ status: 403 });
   expect(dispatchAppAction).toHaveBeenCalledTimes(1);
 });
 
-it("isolates two actors and unrelated installation catalogs through discovery, invocation and receipts", async () => {
+it("isolates two actors and unrelated installation catalogs through discovery, invocation and request outcomes", async () => {
   const telemetry = parseAgentAccess({
     credential: { binding: "sensor", inject: { location: "header", name: "Authorization", scheme: "Bearer" } },
     roles: { observer: { title: "Observer", routes: ["temperature"] } },
@@ -327,7 +243,6 @@ it("isolates two actors and unrelated installation catalogs through discovery, i
       revision: 0,
       bindingRevision: 1,
       roles: ["observer"],
-      askAllWrites: false,
       overrides: {},
     });
     return hash(observerKey.key!);
@@ -356,7 +271,7 @@ it("isolates two actors and unrelated installation catalogs through discovery, i
       headers: { Authorization: "Bearer sensor-fixture" },
     }),
   );
-  await expect(receipt(t.db, verifier, outcome.id, key)).rejects.toMatchObject({ status: 403 });
+  await expect(requestOutcome(t.db, verifier, outcome.id, key)).rejects.toMatchObject({ status: 403 });
   const { events } = await transaction(t.db, (c) => activity(c, owner));
   expect(events.find((event) => event.id === outcome.id)).toMatchObject({
     ownerId: owner,
@@ -366,24 +281,24 @@ it("isolates two actors and unrelated installation catalogs through discovery, i
   });
 });
 
-it("keeps an interrupted claim unknown after its deadline and never re-dispatches the write", async () => {
+it("keeps an interrupted claim unknown after its deadline and never dispatches it again", async () => {
   await setGrant(0);
-  const pending = await invoke(t.db, key, verifier, write());
+  const pending = await invoke(t.db, key, verifier, show());
   // A stopped process can leave a committed dispatch claim without any upstream response.
   await t.pool.query(
     "update agent_request set status='dispatching', input=null, expires_at=now() - interval '1 minute' where id=$1",
     [pending.id],
   );
-  expect(await receipt(t.db, verifier, pending.id, key)).toMatchObject({ status: "unknown" });
-  expect(await invoke(t.db, key, verifier, write())).toEqual({ id: pending.id, status: "unknown" });
+  expect(await requestOutcome(t.db, verifier, pending.id, key)).toMatchObject({ status: "unknown" });
+  await expect(decide(t.db, key, owner, pending.id, { approve: true, revision: 1 })).rejects.toMatchObject({ status: 409 });
   expect(dispatchAppAction).not.toHaveBeenCalled();
 });
 
-it("serializes grant withdrawal with approval and prevents subsequent writes", async () => {
+it("serializes grant withdrawal with approval and prevents later requests", async () => {
   await setGrant(0);
   const offered = await transaction(t.db, async (c) => discover(c, await identity(c, verifier)));
-  expect(offered.actions.map((action) => action.actionId).sort()).toEqual(["create", "list"]);
-  const pending = await invoke(t.db, key, verifier, write());
+  expect(offered.actions.map((action) => action.actionId).sort()).toEqual(["list", "show"]);
+  const pending = await invoke(t.db, key, verifier, show());
   expect(pending.status).toBe("pending");
 
   const approve = () => decide(t.db, key, owner, pending.id, { approve: true, revision: 1 });
@@ -401,19 +316,19 @@ it("serializes grant withdrawal with approval and prevents subsequent writes", a
   expect(dispatchAppAction).toHaveBeenCalledTimes(dispatched);
 
   await expect(approve()).rejects.toMatchObject({ status: 409 });
-  for (const operationId of [write().operationId, "later-write"]) {
-    expect((await invoke(t.db, key, verifier, { ...write(), operationId })).status).toBe("denied");
+  for (const id of ["private-fixture-item", "later-item"]) {
+    expect((await invoke(t.db, key, verifier, { ...show(), input: { path: { id } } })).status).toBe("denied");
   }
   expect(dispatchAppAction).toHaveBeenCalledTimes(dispatched);
 });
 
 it("retires the old grant, credential and pending approval when a kit changes its route", async () => {
   await setGrant(0);
-  const pending = await invoke(t.db, key, verifier, write());
+  const pending = await invoke(t.db, key, verifier, show());
   const approve = (id: string) => decide(t.db, key, owner, id, { approve: true, revision: 1 });
   const revised = parseAgentAccess({
     ...access,
-    routes: { ...access.routes, create: { ...access.routes.create, path: "/new-items" } },
+    routes: { ...access.routes, show: { ...access.routes.show, path: "/new-items/{id}" } },
   });
   await t.pool.query("update app set kit=$2 where id=$1", [
     installation, JSON.stringify({ kit: 2, agentAccess: revised }),
@@ -425,22 +340,52 @@ it("retires the old grant, credential and pending approval when a kit changes it
   expect(afterChange.requests).toEqual([]);
   expect(afterChange.events.find((event) => event.id === pending.id)?.status).toBe("stale");
   await expect(approve(pending.id)).rejects.toMatchObject({ status: 409 });
-  expect((await invoke(t.db, key, verifier, write())).status).toBe("denied");
+  expect((await invoke(t.db, key, verifier, show())).status).toBe("denied");
 
   const rebound = await transaction(t.db, (c) =>
     bind(c, installation, { revision: 2, credential: secret, enabledRoles: ["manager"] }, key),
   );
-  expect((await invoke(t.db, key, verifier, write())).status).toBe("denied");
+  expect((await invoke(t.db, key, verifier, show())).status).toBe("denied");
   await transaction(t.db, (c) =>
     grant(c, owner, agent, installation, {
-      revision: 0, bindingRevision: rebound.revision, roles: ["manager"], askAllWrites: true, overrides: {},
+      revision: 0, bindingRevision: rebound.revision, roles: ["manager"], overrides: {},
     }),
   );
   await expect(approve(pending.id)).rejects.toMatchObject({ status: 409 });
-  await expect(invoke(t.db, key, verifier, write())).rejects.toMatchObject({ status: 409 });
   expect(dispatchAppAction).not.toHaveBeenCalled();
-  const fresh = await invoke(t.db, key, verifier, { ...write(), operationId: "revised-kit-write" });
+  const fresh = await invoke(t.db, key, verifier, show());
   expect(fresh.status).toBe("pending");
   expect((await approve(fresh.id)).status).toBe("succeeded");
-  expect(dispatchAppAction).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ path: "/new-items" }));
+  expect(dispatchAppAction).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ path: "/new-items/private-fixture-item" }),
+  );
+});
+
+it("leaves out the write routes of a kit stored before agents became read-only", async () => {
+  // Stored as written then; parseKit refuses write routes now.
+  const stored = {
+    ...access,
+    routes: {
+      ...access.routes,
+      create: { method: "POST", path: "/items", effect: "write", bodyFields: { title: "string" }, outputFields: ["id"] },
+    },
+    roles: { ...access.roles, manager: { title: "Manager", routes: ["list", "show", "create"] } },
+  };
+  await t.pool.query("update app set kit=$2 where id=$1", [installation, JSON.stringify({ kit: 2, agentAccess: stored })]);
+  await transaction(t.db, async (c) => {
+    // Changing the stored kit retired the binding (retire_agent_binding), so it is bound again.
+    const rebound = await bind(c, installation, { revision: 2, credential: secret, enabledRoles: ["manager"] }, key);
+    await expect(
+      grant(c, owner, agent, installation, { revision: 0, bindingRevision: rebound.revision, roles: ["manager"], overrides: { create: "allow" } }),
+    ).rejects.toMatchObject({ status: 400 });
+    await grant(c, owner, agent, installation, { revision: 0, bindingRevision: rebound.revision, roles: ["manager"], overrides: {} });
+  });
+  const offered = await transaction(t.db, async (c) => discover(c, await identity(c, verifier)));
+  expect(offered.actions.map((action) => action.actionId).sort()).toEqual(["list", "show"]);
+  const overview = await transaction(t.db, (c) => dashboard(c, owner, key));
+  expect(Object.keys(overview.installations[0]!.routes).sort()).toEqual(["list", "show"]);
+  expect(overview.installations[0]!.roles.manager!.routes).toEqual(["list", "show"]);
+  const create = { installationId: installation, actionId: "create", input: { body: { title: "x" } } };
+  expect((await invoke(t.db, key, verifier, create)).status).toBe("denied");
+  expect(dispatchAppAction).not.toHaveBeenCalled();
 });

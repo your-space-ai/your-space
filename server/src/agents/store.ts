@@ -47,8 +47,8 @@ export async function expireRequests(executor: pg.Pool | pg.PoolClient) {
   await executor.query(
     "update agent_request set status='expired', input=null, revision=revision+1 where status='pending' and expires_at <= now()",
   );
-  // Keep the durable outcome for audit and idempotency. The separately encrypted
-  // response is available to the agent for a bounded receipt-retrieval window.
+  // Keep the outcome for the activity history. The separately encrypted result
+  // stays readable by the agent that asked for a day.
   await executor.query("update agent_request set result=null where result is not null and created_at < now() - interval '1 day'");
   // The edge transport times out after 15 seconds. A stale claim can follow a crashed server.
   await executor.query(
@@ -79,10 +79,24 @@ export async function catalog(client: pg.PoolClient, id: string) {
       [id],
     )
   ).rows[0];
-  const access = row?.kit?.agentAccess as AgentAccess | undefined;
-  if (!row || !access || !row.interface) forbidden();
+  const declared = row?.kit?.agentAccess as AgentAccess | undefined;
+  if (!row || !declared || !row.interface) forbidden();
+  const access = readsOnly(declared);
   const digest = hash(JSON.stringify([row.kit, row.kit_source, row.commit]));
   return { row, access, digest, current: row.kit_digest === digest };
+}
+/**
+ * Agents only read (decision 2026-11-23, Alpha scope). A kit stored before then may still declare
+ * write routes; they are left out, so no role grants them.
+ */
+function readsOnly(access: AgentAccess): AgentAccess {
+  const routes = Object.fromEntries(
+    Object.entries(access.routes).filter(([, route]) => route.method === "GET" && route.effect === "read"),
+  );
+  const roles = Object.fromEntries(
+    Object.entries(access.roles).map(([id, role]) => [id, { ...role, routes: role.routes.filter((r) => Object.hasOwn(routes, r)) }]),
+  );
+  return { ...access, routes, roles };
 }
 export async function owned(client: pg.PoolClient, id: string, owner: string, active = true) {
   const row = (await client.query("select * from external_agent where id=$1 and owner_id=$2", [id, owner])).rows[0];
@@ -118,7 +132,7 @@ export async function dashboard(client: pg.PoolClient, owner: string, dataKey: s
     await client.query(
       `select a.id,a.name,a.disabled,
     coalesce((select json_agg(json_build_object('id',k.id,'revoked',k.revoked)) from agent_key k where k.agent_id=a.id),'[]') as keys,
-    coalesce((select json_agg(json_build_object('installationId',g.app_id,'roles',g.roles,'revision',g.revision,'askAllWrites',g.ask_all_writes,'overrides',g.overrides)) from agent_grant g where g.agent_id=a.id),'[]') as grants
+    coalesce((select json_agg(json_build_object('installationId',g.app_id,'roles',g.roles,'revision',g.revision,'overrides',g.overrides)) from agent_grant g where g.agent_id=a.id),'[]') as grants
     from external_agent a where owner_id=$1 order by name,id`,
       [owner],
     )
@@ -145,13 +159,13 @@ export async function dashboard(client: pg.PoolClient, owner: string, dataKey: s
   }
   const requests = (
     await client.query(
-      `select r.id,agent_id as "agentId",app_id as "installationId",route as "actionId",status,input,r.revision,key_id as "credentialId",expires_at as "expiresAt",operation_id as "operationId"
+      `select r.id,agent_id as "agentId",app_id as "installationId",route as "actionId",status,input,r.revision,key_id as "credentialId",expires_at as "expiresAt"
     from agent_request r join external_agent a on a.id=r.agent_id where a.owner_id=$1 and status='pending' order by r.created_at limit 100`,
       [owner],
     )
   ).rows.map((row) => {
     const payload = JSON.parse(decrypt(dataKey, row.input));
-    return { ...row, input: payload.input, expectedRevision: payload.expectedRevision };
+    return { ...row, input: payload.input };
   });
   return { agents, installations, requests, ...(await activity(client, owner)) };
 }

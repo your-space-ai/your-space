@@ -17,7 +17,7 @@ import {
   uuid,
 } from "./store.ts";
 import { bind, createAgent, editAgent, grant, manageKey } from "./owner.ts";
-import { decide, discover, invoke, receipt } from "./invoke.ts";
+import { decide, discover, invoke, requestOutcome } from "./invoke.ts";
 
 function verifier(req: Request) {
   const value = req.get("Authorization");
@@ -109,7 +109,7 @@ export function agentRoutes(auth: Auth, db: Db, dataKey: string) {
     "/agent/requests/:id",
     route(async (r, res) => {
       const key = verifier(r);
-      res.json(await receipt(db, key, uuid(r.params.id), dataKey));
+      res.json(await requestOutcome(db, key, uuid(r.params.id), dataKey));
     }),
   );
   router.post(
@@ -117,7 +117,7 @@ export function agentRoutes(auth: Auth, db: Db, dataKey: string) {
     route(async (r, res) => {
       if (!r.is("application/json")) invalid();
       const outcome = await invoke(db, dataKey, verifier(r), r.body);
-      const status = { pending: 202, denied: 403, conflict: 409, refused: 422, unknown: 502 }[outcome.status] ?? 200;
+      const status = { pending: 202, denied: 403, refused: 422, unknown: 502 }[outcome.status] ?? 200;
       if (outcome.status === "denied") {
         res.status(403).json({ error: "denied", status: "denied" });
       } else {

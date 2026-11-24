@@ -56,7 +56,7 @@ async function callAgent(ui: Ui, path: string, input?: Record<string, unknown>):
     value = JSON.parse(raw);
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error();
   } catch {
-    throw new CliError("gateway_unavailable", "The gateway returned no usable response. Reconcile an outstanding write before retrying.");
+    throw new CliError("gateway_unavailable", "The gateway returned no usable response. Try again.");
   }
   if (!response.ok) {
     const reason = typeof value.error === "string" && /^[a-z][a-z_]{0,63}$/.test(value.error) ? value.error : "gateway_error";
@@ -72,13 +72,11 @@ export function registerAgentCommands(program: Command, ui: () => Ui): void {
   agent.command("actions").description("list available kit actions").action(() => callAgent(ui(), "/api/agent/actions"));
   agent.command("request <id>").description("check a previously submitted request").action((id: string) =>
     callAgent(ui(), "/api/agent/requests/" + encodeURIComponent(id)));
+  // Agents only read (decision 2026-11-23, Alpha scope): an action takes path and query fields.
   agent.command("invoke <installation-id> <action-id>").description("submit a kit action")
-    .requiredOption("--input-stdin", "read the path, query and body input object from stdin")
-    .option("--operation-id <id>", "stable ID for this logical write")
-    .option("--expected-revision <revision>", "revision returned by the app")
-    .action(async (installationId: string, actionId: string, options: { operationId?: string; expectedRevision?: string }) => {
+    .requiredOption("--input-stdin", "read the path and query input object from stdin")
+    .action(async (installationId: string, actionId: string) => {
       const input = await readInput();
-      await callAgent(ui(), "/api/agent/invoke", { installationId, actionId, input,
-        operationId: options.operationId, expectedRevision: options.expectedRevision });
+      await callAgent(ui(), "/api/agent/invoke", { installationId, actionId, input });
     });
 }

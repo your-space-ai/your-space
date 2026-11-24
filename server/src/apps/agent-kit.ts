@@ -1,23 +1,23 @@
 // The declaration lives in the pinned installation kit. Only this module turns a
-// declared route and validated scalar fields into an upstream request.
+// declared route and validated scalar fields into an upstream request. Agents only read
+// (decision 2026-11-23, Alpha scope): every route is a GET with effect: read.
 type FieldType = "string" | "uuid" | "integer" | "boolean";
 type Fields = Record<string, FieldType>;
 type Scalar = string | number | boolean | null;
 type ResultRow = Record<string, Scalar>;
-type MetadataBinding = { in: "header" | "body"; name: string };
 export interface AgentRoute {
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  method: "GET";
   path: string;
-  effect: "read" | "write";
+  effect: "read";
   approval?: "ask" | "allow";
   pathParams?: Fields;
   queryFields?: Fields;
-  bodyFields?: Fields;
-  operationId?: MetadataBinding;
-  expectedRevision?: MetadataBinding;
-  receipt?: { route: string; param: string };
   outputFields: string[];
 }
+/** Fields only a write route could use, before agents became read-only. */
+const WRITE_FIELDS = ["bodyFields", "operationId", "expectedRevision", "receipt"];
+const READS_ONLY =
+  "Agents only read in this version of Your Space: each route is a GET with effect: read, without a body, an operation ID, a revision or a receipt.";
 export interface AgentAccess {
   credential: { binding: string; inject: { location: "header"; name: string; scheme?: "Bearer" } };
   roles: Record<string, { title: string; routes: string[] }>;
@@ -71,43 +71,16 @@ function parseFields(value: unknown): Fields {
   }
   return fields;
 }
-function metadata(value: unknown, header: string, bodyFields?: Fields): MetadataBinding {
-  const b = keys(value, ["in", "name"]);
-  check(typeof b.name === "string", "Missing metadata field name.");
-  if (b.in === "header") {
-    check(b.name.toLowerCase() === header.toLowerCase(), "Unsupported metadata header.");
-    return { in: "header", name: header };
-  }
-  check(
-    b.in === "body" && allowedName(b.name, field) && !Object.hasOwn(bodyFields ?? {}, b.name),
-    "Invalid or overlapping metadata body field.",
-  );
-  return { in: "body", name: b.name };
-}
 function parseRoute(value: unknown): AgentRoute {
-  const r = keys(value, [
-    "method",
-    "path",
-    "effect",
-    "approval",
-    "pathParams",
-    "queryFields",
-    "bodyFields",
-    "outputFields",
-    "operationId",
-    "expectedRevision",
-    "receipt",
-  ]);
+  const declared = mapping(value);
+  check(declared.effect !== "write" && !WRITE_FIELDS.some((name) => Object.hasOwn(declared, name)), READS_ONLY);
+  const r = keys(value, ["method", "path", "effect", "approval", "pathParams", "queryFields", "outputFields"]);
   const { method, path, effect, approval } = r;
-  check(
-    method === "GET" || method === "PUT" || method === "PATCH" || method === "POST" || method === "DELETE",
-    "Unsupported HTTP method.",
-  );
-  check(effect === "write" || (effect === "read" && method === "GET"), "Write-capable routes must declare a write.");
+  check(method === "GET" && effect === "read", READS_ONLY);
   check(approval === undefined || approval === "allow" || approval === "ask", "Unknown approval setting.");
   check(typeof path === "string" && path.startsWith("/") && path.length <= 512, "Expected a relative route path.");
   const route: AgentRoute = { method, path, effect, approval, outputFields: nameList(r.outputFields, field) };
-  for (const slot of ["pathParams", "queryFields", "bodyFields"] as const) {
+  for (const slot of ["pathParams", "queryFields"] as const) {
     if (r[slot] !== undefined) route[slot] = parseFields(r[slot]);
   }
   const params = new Set(Object.keys(route.pathParams ?? {}));
@@ -121,29 +94,6 @@ function parseRoute(value: unknown): AgentRoute {
     );
   }
   check(params.size === 0, "Unused path parameter.");
-  if (method === "GET") check(!Object.keys(route.bodyFields ?? {}).length, "GET does not accept a request body.");
-  if (effect === "write") {
-    route.operationId = metadata(r.operationId, "Idempotency-Key", route.bodyFields);
-    if (r.expectedRevision !== undefined || ["PUT", "PATCH", "DELETE"].includes(method))
-      route.expectedRevision = metadata(r.expectedRevision, "If-Match", route.bodyFields);
-    check(
-      !(
-        route.expectedRevision?.in === "body" &&
-        route.operationId.in === "body" &&
-        route.expectedRevision.name === route.operationId.name
-      ),
-      "Metadata fields overlap.",
-    );
-    if (method === "GET")
-      check(route.operationId.in === "header" && route.expectedRevision?.in !== "body", "GET metadata must use headers.");
-  } else {
-    check(r.operationId === undefined && r.expectedRevision === undefined, "Read route cannot declare write metadata.");
-  }
-  if (r.receipt !== undefined) {
-    const receipt = keys(r.receipt, ["route", "param"]);
-    check(effect === "write" && allowedName(receipt.route, id) && allowedName(receipt.param, field), "Invalid receipt lookup.");
-    route.receipt = { route: receipt.route, param: receipt.param };
-  }
   return route;
 }
 export function parseAgentAccess(value: unknown): AgentAccess {
@@ -176,18 +126,6 @@ export function parseAgentAccess(value: unknown): AgentAccess {
     }
     routes[name] = route;
   }
-  for (const route of Object.values(routes)) {
-    if (!route.receipt) continue;
-    const lookup = routes[route.receipt.route];
-    const params = lookup?.pathParams ?? {};
-    check(
-      lookup?.method === "GET" &&
-        lookup.effect === "read" &&
-        Object.keys(params).length === 1 &&
-        params[route.receipt.param] === "string",
-      "Receipt route needs a read with one string path parameter.",
-    );
-  }
   const roles: AgentAccess["roles"] = {};
   for (const [name, declaration] of Object.entries(mapping(a.roles))) {
     const role = keys(declaration, ["title", "routes"]);
@@ -204,10 +142,6 @@ export function parseAgentAccess(value: unknown): AgentAccess {
       roleRoutes.every((key) => Object.hasOwn(routes, key)),
       "Role includes an unknown route.",
     );
-    for (const routeId of roleRoutes) {
-      const receipt = routes[routeId].receipt;
-      check(!receipt || roleRoutes.includes(receipt.route), "A role granting a write must include its receipt route.");
-    }
     roles[name] = { title: role.title, routes: roleRoutes };
   }
   return {
@@ -236,16 +170,10 @@ function validateInput(fields: Fields, values: unknown): Record<string, string |
   }
   return result;
 }
-export function renderAgentRequest(
-  route: AgentRoute,
-  input: unknown,
-  operationId?: string,
-  expectedRevision?: string,
-): { method: string; path: string; headers: Record<string, string>; body?: string } {
-  const values = keys(input === undefined ? {} : input, ["path", "query", "body"]);
+export function renderAgentRequest(route: AgentRoute, input: unknown): { method: string; path: string; headers: Record<string, string> } {
+  const values = keys(input === undefined ? {} : input, ["path", "query"]);
   const params = validateInput(route.pathParams ?? {}, values.path === undefined ? {} : values.path);
   const query = validateInput(route.queryFields ?? {}, values.query === undefined ? {} : values.query);
-  const body = validateInput(route.bodyFields ?? {}, values.body === undefined ? {} : values.body);
   let path = route.path.replace(/\{([^{}]+)\}/g, (_, k: string) => {
     check(Object.hasOwn(params, k), "Missing path parameter.");
     const value = String(params[k]);
@@ -255,31 +183,7 @@ export function renderAgentRequest(
   const search = new URLSearchParams();
   for (const key of Object.keys(query).sort()) search.set(key, String(query[key]));
   if (search.size) path += "?" + search.toString();
-  if (route.receipt)
-    check(
-      typeof operationId === "string" && /^[A-Za-z0-9_~-][A-Za-z0-9_.~-]{0,199}$/.test(operationId),
-      "Operation ID must fit the declared receipt route.",
-    );
-  const headers: Record<string, string> = {};
-  for (const [binding, v] of [
-    [route.operationId, operationId],
-    [route.expectedRevision, expectedRevision],
-  ] as const) {
-    if (!binding) {
-      check(v === undefined, "Unexpected write metadata.");
-      continue;
-    }
-    check(typeof v === "string" && /^[\x21-\x7e]{1,200}$/.test(v), "Missing or invalid write metadata.");
-    if (binding === route.expectedRevision && binding.in === "header")
-      check(/^"[\x21\x23-\x7e]+"$/.test(v), "Expected one strong entity tag.");
-    if (binding.in === "header") headers[binding.name] = v;
-    else body[binding.name] = v;
-  }
-  if (Object.keys(body).length) {
-    headers["Content-Type"] = "application/json";
-    return { method: route.method, path, headers, body: JSON.stringify(body) };
-  }
-  return { method: route.method, path, headers };
+  return { method: route.method, path, headers: {} };
 }
 export function agentCredentialHeader(access: AgentAccess, secret: string): Record<string, string> {
   check(typeof secret === "string" && /^[\x21-\x7e]{1,8192}$/.test(secret), "Invalid app credential.");

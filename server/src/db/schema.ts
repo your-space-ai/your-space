@@ -285,6 +285,7 @@ export const agentGrant = pgTable(
       .notNull()
       .references(() => externalAgent.id),
     roles: text("roles").array().notNull(),
+    // Unread since agents became read-only (2026-11-23, Alpha scope); new grants store false.
     askAllWrites: boolean("ask_all_writes").notNull(),
     overrides: jsonb("overrides").notNull(),
     revision: integer("revision").notNull(),
@@ -303,6 +304,7 @@ export const agentRequest = pgTable(
       .references(() => agentKey.id),
     appId: uuid("app_id").notNull(),
     route: text("route").notNull(),
+    // Unset since agents became read-only (2026-11-23, Alpha scope): only writes carried one.
     operationId: text("operation_id"),
     fingerprint: text("fingerprint"),
     input: text("input"),

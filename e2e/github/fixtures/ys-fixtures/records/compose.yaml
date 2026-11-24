@@ -1,4 +1,5 @@
-# Synthetic app used to verify credential injection, receipts and filtered results through the edge.
+# Synthetic app used to verify credential injection, approvals and filtered results through the edge.
+# Agents only read (decision 2026-11-23, Alpha scope), so it serves two fixed records.
 services:
   app:
     image: node:26-slim
@@ -9,32 +10,20 @@ services:
       - -e
       - |
         const http = require("node:http");
-        const records = new Map(), receipts = new Map();
-        http.createServer(async (req, res) => {
+        const records = [
+          { id: "3f8a2c1e-5b7d-4e9f-a1c3-6d2b8e4f7a90", revision: 1, title: "Morning walk", privateField: "excluded" },
+          { id: "9c4e7b2a-1d3f-4a6e-b8c5-2f7a9d1e3b64", revision: 3, title: "Water the plants", privateField: "excluded" },
+        ];
+        http.createServer((req, res) => {
           const send = (status, data) => {
             res.writeHead(status, {"content-type":"application/json"});
             res.end(JSON.stringify(data));
           };
           if (req.headers["x-api-key"] !== "local-fixture-key") return send(401, {});
-          if (req.method === "GET" && req.url === "/items") return send(200, [...records.values()]);
-          const op = req.headers["idempotency-key"];
-          if (!op) return send(400, {});
-          if (receipts.has(op)) return send(200, receipts.get(op));
-          let raw = "";
-          for await (const part of req) raw += part;
-          const { title } = JSON.parse(raw);
-          let row;
-          if (req.method === "POST" && req.url === "/items") {
-            row = { id: require("node:crypto").randomUUID(), revision: 1, title, privateField: "excluded" };
-          } else if (req.method === "PATCH") {
-            const prev = records.get(req.url.split("/").pop());
-            if (!prev) return send(404, {});
-            if (JSON.stringify(String(prev.revision)) !== req.headers["if-match"]) return send(409, {});
-            row = { ...prev, title, revision: prev.revision + 1 };
-          } else return send(404, {});
-          records.set(row.id, row);
-          receipts.set(op, row);
-          return send(200, row);
+          if (req.method !== "GET") return send(405, {});
+          if (req.url === "/items") return send(200, records);
+          const row = records.find((record) => req.url === "/items/" + record.id);
+          return row ? send(200, row) : send(404, {});
         }).listen(8080);
 volumes:
   records-data: {}

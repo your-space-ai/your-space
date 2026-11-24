@@ -2,6 +2,8 @@
 
 **Journey specification · 2026-11-21.** See the [delivery checklist](tasks.md) for tested behavior and outstanding acceptance. [Plan](plan.md) · [Tasks](tasks.md) · [Integration findings](research.md) · [Acceptance walkthrough](quickstart.md)
 
+**Alpha scope (2026-11-23).** Agents only read, with approvals. Writes had run only against a fixture, and most app APIs ignore `Idempotency-Key` and `If-Match`, so the alpha claims reads alone. Scenario 3, the write parts of scenarios 4 to 6, FR-07, "Ask for all writes" in FR-11 and the receipt parts of FR-08 are out of the alpha; reads with Ask or Allow, grants, keys, revocation and activity stay. [Decision](../../docs/architecture/decisions.md#alpha-scope)
+
 ## Owner review
 
 “I choose what my agent can do in one installed app. I can see what it changed, decide when to approve a request, and withdraw access.”

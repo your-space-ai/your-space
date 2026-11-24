@@ -297,20 +297,6 @@ function Requests({ data }: { data: AgentDashboard }) {
                     </dd>
                   </>
                 )}
-                {request.operationId && (
-                  <>
-                    <dt>Operation</dt>
-                    <dd>
-                      <code>{request.operationId}</code>
-                    </dd>
-                  </>
-                )}
-                {request.expectedRevision != null && (
-                  <>
-                    <dt>Expected revision</dt>
-                    <dd>{request.expectedRevision}</dd>
-                  </>
-                )}
                 {request.expiresAt && (
                   <>
                     <dt>Expires</dt>

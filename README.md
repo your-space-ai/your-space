@@ -30,10 +30,9 @@ The [roadmap](docs/roadmap.md) tracks what’s implemented and what’s planned.
 
 ## Current limits
 
-An external agent has completed an owner-approved read from an independently installed app.
-Creating and editing records have been tested with a synthetic app. Those writes still need
-verification against an independent app, including replay after an interrupted request and
-rejection of a stale edit. [Agent verification](specs/005-owner-agent/tasks.md)
+An external agent has completed an owner-approved read from an independently installed app. Agents
+only read: a kit can't give them routes that create or change records.
+[Agent verification](specs/005-owner-agent/tasks.md)
 
 ## Feedback and contributions
 

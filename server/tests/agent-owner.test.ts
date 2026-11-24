@@ -108,7 +108,7 @@ it("binds an app without granting access and rejects a stale grant or binding re
   });
 
   const path = "/api/agents/" + id + "/grants/" + install;
-  const policy = { revision: 0, bindingRevision: 1, roles: ["reader"], askAllWrites: true, overrides: {} };
+  const policy = { revision: 0, bindingRevision: 1, roles: ["reader"], overrides: {} };
   const granted = await change(path, "PUT", policy);
   expect(granted.status).toBe(200);
   expect(await granted.json()).toEqual({ revision: 1 });
