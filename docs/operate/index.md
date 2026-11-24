@@ -15,6 +15,7 @@ How to run, restart and look after an installed workspace. To install one, see t
 | Change how Your Space is reached | `your-space configure` |
 | Get a new set-password link | `your-space owner reset-link` |
 | See or replace the secrets | `your-space secrets show`, `your-space secrets replace <name>` |
+| Move to a newer release | `your-space upgrade`, with that release's command ([Update Your Space](#update-your-space)) |
 
 Your Space also starts by itself when Docker starts, for example after a reboot, unless you stopped
 it.
@@ -37,6 +38,103 @@ The `your-space` command runs `docker compose` in this folder, so every `docker 
 this guide still works here, and a folder you set up by hand works with `your-space` as it is.
 There is one Your Space per Docker engine: `your-space` refuses to start a second one from another
 folder, since both would share the same volumes.
+
+## Update Your Space
+
+Each release comes with its own `your-space` command, and `your-space upgrade` moves your
+installation to that command's version. In the installation's folder, run the latest release's
+command once with npx:
+
+```sh
+npx @your-space-ai/cli@latest upgrade
+```
+
+Or install the new release's command as you got the first one
+([Get the `your-space` Command](../install/index.md#1-get-the-your-space-command)), then run
+`upgrade` in the installation's folder:
+
+```sh
+npm install -g @your-space-ai/cli@<version>
+your-space upgrade
+```
+
+It names both versions and asks first; `--yes` answers for you. Then it:
+
+1. Downloads the release's files and checks them against its checksums, as `init` does, then
+   downloads its images. Nothing has changed yet, so a failed download leaves Your Space as it was.
+2. Stops Your Space and backs up its database to `backups/<time>-<old version>.sql` in the
+   installation folder, a file only you can read. Your apps keep running.
+3. Replaces `compose.yaml`, `stack.yaml`, `modes/` and `env.example` with the new release's, and
+   starts the new version, whose server updates the database as it starts. `.env` keeps every line
+   you set. A setting the new release needs that `.env` doesn't have is added from its `env.example`.
+4. Once the new server is ready, the upgrade is done, and Caddy, the only way in, starts. If Caddy
+   doesn't start, for example because its port was taken meanwhile, `upgrade` says why: fix it and
+   run `your-space start`.
+
+Afterwards Your Space runs the new version, even if it was stopped before.
+
+If the new version's server doesn't become ready, `upgrade` puts the previous version back: its
+files and `.env`, and the database from the backup if the new version had already changed it. Then
+it starts the previous version and says what went wrong. Restoring the backup discards none of your
+changes: Your Space stopped before the backup was taken, and no request reaches the new version
+before that point.
+The database as the new version left it is kept too, as `yourspace_upgrade_failed_<time>`; once you
+don't need it, delete it with the `dropdb` command `upgrade` prints.
+
+While it runs, `start`, `stop`, `configure` and another `upgrade` refuse to run, and the other way
+round: each holds `.your-space.lock` in the installation folder, so run them as the user who owns
+that folder. Ctrl-C before the new server starts stops an upgrade at its next step and puts the
+previous version back, as a failure does, with the same exceptions: if `upgrade` can't put
+something back, it says what is left to do by hand. Once the new server is starting, the upgrade
+runs to its result. If an
+upgrade is killed outright, the next one says which files it left behind, and `start` refuses
+until the files and the database match again.
+
+- An installation already at the command's version is left as it is.
+- Your Space doesn't go back to an earlier version. `upgrade` refuses an installation that is newer
+  than the command, and a server refuses to start on a database a newer version has updated.
+
+The backup holds the database: your account, workspace, sessions and installed apps, with the apps'
+settings still encrypted. It doesn't hold the `ys-secrets` volume, Caddy's certificates or your
+apps' data, which stay in their volumes. Keep backups private, and delete old ones you no longer
+need.
+
+### Restore the Backup by Hand
+
+You need this only when `upgrade` tells you to: when it couldn't restore the database itself, or
+when an earlier upgrade stopped part way and you go back to the previous version. In the
+installation folder, with the previous version's files back in place, stop Your Space and start its
+database alone:
+
+```sh
+docker compose stop caddy server
+docker compose up -d --wait postgres
+```
+
+Then load the backup `upgrade` named into a new database. Your current database is untouched until
+this has worked, so if a command fails, stop there:
+
+```sh
+docker compose exec -T postgres psql -U yourspace -d postgres -v ON_ERROR_STOP=1 \
+  -c 'DROP DATABASE IF EXISTS yourspace_restore' \
+  -c 'CREATE DATABASE yourspace_restore OWNER yourspace TEMPLATE template0'
+docker compose exec -T postgres psql -U yourspace -d yourspace_restore -v ON_ERROR_STOP=1 \
+  --single-transaction -q -o /dev/null < backups/<file>.sql
+```
+
+Swap it in, keeping the database the new version changed as `yourspace_before_restore`. Then
+delete `.upgrade-restore`, which `upgrade` leaves so that nothing starts Your Space until the files
+and the database match, and start Your Space:
+
+```sh
+docker compose exec -T postgres psql -U yourspace -d postgres -v ON_ERROR_STOP=1 --single-transaction \
+  -c 'ALTER DATABASE yourspace RENAME TO yourspace_before_restore' \
+  -c 'ALTER DATABASE yourspace_restore RENAME TO yourspace' \
+  && rm -f .upgrade-restore && your-space start
+```
+
+Once Your Space works, delete the copy you kept:
+`docker compose exec -T postgres dropdb -U yourspace yourspace_before_restore`.
 
 ## Sign-In and Sessions
 
@@ -103,7 +201,8 @@ Apps keep their data in their own volumes, named after the app, such as `ys-note
 > `docker volume rm` on these volumes, or `docker volume prune --all` while Your Space is down, does
 > the same. There is no undo.
 
-Updating Your Space and backing it up aren't covered yet; they come in a later release.
+To move to a newer release, see [Update Your Space](#update-your-space); it backs up the database
+first. Backing up a workspace on its own isn't covered yet; it comes in a later release.
 
 ## When the Database Is Down
 

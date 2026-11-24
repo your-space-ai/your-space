@@ -30,6 +30,11 @@ const STATUS = {
   owner_exists: EXIT.state,
   secret_in_env: EXIT.state,
   checksum_mismatch: EXIT.state,
+  downgrade_refused: EXIT.state,
+  version_unknown: EXIT.state,
+  backup_failed: EXIT.state,
+  installation_busy: EXIT.state,
+  upgrade_interrupted: EXIT.state,
   download_failed: EXIT.unreachable,
   engine_unreachable: EXIT.unreachable,
   storage_unavailable: EXIT.unreachable,
@@ -55,6 +60,18 @@ export class CliError extends Error {
     this.status = STATUS[code];
     this.fields = fields;
     this.detail = detail;
+  }
+}
+
+/** A failure that keeps another's code and exit status, with a message and fields of its own (upgrade.ts). */
+export class Restated extends CliError {
+  override readonly code: string;
+  override readonly status: number;
+
+  constructor(cause: CliError, message: string, fields: Record<string, unknown>) {
+    super("unexpected", message, { ...cause.fields, ...fields }, cause.detail);
+    this.code = cause.code;
+    this.status = cause.status;
   }
 }
 

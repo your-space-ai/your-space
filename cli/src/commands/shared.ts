@@ -116,11 +116,14 @@ export async function waitForCertificate(ui: Ui, compose: Compose, setup: Setup,
 
 /** `docker compose up -d --wait`, and when it fails, what went wrong in Your Space's terms. */
 export async function startStack(ui: Ui, compose: Compose): Promise<void> {
-  await ui.step("Starting Your Space (the first start downloads the images)", "Your Space started", async () => {
-    const ran = await compose.run(["up", "-d", "--wait"]);
-    if (ran.code === 0) return;
-    throw await whyNotStarted(compose, `${ran.stdout}${ran.stderr}`);
-  });
+  await ui.step("Starting Your Space (the first start downloads the images)", "Your Space started", () => upStack(compose));
+}
+
+/** `docker compose up -d --wait` for `services` and what they need, or all of them; throws why not. */
+export async function upStack(compose: Compose, services: string[] = []): Promise<void> {
+  const ran = await compose.run(["up", "-d", "--wait", ...services]);
+  if (ran.code === 0) return;
+  throw await whyNotStarted(compose, `${ran.stdout}${ran.stderr}`);
 }
 
 /**
@@ -162,10 +165,9 @@ export async function whyNotStarted(compose: Compose, output: string): Promise<C
     }
   }
   const server = services.find((s) => s.name === "server");
-  if (server && server.state !== "running") {
-    return new CliError("start_failed", `The server didn't start${errorLine ? `: ${errorLine}` : "."}`, { service: "server" }, output);
-  }
-  if (server && server.health !== "healthy") {
+  if (server && (server.state !== "running" || server.health !== "healthy")) {
+    // The server says why it stopped or isn't healthy in its log, whether it is still running or
+    // Docker keeps restarting it.
     const log = (await compose.logs(["--no-log-prefix", "--tail", "60", "server"])).stdout;
     const config = /Invalid configuration:\n((?:\s+- .*\n?)+)/.exec(log)?.[1];
     if (config) {
@@ -178,6 +180,18 @@ export async function whyNotStarted(compose: Compose, output: string): Promise<C
         { service: "server" },
         log,
       );
+    }
+    // The server refuses a database a newer version migrated (server/src/migrate.ts).
+    if (/db\.migrate\.newer_schema/.test(log)) {
+      return new CliError(
+        "start_failed",
+        "Your Space's database was updated by a newer version than these files run, so the server refused it. Upgrade to that version with its CLI (your-space upgrade), or restore the database backup taken before the upgrade: see \"Restore the Backup by Hand\" in the guide (docs/operate/index.md).",
+        { service: "server" },
+        log,
+      );
+    }
+    if (server.state !== "running") {
+      return new CliError("start_failed", `The server didn't start${errorLine ? `: ${errorLine}` : "."}`, { service: "server" }, `${output}\n${log}`);
     }
     return new CliError("start_failed", "The server didn't become healthy. See its log with: your-space logs server", { service: "server" }, `${output}\n${log}`);
   }

@@ -20,6 +20,7 @@ your-space secrets show      [--reveal]
 your-space secrets replace   <auth-secret | database-password> [--yes]
 your-space configure  [--this-machine | --domain <name> | --proxy-url <url>] [--port <n>]
                       [--ignore-checks] [--yes]
+your-space upgrade    [--release-dir <folder>] [--yes]
 ```
 
 Every command also takes:
@@ -65,7 +66,7 @@ Compose or the engine gave in `detail` when there was any.
 | `engine_missing` | 2 | No Docker CLI, or no engine running |
 | `engine_unsupported` | 2 | The engine is too old, or on another machine |
 | `compose_missing` | 2 | No Compose plugin, or one older than 2.26.0 |
-| `permission_denied` | 2 | The person can't use the engine; the message says how to fix it |
+| `permission_denied` | 2 | The person can't use the engine, or, for `upgrade` and the commands that hold `.your-space.lock`, can't write to the installation's folder; the message says how to fix it |
 | `port_in_use` | 2 | A port the setup needs is taken; `port` and, when known, `by` |
 | `check_failed` | 2 | A domain's names don't resolve; `checks` lists each result |
 | `not_running` | 2 | The command needs Your Space running |
@@ -76,10 +77,23 @@ Compose or the engine gave in `detail` when there was any.
 | `secret_in_env` | 2 | `secrets replace` for a secret set in `.env` |
 | `download_failed` | 3 | A release file could not be downloaded or read from the selected release folder |
 | `checksum_mismatch` | 2 | The archive failed checksum verification or its packaged image version differs from the CLI version |
+| `downgrade_refused` | 2 | `upgrade` in an installation newer than the CLI; `from` and `to` name both versions |
+| `version_unknown` | 2 | `upgrade` in an installation whose `stack.yaml` names no release version |
+| `backup_failed` | 2 | `upgrade` couldn't back up the database; nothing was replaced, and Your Space is started again as before, or, when that fails too, `running: false` and the message says so |
+| `installation_busy` | 2 | Another command that starts, stops, changes or upgrades the installation is running, named in `command`, as `pid`. `upgrade`, `start`, `stop`, `configure` and `secrets replace` each hold `.your-space.lock` in the folder while they run, so they never overlap. A lock whose process is gone is taken over. They need to write to the folder for it: in a folder the user can't write, they fail with `permission_denied` and don't run |
+| `upgrade_interrupted` | 2 | An earlier `upgrade` was killed part way and left the previous release files in the `.upgrade-*` `folder`, or left `.upgrade-restore`: its files and database may not match. `upgrade`, `start` and `configure` refuse until a person has put the right files back or restored the backup, and deleted the marker |
 | `engine_unreachable` | 3 | The engine stopped answering |
 | `storage_unavailable` | 3 | The server couldn't read its database |
 | `app_failed` | 2 | A server command exited 2 without a code of its own |
 | `unexpected` | 4 | Anything else |
+
+When `upgrade` fails after it replaced the release files and before the new server was ready, it
+reports the failure's own code and status (such as `start_failed`), with `from`, `to`, `backup`,
+`rolledBack` (the previous files are back) and `restored` (the database was restored from the
+backup), with `keptDatabase` naming the database the new version left, kept beside it, when it was
+restored. Its message says where the installation was left. Once the new server is ready the
+upgrade stands: if Caddy then doesn't start, it reports that failure's code with `upgraded: true`,
+and the owner fixes it and runs `start`.
 
 When a server command the CLI runs fails with a code this table doesn't have, the CLI reports that
 code and the server's exit status, with the server's other fields.
@@ -126,6 +140,12 @@ code and the server's exit status, with the server's other fields.
 
 `status --require-running` verifies that the Compose project belongs to the installation folder, that its server is running, and that the server can read its owner state. A stopped server, mismatched project or unreadable owner state produces an error. In this mode a successful `owner: null` means the workspace is unclaimed.
 
+`upgrade --release-dir <folder>` reads the release files of the CLI's version from the folder, as
+`init --release-dir` does. SIGINT or SIGTERM during `upgrade`, before the new server starts, stops it
+at its next step and puts the previous version back (`cancelled`); once the new server is starting,
+the upgrade runs to its result. The desktop app runs `upgrade --json` on its local installation after it
+updates itself; `--json` answers the question as `--yes` does.
+
 ### Other results
 
 | Command | Result |
@@ -137,6 +157,7 @@ code and the server's exit status, with the server's other fields.
 | `secrets show` | `{ ok, secrets: [{ name, source }] }`, with `value` only with `--reveal` |
 | `secrets replace` | `{ ok, replaced: "auth-secret" }` |
 | `configure` | `{ ok, setup, env, summary }` |
+| `upgrade` | `{ ok, from, to, backup }`: the versions, and the absolute path of the database backup; `{ ok, from, to, upToDate: true }` when the installation already runs the CLI's version, with nothing changed |
 
 ## What Each Command Runs
 
@@ -154,6 +175,7 @@ code and the server's exit status, with the server's other fields.
 | `secrets replace database-password` | `docker compose run --rm secrets --new database-password`, the guide's `psql` step, then `docker compose restart server` |
 | `start --new-secrets` | `start`; only when it stops with `lost_secrets`: `docker compose run --rm secrets --new auth-secret --new database-password`, `docker compose up -d --wait postgres`, the `psql` step, then `start` again. Secrets that aren't lost are kept |
 | `configure` | Sets the setup's lines in `.env`, then `docker compose up -d --wait` |
+| `upgrade` | Reads the installation's version from `stack.yaml`. When the CLI's is later: downloads and checks the release files as `init` does, into a folder beside the installation; `docker compose --project-directory <new release folder> --env-file .env -f <new release folder>/compose.yaml pull --policy missing`; `docker compose up -d --wait postgres` when the database is stopped; `docker compose stop caddy server`; `pg_dump` in the `postgres` service into `backups/<time>-<version>.sql` (mode 0600); replaces `compose.yaml`, `stack.yaml`, `modes/` and `env.example`, adds any setting the new `env.example` sets that `.env` lacks; `docker compose up -d --wait server`, then `docker compose up -d --wait`, so Caddy starts last. When the first of those fails, it stops the server and Caddy, moves the previous files back, restores the backup when a second `pg_dump` differs from it, the new version having changed the database (into a new database, swapped in with `ALTER DATABASE ... RENAME` in one transaction, keeping the replaced one as `yourspace_upgrade_failed_<time>`), and runs `docker compose up -d --wait`. It stops early, leaving `.upgrade-restore` and saying what is left to do by hand, when the new server can't be stopped (nothing is moved back), when the previous files can't be put back, or when the database can't be read or restored (the previous version isn't started). It holds `.your-space.lock` throughout, and from the first file moved until the files and the database are known to match, `.upgrade-restore` |
 
 ## The Server's `show-owner` Command
 

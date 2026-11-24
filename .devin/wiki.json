@@ -51,7 +51,7 @@
     },
     {
       "title": "Operator Commands",
-      "purpose": "status, logs, stop, configure, secrets and owner recovery commands.",
+      "purpose": "status, logs, stop, configure, upgrade (database backup and rollback), secrets and owner recovery commands.",
       "parent": "The your-space CLI"
     },
     {

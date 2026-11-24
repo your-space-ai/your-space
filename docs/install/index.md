@@ -129,6 +129,6 @@ The link works once. If it expires or you lose it, `your-space owner reset-link`
 
 - [Use Your Space from other devices](other-devices.md): your own domain, your own reverse proxy, or Tailscale.
 - [Install and publish apps](../apps/install-apps.md), and [give an agent access to one app](../apps/agent-access.md).
-- [Run Your Space](../operate/index.md): everyday commands, sessions, restarts and your data, and what Your Space encrypts.
+- [Run Your Space](../operate/index.md): everyday commands, updating to a newer release, sessions, restarts and your data, and what Your Space encrypts.
 - [Recover secrets and the owner account](../operate/recovery.md).
 - [Install by hand](manual.md) with Docker Compose instead of the `your-space` command.

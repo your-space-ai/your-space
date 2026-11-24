@@ -1,8 +1,11 @@
 // T041: a newer build's migration upgrades an installation in place (FR-024, cross-cutting scenario 8).
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { once } from "node:events";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import pg from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,7 +15,7 @@ import { createDatabase, type Db } from "../src/db/client.ts";
 import { actor, app, event, installation } from "../src/db/schema.ts";
 import { MIGRATIONS_FOLDER, runMigrations, schemaVersion } from "../src/migrate.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
-import { PUBLIC_URL } from "./helpers/env.ts";
+import { PUBLIC_URL, TEST_DATA_KEY, TEST_SECRET } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
 import { cookieHeader, startServer } from "./helpers/server.ts";
 import { counts, snapshot } from "./helpers/state.ts";
@@ -260,6 +263,54 @@ describe("schema migrations", () => {
     expect(await schemaVersion(t.pool)).toBe(NEWER_VERSION);
     expect((await recorded(t.db)).map((r) => r.hash)).toEqual(ALL_HASHES);
     expect(await records(t.db)).toEqual(before);
+  });
+
+  it("refuses a database a newer build migrated, and changes nothing", async () => {
+    await createOwnerWithPassword(t.db);
+    await runMigrations(t.pool, newerBuild);
+    const before = await records(t.db);
+    // Errors are logged on stderr.
+    const logs = vi.spyOn(console, "error");
+
+    // This build doesn't know the newer migration: drizzle alone would skip it and start.
+    await expect(runMigrations(t.pool)).rejects.toMatchObject({
+      name: "NewerSchemaError",
+      schemaVersion: NEWER_VERSION,
+      knownSchemaVersion: CURRENT_VERSION,
+    });
+    expect(migrateLogs(logs.mock.calls)).toMatchObject([
+      { level: "error", event: "db.migrate.newer_schema", schemaVersion: NEWER_VERSION, knownSchemaVersion: CURRENT_VERSION, newerMigrations: 1 },
+    ]);
+    expect((await recorded(t.db)).map((r) => r.hash)).toEqual(ALL_HASHES);
+    expect(await records(t.db)).toEqual(before);
+    // The migration lock was released: the newer build still starts.
+    await runMigrations(t.pool, newerBuild);
+  });
+
+  it("stops the server with its own exit status when a newer build migrated the database", async () => {
+    await runMigrations(t.pool, newerBuild);
+    const server = spawn(process.execPath, [fileURLToPath(new URL("../src/index.ts", import.meta.url))], {
+      env: {
+        PATH: process.env.PATH ?? "",
+        NODE_ENV: "production",
+        YS_E2E_EPHEMERAL_GATE: "1",
+        PORT: "0",
+        DATABASE_URL: t.url,
+        BETTER_AUTH_SECRET: TEST_SECRET,
+        YS_DATA_KEY: TEST_DATA_KEY,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    server.stdout.on("data", (chunk) => (stdout += chunk));
+    server.stderr.on("data", (chunk) => (stderr += chunk));
+    // `close` comes after the output streams end, so everything the server wrote is here.
+    const [code] = (await once(server, "close")) as [number | null];
+    expect(code, `${stdout}\n${stderr}`).toBe(2);
+    expect(stderr).toContain('"event":"db.migrate.newer_schema"');
+    expect(stderr).toContain("The database was updated by a newer version of Your Space, so this version did not start");
+    expect(await schemaVersion(t.pool)).toBe(NEWER_VERSION);
   });
 
   it("applies the migration once when two servers start at the same time", async () => {

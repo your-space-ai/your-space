@@ -4,11 +4,17 @@ import type { Compose } from "../compose.ts";
 import type { Installation } from "../installation.ts";
 import { setupLines, chooseSetup, type SetupFlags } from "../setup.ts";
 import type { Ui } from "../ui.ts";
+import { holdingLock, refuseWhileRestoreNeeded } from "../installation-lock.ts";
 import { checkDomain, checkPorts, gather, open, showSummary, startStack, waitForCertificate } from "./shared.ts";
 
 export async function configure(ui: Ui, workdir: string, flags: SetupFlags & { ignoreChecks?: boolean }): Promise<void> {
+  await holdingLock(workdir, "configure", () => configureHolding(ui, workdir, flags));
+}
+
+async function configureHolding(ui: Ui, workdir: string, flags: SetupFlags & { ignoreChecks?: boolean }): Promise<void> {
   ui.intro("Your Space");
   const { installation, compose, engine } = await open(ui, workdir);
+  refuseWhileRestoreNeeded(installation.folder);
   const before = installation.envText();
   let setup = await chooseSetup(ui, flags, installation.setup());
   await checkDomain(ui, setup, flags.ignoreChecks === true);

@@ -54,6 +54,14 @@ it merges.
 - [x] T025 Installation guide: the CLI first, manual Compose as the advanced option
 - [x] T026 Browser test follows the guide's CLI commands
 
+## Slice 8: Upgrade (added 2026-11-23)
+
+- [x] T028 `upgrade`: version order, release check, image download, database backup, file swap and start (`cli/src/commands/upgrade.ts`, `cli/src/version.ts`)
+- [x] T029 Rollback: previous files and `.env` back, the backup restored when the new version migrated, the previous version started
+- [x] T030 Server refuses a database a newer version migrated (`server/src/migrate.ts`), and `start` explains it
+- [x] T031 Browser test: an earlier release installed by hand; a failed upgrade put back; a stopped installation whose new version migrated and failed, restored from its backup; then an upgrade with its owner, data and app (`e2e/tests/cli-upgrade.spec.ts`)
+- [x] T032 Contract, guide (`docs/operate/index.md`), decision record and roadmap
+
 ## Later
 
 - [ ] T027 macOS executables, Homebrew formula and `your-space-ai/homebrew-tap`, checks on a real Mac (macOS and Windows pass)

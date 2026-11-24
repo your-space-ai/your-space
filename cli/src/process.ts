@@ -13,6 +13,10 @@ export interface RunOptions {
   env?: NodeJS.ProcessEnv;
   /** Lets the program use the terminal directly, as `logs --follow` does. */
   inherit?: boolean;
+  /** An open file the program reads as its input, in place of `input`, such as a database backup. */
+  inputFile?: number;
+  /** An open file the program writes its output to, byte for byte, in place of `stdout`. */
+  outputFile?: number;
 }
 
 /** Resolves with the exit code, or rejects with ENOENT when the program isn't installed. */
@@ -21,7 +25,7 @@ export function run(program: string, args: string[], options: RunOptions = {}): 
     const child = spawn(program, args, {
       cwd: options.cwd,
       env: options.env ?? process.env,
-      stdio: options.inherit ? "inherit" : ["pipe", "pipe", "pipe"],
+      stdio: options.inherit ? "inherit" : [options.inputFile ?? "pipe", options.outputFile ?? "pipe", "pipe"],
     });
     let stdout = "";
     let stderr = "";
