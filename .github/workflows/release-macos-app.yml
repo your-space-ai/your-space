@@ -1,11 +1,12 @@
 name: Release macOS app
 
-# Signs and notarizes both DMGs for a release. Only Release draft calls it, which a maintainer starts
+# Signs and notarizes both DMGs for a release, with the in-app updater's ZIP of each notarized app and
+# latest-mac.yml, the feed that lists them. Only Release draft calls it, which a maintainer starts
 # by hand on main with a version tag; nothing here runs on pull requests, so fork code never reaches
 # the signing secrets. Signing runs on a GitHub-hosted macOS runner in the protected `macos-release`
 # environment, whose secrets hold the Developer ID certificate and the App Store Connect API key.
 # Then, without those secrets, each notarized DMG is installed and opened on a Mac of its own
-# architecture; a failure there fails the run, so no draft is created.
+# architecture, and its update ZIP is checked; a failure there fails the run, so no draft is created.
 on:
   workflow_call:
     inputs:
@@ -35,6 +36,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Node alone for update-feed.mjs: no npm packages and no restored cache next to the signing keys.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          package-manager-cache: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: macos-signing-input-*
@@ -69,7 +75,7 @@ jobs:
             echo "MACOS_SIGN_IDENTITY=$identity"
             echo "APPLE_API_KEY_PATH=$APPLE_API_KEY_PATH"
           } >> "$GITHUB_ENV"
-      - name: Sign, notarize, staple and assess each app and its disk image
+      - name: Sign, notarize, staple and assess each app, its disk image and its update ZIP
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
@@ -82,6 +88,7 @@ jobs:
             (cd "$input" && shasum -a 256 -c "$name.sha256")
             desktop/scripts/notarize-macos.sh "$input/$name" "$out"
           done
+          node desktop/scripts/update-feed.mjs "${RELEASE_TAG#v}" "$out" arm64 x64
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: notarized-macos
@@ -135,3 +142,12 @@ jobs:
           name="your-space-macos-$ARCH-$version.dmg"
           (cd "$RUNNER_TEMP/notarized" && shasum -a 256 -c "$name.sha256")
           desktop/scripts/test-dmg-install.sh --notarized "$RUNNER_TEMP/notarized/$name" "$ARCH" "$version"
+      - name: Check the update ZIP against latest-mac.yml, its Developer ID signature and its ticket
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          version=${RELEASE_TAG#v}
+          update="your-space-macos-$ARCH-$version.zip"
+          (cd "$RUNNER_TEMP/notarized" && shasum -a 256 -c "$update.sha256")
+          desktop/scripts/test-update-zip.sh --notarized "$RUNNER_TEMP/notarized/$update" "$ARCH" "$version"

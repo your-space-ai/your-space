@@ -190,6 +190,8 @@ Afterwards `docker compose ps` shows the services running again, you're still si
 never need to create the owner again. Your Space also starts by itself when Docker starts, for
 example after a reboot, unless you stopped it with `docker compose stop` or `docker compose down`.
 On macOS, that needs your engine (OrbStack, Colima or Docker Desktop) set to start when you sign in.
+The [Mac app's](../install/macos-desktop.md) local workspace stops when you quit the app, so it
+starts again when you open the app.
 
 Apps keep their data in their own volumes, named after the app, such as `ys-notes_postgres-data`.
 `docker compose down -v` doesn't delete them, and doesn't stop the apps: stop them first with

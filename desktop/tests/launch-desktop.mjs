@@ -2,9 +2,13 @@
 // through Chromium's loopback-only test endpoint and a fresh disposable profile.
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { chromium, _electron as electron } from "@playwright/test";
 
 export async function launchDesktop(source, userData) {
+  // Automatic update checks off, so a packaged run never asks GitHub for releases or shows an update.
+  await writeFile(join(userData, "updates.json"), JSON.stringify({automatic:false}));
   const executable = process.env.YS_DESKTOP_EXECUTABLE;
   if (!executable) return electron.launch({args:[source, "--user-data-dir=" + userData]});
   const proc = spawn(executable, [

@@ -1,6 +1,7 @@
 #!/bin/bash
 # Runs only for a release candidate, in the protected signing job of Release macOS app. It expects the
 # Developer ID identity in the job's temporary keychain and an App Store Connect API key for notarytool.
+# It writes the notarized DMG and the in-app updater's ZIP of the same stapled app, each with a .sha256.
 set -euo pipefail
 [[ $# == 2 && -f $1 ]] || { echo 'Usage: notarize-macos.sh CANDIDATE.dmg OUTPUT-DIR' >&2; exit 2; }
 : "${MACOS_SIGN_IDENTITY:?Configure the approved Developer ID signing identity}"
@@ -53,7 +54,7 @@ ditto --rsrc --extattr --noqtn "$mount/Your Space.app" "$app"
 detach
 [[ $(lipo -archs "$app/Contents/MacOS/Your Space") == "$cpu" &&
    $(lipo -archs "$app/Contents/Resources/bin/your-space") == "$cpu" &&
-   $(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist") == "${version%%-*}" ]]
+   $(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist") == "$version" ]]
 codesign --verify --deep --strict "$app"
 asar_sha=$(shasum -a 256 < "$app/Contents/Resources/app.asar")
 developer_id='anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists'
@@ -73,6 +74,10 @@ ditto -c -k --norsrc --noextattr --noacl --noqtn --keepParent "$app" submit.zip
 notarize submit.zip
 xcrun stapler staple "$app"
 xcrun stapler validate "$app"
+# The in-app updater installs this ZIP of the stapled app. Squirrel.Mac accepts it only if it carries
+# the same Developer ID designated requirement as the running app.
+update="your-space-macos-$arch-$version.zip"
+ditto -c -k --norsrc --noextattr --noacl --noqtn --keepParent "$app" "$update"
 
 "$bin/create-dmg.sh" "$app" "$work/$name"
 codesign --sign "$MACOS_SIGN_IDENTITY" --timestamp --identifier ai.your-space.desktop.dmg "$name"
@@ -90,4 +95,5 @@ codesign --verify --deep --strict -R="$developer_id" "$delivered"
 spctl --assess --type execute "$delivered"
 detach
 shasum -a 256 "$name" > "$name.sha256"
-mv "$name" "$name.sha256" "$out/"
+shasum -a 256 "$update" > "$update.sha256"
+mv "$name" "$name.sha256" "$update" "$update.sha256" "$out/"

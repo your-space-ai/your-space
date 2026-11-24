@@ -43,6 +43,10 @@ rm "$resources/default_app.asar"
 cp "$root/desktop/package.json" "$resources/app/"
 ditto --norsrc --noextattr "$root/desktop/src" "$resources/app/desktop/src"
 if [[ -d $root/desktop/renderer ]]; then ditto --norsrc --noextattr "$root/desktop/renderer" "$resources/app/desktop/renderer"; fi
+# The updater, bundled into the sealed archive with its packages' notices, and the GitHub releases it reads.
+"$node_bin" "$root/desktop/scripts/bundle-updater.mjs" "$resources/app/desktop/vendor/electron-updater.cjs" \
+  "$resources/licenses/Updater-NOTICES.txt"
+cp "$root/desktop/app-update.yml" "$resources/app-update.yml"
 find "$resources/app" -name '._*' -type f -delete
 "$node_bin" -e '
   const fs = require("node:fs"), [file, version] = process.argv.slice(1);
@@ -59,8 +63,10 @@ rm "$resources/electron.icns"
 plutil -replace CFBundleIconFile -string 'your-space.icns' "$plist"
 plutil -replace CFBundleName -string 'Your Space' "$plist"
 plutil -replace CFBundleDisplayName -string 'Your Space' "$plist"
-plutil -replace CFBundleShortVersionString -string "${version%%-*}" "$plist"
-plutil -replace CFBundleVersion -string "${version%%-*}" "$plist"
+# The full release version, prerelease included, as electron-builder sets it, so Finder, About and bug
+# reports tell 0.1.0-alpha.1 from 0.1.0-alpha.2. The updater compares the same version from package.json.
+plutil -replace CFBundleShortVersionString -string "$version" "$plist"
+plutil -replace CFBundleVersion -string "$version" "$plist"
 # Match Chromium's helper lookup to the outer executable name.
 mv "$app/Contents/MacOS/Electron" "$app/Contents/MacOS/Your Space"
 plutil -replace CFBundleExecutable -string 'Your Space' "$plist"

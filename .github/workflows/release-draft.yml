@@ -4,7 +4,8 @@ name: Release draft
 # existing version tag on that commit, once every status and check on that commit has passed (CircleCI's
 # browser and Arm jobs included). It builds every release file, installs from them on fresh
 # Linux machines, signs and notarizes the Mac apps, and creates a draft GitHub release with
-# SHA256SUMS. Only the versioned images are public afterwards; npm and `latest` wait for the owner
+# SHA256SUMS. The Mac apps' update ZIPs and latest-mac.yml reach installed apps only once the owner
+# publishes the release. Only the versioned images are public afterwards; npm and `latest` wait for the owner
 # to publish the draft (Release publish).
 
 on:
@@ -44,7 +45,10 @@ jobs:
           TAG: ${{ inputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          [[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]
+          # Prereleases are alphas or betas: the Mac app's updater (electron-updater) offers an alpha app later
+          # alphas, betas and stable releases, and a beta app later betas and stable releases, but no other kind.
+          [[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta)(\.[0-9A-Za-z-]+)*)?$ ]] ||
+            { echo "::error::Use a version tag such as v0.1.0, v0.1.0-alpha.2 or v0.1.0-beta.1."; exit 1; }
           test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "$GITHUB_SHA"
           releases=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name')
           if grep -Fxq "$TAG" <<< "$releases"; then echo "This tag already has a release."; exit 1; fi
@@ -140,11 +144,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          (cd macos && shasum -a 256 -c -- *.dmg.sha256)
-          mv macos/*.dmg release/
+          (cd macos && shasum -a 256 -c -- *.dmg.sha256 *.zip.sha256)
+          mv macos/*.dmg macos/*.zip macos/latest-mac.yml release/
           cd release
           files=(your-space.tar.gz "your-space-ai-cli-$VERSION.tgz" your-space-linux-x64 your-space-linux-arm64 your-space-linux-licenses.txt)
           files+=("your-space-macos-arm64-$VERSION.dmg" "your-space-macos-x64-$VERSION.dmg")
+          # The Mac apps' updater reads latest-mac.yml and installs the ZIP for its architecture.
+          files+=("your-space-macos-arm64-$VERSION.zip" "your-space-macos-x64-$VERSION.zip" latest-mac.yml)
+          grep -Fxq "version: '$VERSION'" latest-mac.yml
           test "$(find . -type f | wc -l)" -eq "${#files[@]}"
           sha256sum -- "${files[@]}" > SHA256SUMS
           sha256sum -c SHA256SUMS

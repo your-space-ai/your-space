@@ -30,6 +30,10 @@ From a source checkout, run `node cli/dist/your-space.cjs` in the repository roo
 
 Choose **Connect to a server** to use an existing workspace without installing Docker on this Mac. Enter the HTTPS address supplied by its operator and sign in as usual. In either workspace, review and confirm an app's installation kit in the dashboard. The selected server runs the app. The [CLI and headless installation guide](index.md) covers server setup, owner recovery and proxies.
 
+Closing the window keeps Your Space in the Dock and the local workspace running; click the Dock icon to show it again. Quitting the app with **Your Space › Quit Your Space** (⌘Q) stops the local workspace and its apps, keeping their data, and opening the app starts them again. If it can't stop them within 2 minutes, the app quits anyway and tells you they may still be running. A workspace you open with **Connect to a server** keeps running when you quit.
+
+The app updates itself from [Your Space Releases](https://github.com/your-space-ai/your-space/releases). Choose **Your Space › Check for Updates…** at any time. It also checks shortly after it opens and then once a day; **Your Space › Check for Updates Automatically** turns that off, and then the app makes no request you didn't ask for. A newer version downloads and installs only when you agree, and restarting stops the local workspace, updates the app, then starts the workspace again on the new version. An alpha is also offered later alphas and betas, and a beta later betas. The first time the workspace starts after an update, the app brings the local workspace to the app's version with its CLI's `upgrade` command.
+
 The CLI inside each app is the one the app uses for local setup; for a standalone CLI on a Mac, use the npm package. See the [distribution notices](https://github.com/your-space-ai/your-space/blob/main/desktop/THIRD-PARTY.md) for pinned upstream artifacts and source.
 
 ## Build from source
