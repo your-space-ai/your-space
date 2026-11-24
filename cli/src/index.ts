@@ -12,6 +12,7 @@ import { start } from "./commands/start.ts";
 import { setupWorkspace, type WorkspaceSetupFlags } from "./commands/setup.ts";
 import { status } from "./commands/status.ts";
 import { stop } from "./commands/stop.ts";
+import { upgrade } from "./commands/upgrade.ts";
 import { CliError, EXIT } from "./errors.ts";
 import { checkEngine } from "./engine.ts";
 import { isMissingProgram } from "./process.ts";
@@ -123,6 +124,12 @@ program
       });
     }),
   );
+
+program
+  .command("upgrade")
+  .description("upgrade Your Space to this CLI's version, backing up its database first")
+  .option("--release-dir <folder>", "use packaged release files and SHA256SUMS from this folder")
+  .action(action(async (ui, g, flags: { releaseDir?: string }) => upgrade(ui, g.workdir, { releaseDir: flags.releaseDir })));
 
 program
   .command("stop")

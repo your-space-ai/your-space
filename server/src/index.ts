@@ -7,7 +7,7 @@ import { createAuth } from "./auth.ts";
 import { ConfigError, loadConfig } from "./config.ts";
 import { createDatabase, isStorageError } from "./db/client.ts";
 import { errorFields, log } from "./log.ts";
-import { runMigrations } from "./migrate.ts";
+import { NewerSchemaError, runMigrations } from "./migrate.ts";
 import { createGate, Handoffs } from "./apps/gate.ts";
 import { socketRuntime } from "./apps/runtime-client.ts";
 import { moveSettingsToDataKey } from "./apps/keys.ts";
@@ -49,6 +49,17 @@ for (let attempt = 1; ; attempt++) {
           "\"Give PostgreSQL the Database Password\" in the recovery guide (docs/operate/recovery.md).",
       );
       process.exit(1);
+    }
+    if (error instanceof NewerSchemaError) {
+      // Logged as db.migrate.newer_schema. Exit status 2, as the operator commands use for a state
+      // that stops them, so it isn't mistaken for a failed migration.
+      console.error(
+        "The database was updated by a newer version of Your Space, so this version did not start: it " +
+          "could damage data it doesn't know. Run the newer version again (your-space upgrade, with its CLI), " +
+          "or restore the database backup taken before the upgrade: see \"Restore the Backup by Hand\" in " +
+          "the guide (docs/operate/index.md).",
+      );
+      process.exit(2);
     }
     if (!isStorageError(error)) {
       // The database answered but a migration failed: retrying won't help.

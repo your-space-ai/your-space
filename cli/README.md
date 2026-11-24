@@ -21,6 +21,13 @@ To get the `your-space` command for later steps, install the package with
 [installation guide](https://docs.getyourspace.ai/install) covers servers, domains and existing
 reverse proxies, and the standalone executables for Linux machines without Node.
 
+## Upgrade
+
+When a new release comes out, run `npx @your-space-ai/cli@latest upgrade` in the workspace's folder,
+or install the release's CLI and run `your-space upgrade` there. It moves the workspace to that CLI's
+version, backs up the database first and puts the previous version back if the new one doesn't
+start. See [Update Your Space](https://docs.getyourspace.ai/operate#update-your-space).
+
 ## License
 
 AGPL-3.0-only. The source is at https://github.com/your-space-ai/your-space.

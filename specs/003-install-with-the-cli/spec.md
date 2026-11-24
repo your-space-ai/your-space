@@ -27,8 +27,10 @@ from a package manager, `init` a folder, `start` it, and read a summary of what 
 - **Covers:** getting the CLI, `init` and `start` for this machine, your own domain, and your own
   proxy or tunnel; stop, status and logs; owner recovery and secrets; changing the setup after
   installing; managing an installation that was set up by hand; the installation guide with the CLI
-  first and manual Compose as the advanced option.
-- **Not covered:** updating Your Space, backup, restore and uninstall (journey 006); agent commands
+  first and manual Compose as the advanced option; upgrading an installation to the CLI's version,
+  with a database backup first (added 2026-11-23, [User Story 8](#user-story-8---upgrade-to-the-clis-version-priority-p1)).
+- **Not covered:** backup and restore as their own commands, the server-produced pre-update snapshot,
+  and uninstall (journey 006); agent commands
   (journey 005); Your Space's own virtual machine for the engine, and Windows (journey 008);
   checking macOS on a real Mac (the [macOS and Windows pass](#changes-to-shared-direction) before
   release); installing apps from the CLI, which the server's `install-app` already does.
@@ -130,6 +132,7 @@ Compose's or Docker's own messages, unless they ask for detail.
 | 5 | 5. Your own proxy or tunnel | `init` with a proxy address; the summary lists the names the proxy must forward, apps included |
 | 6 | 6. Another engine, and a folder set up by hand | Rootless Docker, or another engine through Docker's own settings; a folder installed by hand works as it is |
 | 7 | 7. The guide | The installation guide leads with the CLI; manual Compose becomes the advanced option |
+| 8 | 8. Upgrade | `your-space upgrade` moves an installation to the CLI's version, backs up its database first and puts the previous version back when the new one doesn't start (added 2026-11-23) |
 
 Slice 1 brings the CLI, its packaging, the installation concept and the summary `start` prints;
 every later slice adds commands or setups to it without changing what slice 1 built. Slices 4 and 5
@@ -310,6 +313,33 @@ option that is still complete.
 2. **Given** the guide's manual section, **When** a person follows it, **Then** it still installs
    Your Space as journey 001's guide did, and says which CLI command does each step.
 
+### User Story 8 - Upgrade to the CLI's Version (Priority: P1)
+
+As the owner of an installation, when a new release comes out I get its CLI and run one command,
+rather than installing again, and keep my settings, owner, data and apps. If the new version
+doesn't start, I get the previous one back.
+
+**Acceptance Scenarios**:
+
+1. **Given** an installation of an earlier release, running or stopped, **When** they run
+   `your-space upgrade` with a later CLI and confirm, **Then** the CLI downloads and checks that
+   release's files as `init` does, downloads its images, stops the server and Caddy (apps keep
+   running), backs up the database into `backups/` in the installation folder, readable only by its
+   owner, replaces the release files, and starts the new version, whose server migrates the
+   database. `.env` keeps every line; a setting the new release requires is added, never changed.
+   The owner, data and apps are as before, and the summary shows the new version. A browser test
+   upgrades an earlier release installed by hand.
+2. **Given** the new version doesn't start, **When** the upgrade waits for it, **Then** the CLI puts
+   the previous files and `.env` back, restores the database from the backup when the new version
+   had already changed it, migrations or not, starts the previous version, and says so. When something can't be put
+   back, it says what is left to do and where the backup is.
+3. **Given** an installation already at the CLI's version, **When** they run `upgrade`, **Then**
+   it says so and changes nothing. **Given** one newer than the CLI, **Then** it refuses
+   (`downgrade_refused`) and changes nothing.
+4. **Given** a database a newer version migrated, **When** an older server starts on it, **Then**
+   the server refuses to start, logs `db.migrate.newer_schema` and exits with status 2, instead of
+   running on a schema it doesn't know, and `start` says how to recover.
+
 ### Edge Cases
 
 - `init` in a folder that already has an installation: it doesn't overwrite anything; it offers
@@ -317,8 +347,15 @@ option that is still complete.
 - A second installation on the same engine: the Compose project is named `your-space` in every
   installation, as in the manual install, so there is one per engine. `init` and `start` in another
   folder find the first by its folder and say so, rather than taking over its containers and data.
-- The CLI's version differs from the installation's: the CLI says so and changes nothing except
-  `status` and `logs`. Updating is journey 006.
+- The CLI's version differs from the installation's: `upgrade` moves an older installation to the
+  CLI's version and refuses a newer one (User Story 8).
+- An upgrade is interrupted: Ctrl-C or SIGTERM before the new server starts stops it at its next
+  step and puts the previous version back (once the new server is starting, the upgrade runs to
+  its result); one killed outright leaves the previous files in its `.upgrade-*` folder, and the
+  next `upgrade` refuses until a person has put the right files back. From the moment the new
+  version may migrate until the files and database are known to match, `.upgrade-restore` records
+  it; while it is there, which a killed upgrade or a rollback that couldn't check the database
+  leaves, `start`, `configure` and `upgrade` refuse.
 - The person isn't allowed to use the engine (not in the `docker` group, no root): the CLI says so
   and how to fix it, and never runs `sudo` itself.
 - A release download fails its check: nothing is unpacked; the CLI says the download was damaged or
@@ -393,6 +430,26 @@ option that is still complete.
   each app's, or a wildcard), and that the original host name must be passed. Your Space contains no
   code specific to any proxy or tunnel product; the guide shows common ones.
 
+**Upgrading**
+
+- **FR-022**: `upgrade` moves an installation to the CLI's own version, compared by Semantic
+  Versioning's precedence, prereleases included. It reports an installation already at that version
+  and refuses one that is newer.
+- **FR-023**: Before it changes anything, `upgrade` checks the new release's files as `init` does
+  and downloads its images, then stops the server and Caddy and backs up the database into the
+  installation folder, readable only by its owner. It keeps `.env`'s lines, the volumes and the apps.
+- **FR-024**: When the new version's server doesn't become ready, `upgrade` puts the previous
+  version back: its files and `.env`, and the database from the backup when it differs from the
+  backup, so whatever the new version changed as it started is undone. Once the server is ready the upgrade stands, and a Caddy that doesn't start is
+  reported for the owner to fix. It
+  restores into a new database and swaps it in, so a restore that fails part way changes nothing,
+  and keeps the database the new version left. The new version gets no requests until it has
+  started: Caddy starts last. `upgrade`, `start`, `stop`, `configure` and `secrets replace`
+  hold the installation's lock while they run, so none overlaps another, and a
+  blocked one fails with `installation_busy`.
+- **FR-025**: The server refuses to start on a database whose recorded migrations are newer than
+  the ones it has, with its own log event and exit status.
+
 **Every command**
 
 - **FR-017**: Every command has `--json` output for scripts and the desktop app, and documented exit
@@ -414,6 +471,9 @@ option that is still complete.
   running space; the CLI stores nothing else.
 - **Release files**: `compose.yaml`, `stack.yaml`, `modes/` and `env.example` for one version, with
   their checksums.
+- **Database backup**: a `pg_dump` of Your Space's database that `upgrade` writes into the
+  installation's `backups/` folder before it replaces the release files. It doesn't hold the secrets,
+  Caddy's certificates or apps' data, which stay in their volumes.
 
 ## Success Criteria
 
@@ -470,6 +530,10 @@ option that is still complete.
    person issued in the client ([Client and CLI](#client-and-cli)). The CLI has no sign-in command.
    This replaces the decision record's open "remote CLI authentication" for backup and restore:
    journey 006 chooses between the client and an issued credential.
+8. **Upgrading moves into this journey (2026-11-23).** At the owner's request, `your-space upgrade`
+   upgrades an installation with a local database backup and automatic rollback, so owners stop
+   reinstalling for each alpha release. The decision record's updates section records it; journey
+   006 keeps the server-produced snapshot, backup and restore commands, and app updates.
 
 ## Decisions and Open Questions
 
@@ -483,5 +547,8 @@ Decided on 2026-11-16:
   name `your-space`** (Change 3), **the engine and Windows with the desktop app** (Changes 4 and 5),
   **macOS, Windows and Homebrew in one pass at the end** (Change 6), and **people sign in only
   through the client** (Change 7).
+
+Decided on 2026-11-23: **`upgrade` with a local database backup and automatic rollback** (Change 8),
+and the server's refusal of a database a newer version migrated.
 
 No questions are open.

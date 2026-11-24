@@ -6,7 +6,7 @@ The [roadmap](../docs/roadmap.md) tracks delivery. Open a specification below fo
 | --- | --- |
 | [001 · Set up my space](001-workspace-owner-access/spec.md) | Owner claim, sign-in, durable identity and recovery. |
 | [002 · Install and use an app](002-install-an-app/spec.md) | Install and open an independent app in the browser. Verify the supported real-source path. |
-| [003 · Run with the CLI](003-install-with-the-cli/spec.md) | Download and run on existing Docker locally or on a server. Verify localhost, an existing proxy, and a real domain. |
+| [003 · Run with the CLI](003-install-with-the-cli/spec.md) | Download and run on existing Docker locally or on a server. Verify localhost, an existing proxy, and a real domain. Upgrade an installation to a later release, with a database backup and rollback. |
 | [005 · Let my agent work for me](005-owner-agent/spec.md) | Web and CLI tests cover identity, kit-defined roles, server-held credentials, approvals, denial and revocation. A live external agent completed an approved read. Agents only read in the alpha (2026-11-23); writes are later direction. |
 | [008 · Open a workspace from the macOS desktop](008-desktop-entry/spec.md) | Download the native app. Use a detected or owner-selected Docker engine for local setup, with guidance when Docker is missing, or connect to an existing server without local Docker. Apply an installation kit from the selected dashboard. |
 | [009 · Encrypt stored app settings](009-encrypt-stored-data/spec.md) | Follow-up to 003. A dedicated encryption key protects installed apps’ settings and can be rotated independently of the owner sign-in secret. |

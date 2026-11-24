@@ -7,6 +7,7 @@ import { expectOk, serverCommand, showOwner } from "../server.ts";
 import { openLink } from "../browser.ts";
 import type { Link } from "../summary.ts";
 import type { Ui } from "../ui.ts";
+import { holdingLock, refuseWhileRestoreNeeded } from "../installation-lock.ts";
 import { checkDomain, checkPorts, gather, open, showSummary, startStack, waitForCertificate } from "./shared.ts";
 
 export interface StartFlags {
@@ -23,8 +24,13 @@ export interface StartFlags {
 const CERTIFICATE_WAIT = 180;
 
 export async function startInstallation(ui: Ui, workdir: string, flags: StartFlags) {
+  return holdingLock(workdir, "start", () => startHolding(ui, workdir, flags));
+}
+
+async function startHolding(ui: Ui, workdir: string, flags: StartFlags) {
   ui.intro("Your Space");
   const { installation, compose, engine } = await open(ui, workdir, flags.requireProjectCheck);
+  refuseWhileRestoreNeeded(installation.folder);
   let setup = installation.setup();
   await checkDomain(ui, setup, flags.ignoreChecks === true);
   setup = await checkPorts(ui, installation, compose, setup);

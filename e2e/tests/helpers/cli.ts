@@ -4,7 +4,7 @@
 // downloaded from GitHub or a registry. YS_E2E_CLI names a built executable to run instead of the
 // bundle, as CI does.
 import { execFile, spawn } from "node:child_process";
-import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,21 +32,40 @@ export interface Cli {
   compose(args: string[], options?: { input?: string }): Promise<CliResult>;
 }
 
-/** Tags the images the browser tests built with the CLI's version, as a release publishes them. */
-export async function tagImages(): Promise<void> {
-  for (const name of ["server", "web", "runtime"]) {
-    await docker(["tag", `your-space-${name}:local`, `ghcr.io/your-space-ai/your-space-${name}:${CLI_VERSION}`], false);
+/** Tags the images the browser tests built with release versions, the CLI's by default, as a release publishes them. */
+export async function tagImages(versions: string[] = [CLI_VERSION]): Promise<void> {
+  for (const version of versions) {
+    for (const name of ["server", "web", "runtime"]) {
+      await docker(["tag", `your-space-${name}:local`, `ghcr.io/your-space-ai/your-space-${name}:${version}`], false);
+    }
   }
+}
+
+/**
+ * Makes a release's files in `folder`, your-space.tar.gz and its SHA256SUMS, as the release
+ * workflow does. `change` edits its stack.yaml first, for a release that is broken on purpose.
+ */
+export async function makeRelease(version: string, folder: string, change?: (stack: string) => string): Promise<void> {
+  mkdirSync(folder, { recursive: true });
+  await exec(join(root, "deploy/release-files.sh"), [version, folder]);
+  const archive = join(folder, "your-space.tar.gz");
+  if (change) {
+    const files = mkdtempSync(join(tmpdir(), "ys-release-files-"));
+    try {
+      await exec("tar", ["--no-same-owner", "-xzf", archive, "-C", files]);
+      writeFileSync(join(files, "stack.yaml"), change(readFileSync(join(files, "stack.yaml"), "utf8")));
+      await exec("tar", ["-czf", archive, "-C", files, "compose.yaml", "stack.yaml", "modes", "env.example"]);
+    } finally {
+      rmSync(files, { recursive: true, force: true });
+    }
+  }
+  writeFileSync(join(folder, "SHA256SUMS"), `${createHash("sha256").update(readFileSync(archive)).digest("hex")}  your-space.tar.gz\n`);
 }
 
 /** Makes the release files with SHA256SUMS and serves them as GitHub's release downloads would. */
 export async function serveRelease(): Promise<{ url: string; close(): Promise<void> }> {
   const dir = mkdtempSync(join(tmpdir(), "ys-release-"));
-  const release = join(dir, `v${CLI_VERSION}`);
-  mkdirSync(release);
-  await exec(join(root, "deploy/release-files.sh"), [CLI_VERSION, release]);
-  const tarball = readFileSync(join(release, "your-space.tar.gz"));
-  writeFileSync(join(release, "SHA256SUMS"), `${createHash("sha256").update(tarball).digest("hex")}  your-space.tar.gz\n`);
+  await makeRelease(CLI_VERSION, join(dir, `v${CLI_VERSION}`));
   const server: Server = createServer((request, response) => {
     const path = join(dir, decodeURIComponent(new URL(request.url ?? "/", "http://x").pathname));
     if (!path.startsWith(dir) || !existsSync(path)) {
@@ -113,21 +132,25 @@ export function newFolder(name: string): string {
   return mkdtempSync(join(tmpdir(), `ys-cli-${name}-`));
 }
 
-/** Removes an installation the CLI made, with its apps and data, so the next test starts clean. */
-export async function removeInstallation(cli?: Cli): Promise<void> {
-  const label = "label=ai.your-space.installation=your-space";
+/**
+ * Removes an installation the CLI made, with its apps and data, so the next test starts clean.
+ * `project` is its Compose project, which also labels its apps: your-space unless COMPOSE_PROJECT_NAME
+ * gives another.
+ */
+export async function removeInstallation(cli?: Cli, project = "your-space"): Promise<void> {
+  const label = `label=ai.your-space.installation=${project}`;
   const ids = (kind: string[]) => docker([...kind, "--filter", label]).then((r) => r.stdout.split("\n").filter(Boolean));
   for (const id of await ids(["ps", "-aq"])) await docker(["rm", "-f", id]);
   for (const id of await ids(["volume", "ls", "-q"])) await docker(["volume", "rm", "-f", id]);
   for (const id of await ids(["network", "ls", "-q"])) {
-    await docker(["network", "disconnect", "-f", id, "your-space-caddy-1"]);
+    await docker(["network", "disconnect", "-f", id, `${project}-caddy-1`]);
     await docker(["network", "rm", id]);
   }
   if (cli && existsSync(join(cli.folder, "compose.yaml"))) await cli.compose(["down", "-v", "--remove-orphans"]);
-  // Whatever an earlier run left: containers and volumes of the your-space project, from any folder.
-  const project = "label=com.docker.compose.project=your-space";
-  for (const id of (await docker(["ps", "-aq", "--filter", project])).stdout.split("\n").filter(Boolean)) await docker(["rm", "-f", id]);
-  for (const id of (await docker(["volume", "ls", "-q", "--filter", project])).stdout.split("\n").filter(Boolean)) await docker(["volume", "rm", "-f", id]);
+  // Whatever an earlier run left: containers and volumes of the project, from any folder.
+  const own = `label=com.docker.compose.project=${project}`;
+  for (const id of (await docker(["ps", "-aq", "--filter", own])).stdout.split("\n").filter(Boolean)) await docker(["rm", "-f", id]);
+  for (const id of (await docker(["volume", "ls", "-q", "--filter", own])).stdout.split("\n").filter(Boolean)) await docker(["volume", "rm", "-f", id]);
 }
 
 /** The GitHub stand-in beside the release's files, so an app can be installed (compose.e2e.yaml). */

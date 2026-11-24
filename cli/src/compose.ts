@@ -3,7 +3,7 @@
 import { realpathSync } from "node:fs";
 import { CliError } from "./errors.ts";
 import { engineProblem } from "./engine.ts";
-import { run, type Ran } from "./process.ts";
+import { run, type Ran, type RunOptions } from "./process.ts";
 
 export interface ServiceState {
   name: string;
@@ -41,7 +41,7 @@ export class Compose {
     this.folder = folder;
   }
 
-  async run(args: string[], options: { input?: string; inherit?: boolean } = {}): Promise<Ran> {
+  async run(args: string[], options: Pick<RunOptions, "input" | "inherit" | "inputFile" | "outputFile"> = {}): Promise<Ran> {
     const ran = await run("docker", ["compose", ...args], { cwd: this.folder, ...options });
     if (ran.code !== 0 && /Cannot connect to the Docker daemon|permission denied while trying to connect/i.test(ran.stderr)) {
       throw engineProblem(ran.stderr);

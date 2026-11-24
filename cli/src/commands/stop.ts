@@ -3,6 +3,7 @@
 import type { Compose } from "../compose.ts";
 import { CliError } from "../errors.ts";
 import { type App, listApps } from "../server.ts";
+import { holdingLock } from "../installation-lock.ts";
 import type { Ui } from "../ui.ts";
 import { open } from "./shared.ts";
 
@@ -35,6 +36,10 @@ export function stoppedApps(apps: App[] | null): string[] | null {
 }
 
 export async function stop(ui: Ui, workdir: string): Promise<void> {
+  await holdingLock(workdir, "stop", () => stopHolding(ui, workdir));
+}
+
+async function stopHolding(ui: Ui, workdir: string): Promise<void> {
   ui.intro("Your Space");
   const { compose } = await open(ui, workdir);
   const services = await compose.ps();

@@ -6,6 +6,7 @@ import { Installation } from "../installation.ts";
 import { forgetPreviousDataKey, givePostgresPassword, newSecrets, SECRET_ENV, SECRET_NAMES, type SecretName } from "../secrets.ts";
 import { expectOk, serverCommand } from "../server.ts";
 import type { Ui } from "../ui.ts";
+import { holdingLock, refuseWhileRestoreNeeded } from "../installation-lock.ts";
 
 interface Shown {
   name: string;
@@ -35,11 +36,17 @@ const CONSEQUENCE: Record<SecretName, string> = {
 };
 
 export async function secretsReplace(ui: Ui, workdir: string, name: string): Promise<void> {
+  await holdingLock(workdir, "secrets replace", () => secretsReplaceHolding(ui, workdir, name));
+}
+
+async function secretsReplaceHolding(ui: Ui, workdir: string, name: string): Promise<void> {
   if (!SECRET_NAMES.includes(name as SecretName)) {
     throw new CliError("invalid_input", `Name the secret to replace: ${SECRET_NAMES.join(", ")}.`);
   }
   const secret = name as SecretName;
   const installation = Installation.open(workdir);
+  // It restarts Your Space, which mustn't run on a database an unfinished upgrade may have left.
+  refuseWhileRestoreNeeded(installation.folder);
   const compose = new Compose(installation.folder);
   // .env itself, since the running server sees a change to it only after it restarts.
   if (installation.env()[SECRET_ENV[secret]]) {

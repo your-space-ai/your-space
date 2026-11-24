@@ -243,12 +243,14 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### Backups and updates
 
+- [ ] **Upgrade an installation with the CLI (003)** · *First packaged release*. `your-space upgrade` moves an installation to the CLI's version without reinstalling. It backs up the database first, keeps the settings, owner, data and apps, and puts the previous version back when the new server doesn't become ready. A Caddy that fails after that is reported, not rolled back, and a rollback that can't stop the new server or check the database stops for the owner to finish by hand. The server refuses a database a newer version migrated. ([PR #110](https://github.com/your-space-ai/your-space/pull/110), in review) [Upgrade decision](architecture/decisions.md#your-space-updates-backup-and-restore)
+
 - [ ] **006 · Maintain and move a workspace** · *Deferred journey*
   - **Workspace backup, restore and removal**
     - [ ] Back up any installation through the CLI: the Your Space server produces the backup and returns it through its API, wherever the server runs.
     - [ ] Restore a backup into an installation.
     - [ ] Make backup and restore easy to script, so a person or their agent can move a workspace between installations themselves.
-    - [ ] Before updating Your Space, record versions and snapshot its data; if the update fails, roll back automatically.
+    - [ ] Before updating Your Space, record versions and snapshot its data; if the update fails, roll back automatically. 003's `upgrade` does this from the CLI with a local database backup, rolling back only before the new server is ready, and leaving the owner to finish by hand when it can't stop the new server or check the database; 006 keeps the server-produced snapshot.
     - [ ] Uninstall Your Space and every app container it manages; keep data by default, and require explicit confirmation and offer a backup before deleting it.
   - **App updates, history and rollback**
     - [ ] Show the owner when an installed app's kit has a newer commit, as an update the owner chooses to install, such as in the update notice of the [Apps screen (013)](https://github.com/your-space-ai/your-space/blob/main/specs/013-workspace-redesign/spec.md): Your Space reviews the newer kit and the Compose commit it pins, and changes nothing until the owner confirms. Nothing follows a kit's branch by itself. [Kits define apps](architecture/decisions.md#kits-define-apps)
