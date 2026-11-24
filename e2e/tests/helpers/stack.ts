@@ -50,7 +50,10 @@ export async function compose(
     const e = error as { code?: number | string; stdout?: string; stderr?: string };
     const result = { code: typeof e.code === "number" ? e.code : 1, stdout: e.stdout ?? "", stderr: e.stderr ?? "" };
     if (!options.allowFailure) {
-      throw new Error(`docker compose ${args.join(" ")} failed (${result.code}):\n${result.stderr}`);
+      // A build writes each step's log to standard output and ends with the failing step's last
+      // lines, the command's own error, which standard error doesn't repeat.
+      const output = result.stdout.trimEnd().split("\n").slice(-60).join("\n");
+      throw new Error(`docker compose ${args.join(" ")} failed (${result.code}):\n${output ? `${output}\n` : ""}${result.stderr}`);
     }
     return result;
   }
