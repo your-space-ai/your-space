@@ -658,7 +658,7 @@ export function interfaceTarget(
 
 export function interfaceAddress(...args: Parameters<typeof interfaceTarget>): string {
   const target = interfaceTarget(...args);
-  if (target.legacy) throw new EngineError("This app was installed before Your Space labelled app interfaces. Stop it and start it again in Apps, which applies it with its labels.", 503);
+  if (target.legacy) throw new EngineError("This app was installed before Your Space labelled app interfaces. In Apps, remove it and keep its data, then install it again with Reuse kept data, which applies it with its labels.", 503);
   return target.address;
 }
 

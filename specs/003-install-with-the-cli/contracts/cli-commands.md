@@ -133,7 +133,7 @@ code and the server's exit status, with the server's other fields.
 | `engine check` | `{ ok, engine: { version, os, arch, endpoint, compose } }` |
 | `init` | `{ ok, folder, version, setup, env: ["YS_DOMAIN=space.example.com"] }`: the lines written |
 | `stop` | `{ ok, stopped: ["notes"] }`: the apps stopped; `null` when Your Space couldn't list its apps, after `--yes` or a yes to the question |
-| `owner create`, `owner reset-link` | The server command's own JSON (`username`, `url`, `token`, `expiresAt`) |
+| `owner create`, `owner reset-link` | The server command's own JSON (`username`, `url`, `token`, `expiresAt`). `owner create`'s `email` was removed with the alpha scope (2026-11-23), with the owner's optional email |
 | `secrets show` | `{ ok, secrets: [{ name, source }] }`, with `value` only with `--reveal` |
 | `secrets replace` | `{ ok, replaced: "auth-secret" }` |
 | `configure` | `{ ok, setup, env, summary }` |

@@ -9,7 +9,8 @@ To add agent routes to an app that is already installed, remove it from **Apps**
 ## Grant access to an agent
 
 Agents only read. A kit declares GET routes with `effect: read`, and Your Space refuses a kit that
-declares a route that creates or changes records.
+declares a route that creates or changes records. Your Space checks the declaration, not the app's
+handler, so map a read route only to an app route that doesn't change records.
 
 Create a named agent. Grant it roles for this installation and choose when each route asks you
 first. A route set to Ask or Allow here overrides the kit's recommendation; otherwise the kit's
