@@ -1,0 +1,29 @@
+# Groups the list of merged pull requests that Release draft generates (`gh release create
+# --generate-notes`) by label. The hand-written notes go above it (docs/maintainers/releasing.md,
+# step 4). A pull request with none of these labels goes in "Other changes", so label pull requests
+# before release. Dependabot adds the `dependencies` label to its own pull requests.
+changelog:
+  exclude:
+    labels:
+      - duplicate
+      - invalid
+      - wontfix
+  categories:
+    - title: New features
+      labels:
+        - enhancement
+    - title: Bug fixes
+      labels:
+        - bug
+    - title: Accessibility
+      labels:
+        - accessibility
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Dependencies
+      labels:
+        - dependencies
+    - title: Other changes
+      labels:
+        - "*"

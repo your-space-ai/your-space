@@ -3,3 +3,6 @@ contact_links:
   - name: Report a security vulnerability privately
     url: https://github.com/your-space-ai/your-space/blob/main/SECURITY.md
     about: Send a private report to the maintainers using the project security policy.
+  - name: Read the documentation
+    url: https://docs.getyourspace.ai
+    about: Install, run and recover Your Space, and the alpha's known limits.

@@ -2,7 +2,7 @@
 title: "Your Space roadmap"
 ---
 
-The first packaged release is for one person running a personal dashboard. Set it up on your Mac or connect to a Docker server, install apps using kits, and choose what your AI agents can do in each app. You can already try the [source preview with Docker](install/from-source.md). Opening the source for contributions and publishing signed downloads are separate milestones.
+The first packaged release is for one person running a personal dashboard. Set it up on your Mac or connect to a Docker server, install apps using kits, and choose what your AI agents can do in each app. You can try the [0.1.0-alpha.1 alpha](install/index.md) or [run it from source with Docker](install/from-source.md). The open items below, the release checks among them, are still to be done.
 
 ## Reading the roadmap
 

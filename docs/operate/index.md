@@ -206,6 +206,68 @@ Apps keep their data in their own volumes, named after the app, such as `ys-note
 To move to a newer release, see [Update Your Space](#update-your-space); it backs up the database
 first. Backing up a workspace on its own isn't covered yet; it comes in a later release.
 
+## Remove Your Space
+
+There is no uninstall command yet. To remove Your Space, or to start over with a new installation,
+follow these steps in order. With the Mac app, read [its steps](../install/macos-desktop.md#remove-your-space-from-a-mac)
+first: if the app only connects to a server, they are all you need, and these steps would delete
+that server's apps. Otherwise they say when to quit the app and how to reach its Docker engine.
+
+1. With Your Space running (`your-space start` if you stopped it), open each app in **Apps** and
+   select **Remove app**, then **Delete data**. Removing an app deletes its containers and
+   networks; deleting its data deletes its volumes, which can't be undone.
+2. In the installation folder (`~/my-your-space` if you used `setup` and kept its default), stop
+   any app still running, then delete Your Space's containers, networks and volumes. If Your Space is
+   already stopped, as after quitting the Mac app, its apps are too: skip the first command.
+
+   ```sh
+   docker compose exec runtime stop-apps
+   docker compose down -v
+   ```
+
+3. Delete the installation folder. It holds your settings in `.env`, any set-password link `setup`
+   saved, and the database backups `upgrade` made in `backups/`. If `.env` sets `YS_ENGINE_SOCKET`, note its path first: the commands below for
+   leftovers need it.
+
+> [!WARNING]
+> Remove the apps first. `docker compose down -v` deletes Your Space's database, and with it the
+> record of which apps are installed, so **Apps** can't remove them afterwards. Their containers,
+> networks and volumes stay behind, and apps that weren't stopped keep running. If you later install
+> an app with the same name on this Docker engine, it reuses that app's leftover volumes: the old
+> data meets newly generated settings, such as a new database password, and the app may not start.
+
+To find what an earlier installation left behind, list what carries its label for its apps. The
+label's value is the installation's Compose project name: `your-space`, the `name` in
+`compose.yaml`, unless you changed it. If you did, use yours in each command below. App volumes are
+named after their app, such as `ys-notes_postgres-data`. Run these commands against the Docker
+engine your apps ran on: if `.env` set `YS_ENGINE_SOCKET`, that's the engine at that path, so first
+run `unset DOCKER_CONTEXT` and `export DOCKER_HOST="unix://<that path>"` in the same shell. If the
+folder is already gone and you don't know the path, run the lists against each engine on this
+machine; `docker context ls` shows those the Docker command knows.
+
+```sh
+docker ps -a --filter label=ai.your-space.installation=your-space
+docker volume ls --filter label=ai.your-space.installation=your-space
+docker network ls --filter label=ai.your-space.installation=your-space
+```
+
+To delete them, the apps' data included, with no undo, run these in order, before you set up Your
+Space on this Docker engine again: a new installation with the same name labels its apps the same
+way, so these commands would delete them too. Skip the first command if the first list was empty;
+the two `prune` commands ask before deleting:
+
+```sh
+docker rm -f $(docker ps -aq --filter label=ai.your-space.installation=your-space)
+docker volume prune --all --filter label=ai.your-space.installation=your-space
+docker network prune --filter label=ai.your-space.installation=your-space
+```
+
+Each app also had anonymous volumes, such as its outbound proxy's logs. They carry no Your Space
+label, and Your Space doesn't keep them as app data: removing an app in **Apps** deletes them.
+`docker volume prune`, with no options, deletes them too, but also every other unused anonymous
+volume on this Docker engine, so skip it if the engine runs other projects. Images stay too:
+`docker image ls` lists them, and `docker image rm` deletes those you don't need.
+
 ## When the Database Is Down
 
 If PostgreSQL stops or can't be read, Your Space reports a storage problem and changes nothing. It

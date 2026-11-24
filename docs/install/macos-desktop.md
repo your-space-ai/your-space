@@ -2,14 +2,14 @@
 title: "Download and run Your Space on a Mac"
 ---
 
-The first tagged desktop release is in preparation. For the current source preview, [build the Mac launcher from source](#build-from-source). Once disk images are published, use the steps below.
+Your Space 0.1.0-alpha.1 is an alpha, for trying Your Space out. Read the [alpha limits](index.md#alpha-limits) first.
 
-1. Open [Your Space Releases](https://github.com/your-space-ai/your-space/releases) and choose the disk image for your Mac. In **Apple menu → About This Mac**, look for **Chip** (Apple Silicon) or **Processor** (Intel).
+1. Open the [0.1.0-alpha.1 release](https://github.com/your-space-ai/your-space/releases/tag/v0.1.0-alpha.1) and choose the disk image for your Mac. In **Apple menu → About This Mac**, look for **Chip** (Apple Silicon) or **Processor** (Intel).
 
    | Mac | Download |
    | --- | --- |
-   | Apple Silicon | `your-space-macos-arm64-<version>.dmg` |
-   | Intel | `your-space-macos-x64-<version>.dmg` |
+   | Apple Silicon | `your-space-macos-arm64-0.1.0-alpha.1.dmg` |
+   | Intel | `your-space-macos-x64-0.1.0-alpha.1.dmg` |
 
 2. Open the downloaded DMG in Finder. Drag **Your Space** onto the **Applications** shortcut in the same window.
 3. Wait for the copy to finish, eject **Your Space** from the Finder sidebar, then open **Your Space** from **Applications**.
@@ -36,9 +36,39 @@ The app updates itself from [Your Space Releases](https://github.com/your-space-
 
 The CLI inside each app is the one the app uses for local setup; for a standalone CLI on a Mac, use the npm package. See the [distribution notices](https://github.com/your-space-ai/your-space/blob/main/desktop/THIRD-PARTY.md) for pinned upstream artifacts and source.
 
+## Logs and recovery
+
+To check on the local workspace or recover it, run the bundled CLI against the launcher's installation folder and engine, as for `configure` above. For example, to see what is running and its address:
+
+```sh
+env -u DOCKER_CONTEXT DOCKER_HOST="unix://<socket>" \
+  "/Applications/Your Space.app/Contents/Resources/bin/your-space" status \
+  --workdir "$HOME/Library/Application Support/ai.your-space.desktop/local"
+```
+
+Put another command in place of `status`:
+
+| To | Command |
+| --- | --- |
+| Read the server's logs | `logs server`, or `logs` for every service |
+| Get a new set-password link | `owner reset-link` |
+
+A set-password link works once, for 30 minutes. Open it in a browser on this Mac, choose your password, then sign in in the app.
+
+## Remove Your Space from a Mac
+
+There is no uninstall yet. If you only use **Connect to a server**, removing the app leaves that server's workspace and apps as they are: quit the app, move it to the Trash and delete `~/Library/Application Support/ai.your-space.desktop`, and the folders whose names start with `ai.your-space.desktop` in `~/Library/Caches`, where updates are downloaded.
+
+To also remove the workspace this Mac runs, with its apps and their data:
+
+1. Open the app and its local workspace, which starts the workspace again if you quit the app. In that local workspace, select **Remove app**, then **Delete data**, for each app in **Apps**. Do this only in the workspace this Mac runs, at `http://space.localhost:8081` or the address you gave it with `configure`: in a workspace on a server, it would delete that server's apps.
+2. Quit the app, which stops the local workspace. Opening the app again would start it.
+3. In Terminal, run `unset DOCKER_CONTEXT` and `export DOCKER_HOST="unix://<socket>"`, then follow the rest of [Remove Your Space](../operate/index.md#remove-your-space) in the installation folder above, in the same window.
+4. Move the app to the Trash, and delete `~/Library/Application Support/ai.your-space.desktop` and the folders whose names start with `ai.your-space.desktop` in `~/Library/Caches`.
+
 ## Build from source
 
-On the target Mac, use a clean checkout with Node 26 and npm, and a running Docker-compatible engine. **Connect to a server** works with the launcher alone. **Run on this Mac** also needs the Your Space server, web and runtime images in the engine the launcher uses, tagged with the exact version of the launcher's CLI. Until those images are published, build them yourself; without them it stops with "The local workspace could not start."
+On the target Mac, use a clean checkout with Node 26 and npm, and a running Docker-compatible engine. **Connect to a server** works with the launcher alone. **Run on this Mac** also needs the Your Space server, web and runtime images in the engine the launcher uses, tagged with the exact version of the launcher's CLI. Published images exist only for released versions, so build them yourself for your checkout; without them it stops with "The local workspace could not start."
 
 1. In the repository root, run the first block of [Test from reviewed source](agent-setup.md#test-from-reviewed-source), with the same Docker engine. It runs `npm ci`, builds the CLI, sets `cli_version` to the CLI's version, and builds and tags the three images with it. Stop before that page's `setup` step: there is one Your Space per Docker engine, so a workspace set up there would stop the launcher from setting up its own.
 2. In the same shell, either package the launcher or run it from the checkout.

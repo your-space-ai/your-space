@@ -2,11 +2,13 @@
 title: "Install Your Space"
 ---
 
-For the current source preview, start with [Try Your Space from source](from-source.md). It walks through creating an owner and opening a sample app. The [Mac guide](macos-desktop.md) covers building the launcher from source and using a published DMG when one is available.
+Your Space 0.1.0-alpha.1 is an alpha, for trying Your Space out. Read the [alpha limits](#alpha-limits)
+before you rely on it.
 
-The steps below cover the `your-space` command for a tagged release. Creating the owner requires shell access
-to that machine. The [manual Docker Compose steps](manual.md)
-cover the same setup.
+The [quick start](#quick-start) sets up Your Space for this machine only. The numbered steps after
+it let you choose how you'll reach it, including from other devices with your own domain or proxy,
+and the [manual Docker Compose steps](manual.md) cover the same setup by hand. Creating the owner requires shell access to that machine. On a Mac, you
+can use the [desktop app](macos-desktop.md) instead. To work on Your Space itself, [try it from source](from-source.md).
 
 Your Space runs as four containers, after a short step that runs first:
 
@@ -58,19 +60,40 @@ If either command fails, install or start Docker first. On macOS, start your eng
 open OrbStack, or run `colima start`) and wait until it is running. `your-space` checks all of this
 too, and says what is missing.
 
+## Quick Start
+
+With Docker running and Node 22.12 or newer, run:
+
+```sh
+npx @your-space-ai/cli@0.1.0-alpha.1 setup
+```
+
+`setup` asks where to keep the installation (`~/my-your-space` unless you choose another folder),
+and whether to keep its defaults, port 80 and the username `owner`, or choose your own. It downloads
+the 0.1.0-alpha.1 release files, checks them against the release's checksums, and starts Your Space
+for this machine only, at `http://space.localhost` (with the port added if you chose another one).
+If the port is already in use, it offers a free one. The first start downloads the images, which
+takes a minute or two.
+
+Then it creates your account, saves a link for setting your password in a private file in the
+installation folder, and prints that file's path. Open the link within 30 minutes, choose a password
+of 12 to 128 characters, and sign in with your username. If the link expires,
+`your-space owner reset-link --workdir ~/my-your-space` prints a new one.
+
+npx runs the command without installing it. For every later command on these pages, either put
+`npx @your-space-ai/cli@0.1.0-alpha.1` in place of `your-space`, or install the `your-space` command
+once, as the next step describes. Run each command in the installation folder, or name the folder
+with `--workdir`: for example, `your-space status --workdir ~/my-your-space` shows what is running
+and how to reach it.
+
 ## 1. Get the `your-space` Command
 
-The source preview has no published CLI. To run the dashboard today, use the
-[Docker source walkthrough](from-source.md). To exercise the CLI with locally built artifacts,
-follow the [source candidate instructions](agent-setup.md#test-from-reviewed-source).
-
-Once a tagged [Your Space release](https://github.com/your-space-ai/your-space/releases) includes the
-CLI and server images, select that version and get the CLI one of these ways:
+Get version 0.1.0-alpha.1 of the command one of these ways:
 
 | Machine | How to get `your-space` |
 | --- | --- |
-| Any Mac or Linux machine with Node 22.12 or newer | The npm package `@your-space-ai/cli`: `npx @your-space-ai/cli@<version>`, or `npm install -g @your-space-ai/cli@<version>` to get the `your-space` command |
-| Linux Intel/AMD or ARM64 without Node | The standalone executable `your-space-linux-x64` or `your-space-linux-arm64` |
+| Any Mac or Linux machine with Node 22.12 or newer | The npm package `@your-space-ai/cli`: `npm install -g @your-space-ai/cli@0.1.0-alpha.1`, or put `npx @your-space-ai/cli@0.1.0-alpha.1` in place of `your-space` in each command |
+| Linux Intel/AMD or ARM64 without Node | The standalone executable `your-space-linux-x64` or `your-space-linux-arm64` from the [0.1.0-alpha.1 release](https://github.com/your-space-ai/your-space/releases/tag/v0.1.0-alpha.1) |
 | Mac with the desktop app | The CLI bundled in the app, at `Your Space.app/Contents/Resources/bin/your-space` |
 
 For a standalone executable, download it and `SHA256SUMS` from the same release into an empty
@@ -78,6 +101,8 @@ folder, then verify and install it. On Intel/AMD, for example (use `arm64` on AR
 
 ```sh
 asset=your-space-linux-x64
+release=https://github.com/your-space-ai/your-space/releases/download/v0.1.0-alpha.1
+curl -fL -O "$release/$asset" -O "$release/SHA256SUMS"
 awk -v name="$asset" '$2 == name { print }' SHA256SUMS | sha256sum -c - &&
   mkdir -p ~/.local/bin &&
   install -m 755 "$asset" ~/.local/bin/your-space
@@ -124,6 +149,74 @@ Open the link within 30 minutes. Choose a password of 12 to 128 characters; a lo
 good choice. Then sign in with your username and that password.
 
 The link works once. If it expires or you lose it, `your-space owner reset-link` prints a new one.
+
+## Update to a Later Release
+
+When a later release comes out, run `upgrade` in the installation folder, with the latest command:
+
+```sh
+npx @your-space-ai/cli@latest upgrade
+```
+
+If you installed the `your-space` command, get the new version first, then upgrade:
+
+```sh
+npm install -g @your-space-ai/cli@latest
+your-space upgrade
+```
+
+With a standalone executable, download and install the new release's as in [step 1](#1-get-the-your-space-command),
+then run `your-space upgrade`. `upgrade` names both versions and asks first. It backs up the
+database before it changes anything, keeps `.env`, your apps and their data, and puts the previous
+version back if the new one doesn't start. [Run Your Space](../operate/index.md) describes each
+step. The [Mac app](macos-desktop.md) updates itself, and its local workspace with it.
+
+## Alpha Limits
+
+0.1.0-alpha.1 is the first release, and some of what a workspace you rely on needs isn't there yet:
+
+- **No backup or restore.** `upgrade` backs up the database before it changes anything; nothing
+  else backs up a workspace or restores one. Your account and workspace are kept in Docker volumes,
+  and each app keeps its data in its own. [Restarts and your data](../operate/index.md#restarts-and-your-data)
+  lists them, and which commands keep or delete them.
+- **No uninstall.** No command removes Your Space yet. [Remove Your Space](../operate/index.md#remove-your-space)
+  gives the steps, in the order that leaves none of your apps behind.
+- **Apps install only from their kits.** In **Apps**, paste the link to a kit in a public GitHub
+  repository. A kit in a private repository installs only from the machine that runs Your Space,
+  with `docker compose exec -T server install-app --kit - < kit.yaml`, and the Compose file it names
+  must still be in a public repository. Your Space doesn't connect to your GitHub account, manage
+  repositories, list a directory of kits or let you make your own Home yet. See
+  [Install and publish apps](../apps/install-apps.md).
+- **A kit that asks for a value installs only from Apps.** `install-app` passes no values, so a kit
+  whose `env` has a value with `ask: true` installs only from the review in **Apps**, where you give
+  it. A kit in a private repository that needs such a value can't be installed yet.
+- **Installed apps don't update.** A newer kit or Compose file reaches an installed app only when you
+  remove the app, keeping its data, and install it again.
+- **Agents only read.** A kit can give an agent routes that read, never ones that create or change
+  records. See [Give an agent access to one app](../apps/agent-access.md).
+- **One account.** Only the owner signs in; inviting other people isn't available yet.
+- **No email.** Your Space sends no email. When you need a new set-password link, run
+  `your-space owner reset-link` on the machine that runs Your Space ([recovery](../operate/recovery.md)).
+- **Not every setup is tested.** [Checked so far](#before-you-start) lists what has been, and the
+  [release notes](https://github.com/your-space-ai/your-space/releases/tag/v0.1.0-alpha.1) list the
+  platforms tested for this release. Windows is not supported as a server.
+
+### Report a Problem
+
+[Open a bug report](https://github.com/your-space-ai/your-space/issues/new?template=bug_report.yml)
+on GitHub. It asks for:
+
+- the version: what `your-space --version` prints, or for the Mac app, what **Your Space › About
+  Your Space** shows;
+- how you installed Your Space, your operating system and architecture, and the output of
+  `docker version` and `docker compose version`;
+- what you did, what you expected and what happened, with any error message;
+- the relevant lines of `your-space logs`, if Your Space started ([with the Mac app](macos-desktop.md#logs-and-recovery),
+  the bundled CLI's `logs`).
+
+Issues are public. Leave out set-password links, keys, secrets and private app data, and use an
+example address in place of your own domain if you prefer. Report a security problem privately,
+as the [security policy](https://github.com/your-space-ai/your-space/blob/main/SECURITY.md) describes.
 
 ## Next
 
