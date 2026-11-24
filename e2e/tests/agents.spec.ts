@@ -1,9 +1,7 @@
 // Real owner controls, without credentials in screenshots, traces, or console output.
-import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { fixtureCommit } from "../github/commits.mjs";
 import { cliIn } from "./helpers/cli.ts";
-import { compose, composeWithInput, createOwner, docker, resetStack, serverCommand, sql } from "./helpers/stack.ts";
+import { createOwner, resetStack, serverCommand } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
 
 test("an owner issues, rotates and revokes a zero-grant agent's keys", async ({ page, playwright, baseURL }) => {
@@ -142,35 +140,4 @@ test("kit grants and exact approvals route real calls to the installed app", asy
   await pending.getByRole("button", { name: "Deny", exact: true }).click();
   await expect(pending.getByText("No requests awaiting approval.")).toBeVisible();
   expect((await invoke("list", {})).result).toEqual([{ id, revision: 2, title: "Changed" }]);
-});
-
-test("upgrading a running installation keeps its app ID and volume and installs a usable agent interface", async () => {
-  await resetStack();
-  await createOwner();
-  // A kit file on this machine names the app's Compose file on GitHub.
-  const legacy = { kit: 1, source: { repo: "ys-fixtures/records", path: "compose.yaml", commit: fixtureCommit("ys-fixtures/records") }, name: "records", interface: { service: "app", port: 8080 } };
-  await composeWithInput(["exec", "-T", "server", "install-app", "--kit", "-", "--json"], JSON.stringify(legacy));
-  const operator = ["exec", "-T", "server", "upgrade-agent-kit", "records", "--json"];
-  const inspect = async () => JSON.parse((await compose([...operator, "--inspect"])).stdout);
-  const before = await inspect();
-  expect(before.kitVersion).toBe(1);
-  const appService = "ys-records-app-1";
-  await docker(["exec", appService, "node", "-e", "require('node:fs').writeFileSync('/records/example', 'existing app data')"], false);
-  const volume = async () => (await docker(["inspect", appService, "--format", '{{range .Mounts}}{{if eq .Destination "/records"}}{{.Name}}{{end}}{{end}}'], false)).stdout.trim();
-  const originalVolume = await volume();
-  expect(originalVolume).toBeTruthy();
-
-  const kit = readFileSync(new URL("../github/fixtures/ys-fixtures/catalog/apps/ys-fixtures/records.yaml", import.meta.url), "utf8");
-  const applied = await composeWithInput([...operator, "--kit", "-", "--expect-installation", before.installation, "--expect-kit", before.kitSource], kit);
-  expect(JSON.parse(applied.stdout)).toMatchObject({ ok: true, appId: before.appId, kitVersion: 2, runtime: "refreshed" });
-  const after = await inspect();
-  expect(after.appId).toBe(before.appId);
-  expect(after.kitSource).not.toBe(before.kitSource);
-  expect(await volume()).toEqual(originalVolume);
-  const content = await docker(["exec", appService, "node", "-p", "require('node:fs').readFileSync('/records/example', 'utf8')"], false);
-  expect(content.stdout.trim()).toBe("existing app data");
-  expect(await sql("select (select count(*) from agent_binding), (select count(*) from agent_grant)")).toEqual(["0\t0"]);
-  const lookup = await compose(["exec", "-T", "server", "node", "--input-type=module", "-e",
-    "import {installedInterface} from './src/apps/runtime-client.ts'; const {address} = await installedInterface('ys-records', process.argv[1], 'app', 8080); if (!address) process.exit(1);", before.appId]);
-  expect(lookup.code).toBe(0);
 });

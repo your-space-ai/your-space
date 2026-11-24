@@ -55,7 +55,7 @@ refusal naming the file, unless its service is left out with its profile. A file
 as written is refused with Compose's error, as an unreadable file always was. Compose reads the
 other Compose files a file names, with `include` (and an include's own `env_file`) or with
 `extends: { file }`, even as written, so the server refuses such a file, `400 refused`, before it
-sends it to `/check`, `/apply` or an interface refresh (2026-11-24).
+sends it to `/check` or `/apply` (2026-11-24).
 
 | Method and path | Body | Answer |
 | --- | --- | --- |
@@ -66,7 +66,6 @@ sends it to `/check`, `/apply` or an interface refresh (2026-11-24).
 | `DELETE /apps/{project}/volumes` | | Removes the app's volumes |
 | `GET /apps` | | `[{ project, app, services: [{ name, role, state, health, exitCode, oomKilled, outdated, framing }] }]` for every app this installation manages; `role` is `app`, `egress` or `publish`; `outdated` marks a `publish` service that doesn't run Your Space's Caddy's current image, or lets another origin than that Caddy's frame the app; `framing`, on a `publish` service that runs and lets that Caddy's origin frame the app, is its container's ID, shortened to 12 characters, which changes whenever the service is recreated |
 | `GET /apps/{project}/interface?id=&service=&port=` | | `{ address }` with the exact installed service's current IPv4 on the app's sealed bridge. Journey 005 uses this private socket endpoint before agent dispatch. The runtime checks the app row UUID, workspace installation, Compose project and service, declared interface port, running container ID and membership of the labeled network. An absent, ambiguous or mismatched endpoint is refused. |
-| `POST /apps/{project}/interface` | AppSpec with installed app UUID and interface | Operator kit upgrade. Returns `{ status: "current" }` when already verified. For a running legacy interface with both identity labels absent, re-creates only its declared service with the installed Compose spec and pinned image, verifies its new identity, then returns `{ status: "refreshed" }`. Conflicting identities and ambiguous targets fail closed. |
 | `GET /apps/{project}/logs?service=&tail=` | | `{ lines: [...] }` |
 | `GET /apps/{project}/stats` | | `{ services: [{ name, memory, memoryLimit, cpuPercent }] }` |
 | `GET /apps/{project}/denials` | | `{ hosts: [{ host, attempts, lastSeen }] }` from the egress proxy's log |

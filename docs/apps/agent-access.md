@@ -4,24 +4,7 @@ title: "Give an external agent access to one app"
 
 Install an app with a version 2 kit that declares agent routes. Open **Agents**, choose the installation, and inspect its kit source, roles, and allowed methods and routes. Bind a scoped app credential and select the roles available for delegation. The app checks that credential when it receives a request. An installed app without agent routes remains available through its usual web interface.
 
-## Add agent routes to an existing local kit
-
-For an app installed with a version 1 kit file, start in your installation folder. Inspect the app to get its `installation` token and the full `sha256:` digest of the installed kit. Copy both values from this output.
-
-```sh
-your-space app upgrade-agent-kit <app-name> --inspect --json
-your-space app upgrade-agent-kit <app-name> --kit ./kit-v2.yaml \
-  --expect-installation <installation> --expect-kit <kitSource>
-```
-
-Start with the original file, change `kit: 1` to `kit: 2` and add its `agentAccess` declaration. Keep its existing interface, environment, limits and other installation fields. A kit from before kits gave the environment in `env` names the same values there: its `generate`, `derive` and `set` entries, and each name in `secrets` as `{ ask: optional }`. To pipe the file, use `--kit - < kit-v2.yaml`. The upgrade preserves the app’s installation ID and data. A running installation refreshes its interface if needed. A stopped installation stays stopped. The owner still needs to bind a credential, enable eligible roles and grant agent access in **Agents**.
-
-If the interface refresh fails after the kit is saved, run `--inspect` again. Retry the refresh with the inspected installation token and the **new** kit digest:
-
-```sh
-your-space app upgrade-agent-kit <app-name> --refresh \
-  --expect-installation <installation> --expect-kit <new-kitSource>
-```
+To add agent routes to an app that is already installed, remove it from **Apps** and keep its data, then install it again from its version 2 kit with **Reuse kept data**.
 
 ## Grant access to an agent
 

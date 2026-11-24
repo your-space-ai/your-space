@@ -9,10 +9,6 @@ import { activity, dashboard, hash, identity, transaction } from "../src/agents/
 import { bind, createAgent, grant, manageKey } from "../src/agents/owner.ts";
 import { decide, discover, invoke, receipt } from "../src/agents/invoke.ts";
 import { dispatchAppAction } from "../src/agents/transport.ts";
-import * as runtime from "../src/apps/runtime-client.ts";
-import { installedGeneration } from "../src/apps/upgrade-agent-kit.ts";
-import { recordEvent } from "../src/actors.ts";
-import { refreshAgentInterface } from "../src/apps/refresh-agent-interface.ts";
 import { moveSettingsToDataKey } from "../src/apps/keys.ts";
 
 vi.mock("../src/agents/transport.ts", () => ({ dispatchAppAction: vi.fn() }));
@@ -447,39 +443,4 @@ it("retires the old grant, credential and pending approval when a kit changes it
   expect(fresh.status).toBe("pending");
   expect((await approve(fresh.id)).status).toBe("succeeded");
   expect(dispatchAppAction).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ path: "/new-items" }));
-});
-
-it("refreshes a running installation only for the current pinned kit and respects the owner's stopped intent", async () => {
-  const refresh = vi.spyOn(runtime, "refreshRuntimeInterface").mockResolvedValue({ status: "current" });
-  const config = { publicUrl: "http://space.localhost", dataKey: key };
-  const source = "sha256:" + "a".repeat(64);
-  const generation = await installedGeneration(t.db, installation);
-  await t.pool.query("update app set kit_source=$2 where id=$1", [installation, source]);
-  try {
-    await expect(refreshAgentInterface(t.db, config, installation, "old", generation)).rejects.toMatchObject({ status: 409 });
-    expect(refresh).not.toHaveBeenCalled();
-    expect(await refreshAgentInterface(t.db, config, installation, source, generation)).toBe("current");
-    expect(refresh).toHaveBeenCalledWith(expect.objectContaining({
-      appId: installation, project: "ys-example", interface: { service: "app", port: 1234 }, publish: null,
-    }));
-    refresh.mockRejectedValueOnce(new Error("private upstream diagnostics"));
-    await expect(refreshAgentInterface(t.db, config, installation, source, generation)).rejects.toMatchObject({
-      code: "interface_unavailable", message: expect.not.stringContaining("private"),
-    });
-    refresh.mockResolvedValueOnce({ status: "refreshed" });
-    expect(await refreshAgentInterface(t.db, config, installation, source, generation)).toBe("refreshed");
-    await t.pool.query("insert into install_job(app_id,kind) values($1,'apply')", [installation]);
-    await expect(refreshAgentInterface(t.db, config, installation, source, generation)).rejects.toMatchObject({ code: "app_busy" });
-    await t.pool.query("update app set desired='stopped' where id=$1", [installation]);
-    expect(await refreshAgentInterface(t.db, config, installation, source, generation)).toBe("stopped");
-    // A retained-data reinstall can preserve both the row UUID and the kit digest.
-    await t.pool.query("update app set desired='running' where id=$1", [installation]);
-    await recordEvent(t.db, "app.installed", owner, null, installation);
-    await expect(refreshAgentInterface(t.db, config, installation, source, generation)).rejects.toMatchObject({
-      code: "installation_changed",
-    });
-    expect(refresh).toHaveBeenCalledTimes(3);
-  } finally {
-    refresh.mockRestore();
-  }
 });
