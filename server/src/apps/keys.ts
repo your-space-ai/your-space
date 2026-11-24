@@ -1,15 +1,14 @@
 // Moves apps' settings onto the current data key when the server starts (spec 009, FR-003, FR-005):
-// values written before the data key existed (v1, encrypted with a key from the auth secret), and
-// values encrypted with the data key a replacement left behind. It runs before the server serves
+// values encrypted with the data key a replacement left behind. No release wrote values before the
+// data key, so none is read with the auth secret (decision 2026-11-23, Alpha scope). It runs before the server serves
 // anything, in one transaction, so a value is never half moved. A value no key can read is left as
 // it is, and the app reports it when it next needs its settings.
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { appSetting } from "../db/schema.ts";
-import { decrypt, decryptLegacy, encrypt } from "./settings.ts";
+import { decrypt, encrypt } from "./settings.ts";
 
 export interface Keys {
-  authSecret: string;
   dataKey: string;
   previousDataKey?: string;
 }
@@ -27,7 +26,6 @@ function readable(keys: Keys, stored: string): string | undefined {
   const attempts = [
     () => decrypt(keys.dataKey, stored),
     () => (keys.previousDataKey ? decrypt(keys.previousDataKey, stored) : undefined),
-    () => decryptLegacy(keys.authSecret, stored),
   ];
   for (const attempt of attempts) {
     try {

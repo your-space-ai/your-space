@@ -1,23 +1,22 @@
 // App settings and secrets (component F, FR-006, FR-018). Values are encrypted at rest with the data
-// key (spec 009), and secret values are never returned by any route or command. Values written
-// before the data key existed are "v1", encrypted with a key derived from the auth secret; the
-// server moves them onto the data key when it starts (keys.ts).
+// key (spec 009), and secret values are never returned by any route or command. No release wrote a
+// value before the data key, so none is read with the auth secret (decision 2026-11-23, Alpha scope).
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import type { EnvSource, Kit, StoredKit } from "../db/schema.ts";
 
-/** The AES-256-GCM key for apps' settings, from the data key (v2) or, before it, the auth secret (v1). */
+/** The AES-256-GCM key for apps' settings, from the data key. */
 function key(secret: string): Buffer {
   return Buffer.from(hkdfSync("sha256", secret, "your-space", "app-settings", 32));
 }
 
-function seal(version: "v1" | "v2", secret: string, value: string): string {
+function seal(version: "v2", secret: string, value: string): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key(secret), iv);
   const data = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   return [version, iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
 }
 
-function open(version: "v1" | "v2", secret: string, stored: string): string {
+function open(version: "v2", secret: string, stored: string): string {
   const [found, iv, tag, data] = stored.split(".");
   if (found !== version || !iv || !tag || data === undefined) throw new Error("Unknown setting format.");
   const decipher = createDecipheriv("aes-256-gcm", key(secret), Buffer.from(iv, "base64url"));
@@ -33,16 +32,6 @@ export function encrypt(dataKey: string, value: string): string {
 /** Decrypts a setting encrypted with the data key; throws for any other key or format. */
 export function decrypt(dataKey: string, stored: string): string {
   return open("v2", dataKey, stored);
-}
-
-/** Decrypts a setting written before the data key, with the auth secret it was encrypted with. */
-export function decryptLegacy(authSecret: string, stored: string): string {
-  return open("v1", authSecret, stored);
-}
-
-/** Writes a setting the way it was before the data key, for tests of the move onto it. */
-export function encryptLegacy(authSecret: string, value: string): string {
-  return seal("v1", authSecret, value);
 }
 
 export function generateValue(options: { bytes?: number; encoding?: "hex" | "base64url" } = {}): string {

@@ -18,7 +18,8 @@ that replacing the auth secret leaves installed apps' settings unreadable.
 - **Done when:** the secrets Your Space stores, which today are installed apps' settings (their
   keys, passwords and API keys), are encrypted with a key of its own; replacing the auth secret only signs people out; existing
   installations move onto the new key by themselves; and the guide says exactly what is encrypted,
-  with what, and what that does and doesn't protect against.
+  with what, and what that does and doesn't protect against. (Superseded 2026-11-23 for the move:
+  no release wrote values before the data key, so none is moved; see FR-003.)
 - **Not covered:** encrypting the whole database or the disk, which stays the owner's
   responsibility for now (the guide says how; a streamlined way may come later), encrypting apps'
   own databases and volumes (each app's data is the app's), backup
@@ -75,7 +76,9 @@ A streamlined way to do it may come later, for example if `pg_tde` reaches commu
   keeps them, protected by the cookie signature (see [Decisions](#decisions-and-open-questions)).
 - **FR-003**: On start, values still encrypted with the key derived from the auth secret are
   re-encrypted with the data key in one transaction, so existing installations move over by
-  themselves. Once moved, replacing the auth secret only signs people out.
+  themselves. Once moved, replacing the auth secret only signs people out. (Removed 2026-11-23: no
+  release wrote values before the data key, so the server no longer reads any with the auth secret;
+  see the [alpha scope](../../docs/architecture/decisions.md#alpha-scope).)
 - **FR-004**: If the data key is missing but encrypted values exist, Your Space stops before
   starting anything, with recovery steps, as it already does for a lost database password.
 - **FR-005**: The owner can replace the data key (`your-space secrets replace data-key`, or the
@@ -95,7 +98,9 @@ A streamlined way to do it may come later, for example if `pg_tde` reaches commu
   unchanged; the browser test that found the problem passes without reinstalling.
 - **SC-002**: A copy of the `ys-postgres` volume holds no app setting in plain text.
 - **SC-003**: An installation with apps installed before this change starts after it with every
-  app's settings readable, and no value left on the old key.
+  app's settings readable, and no value left on the old key. (Superseded 2026-11-23: a value left on
+  the old key stays as it is and is reported unreadable; see FR-003 and the
+  [alpha scope](../../docs/architecture/decisions.md#alpha-scope).)
 
 ## Decisions and Open Questions
 

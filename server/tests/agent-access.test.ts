@@ -135,7 +135,7 @@ it("keeps rejected requests terminal and pending previews readable after install
   await setGrant(0);
   const pending = await invoke(t.db, key, verifier, show());
   const next = key + "-new";
-  await moveSettingsToDataKey(t.db, { authSecret: "test", dataKey: next, previousDataKey: key });
+  await moveSettingsToDataKey(t.db, { dataKey: next, previousDataKey: key });
   expect((await transaction(t.db, (c) => dashboard(c, owner, next))).requests[0]?.input).toEqual(show().input);
   expect((await decide(t.db, next, owner, pending.id, { approve: false, revision: 1 })).status).toBe("rejected");
   expect((await requestOutcome(t.db, verifier, pending.id, next)).status).toBe("rejected");
