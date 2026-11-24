@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, type ChangeEvent } from "react";
-import { defaultThemeId, starterThemes, validateTheme, type Theme } from "../../../shared/appearance/theme.mjs";
-import { activePaletteQuery, catalogQuery, selectedTheme, type AppearanceCatalog, type ThemeEntry } from "../appearance.ts";
+import { builtInThemes, defaultThemeId, validateTheme, type Theme, type ThemeMode } from "../../../shared/appearance/theme.mjs";
+import { activePaletteQuery, catalogQuery, selectedTheme, workspaceLook, type AppearanceCatalog, type ThemeEntry } from "../appearance.ts";
 import { ApiError, api, errorMessage } from "../apps-api.ts";
-import { ThemeEditor, themeStyle, type ThemeDraft } from "../components/ThemeEditor.tsx";
+import { schemes, styleNames, ThemeEditor, ThemeSample, themeStyle, type ThemeDraft } from "../components/ThemeEditor.tsx";
 import { sessionQuery } from "../queries.ts";
 
 const themePath = "/api/appearance/themes";
 type Change = { method: "POST" | "PUT" | "DELETE"; path: string; body: object };
+const modes: [ThemeMode, string][] = [["system", "Match my device"], ["light", "Light"], ["dark", "Dark"]];
 
 function download(theme: Theme) {
   const file = new Blob([JSON.stringify(validateTheme(theme), null, 2) + "\n"], { type: "application/json" });
@@ -22,7 +23,8 @@ function download(theme: Theme) {
 }
 
 function Swatches({ theme }: { theme: Theme }) {
-  return <span className="swatches" aria-hidden="true">{(["bg","panel","fg","accent"] as const).map((key) => <i key={key} style={{ backgroundColor: theme.tokens[key] }} />)}</span>;
+  return <span className="swatches" aria-hidden="true">{schemes.map(([scheme]) => (["bg", "fg", "accent"] as const)
+    .map((key) => <i key={scheme + key} style={{ backgroundColor: theme[scheme][key] }} />))}</span>;
 }
 
 export function Appearance() {
@@ -34,6 +36,10 @@ export function Appearance() {
   const [draft, setDraft] = useState<ThemeDraft | null>(null);
   const [deleting, setDeleting] = useState<{ id: string; revision: number } | null>(null);
   const [notice, setNotice] = useState("");
+  // The mode a click asked for, shown until the server answers.
+  const [modeChoice, setModeChoice] = useState<ThemeMode | null>(null);
+  // Which mode click is the latest, so an earlier one that finishes later leaves its choice shown.
+  const modeRequest = useRef(0);
   const [error, setError] = useState("");
   const file = useRef<HTMLInputElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -61,13 +67,23 @@ export function Appearance() {
       ]);
       client.setQueryData(options.queryKey, updated);
       const active = selectedTheme(updated);
-      if (active) client.setQueryData(activePaletteQuery.queryKey, { scheme: active.scheme, tokens: active.tokens });
+      if (active) client.setQueryData(activePaletteQuery.queryKey, workspaceLook(active, updated.mode));
       setNotice(success);
       return true;
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) {
         setError(cause.code === "theme_in_use" ? "Choose another theme before deleting the current one." : "Your theme library changed. Review the latest version and try again.");
-        await catalog.refetch();
+        // Another browser changed the library: show its latest themes, and apply the look from that
+        // same snapshot, as a successful change does, so the mode controls and the page agree.
+        const latest = await catalog.refetch();
+        await client.cancelQueries({ queryKey: activePaletteQuery.queryKey });
+        const active = latest.isSuccess ? selectedTheme(latest.data) : undefined;
+        // A change that succeeded during these waits has already applied its newer look: keep it.
+        const superseded = latest.isSuccess && client.getQueryData(options.queryKey)?.revision !== latest.data.revision;
+        if (!superseded) {
+          if (latest.isSuccess && active) client.setQueryData(activePaletteQuery.queryKey, workspaceLook(active, latest.data.mode));
+          else await client.invalidateQueries({ queryKey: activePaletteQuery.queryKey });
+        }
         setDeleting(null);
       } else setError(errorMessage(cause));
       return false;
@@ -105,8 +121,15 @@ export function Appearance() {
   );
 
   const library = data;
-  const current = selectedTheme(library) ?? starterThemes.find((item) => item.id === defaultThemeId)!.theme;
+  const current = selectedTheme(library) ?? builtInThemes.find((item) => item.id === defaultThemeId)!.theme;
   const applyTheme = (entry: ThemeEntry) => change({ method: "PUT", path: "/api/appearance/selection", body: { id: entry.id, revision: library.revision } }, `${entry.theme.name} is now your workspace theme.`);
+  const applyMode = async (mode: ThemeMode, label: string) => {
+    if (busy) return;
+    const request = ++modeRequest.current;
+    setModeChoice(mode);
+    try { await change({ method: "PUT", path: "/api/appearance/mode", body: { mode, revision: library.revision } }, `Mode set to ${label}.`); }
+    finally { if (modeRequest.current === request) setModeChoice(null); }
+  };
   const duplicate = (theme: Theme) => edit({ ...theme, name: `${theme.name.slice(0, 55).trimEnd()} copy` });
 
   if (draft) return (
@@ -131,16 +154,20 @@ export function Appearance() {
       </header>
       <div role="status" className="theme-feedback">{notice}</div>
       {error ? <p className="notice error" role="alert">{error}</p> : null}
+      <fieldset className="mode-choice">
+        <legend className="collection-title">Mode</legend>
+        <div className="mode-options">{modes.map(([mode, label]) => (
+          <label key={mode} className="checkbox"><input type="radio" name="appearance-mode" value={mode} checked={(modeChoice ?? library.mode) === mode}
+            onChange={() => void applyMode(mode, label)} /> {label}</label>
+        ))}</div>
+      </fieldset>
       <section aria-labelledby="starters">
-        <h2 id="starters" className="collection-title">Starter themes</h2>
-        <div className="starter-grid">{starterThemes.map((entry) => {
+        <h2 id="starters" className="collection-title">Built-in themes</h2>
+        <div className="starter-grid">{builtInThemes.map((entry) => {
           const active = entry.id === library.activeId;
           return <article key={entry.id} className="starter-card" data-selected={active} aria-label={entry.theme.name}>
-            <div className="starter-cover" style={themeStyle(entry.theme)}>
-              <img src={`/themes/${entry.id}.webp`} alt="" />
-              <span className="cover-name">{entry.theme.name}</span>
-            </div>
-            <div className="starter-meta"><Swatches theme={entry.theme} /><span>{entry.theme.scheme === "dark" ? "Dark" : "Light"} · {entry.theme.tokens.fontHeading}</span></div>
+            <div className="starter-meta"><h3>{entry.theme.name}</h3><span>{styleNames[entry.theme.style]} · {entry.theme.fonts.heading}</span></div>
+            <div className="starter-previews">{schemes.map(([scheme, label]) => <ThemeSample key={scheme} theme={entry.theme} scheme={scheme} label={label} />)}</div>
             <div className="starter-actions">
               <button type="button" className="secondary apply-theme" disabled={busy || active} aria-label={active ? `${entry.theme.name} is current` : `Use ${entry.theme.name}`} onClick={() => void applyTheme(entry)}>{active ? "✓ Current" : "Use theme"}</button>
               <button type="button" className="text-button" disabled={busy} aria-label={`Customize ${entry.theme.name}`} onClick={() => duplicate(entry.theme)}>Customize</button>
@@ -151,11 +178,11 @@ export function Appearance() {
       </section>
       <section className="personal-themes" aria-labelledby="custom">
         <h2 id="custom" className="collection-title">Your themes</h2>
-        {!library.themes.length ? <div className="theme-empty"><span className="empty-swatch" aria-hidden="true">Aa</span><div><strong>No custom themes yet</strong><p>Customize a starter theme or import a theme file.</p></div></div> : (
+        {!library.themes.length ? <div className="theme-empty"><span className="empty-swatch" aria-hidden="true">Aa</span><div><strong>No custom themes yet</strong><p>Customize a built-in theme or import a theme file.</p></div></div> : (
           <ul className="custom-list">{library.themes.map((entry) => {
             const active = entry.id === library.activeId;
             return <li key={entry.id} aria-label={entry.theme.name}>
-              <div className="custom-row"><span className="custom-tile" style={themeStyle(entry.theme)} aria-hidden="true">Aa</span>
+              <div className="custom-row">{schemes.map(([scheme]) => <span key={scheme} className="custom-tile" style={themeStyle(entry.theme, scheme)} aria-hidden="true">Aa</span>)}
                 <div className="custom-name"><strong>{entry.theme.name}</strong><Swatches theme={entry.theme} /></div>
                 <div className="actions">
                   <button type="button" className="secondary apply-theme" disabled={busy || active} onClick={() => void applyTheme(entry)} aria-label={active ? `${entry.theme.name} is current` : `Use ${entry.theme.name}`}>{active ? "✓ Current" : "Use theme"}</button>

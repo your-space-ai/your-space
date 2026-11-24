@@ -327,8 +327,9 @@ export const workspaceAppearance = pgTable("workspace_appearance", {
   workspaceId: uuid("workspace_id").primaryKey().references(() => organization.id, { onDelete: "cascade" }),
   revision: integer("revision").notNull(),
   activeId: text("active_id").notNull(),
+  mode: text("mode", { enum: ["system", "light", "dark"] }).notNull().default("system"),
   themes: jsonb("themes").$type<{ id: string; theme: Theme }[]>().notNull(),
-});
+}, (t) => [check("workspace_appearance_mode_valid", sql`${t.mode} in ('system', 'light', 'dark')`)]);
 
 export const ownerLayout = pgTable("owner_layout", {
   workspaceId: uuid("workspace_id").notNull().references(() => organization.id, {onDelete:"cascade"}),

@@ -5,7 +5,7 @@
   const file = byId("theme-file");
   const error = byId("theme-error");
   const save = byId("apply-theme");
-  const art = { canopy: "canopy.webp", tide: "tide.webp", ember: "ember.webp" };
+  const dark = window.matchMedia("(prefers-color-scheme: dark)");
   let library;
   let themes = [];
   let choice;
@@ -13,17 +13,11 @@
   let revision = 0;
   let saving = false;
 
-  function artwork(id) {
-    return Object.hasOwn(art, id) ? "../../web/public/themes/" + art[id] : null;
-  }
-
+  // Each theme has a light and a dark palette; the launcher shows the one the Mac is using.
   function paint(theme) {
-    for (const [key, value] of Object.entries(theme.variables)) document.documentElement.style.setProperty(key, value);
-    document.documentElement.style.colorScheme = theme.scheme;
-    const image = byId("workspace-art");
-    const url = artwork(theme.id);
-    if (url) image.src = url;
-    image.hidden = !url;
+    const look = dark.matches ? theme.dark : theme.light;
+    for (const [key, value] of Object.entries(look.variables)) document.documentElement.style.setProperty(key, value);
+    document.documentElement.style.colorScheme = look.scheme;
   }
 
   function current() {
@@ -53,16 +47,9 @@
       });
       const sample = document.createElement("span");
       sample.className = "theme-sample";
-      const url = artwork(theme.id);
-      if (url) {
-        const image = document.createElement("img");
-        image.alt = "";
-        image.src = url;
-        sample.append(image);
-      } else {
-        sample.classList.add("custom-sample");
-        sample.style.setProperty("--sample-bg", theme.variables["--bg"]);
-        sample.style.setProperty("--sample-accent", theme.variables["--accent"]);
+      for (const scheme of ["light", "dark"]) {
+        sample.style.setProperty("--sample-" + scheme + "-bg", theme[scheme].variables["--bg"]);
+        sample.style.setProperty("--sample-" + scheme + "-accent", theme[scheme].variables["--accent"]);
       }
       const name = document.createElement("span");
       name.className = "theme-name";
@@ -137,6 +124,10 @@
       saving = false;
       byId("theme-controls").disabled = false;
     }
+  });
+
+  dark.addEventListener("change", () => {
+    if (library) paint(dialog.open && choice ? choice : current());
   });
 
   api.appearance().then(result => {

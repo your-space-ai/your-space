@@ -1,55 +1,71 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { fontSuggestions, themeVariables, validateTheme, type Theme } from "../../../shared/appearance/theme.mjs";
+import {
+  contrastRatio, fontSuggestions, paletteScheme, surfaceColor, themeStyles, themeVariables, validateTheme,
+  type ColorScheme, type Palette, type Theme, type ThemeFonts, type ThemeLook, type ThemeStyle,
+} from "../../../shared/appearance/theme.mjs";
 
 export type ThemeDraft = { id?: string; initial: Theme; revision: number };
 
 const colors = [
   ["bg", "Background"], ["panel", "Surfaces"], ["fg", "Text"], ["muted", "Secondary text"],
   ["accent", "Accent"], ["accentInk", "Text on accent"], ["border", "Borders"],
-  ["danger", "Errors"], ["success", "Success"],
+  ["danger", "Errors"], ["success", "Success"], ["warning", "Warnings"],
 ] as const;
+export const schemes = [["light", "Light"], ["dark", "Dark"]] as const;
+export const styleNames: Record<ThemeStyle, string> = { crisp: "Crisp", soft: "Soft", bold: "Bold" };
+const styleHints: Record<ThemeStyle, string> = {
+  crisp: "hairline borders and small corners",
+  soft: "tinted surfaces and larger corners",
+  bold: "heavy rules and square corners",
+};
+const fonts = [["heading", "Heading font"], ["body", "Body font"], ["mono", "Monospace font"]] as const;
 
-export function themeStyle(theme: Theme): CSSProperties {
-  return { ...themeVariables(theme), colorScheme: theme.scheme } as CSSProperties;
+export function themeStyle(theme: ThemeLook, scheme: ColorScheme): CSSProperties {
+  return { ...themeVariables(theme, scheme), colorScheme: paletteScheme(theme[scheme]) } as CSSProperties;
 }
 
-function luminance(hex: string) {
-  const linear = (offset: number) => {
-    const channel = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
-    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * linear(1) + 0.7152 * linear(3) + 0.0722 * linear(5);
-}
-
-function contrastIssues(theme: Theme) {
-  const t = theme.tokens;
+// Text on surfaces is checked against the surface as the style renders it: Soft tints it.
+function contrastIssues(palette: Palette, style: ThemeStyle) {
+  const surface = surfaceColor(palette, style);
   return [
-    ["text on the background", t.fg, t.bg],
-    ["text on surfaces", t.fg, t.panel],
-    ["secondary text on surfaces", t.muted, t.panel],
-    ["accent button text", t.accentInk, t.accent],
-  ].filter(([, ink, surface]) => {
-    const a = luminance(ink!);
-    const b = luminance(surface!);
-    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) < 4.5;
-  }).map(([label]) => label);
+    ["text on the background", palette.fg, palette.bg],
+    ["text on surfaces", palette.fg, surface],
+    ["secondary text on surfaces", palette.muted, surface],
+    ["accent button text", palette.accentInk, palette.accent],
+  ].filter(([, ink, surface]) => contrastRatio(ink!, surface!) < 4.5).map(([label]) => label);
 }
 
-function Preview({ theme }: { theme: Theme }) {
-  const issues = contrastIssues(theme);
+/** A small sample of the dashboard in one of a theme's palettes. */
+export function ThemeSample({ theme, scheme, label }: { theme: ThemeLook; scheme: ColorScheme; label: string }) {
   return (
-    <aside className="editor-preview" aria-label="Theme preview">
-      <h2>Live preview</h2>
-      <div className="preview-sheet" style={themeStyle(theme)}>
+    <figure className="theme-sample">
+      <figcaption>{label}</figcaption>
+      <div className="preview-sheet" style={themeStyle(theme, scheme)} aria-hidden="true">
         <div className="preview-title">Your workspace</div>
         <div className="preview-card">
           <strong>Apps</strong>
           <p>Your connected apps appear here.</p>
           <span className="sample-action">Open app</span>
         </div>
-        <div className="preview-states"><span>Running</span><span>Error</span></div>
+        <div className="preview-states"><span className="state-success">Running</span><span className="state-warning">Needs you</span><span className="state-danger">Error</span></div>
       </div>
-      {issues.length > 0 ? <p className="contrast-advice" role="status">Low contrast for {issues.join(", ")}. Adjust these colors for easier reading.</p> : null}
+    </figure>
+  );
+}
+
+function Preview({ theme }: { theme: Theme }) {
+  return (
+    <aside className="editor-preview" aria-label="Theme preview">
+      <h2>Live preview</h2>
+      {schemes.map(([scheme, label]) => {
+        const issues = contrastIssues(theme[scheme], theme.style);
+        return (
+          <div key={scheme}>
+            <ThemeSample theme={theme} scheme={scheme} label={label} />
+            {issues.length > 0 ? <p className="contrast-advice" role="status">Low contrast in {label} for {issues.join(", ")}. Adjust these colors for easier reading.</p> : null}
+          </div>
+        );
+      })}
     </aside>
   );
 }
@@ -76,8 +92,11 @@ export function ThemeEditor({ draft, busy, stale, error, onCancel, onReload, onS
   }, [theme]);
   useEffect(() => { if (parsed.value) setPreview(parsed.value); }, [parsed]);
 
-  function token(key: keyof Theme["tokens"], value: string) {
-    setTheme((current) => ({ ...current, tokens: { ...current.tokens, [key]: value } }));
+  function color(scheme: ColorScheme, key: keyof Palette, value: string) {
+    setTheme((current) => ({ ...current, [scheme]: { ...current[scheme], [key]: value } }));
+  }
+  function font(key: keyof ThemeFonts, value: string) {
+    setTheme((current) => ({ ...current, fonts: { ...current.fonts, [key]: value } }));
   }
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -95,28 +114,32 @@ export function ThemeEditor({ draft, busy, stale, error, onCancel, onReload, onS
             <legend className="visually-hidden">Theme settings</legend>
             <div className="editor-basics">
               <label>Theme name<input required maxLength={60} value={theme.name} onChange={(e) => setTheme({ ...theme, name: e.target.value })} /></label>
-              <label>Color scheme<select value={theme.scheme} onChange={(e) => setTheme({ ...theme, scheme: e.target.value as Theme["scheme"] })}><option value="light">Light</option><option value="dark">Dark</option></select></label>
+              <label>Style<select value={theme.style} onChange={(e) => setTheme({ ...theme, style: e.target.value as ThemeStyle })}>
+                {themeStyles.map((style) => <option value={style} key={style}>{styleNames[style]}: {styleHints[style]}</option>)}
+              </select></label>
             </div>
-            <fieldset className="editor-group">
-              <legend>Colors</legend>
-              <div className="color-grid">
-                {colors.map(([key, label]) => (
-                  <div className="color-field" key={key}>
-                    <label htmlFor={`hex-${key}`}>{label}</label>
-                    <div>
-                      <input type="color" aria-label={`Pick ${label.toLowerCase()} color`} value={/^#[0-9a-f]{6}$/i.test(theme.tokens[key]) ? theme.tokens[key] : preview.tokens[key]} onChange={(e) => token(key, e.target.value)} />
-                      <input id={`hex-${key}`} spellCheck={false} autoComplete="off" value={theme.tokens[key]} maxLength={7} onChange={(e) => token(key, e.target.value)} />
+            {schemes.map(([scheme, label]) => (
+              <fieldset className="editor-group" key={scheme}>
+                <legend>{label} colors</legend>
+                <div className="color-grid">
+                  {colors.map(([key, name]) => (
+                    <div className="color-field" key={key}>
+                      <label htmlFor={`${scheme}-${key}`}><span className="visually-hidden">{label} </span>{name}</label>
+                      <div>
+                        <input type="color" aria-label={`Pick the ${label.toLowerCase()} ${name.toLowerCase()} color`}
+                          value={/^#[0-9a-f]{6}$/i.test(theme[scheme][key]) ? theme[scheme][key] : preview[scheme][key]} onChange={(e) => color(scheme, key, e.target.value)} />
+                        <input id={`${scheme}-${key}`} spellCheck={false} autoComplete="off" value={theme[scheme][key]} maxLength={7} onChange={(e) => color(scheme, key, e.target.value)} />
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </fieldset>
+                  ))}
+                </div>
+              </fieldset>
+            ))}
             <fieldset className="editor-group">
               <legend>Typography</legend>
-              <p className="muted">Use a font installed on your device or choose a suggested family.</p>
+              <p className="muted">Instrument Sans, Space Grotesk, Fraunces and IBM Plex Mono come with Your Space. Other fonts need to be installed on each device.</p>
               <div className="font-grid">
-                <label>Heading font<input list="theme-fonts" value={theme.tokens.fontHeading} onChange={(e) => token("fontHeading", e.target.value)} /></label>
-                <label>Body font<input list="theme-fonts" value={theme.tokens.fontBody} onChange={(e) => token("fontBody", e.target.value)} /></label>
+                {fonts.map(([key, label]) => <label key={key}>{label}<input list="theme-fonts" value={theme.fonts[key]} onChange={(e) => font(key, e.target.value)} /></label>)}
               </div>
               <datalist id="theme-fonts">{fontSuggestions.map((font) => <option value={font} key={font} />)}</datalist>
             </fieldset>

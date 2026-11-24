@@ -1,7 +1,10 @@
 // Run with node --test desktop/tests/launcher.browser.mjs after installing e2e's Chromium.
 import assert from "node:assert/strict";
-import { starterThemes, themeVariables } from "../../shared/appearance/theme.mjs";
+import { builtInThemes } from "../../shared/appearance/theme.mjs";
+import { launcherAppearance } from "../src/appearance.mjs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, test } from "node:test";
 
 const require = createRequire(new URL("../../e2e/package.json", import.meta.url));
@@ -10,6 +13,8 @@ const launcher = new URL("../renderer/index.html", import.meta.url).href;
 const local = { name: "desktop-linux", socket: "/fixtures/default.sock", detected: true };
 const alternate = { name: "alt", socket: "/fixtures/other.sock", detected: false };
 let browser;
+// The library a launcher without a saved choice offers: the built-in themes, Cerulean selected.
+const defaultLibrary = await launcherAppearance(join(tmpdir(), "ys-launcher-missing-" + process.pid, "launcher-theme.json")).get();
 
 before(async () => {
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined });
@@ -24,10 +29,7 @@ async function launch(t, handlers) {
   page.on("pageerror", error => errors.push(error.message));
   t.after(() => assert.deepEqual(errors, []));
   await page.exposeFunction("testDispatch", (method, arg) => {
-    if (method === "appearance" && !handlers.appearance) return {
-      selected: "canopy",
-      themes: starterThemes.map(({id, theme}) => ({id, name: theme.name, scheme: theme.scheme, variables: themeVariables(theme)})),
-    };
+    if (method === "appearance" && !handlers.appearance) return defaultLibrary;
     calls.push({ method, arg });
     if (!Object.hasOwn(handlers, method)) throw new Error("Unexpected bridge call");
     return handlers[method](arg);
@@ -158,4 +160,26 @@ test("remote connection remains available during a slow local engine check", asy
   finish({ engines: [], saved: null, problem: { code: "engine_missing", message: "Stopped" } });
   await expect(page.getByRole("alert")).toBeEmpty();
   await expect(page.getByRole("status")).toHaveText("Opening your dashboard…");
+});
+
+test("the launcher follows the Mac's light or dark appearance and previews a theme before saving it", async (t) => {
+  const { page, calls } = await launch(t, { saveTheme: ({ id }) => ({ ...defaultLibrary, selected: id }) });
+  const background = () => page.evaluate(() => document.documentElement.style.getPropertyValue("--bg"));
+  const [cerulean, , fern] = builtInThemes.map(({ theme }) => theme);
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect.poll(background).toBe(cerulean.light.bg);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect.poll(background).toBe(cerulean.dark.bg);
+  await expect(page.locator("html")).toHaveCSS("color-scheme", "dark");
+  await page.getByRole("button", { name: "Appearance" }).click();
+  await expect(page.getByRole("radio", { name: "Cerulean" })).toBeChecked();
+  await page.getByRole("radio", { name: "Fern" }).check();
+  await expect.poll(background).toBe(fern.dark.bg);
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect.poll(background).toBe(fern.light.bg);
+  await page.getByRole("button", { name: "Use theme" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  assert.deepEqual(calls, [{ method: "saveTheme", arg: { id: "fern", text: undefined } }]);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect.poll(background).toBe(fern.dark.bg);
 });
