@@ -65,7 +65,7 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
 7. **Apps.** Each managed app runs as a Compose project with its own network and declared storage. Owner-approved outbound hosts and opt-in publishing are described in [running apps and reaching them](decisions.md#running-apps-and-reaching-them). The connector for externally hosted apps belongs to 007.
 8. **Host.** The owner supplies a Docker-compatible engine on their personal machine or server. Only the workspace host needs Docker. A Mac connecting to an existing server needs its URL and the owner's sign-in. A bundled engine or VM follows publication.
 
-The dashboard reads presentation tokens from its workspace server. The Mac launcher uses the same portable theme format with a local device preference before connection. [Appearance](../appearance.md)
+The dashboard reads presentation tokens from its workspace server. The Mac launcher shows the default theme before connection. [Appearance](../appearance.md)
 
 The signed-in dashboard arranges installed app panes in a resizable grid. A named view stores app names, arrangement and divider percentages on the selected workspace server. Shortcut order is a separate owner preference. Each app continues through its own existing pane or published link. [Multi-app layouts](https://github.com/your-space-ai/your-space/blob/main/specs/012-multi-app-layouts/spec.md)
 

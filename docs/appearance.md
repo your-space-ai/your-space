@@ -4,7 +4,7 @@ title: "Create and share a theme"
 
 Open **Appearance** in the dashboard. Choose a mode: **Match my device** follows your browser's light or dark setting as it changes, and **Light** or **Dark** keeps one. Then choose a theme. Cerulean pairs blues with bold rules and Instrument Sans. Cinder pairs warm oranges with crisp lines and Space Grotesk headings. Fern pairs greens with soft corners and Fraunces headings. Each has a light and a dark palette, and both meet a 4.5:1 contrast ratio for text and button labels. Customize one to start designing. Preview your changes in both palettes and save the theme to this workspace.
 
-The workspace keeps its theme and mode, so every browser that opens it uses the same ones. With **Match my device**, each browser shows the palette for its own light or dark setting. The workspace owner can export a theme and someone else can import the same file. The Mac launcher also accepts a theme file before connecting. Its preference is local to the device, and it follows the Mac's light or dark appearance. Each connected dashboard follows its own server.
+The workspace keeps its theme and mode, so every browser that opens it uses the same ones. With **Match my device**, each browser shows the palette for its own light or dark setting. The workspace owner can export a theme and someone else can import the same file. The Mac launcher shows the default theme before connecting, following the Mac's light or dark appearance, and has no theme of its own. Each connected dashboard follows its own server.
 
 ## Theme file
 

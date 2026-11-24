@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } from 'electron';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { launcherAppearance } from './appearance.mjs';
+import { launcherTheme } from './appearance.mjs';
 import { createLocalSetup, localSetupError } from './local-setup.mjs';
 import { checkWorkspace, lastWorkspace, linkTarget, ownerDestination, rememberWorkspace, webDestination, WorkspaceError, workspaceOrigin, workspacePartition } from './workspace.mjs';
 
@@ -20,7 +20,6 @@ const local = createLocalSetup({
     resolve(process.env.YS_DESKTOP_RELEASE_DIR || join(desktop, 'dist/release')),
 });
 const savedFile = join(app.getPath('userData'), 'connection.json');
-const appearance = launcherAppearance(join(app.getPath('userData'), 'launcher-theme.json'));
 let launcher;
 let busy = false;
 
@@ -149,9 +148,7 @@ async function reopen() {
 
 function installHandlers() {
   const actions = {
-    appearance: appearance.get,
-    previewTheme: appearance.preview,
-    saveTheme: appearance.save,
+    appearance: launcherTheme,
     engines: () => local.engines(),
     start: startLocal,
     createOwner: async input => {
