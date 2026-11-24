@@ -28,7 +28,7 @@ Your Space gives exactly these to the app's Compose file, for each `${VARIABLE}`
 service that loads them with `env_file: .env`, as many apps' own files do. It keeps the values
 encrypted and writes no settings file. A Compose file that needs a variable with no default that the
 kit doesn't define is refused, and the review names it. Your Space refuses a file that loads settings
-or labels from any other file on the machine.
+or labels from any other file on the machine, or that includes or extends other Compose files.
 
 **Install.** In Apps, paste the GitHub link to the app's kit and choose Review. A link to a Compose
 file isn't enough: Your Space says so and asks for the kit's link. The review shows the kit and the

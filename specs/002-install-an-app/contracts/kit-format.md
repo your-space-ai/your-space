@@ -60,6 +60,8 @@ keep their settings. Nothing else in the file becomes a setting, and no variable
 secret. Each entry is one of:
 
 - **A value**, such as `info`, `2` or `false`, kept as text. It is shown, and the owner can change it.
+  An empty value is no value, as one the owner clears is: Your Space doesn't give the app the
+  variable, so the file's default applies.
 - **`{ generate: ... }`**, a random value generated when the app is installed: `true` for 32 bytes in
   base64url, or `{ bytes, encoding }` with 16 to 128 bytes and `hex` or `base64url`. It is secret,
   shown only as set.
@@ -82,7 +84,9 @@ A variable the Compose file reads with no default, as `${NAME}` or `$NAME`, or r
 the app until it is, with `The kit doesn't define NAME`. One with a default, such as `${NAME:-}` or `${NAME:-info}`, gets
 the default unless `env` defines it. A variable the file requires is required in the review even
 when the kit marks it `ask: optional`. A service whose `env_file` names any other file, and any
-`label_file`, is refused: Compose reads no file an app's file names. The `environment` a `.env`
+`label_file`, is refused: Compose reads no file an app's file names. So is a Compose file that
+includes others (`include`) or extends a service in another file (`extends` with `file`), before
+Compose sees it: an app is one Compose file, and `extends` within it still works. The `environment` a `.env`
 service's file sets itself wins over `env`, as it does over `.env`. Your Space writes no settings
 file: the values stay encrypted in its database and reach Compose only as its environment.
 

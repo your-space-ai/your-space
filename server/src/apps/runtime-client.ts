@@ -1,5 +1,6 @@
 // The runtime manager's API (contracts/runtime-api.md), over its Unix socket in the ys-runtime volume.
 import { request } from "node:http";
+import { otherComposeFiles } from "./compose-file.ts";
 
 export const RUNTIME_SOCKET = process.env.YS_RUNTIME_SOCKET ?? "/run/ys-runtime/runtime.sock";
 
@@ -161,22 +162,29 @@ export function installedInterface(project: string, id: string, service: string,
   return json("GET", `/apps/${encodeURIComponent(project)}/interface?${query}`, undefined, undefined, 5_000);
 }
 
-export function refreshRuntimeInterface(spec: AppSpec): Promise<{ status: "current" | "refreshed" }> {
-  return json("POST", `/apps/${encodeURIComponent(spec.project)}/interface`, spec);
+/** The app's spec, once its file names no other Compose file, which Compose would read (compose-file.ts). */
+function oneFile(spec: AppSpec): AppSpec {
+  const named = otherComposeFiles(spec.compose);
+  if (named) throw new RuntimeError(named, 400, "refused");
+  return spec;
+}
+
+export async function refreshRuntimeInterface(spec: AppSpec): Promise<{ status: "current" | "refreshed" }> {
+  return json("POST", `/apps/${encodeURIComponent(spec.project)}/interface`, oneFile(spec));
 }
 
 export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
   const p = (project: string) => `/apps/${encodeURIComponent(project)}`;
   return {
     engine: () => json("GET", "/engine", undefined, socketPath),
-    check: (spec) => json("POST", "/check", spec, socketPath),
+    check: async (spec) => json("POST", "/check", oneFile(spec), socketPath),
     async apply(spec, onEvent) {
       let failure: string | undefined;
       let done = false;
       const { status } = await call(
         "POST",
         "/apply",
-        spec,
+        oneFile(spec),
         (line) => {
           if (!line.trim()) return;
           const event = JSON.parse(line) as ApplyEvent;

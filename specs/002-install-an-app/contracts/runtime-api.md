@@ -52,7 +52,10 @@ which Compose tells apart from one whose default is empty only in its warning; t
 each one, and each `required` one, that the kit doesn't define. Any
 other `env_file`, such as an absolute path, `../x` or a second file, and any `label_file`, is a
 refusal naming the file, unless its service is left out with its profile. A file Compose can't read
-as written is refused with Compose's error, as an unreadable file always was.
+as written is refused with Compose's error, as an unreadable file always was. Compose reads the
+other Compose files a file names, with `include` (and an include's own `env_file`) or with
+`extends: { file }`, even as written, so the server refuses such a file, `400 refused`, before it
+sends it to `/check`, `/apply` or an interface refresh (2026-11-24).
 
 | Method and path | Body | Answer |
 | --- | --- | --- |
