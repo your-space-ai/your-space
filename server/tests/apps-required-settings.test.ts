@@ -1,5 +1,6 @@
-// A Compose file that requires settings, with `${NAME:?message}` or `${NAME?message}`: the review
-// shows it with those settings for the owner to fill in, and installing needs a value for each.
+// A Compose file that requires settings, with `${NAME:?message}` or `${NAME?message}`, which its kit
+// asks the owner for: the review shows it with those settings for the owner to fill in, and installing
+// needs a value for each.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { operatorActorId } from "../src/actors.ts";
 import { AppsService } from "../src/apps/service.ts";
@@ -16,9 +17,15 @@ const COMPOSE = `services:
       ADMIN_EMAIL: \${ADMIN_EMAIL?Set ADMIN_EMAIL}
       GREETING: \${GREETING:-hello}
 `;
-// The app's kit says nothing about these settings, so the file's own rules apply.
+// The kit asks for each. ADMIN_EMAIL it marks optional, but the file requires it, so it is required.
 const KIT_LINK = "https://github.com/ys-fixtures/kits/blob/main/needs.yaml";
-const KIT = `kit: 1\nsource: { repo: ys-fixtures/needs, path: compose.yaml, commit: ${COMMIT} }\n`;
+const KIT = `kit: 1
+source: { repo: ys-fixtures/needs, path: compose.yaml, commit: ${COMMIT} }
+env:
+  SECRET_KEY_BASE: { ask: true }
+  ADMIN_EMAIL: { ask: optional, secret: false }
+  GREETING: { ask: optional, secret: false }
+`;
 
 describe("an app whose file requires settings", () => {
   let t: TestDatabase;
@@ -53,11 +60,11 @@ describe("an app whose file requires settings", () => {
     expect(setting("SECRET_KEY_BASE")).toMatchObject({ required: true, set: false, secret: true, generated: false });
     expect(setting("ADMIN_EMAIL")).toMatchObject({ required: true, set: false, secret: false, value: null });
     expect(setting("GREETING")).toMatchObject({ required: false, publishedDefault: "hello" });
-    // Both checks ask for placeholders, which the server never sees or keeps.
+    // The check asks for placeholders, which the server never sees or keeps.
     const checks = runtime.calls.filter((c) => c.method === "check");
-    expect(checks).toHaveLength(2);
-    expect(checks.every((c) => c.spec!.placeholders === true)).toBe(true);
-    expect(checks[1]!.spec!.env).toEqual({});
+    expect(checks).toHaveLength(1);
+    expect(checks[0]!.spec!.placeholders).toBe(true);
+    expect(checks[0]!.spec!.env).toEqual({});
   });
 
   it("isn't installed until each required setting has a value", async () => {

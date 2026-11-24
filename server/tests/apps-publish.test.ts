@@ -26,10 +26,10 @@ source: { repo: ys-fixtures/linked, path: compose.yaml, commit: ${COMMIT} }
 name: linked
 title: Linked
 interface: { service: web, port: 80 }
-derive:
-  APP_URL: app_origin
-  APP_DOMAIN: app_host
-  CORS_ORIGINS: { template: "\${APP_URL},https://extra.example" }
+env:
+  APP_URL: { derive: app_origin }
+  APP_DOMAIN: { derive: app_host }
+  CORS_ORIGINS: { derive: { template: "\${APP_URL},https://extra.example" } }
 `;
 // A kit for an app that can't run in a pane.
 const NOPANE_KIT = `kit: 1

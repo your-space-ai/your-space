@@ -161,7 +161,9 @@ const REFUSED: Record<string, string> = {
   cgroup_parent: "Apps can't choose their control group.",
   volumes_from: "Apps can't mount another container's volumes.",
   sysctls: "Kernel settings can't be changed by apps.",
-  env_file: "Environment files on the host can't be read.",
+  // Compose reads both before the adapter sees the file; `envFiles` checks them first.
+  env_file: "Settings files on the machine can't be read.",
+  label_file: "Label files on the machine can't be read.",
   secrets: "File-based secrets aren't supported; use the app's settings.",
   configs: "File-based configs aren't supported.",
   group_add: "Extra groups are not available to apps.",
@@ -205,6 +207,70 @@ export function pinnedImage(image: string, digest: string): string {
   const ref = imageRef(image);
   const name = ref.slice(0, ref.lastIndexOf(":"));
   return `${name}@${digest}`;
+}
+
+/**
+ * The files an app's services load settings and labels from (2026-11-23), from Compose's reading of
+ * the app's file before it reads any of them: `docker compose config` with every resolution turned
+ * off (`UNRESOLVED`). Compose puts what such a file holds into the service and drops the key, so the
+ * adapter alone would never see one.
+ *
+ * A service whose `env_file` names only `.env`, the file next to the Compose file where self-hosted
+ * apps keep their settings, gets the environment the app's kit defines instead (`adapt`). Any other
+ * settings file, and any label file, is refused. Compose is told to read none of them (`resetFiles`).
+ */
+export interface EnvFiles {
+  /** Services that load `.env`, and so get the environment the app's kit defines. */
+  settings: string[];
+  /** Per service, the keys Compose must not read: `env_file`, `label_file` or both. */
+  reset: Record<string, string[]>;
+  refusals: Refusal[];
+}
+
+export const NO_ENV_FILES: EnvFiles = { settings: [], reset: {}, refusals: [] };
+
+/** `docker compose config` flags that read the file as written: nothing it names, nothing interpolated. */
+export const UNRESOLVED = ["--no-interpolate", "--no-env-resolution", "--no-normalize", "--no-path-resolution", "--no-consistency"];
+
+/** The paths a service's `env_file` or `label_file` names, in any of Compose's forms. */
+function filePaths(value: unknown): string[] {
+  const entries = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+  return entries.map((entry) => String(isObject(entry) ? entry.path : entry));
+}
+
+/** The app's own settings file, `.env` next to the Compose file. */
+const SETTINGS_FILE = new Set([".env", "./.env"]);
+
+export function envFiles(unresolved: Json): EnvFiles {
+  const files: EnvFiles = { settings: [], reset: {}, refusals: [] };
+  const services = isObject(unresolved.services) ? unresolved.services : {};
+  for (const [name, service] of Object.entries(services)) {
+    if (!isObject(service)) continue;
+    const envPaths = filePaths(service.env_file);
+    const labelPaths = filePaths(service.label_file);
+    const reset = [...(envPaths.length > 0 ? ["env_file"] : []), ...(labelPaths.length > 0 ? ["label_file"] : [])];
+    if (reset.length === 0) continue;
+    files.reset[name] = reset;
+    const others = envPaths.filter((path) => !SETTINGS_FILE.has(path));
+    for (const path of new Set(others)) {
+      files.refusals.push({ service: name, setting: "env_file", reason: `Settings file ${path} can't be read: Your Space gives a service the environment its kit defines in place of .env only.` });
+    }
+    for (const path of new Set(labelPaths)) {
+      files.refusals.push({ service: name, setting: "label_file", reason: `Label file ${path} can't be read: apps can't read files on the machine.` });
+    }
+    if (envPaths.length > 0 && others.length === 0) files.settings.push(name);
+  }
+  return files;
+}
+
+/** A Compose file, given after the app's, that tells Compose not to read the files `envFiles` found. */
+export function resetFiles(reset: EnvFiles["reset"]): string {
+  const lines = ["services:"];
+  for (const [service, keys] of Object.entries(reset)) {
+    lines.push(`  ${JSON.stringify(service)}:`);
+    for (const key of keys) lines.push(`    ${key}: !reset []`);
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 function checkVolumes(service: string, volumes: unknown, refusals: Refusal[]): void {
@@ -373,12 +439,24 @@ export function egressConfig(hosts: string[]): string {
 /**
  * Checks the resolved file and, when nothing is refused, builds the file to run. A published app's own
  * Caddy runs the image of Your Space's Caddy, and lets that Caddy's origin frame the app when the owner
- * shows it in Your Space.
+ * shows it in Your Space. A service that loads `.env` gets the environment the kit defines (`files`, in
+ * `spec.env`), under the environment its file sets, as Compose puts a settings file's values under it.
  */
-export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] = [], caddy?: OwnCaddy): CheckResult {
-  const refusals: Refusal[] = [];
-  const adaptations: Adaptation[] = [];
+export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] = [], caddy?: OwnCaddy, files: EnvFiles = NO_ENV_FILES): CheckResult {
   const services = isObject(resolved.services) ? resolved.services : {};
+  // A service left out with its profile doesn't run, so the files it names don't matter.
+  const refusals: Refusal[] = files.refusals.filter((r) => r.service in services);
+  const adaptations: Adaptation[] = [];
+  const settings = files.settings.filter((name) => name in services);
+  // Escaped as Compose escapes the values it resolved, so `up` takes each `$` as it is.
+  const settingValues = Object.fromEntries(Object.entries(spec.env).map(([name, value]) => [name, value.split("$").join("$$")]));
+  for (const name of settings) {
+    adaptations.push({
+      service: name,
+      kind: "changed",
+      detail: "Settings file .env replaced: Your Space gives the service the environment its installation kit defines.",
+    });
+  }
 
   for (const name of profiledServices) {
     if (!(name in services)) {
@@ -438,7 +516,7 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
       if (digest) out.image = pinnedImage(out.image, digest);
     }
     out.restart = restartPolicy(service);
-    const environment = isObject(service.environment) ? { ...service.environment } : {};
+    const environment = { ...(settings.includes(name) ? settingValues : {}), ...(isObject(service.environment) ? service.environment : {}) };
     for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]) environment[key] = proxy;
     environment.NO_PROXY = noProxy;
     environment.no_proxy = noProxy;

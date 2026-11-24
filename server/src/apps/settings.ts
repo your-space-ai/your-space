@@ -3,7 +3,7 @@
 // before the data key existed are "v1", encrypted with a key derived from the auth secret; the
 // server moves them onto the data key when it starts (keys.ts).
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
-import type { Kit } from "../db/schema.ts";
+import type { EnvSource, Kit, StoredKit } from "../db/schema.ts";
 
 /** The AES-256-GCM key for apps' settings, from the data key (v2) or, before it, the auth secret (v1). */
 function key(secret: string): Buffer {
@@ -45,47 +45,87 @@ export function encryptLegacy(authSecret: string, value: string): string {
   return seal("v1", authSecret, value);
 }
 
-const SECRET_NAME = /SECRET|PASSWORD|PASSWD|TOKEN|PRIVATE|CREDENTIAL|(^|_)KEY($|_)|API_?KEY|ENCRYPTION/i;
-
-/** Settings whose names say they hold a secret are never shown. */
-export function looksSecret(name: string): boolean {
-  return SECRET_NAME.test(name);
-}
-
 export function generateValue(options: { bytes?: number; encoding?: "hex" | "base64url" } = {}): string {
   return randomBytes(options.bytes ?? 32).toString(options.encoding ?? "base64url");
 }
 
-/** `${NAME}` in a kit's derive template: another setting the kit generates, sets or derives from the app's address. */
+/** `${NAME}` in a kit's derive template: another variable in the kit's env. */
 export const TEMPLATE_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
 export function templateNames(template: string): string[] {
   return [...template.matchAll(TEMPLATE_REFERENCE)].map((m) => m[1]!);
 }
 
-/** A template setting is secret when any setting it uses is. */
-export function templateIsSecret(kit: Kit, template: string): boolean {
-  return templateNames(template).some((ref) => kit.generate?.[ref] !== undefined || Boolean(kit.secrets?.includes(ref)) || looksSecret(ref));
+/**
+ * A kit's `env`. A kit stored before `env` (2026-11-23) named its values in `generate`, `derive` and
+ * `set`, and the settings shown only as set in `secrets`, which the owner could give.
+ */
+export function kitEnv(kit: StoredKit | null | undefined): Record<string, EnvSource> {
+  if (!kit) return {};
+  if (kit.env) return kit.env;
+  const env: Record<string, EnvSource> = {};
+  for (const name of kit.secrets ?? []) env[name] = { ask: "optional", secret: true };
+  for (const [name, value] of Object.entries(kit.set ?? {})) env[name] = value;
+  for (const [name, o] of Object.entries(kit.generate ?? {})) env[name] = { generate: { bytes: o.bytes ?? 32, encoding: o.encoding ?? "base64url" } };
+  for (const [name, derive] of Object.entries(kit.derive ?? {})) env[name] = { derive };
+  return env;
+}
+
+/** A stored kit in the form a kit file parses to, so the two compare. */
+export function withEnv(kit: StoredKit): Kit {
+  const { generate, derive, set, secrets, ...rest } = kit;
+  if (generate === undefined && derive === undefined && set === undefined && secrets === undefined) return rest;
+  return { ...rest, env: kitEnv(kit) };
+}
+
+/** The template a variable is derived with, if it is one. */
+export function templateOf(source: EnvSource | undefined): string | undefined {
+  return typeof source === "object" && "derive" in source && typeof source.derive === "object" ? source.derive.template : undefined;
+}
+
+/** Whether Your Space works a variable out itself, so the owner can't change it. */
+export function isDerived(env: Record<string, EnvSource>, name: string): boolean {
+  const source = env[name];
+  return typeof source === "object" && "derive" in source;
+}
+
+/** Whether the kit asks the owner for a variable the install needs. */
+export function isAsked(env: Record<string, EnvSource>, name: string): boolean {
+  const source = env[name];
+  return typeof source === "object" && "ask" in source && source.ask === true;
+}
+
+/** Whether Your Space shows a variable only as set: generated, asked as a secret, or a template that uses one. */
+export function isSecret(env: Record<string, EnvSource>, name: string): boolean {
+  const source = env[name];
+  if (typeof source !== "object") return false;
+  if ("generate" in source) return true;
+  if ("ask" in source) return source.secret;
+  const template = templateOf(source);
+  return template !== undefined && templateNames(template).some((ref) => ref !== name && isSecret(env, ref));
 }
 
 /**
- * Fills the kit's template settings from the current values of the settings they use. It runs
+ * Fills the kit's template variables from the current values of the variables they use. It runs
  * whenever the app's environment is built, so a changed password reaches the URL that contains it.
  * Values are inserted as they are; generated values are hex or base64url, so they are safe in URLs.
  */
-export function resolveTemplates(kit: Kit | null, values: Map<string, string | null>): Map<string, string | null> {
+export function resolveTemplates(env: Record<string, EnvSource>, values: Map<string, string | null>): Map<string, string | null> {
   const resolved = new Map(values);
-  for (const [name, derive] of Object.entries(kit?.derive ?? {})) {
-    if (typeof derive === "string") continue;
-    resolved.set(name, derive.template.replace(TEMPLATE_REFERENCE, (_, ref: string) => values.get(ref) ?? ""));
+  for (const [name, source] of Object.entries(env)) {
+    const template = templateOf(source);
+    if (template !== undefined) resolved.set(name, template.replace(TEMPLATE_REFERENCE, (_, ref: string) => values.get(ref) ?? ""));
   }
   return resolved;
 }
 
+/** A variable the app's file uses, as Compose lists it, and whether Compose had to leave it blank. */
 export interface Variable {
   name: string;
   required: boolean;
   default: string;
+  /** It had no value and no default, so Compose used a blank string. */
+  unset?: boolean;
 }
 
 export interface Setting {
@@ -105,59 +145,63 @@ export interface AppAddress {
 }
 
 /**
- * The settings an app's file reads, with values Your Space generates or works out. A published
- * default is never used for a secret: the kit says which values to generate, and any other setting
- * that looks secret and has a published default, unless the kit sets it, gets a generated value
- * (spec Q3, decision 2026-11-23). Data kept from a removed app was written with its settings then,
- * so a setting kept from it keeps its value, even an unset one, rather than one the kit generates or
- * sets now.
+ * The app's settings: exactly its kit's `env`, with the values Your Space generates or works out
+ * (decision 2026-11-23). Nothing comes from the app's file, and no name decides what is secret. Data
+ * kept from a removed app was written with its settings then, so a setting kept from it keeps its
+ * value, even an unset one, rather than one the kit generates or gives now.
  */
-export function buildSettings(variables: Variable[], kit: Kit | null, address: AppAddress, previous: Map<string, string | null> = new Map()): Setting[] {
-  const names = new Set(variables.map((v) => v.name));
-  for (const name of Object.keys(kit?.generate ?? {})) names.add(name);
-  for (const name of Object.keys(kit?.derive ?? {})) names.add(name);
-  for (const name of Object.keys(kit?.set ?? {})) names.add(name);
-  const byName = new Map(variables.map((v) => [v.name, v]));
+export function buildSettings(kit: Kit, address: AppAddress, previous: Map<string, string | null> = new Map()): Setting[] {
+  const env = kitEnv(kit);
   const settings: Setting[] = [];
-  for (const name of [...names].sort()) {
-    const variable = byName.get(name) ?? { name, required: false, default: "" };
-    const derive = kit?.derive?.[name];
-    const generate = kit?.generate?.[name];
-    const secret =
-      Boolean(generate) ||
-      Boolean(kit?.secrets?.includes(name)) ||
-      looksSecret(name) ||
-      (kit !== null && typeof derive === "object" && templateIsSecret(kit, derive.template));
+  for (const name of Object.keys(env).sort()) {
+    const source = env[name]!;
     const kept = previous.get(name);
     let value: string | null = kept ?? null;
     let generated = false;
-    if (typeof derive === "object") {
-      value = null; // filled below, once the settings it uses have values
-    } else if (derive) {
-      value = derive === "app_origin" ? address.origin : address.host;
-    } else if (generate) {
+    if (typeof source === "string") {
+      value = kept === undefined ? source : kept;
+    } else if ("generate" in source) {
       // A kept value, even an unset one, stays: kept data was written with it. Only a new one is generated.
-      value = kept === undefined ? generateValue(generate) : kept;
+      value = kept === undefined ? generateValue(source.generate) : kept;
       generated = value !== null;
-    } else if (kit?.set?.[name] !== undefined && kept === undefined) {
-      value = kit.set[name]!;
-    } else if (secret && variable.default && kit?.set?.[name] === undefined && kept === undefined) {
-      value = generateValue();
-      generated = true;
+    } else if ("derive" in source) {
+      // A template is filled below, once the variables it uses have values.
+      value = typeof source.derive === "object" ? null : source.derive === "app_origin" ? address.origin : address.host;
     }
     settings.push({
       name,
       value,
-      secret,
+      secret: isSecret(env, name),
       generated,
-      derived: Boolean(derive),
-      required: variable.required,
-      publishedDefault: secret ? null : variable.default || null,
+      derived: isDerived(env, name),
+      required: isAsked(env, name),
+      publishedDefault: null,
     });
   }
-  const filled = resolveTemplates(kit, new Map(settings.map((s) => [s.name, s.value])));
+  const filled = resolveTemplates(env, new Map(settings.map((s) => [s.name, s.value])));
   for (const setting of settings) setting.value = filled.get(setting.name) ?? null;
   return settings;
+}
+
+/**
+ * What the app's file says about its settings: one it requires with `${NAME:?…}` or `${NAME?…}` is
+ * required, and one that isn't secret shows the file's default, which the app gets while it has no value.
+ */
+export function withFileDefaults(settings: Setting[], variables: Variable[]): void {
+  for (const setting of settings) {
+    const variable = variables.find((v) => v.name === setting.name);
+    if (!variable) continue;
+    if (variable.required) setting.required = true;
+    if (!setting.secret && variable.default) setting.publishedDefault = variable.default;
+  }
+}
+
+/**
+ * The variables the app's file needs, with no default, that its kit doesn't define: a review refuses
+ * the app until the kit does (decision 2026-11-23).
+ */
+export function undefinedVariables(variables: Variable[], env: Record<string, EnvSource>): string[] {
+  return variables.filter((v) => (v.required || v.unset) && !Object.hasOwn(env, v.name)).map((v) => v.name).sort();
 }
 
 /** What the owner sees: secret values are replaced by whether they are set. */

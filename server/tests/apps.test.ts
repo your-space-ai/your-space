@@ -6,7 +6,7 @@ import { createGate, Handoffs, readCookie, safeReturn, signPass, verifyPass } fr
 import { fetchSource, parseLink, SourceError } from "../src/apps/github.ts";
 import { composeOf, KitError, kitIdentity, NotAKitError, parseKit, parseMemory } from "../src/apps/kits.ts";
 import { appNameFromHost, stateFromServices, underOwnName } from "../src/apps/service.ts";
-import { buildSettings, decrypt, encrypt, looksSecret, resolveTemplates } from "../src/apps/settings.ts";
+import { buildSettings, decrypt, encrypt, kitEnv, resolveTemplates, undefinedVariables, withEnv, withFileDefaults } from "../src/apps/settings.ts";
 import { session } from "../src/db/auth-schema.ts";
 import { app, appAccessRequest, appSetting, event, installJob } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
@@ -29,12 +29,10 @@ source: { repo: ys-fixtures/whoami, path: compose.yaml, commit: ${COMMIT} }
 name: whoami
 title: Who Am I
 interface: { service: web, port: 80 }
-generate:
-  API_TOKEN: { bytes: 24 }
-set:
+env:
+  API_TOKEN: { generate: { bytes: 24 } }
   GREETING: hello
-derive:
-  PAGE: { template: "\${GREETING} from whoami" }
+  PAGE: { derive: { template: "\${GREETING} from whoami" } }
 outbound: [example.com]
 limits:
   web: { memory: 64M, cpus: 0.5 }
@@ -74,14 +72,72 @@ describe("links, kits and settings", () => {
     expect(() => parseKit(KIT.replace("bytes: 24", "bytes: 4"))).toThrow(/16 to 128/);
     expect(parseMemory("1.5G")).toBe(1.5 * 1024 ** 3);
 
-    // Templates build a value from settings the kit itself names, never from each other.
-    const templated = (derive: string) => `kit: 1\nsource: { repo: a/b, path: c, commit: ${COMMIT} }\ngenerate: { DB_PASSWORD: {} }\nset: { DB_USER: app }\nderive:\n  APP_URL: app_origin\n${derive}`;
-    expect(parseKit(templated('  DATABASE_URL: { template: "postgresql://${DB_USER}:${DB_PASSWORD}@db/app" }')).derive!.DATABASE_URL).toEqual({ template: "postgresql://${DB_USER}:${DB_PASSWORD}@db/app" });
-    expect(() => parseKit(templated('  DATABASE_URL: { template: "postgresql://${NOPE}@db" }'))).toThrow(/uses NOPE/);
-    expect(() => parseKit(templated('  A: { template: "${APP_URL}" }\n  B: { template: "${A}" }'))).toThrow(/uses A/);
-    expect(() => parseKit(templated('  A: { template: "${lower-case}" }'))).toThrow(/placeholder/);
-    expect(() => parseKit(templated('  A: { template: "x", extra: 1 }'))).toThrow(/template/);
+    // Templates build a value from variables the kit's env defines, never from each other.
+    const templated = (entries: string) =>
+      `kit: 1\nsource: { repo: a/b, path: c, commit: ${COMMIT} }\nenv:\n  DB_PASSWORD: { generate: true }\n  DB_USER: app\n  DB_HOST: { ask: true }\n  APP_URL: { derive: app_origin }\n${entries}`;
+    expect(parseKit(templated('  DATABASE_URL: { derive: { template: "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}/app" } }')).env!.DATABASE_URL).toEqual({
+      derive: { template: "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}/app" },
+    });
+    expect(() => parseKit(templated('  DATABASE_URL: { derive: { template: "postgresql://${NOPE}@db" } }'))).toThrow(/uses NOPE, which the kit's env doesn't define/);
+    expect(() => parseKit(templated('  A: { derive: { template: "${APP_URL}" } }\n  B: { derive: { template: "${A}" } }'))).toThrow(/uses A, another template/);
+    expect(() => parseKit(templated('  A: { derive: { template: "${lower-case}" } }'))).toThrow(/placeholder/);
+    expect(() => parseKit(templated('  A: { derive: { template: "x", extra: 1 } }'))).toThrow(/template/);
     expect(() => parseMemory("lots")).toThrow(KitError);
+  });
+
+  it("reads the app's whole environment from the kit's env, each variable with where its value comes from", () => {
+    const env = (entries: string) => parseKit(`kit: 1\nsource: { repo: a/b, path: c, commit: ${COMMIT} }\nenv:\n${entries}`).env;
+    expect(
+      env(
+        [
+          "  SECRET_KEY_BASE: { generate: { bytes: 64, encoding: hex } }",
+          "  POSTGRES_PASSWORD: { generate: true }",
+          "  APP_URL: { derive: app_origin }",
+          "  APP_DOMAIN: { derive: app_host }",
+          "  OWNER_KEY: { ask: true }",
+          "  ADMIN_EMAIL: { ask: true, secret: false }",
+          "  OPENAI_API_KEY: { ask: optional }",
+          "  LOG_LEVEL: info",
+          "  WORKERS: 2",
+          "  SIGNUPS: false",
+          '  EMPTY: ""',
+        ].join("\n"),
+      ),
+    ).toEqual({
+      SECRET_KEY_BASE: { generate: { bytes: 64, encoding: "hex" } },
+      POSTGRES_PASSWORD: { generate: { bytes: 32, encoding: "base64url" } },
+      APP_URL: { derive: "app_origin" },
+      APP_DOMAIN: { derive: "app_host" },
+      // What the owner types is shown only as set unless the kit says it isn't secret.
+      OWNER_KEY: { ask: true, secret: true },
+      ADMIN_EMAIL: { ask: true, secret: false },
+      OPENAI_API_KEY: { ask: "optional", secret: true },
+      LOG_LEVEL: "info",
+      WORKERS: "2",
+      SIGNUPS: "false",
+      EMPTY: "",
+    });
+    for (const [entry, message] of [
+      ["  A: { generate: true, ask: true }", /exactly one of generate, derive or ask/],
+      ["  A: {}", /exactly one of generate, derive or ask/],
+      ["  A:", /must be a value, or generate, derive or ask/],
+      ["  A: [x]", /must be a value, or generate, derive or ask/],
+      ["  A: { ask: false }", /ask must be true, or optional/],
+      ["  A: { ask: true, secret: maybe }", /secret must be true or false/],
+      ["  A: { generate: true, secret: true }", /unknown field secret/],
+      ["  A: { generate: { bytes: 4 } }", /16 to 128/],
+      ["  A: { generate: { size: 32 } }", /generate has the unknown field size/],
+      ["  A: { derive: app_url }", /app_origin, app_host or/],
+      ["  lower-case: x", /isn't a variable name/],
+    ] as const) {
+      expect(() => env(entry), entry).toThrow(message);
+    }
+    // The fields kits named settings in before are refused with what to use instead, so an older kit
+    // never half-applies.
+    for (const field of ["generate: { A: {} }", "derive: { A: app_origin }", "set: { A: x }", "secrets: [A]"]) {
+      expect(() => parseKit(`kit: 1\n${field}\n`), field).toThrow(/no longer have\. A kit gives the app's whole environment in env/);
+    }
+    expect(() => parseKit("kit: 1\nrequired: [A]\n")).toThrow(/unknown field required/);
   });
 
   it("explains kits when it is given a Compose file instead", () => {
@@ -122,50 +178,94 @@ describe("links, kits and settings", () => {
     expect(kitIdentity(`sha256:${"a".repeat(64)}`)).toEqual({ source: `sha256:${"a".repeat(64)}` });
   });
 
-  it("never uses a published default for a secret", () => {
+  it("are exactly the kit's env, with what Your Space generates or works out", () => {
     const address = { origin: "http://x.space.localhost", host: "x.space.localhost" };
-    const variables = [
-      { name: "POSTGRES_PASSWORD", required: false, default: "sure_password" },
-      { name: "GREETING", required: false, default: "hello" },
-      { name: "OPENAI_ACCESS_TOKEN", required: false, default: "" },
-    ];
-    const withoutKit = buildSettings(variables, null, address);
-    const password = withoutKit.find((s) => s.name === "POSTGRES_PASSWORD")!;
-    expect(password).toMatchObject({ secret: true, generated: true, publishedDefault: null });
-    expect(password.value).not.toBe("sure_password");
-    expect(password.value!.length).toBeGreaterThanOrEqual(40);
-    expect(withoutKit.find((s) => s.name === "GREETING")).toMatchObject({ secret: false, value: null, publishedDefault: "hello" });
-    expect(withoutKit.find((s) => s.name === "OPENAI_ACCESS_TOKEN")).toMatchObject({ secret: true, generated: false, value: null });
-    // With a kit too: a setting it doesn't generate, derive or set still gets a generated value.
-    const silent = buildSettings(variables, parseKit("kit: 1\nsecrets: [OPENAI_ACCESS_TOKEN]\n"), address);
-    expect(silent.find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ secret: true, generated: true, publishedDefault: null });
-    expect(silent.find((s) => s.name === "POSTGRES_PASSWORD")!.value).not.toBe("sure_password");
-    expect(silent.find((s) => s.name === "OPENAI_ACCESS_TOKEN")).toMatchObject({ secret: true, generated: false, value: null });
-    // Data kept from a removed app was written with its settings then: a kept unset one stays unset,
-    // even when the kit installed now generates or sets it, and a kept value stays as it was.
-    const keptUnset = new Map([["POSTGRES_PASSWORD", null]]);
-    for (const kit of ["kit: 1\n", "kit: 1\ngenerate: { POSTGRES_PASSWORD: {} }\n", "kit: 1\nset: { POSTGRES_PASSWORD: chosen }\n"]) {
-      expect(buildSettings(variables, parseKit(kit), address, keptUnset).find((s) => s.name === "POSTGRES_PASSWORD"), kit).toMatchObject({ value: null, generated: false });
-    }
-    expect(buildSettings(variables, parseKit("kit: 1\ngenerate: { POSTGRES_PASSWORD: {} }\n"), address, new Map([["POSTGRES_PASSWORD", "kept"]])).find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ value: "kept", generated: true });
-    // A value the kit sets is the kit's choice.
-    expect(buildSettings(variables, parseKit("kit: 1\nset: { POSTGRES_PASSWORD: chosen }\n"), address).find((s) => s.name === "POSTGRES_PASSWORD")).toMatchObject({ value: "chosen", generated: false });
+    const kit = parseKit(
+      `kit: 1\nenv:\n  APP_SECRET: { generate: { encoding: hex } }\n  SERVER_URL: { derive: app_origin }\n  STORAGE_TYPE: local\n  ADMIN_EMAIL: { ask: true, secret: false }\n  OPENAI_ACCESS_TOKEN: { ask: optional }\n`,
+    );
+    const settings = buildSettings(kit, address);
+    expect(settings.map((s) => s.name)).toEqual(["ADMIN_EMAIL", "APP_SECRET", "OPENAI_ACCESS_TOKEN", "SERVER_URL", "STORAGE_TYPE"]);
+    expect(settings.find((s) => s.name === "APP_SECRET")).toMatchObject({ secret: true, generated: true, required: false });
+    expect(settings.find((s) => s.name === "APP_SECRET")!.value).toMatch(/^[0-9a-f]{64}$/);
+    expect(settings.find((s) => s.name === "SERVER_URL")).toMatchObject({ derived: true, secret: false, value: "http://x.space.localhost" });
+    expect(settings.find((s) => s.name === "STORAGE_TYPE")).toMatchObject({ value: "local", generated: false, secret: false, required: false });
+    expect(settings.find((s) => s.name === "ADMIN_EMAIL")).toMatchObject({ value: null, secret: false, required: true });
+    expect(settings.find((s) => s.name === "OPENAI_ACCESS_TOKEN")).toMatchObject({ value: null, secret: true, required: false });
+    // No name decides what is secret: only the kit does.
+    const named = buildSettings(parseKit("kit: 1\nenv: { DB_PASSWORD: hunter2 }\n"), address);
+    expect(named[0]).toMatchObject({ name: "DB_PASSWORD", secret: false, generated: false, value: "hunter2" });
 
-    const kit = parseKit(`kit: 1\nsource: { repo: a/b, path: c, commit: ${COMMIT} }\ngenerate: { APP_SECRET: { encoding: hex } }\nderive: { SERVER_URL: app_origin }\nset: { STORAGE_TYPE: local }`);
-    const withKit = buildSettings([{ name: "SERVER_URL", required: false, default: "http://localhost:3000" }, { name: "STORAGE_TYPE", required: false, default: "" }], kit, address);
-    expect(withKit.find((s) => s.name === "STORAGE_TYPE")).toMatchObject({ value: "local", generated: false, secret: false });
-    expect(withKit.find((s) => s.name === "SERVER_URL")).toMatchObject({ derived: true, value: "http://x.space.localhost" });
-    expect(withKit.find((s) => s.name === "APP_SECRET")!.value).toMatch(/^[0-9a-f]{64}$/);
+    // The app's file adds only what it says about a setting: that it requires it, and its default.
+    withFileDefaults(settings, [
+      { name: "OPENAI_ACCESS_TOKEN", required: true, default: "" },
+      { name: "STORAGE_TYPE", required: false, default: "s3" },
+      { name: "APP_SECRET", required: false, default: "published-secret" },
+      { name: "NOT_IN_KIT", required: false, default: "x" },
+    ]);
+    expect(settings.find((s) => s.name === "OPENAI_ACCESS_TOKEN")).toMatchObject({ required: true });
+    expect(settings.find((s) => s.name === "STORAGE_TYPE")).toMatchObject({ publishedDefault: "s3" });
+    expect(settings.find((s) => s.name === "APP_SECRET")).toMatchObject({ publishedDefault: null });
+    expect(settings.map((s) => s.name)).not.toContain("NOT_IN_KIT");
+
+    // Data kept from a removed app was written with its settings then: a kept unset one stays unset,
+    // even when the kit installed now generates or gives it, and a kept value stays as it was.
+    const keptUnset = new Map([["POSTGRES_PASSWORD", null]]);
+    for (const entry of ["{ generate: true }", "chosen", "{ ask: optional }"]) {
+      const kept = buildSettings(parseKit(`kit: 1\nenv: { POSTGRES_PASSWORD: ${entry} }\n`), address, keptUnset);
+      expect(kept[0], entry).toMatchObject({ value: null, generated: false });
+    }
+    expect(buildSettings(parseKit("kit: 1\nenv: { POSTGRES_PASSWORD: { generate: true } }\n"), address, new Map([["POSTGRES_PASSWORD", "kept"]]))[0]).toMatchObject({ value: "kept", generated: true });
+
     // A template is filled from the values it uses, and is secret when any of them is.
-    const urlKit = parseKit(`kit: 1\nsource: { repo: a/b, path: c, commit: ${COMMIT} }\ngenerate: { DB_PASSWORD: {} }\nset: { DB_HOST: db, GREETING: hi }\nderive:\n  DATABASE_URL: { template: "postgresql://app:\${DB_PASSWORD}@\${DB_HOST}/app" }\n  PAGE: { template: "\${GREETING} there" }`);
-    const urlSettings = buildSettings([{ name: "DATABASE_URL", required: false, default: "postgresql://app:app@db/app" }], urlKit, address);
+    const urlKit = parseKit(
+      `kit: 1\nenv:\n  DB_PASSWORD: { generate: true }\n  DB_HOST: db\n  GREETING: hi\n  DATABASE_URL: { derive: { template: "postgresql://app:\${DB_PASSWORD}@\${DB_HOST}/app" } }\n  PAGE: { derive: { template: "\${GREETING} there" } }`,
+    );
+    const urlSettings = buildSettings(urlKit, address);
     const dbPassword = urlSettings.find((s) => s.name === "DB_PASSWORD")!.value!;
-    expect(urlSettings.find((s) => s.name === "DATABASE_URL")).toMatchObject({ derived: true, secret: true, publishedDefault: null, value: `postgresql://app:${dbPassword}@db/app` });
+    expect(urlSettings.find((s) => s.name === "DATABASE_URL")).toMatchObject({ derived: true, secret: true, value: `postgresql://app:${dbPassword}@db/app` });
     expect(urlSettings.find((s) => s.name === "PAGE")).toMatchObject({ derived: true, secret: false, value: "hi there" });
-    expect(resolveTemplates(urlKit, new Map([["DB_PASSWORD", "p"], ["DB_HOST", null], ["GREETING", "yo"]])).get("DATABASE_URL")).toBe("postgresql://app:p@/app");
-    // Kept values survive a reinstall, so a database keeps its password.
-    expect(buildSettings(variables, null, address, new Map([["POSTGRES_PASSWORD", "kept"]])).find((s) => s.name === "POSTGRES_PASSWORD")!.value).toBe("kept");
-    expect(looksSecret("SECRET_KEY_BASE") && looksSecret("ENCRYPTION_KEY") && !looksSecret("DB_PORT") && !looksSecret("KEYBOARD")).toBe(true);
+    expect(resolveTemplates(kitEnv(urlKit), new Map([["DB_PASSWORD", "p"], ["DB_HOST", null], ["GREETING", "yo"]])).get("DATABASE_URL")).toBe("postgresql://app:p@/app");
+  });
+
+  it("refuse a variable the file needs that the kit doesn't define", () => {
+    const env = kitEnv(parseKit("kit: 1\nenv: { ASKED: { ask: true }, GIVEN: x }\n"));
+    const variables = [
+      // Defined by the kit, with a value or not yet: fine.
+      { name: "ASKED", required: true, default: "", unset: true },
+      { name: "GIVEN", required: false, default: "", unset: false },
+      // ${TOKEN} and ${NEEDED:?...}: no default, and the kit doesn't define them.
+      { name: "TOKEN", required: false, default: "", unset: true },
+      { name: "NEEDED", required: true, default: "", unset: false },
+      // ${EMPTY:-} and ${TZ:-UTC}: the file's default is used.
+      { name: "EMPTY", required: false, default: "", unset: false },
+      { name: "TZ", required: false, default: "UTC", unset: false },
+    ];
+    expect(undefinedVariables(variables, env)).toEqual(["NEEDED", "TOKEN"]);
+  });
+
+  it("read a kit stored before env as env", () => {
+    const stored = {
+      kit: 1 as const,
+      name: "old",
+      generate: { SECRET: { bytes: 32, encoding: "base64url" as const } },
+      derive: { URL: "app_origin" as const, DSN: { template: "x:${SECRET}" } },
+      set: { MODE: "local" },
+      secrets: ["TOKEN", "SECRET"],
+    };
+    expect(kitEnv(stored)).toEqual({
+      TOKEN: { ask: "optional", secret: true },
+      SECRET: { generate: { bytes: 32, encoding: "base64url" } },
+      MODE: "local",
+      URL: { derive: "app_origin" },
+      DSN: { derive: { template: "x:${SECRET}" } },
+    });
+    expect(withEnv(stored)).toEqual({ kit: 1, name: "old", env: kitEnv(stored) });
+    // A kit parsed from the same fields in env compares equal to the stored one.
+    const parsed = parseKit(
+      'kit: 1\nname: old\nenv:\n  TOKEN: { ask: optional }\n  SECRET: { generate: true }\n  MODE: local\n  URL: { derive: app_origin }\n  DSN: { derive: { template: "x:${SECRET}" } }\n',
+    );
+    expect(withEnv(stored)).toEqual(parsed);
+    expect(withEnv({ kit: 1, name: "plain" })).toEqual({ kit: 1, name: "plain" });
   });
 
   it("encrypts settings so the stored form never contains the value", () => {
@@ -482,10 +582,29 @@ describe("apps API", () => {
     expect(await t.db.select().from(appAccessRequest)).toEqual([]);
   });
 
-  it("generates a secret the kit doesn't mention, and takes the interface only from the kit", async () => {
+  it("gives the app only the environment its kit defines, and takes the interface only from the kit", async () => {
     const review = await (await post("/api/kits/preview", { kitUrl: kitLink("plain") })).json() as any;
-    expect(review).toMatchObject({ name: "plain", title: "plain", interface: { service: "web", port: 80 }, outbound: [] });
-    expect(review.settings.find((s: { name: string }) => s.name === "API_TOKEN")).toMatchObject({ generated: true, secret: true });
+    expect(review).toMatchObject({ ok: true, name: "plain", title: "plain", interface: { service: "web", port: 80 }, outbound: [], settings: [] });
+    // The file's variables have defaults, which the app gets: none is a setting, or generated.
+    expect(runtime.calls.filter((c) => c.method === "check").at(-1)!.spec!.env).toEqual({});
+  });
+
+  it("refuses a file that needs a variable its kit doesn't define", async () => {
+    const before = runtime.variables;
+    runtime.variables = [...before, { name: "TOKEN", required: false, default: "", unset: true }, { name: "NEEDED", required: true, default: "" }];
+    try {
+      const review = await (await post("/api/kits/preview", { kitUrl: kitLink("plain") })).json() as any;
+      expect(review.ok).toBe(false);
+      expect(review.refusals).toEqual([
+        { service: "", setting: "env", reason: "The kit doesn't define NEEDED, which the Compose file needs. Add it to the kit's env." },
+        { service: "", setting: "env", reason: "The kit doesn't define TOKEN, which the Compose file needs. Add it to the kit's env." },
+      ]);
+      const refused = await post("/api/apps", { previewId: review.previewId });
+      expect(refused.status).toBe(400);
+      expect(await refused.json()).toMatchObject({ error: "refused" });
+    } finally {
+      runtime.variables = before;
+    }
   });
 
   it("resolves a kit's branch link to its commit, and reads the Compose file at the commit the kit pins", async () => {

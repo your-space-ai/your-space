@@ -7,17 +7,36 @@ and opens them inside Your Space.
 
 **Kits.** Every app installs from its kit: a small YAML file, in the app's own repository or in a
 separate one, that is the app's definition in Your Space. It names the app's own Compose file at an
-exact commit and says what Your Space needs to run and show the app: which service is its interface, which settings to generate or
-work out, the internet hosts it needs, and its limits. The app's authors change nothing. See the
+exact commit and says what Your Space needs to run and show the app: which service is its
+interface, its environment, the internet hosts it needs, and its limits. The app's authors change
+nothing. See the
 [kit format](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
+
+**Environment.** The kit's `env` is the app's whole environment: every variable the app gets, each
+with a value or with where its value comes from. Your Space generates some, such as passwords, works
+out others, such as the app's own address, and asks you for the rest in the review:
+
+```yaml
+env:
+  SECRET_KEY_BASE: { generate: { bytes: 64, encoding: hex } }
+  APP_URL: { derive: app_origin }
+  OWNER_KEY: { ask: true }
+  LOG_LEVEL: info
+```
+
+Your Space gives exactly these to the app's Compose file, for each `${VARIABLE}` in it, and to every
+service that loads them with `env_file: .env`, as many apps' own files do. It keeps the values
+encrypted and writes no settings file. A Compose file that needs a variable with no default that the
+kit doesn't define is refused, and the review names it. Your Space refuses a file that loads settings
+or labels from any other file on the machine.
 
 **Install.** In Apps, paste the GitHub link to the app's kit and choose Review. A link to a Compose
 file isn't enough: Your Space says so and asks for the kit's link. The review shows the kit and the
 Compose file it names, each at its exact commit, the image versions that will run, what Your Space
-changes or leaves out of the file, the settings it reads, and the internet hosts it may reach.
-Secrets the file gives a published default for get generated values instead, unless the app reuses
-kept data (see **Remove**), and they are never shown. Install runs in the background; you can leave
-the page. If Your Space is set up with a kit directory, Apps lists its kits too.
+changes or leaves out of the file, the settings its kit defines, and the internet hosts it may
+reach. Values Your Space generates, and secrets you give, are never shown. Install runs in the
+background; you can leave the page. If Your Space is set up with a kit directory, Apps lists its
+kits too.
 
 **Exact commits.** A kit pins the app's Compose file: its `source` gives the repository, the path
 and the full commit, and Your Space reads the file at exactly that commit, never at a branch's latest
@@ -132,8 +151,9 @@ docker compose exec server publish-app notes --off
 again. `install-app <kit-link> --publish`, with the same `--port`, `--bind`, `--link` and `--no-frame`,
 installs an app published.
 
-**Settings.** An app's page shows its settings. Saving restarts the app with the new values and
-keeps its data. Replacing a generated secret, such as a database password, can break the app.
+**Settings.** An app's page shows its settings, the variables its kit defines. Saving restarts the
+app with the new values and keeps its data. A value the kit asks for can be replaced but not
+cleared. Replacing a generated secret, such as a database password, can break the app.
 
 **Internet access.** An app reaches only the hosts you approve. Its installation kit can name a few
 it needs to work, which the review shows. When the app tries another host, the attempt fails and
@@ -145,9 +165,9 @@ shows the engine Your Space uses and what each app uses.
 
 **Remove.** Removing an app stops and deletes its containers and keeps its data. Installing it
 again offers to reuse the data, with the settings it was written with: a setting kept with the data
-keeps its value, even one that was never set, rather than one the kit generates or sets now. A
-secret never set this way leaves the app on its published default, so give it a value in the
-review. Deleting kept data is a separate step, and can't be undone.
+keeps its value, even one that was never set, rather than one the kit generates or gives now. A
+value never set this way leaves the app on its Compose file's default, if it has one, so give it a
+value in the review. Deleting kept data is a separate step, and can't be undone.
 
 **Stop Your Space and its apps.** `docker compose restart` and updates leave apps running.
 `your-space stop` stops everything, apps first; by hand:

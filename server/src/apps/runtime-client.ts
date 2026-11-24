@@ -46,7 +46,8 @@ export interface CheckAnswer {
     volumes: string[];
     dependsOn: string[];
   }[];
-  variables: { name: string; required: boolean; default: string }[];
+  /** `unset`: Compose had no value and no default for it, and left it blank. */
+  variables: { name: string; required: boolean; default: string; unset?: boolean }[];
   adaptations: { service: string; kind: "changed" | "left_out" | "added"; detail: string }[];
   refusals: { service: string; setting: string; reason: string }[];
   images: { ref: string; digest?: string; runsHere: boolean; platforms: string[]; error?: string }[];

@@ -94,15 +94,33 @@ export interface Kit {
   title?: string;
   interface?: { service: string; port: number };
   pane?: boolean;
-  generate?: Record<string, { bytes?: number; encoding?: "hex" | "base64url" }>;
-  /** The app's address, or a template built from other settings the kit names, like `postgresql://u:${POSTGRES_PASSWORD}@db/app`. */
-  derive?: Record<string, "app_origin" | "app_host" | { template: string }>;
-  /** Values the app's own example settings give, which its file leaves empty. The owner can change them. */
-  set?: Record<string, string>;
-  secrets?: string[];
+  /** The app's whole environment: each variable, and where its value comes from (2026-11-23). */
+  env?: Record<string, EnvSource>;
   outbound?: string[];
   /** Memory in bytes, parsed from the kit's 512M or 1G. */
   limits?: Record<string, { memory?: number; cpus?: number }>;
+}
+
+/** Where a variable in a kit's `env` gets its value. */
+export type EnvSource =
+  /** A value the kit gives, which the owner can change. */
+  | string
+  /** Generated when the app is installed; a secret. */
+  | { generate: { bytes: number; encoding: "hex" | "base64url" } }
+  /** The app's address, or a template built from other variables, like `postgresql://u:${POSTGRES_PASSWORD}@db/app`. */
+  | { derive: "app_origin" | "app_host" | { template: string } }
+  /** Given by the owner: `true` when the install needs it, `optional` when it doesn't. */
+  | { ask: true | "optional"; secret: boolean };
+
+/**
+ * A kit as an installed app keeps it. One stored before kits named the app's environment in `env`
+ * (2026-11-23) has these fields instead, which `kitEnv` reads as `env`.
+ */
+export interface StoredKit extends Kit {
+  generate?: Record<string, { bytes?: number; encoding?: "hex" | "base64url" }>;
+  derive?: Record<string, "app_origin" | "app_host" | { template: string }>;
+  set?: Record<string, string>;
+  secrets?: string[];
 }
 
 /**
@@ -128,7 +146,7 @@ export const app = pgTable(
     ref: text("ref").notNull(),
     commit: text("commit").notNull(),
     compose: text("compose").notNull(),
-    kit: jsonb("kit").$type<Kit>(),
+    kit: jsonb("kit").$type<StoredKit>(),
     kitSource: text("kit_source"),
     images: jsonb("images").$type<Record<string, { digest: string }>>().notNull(),
     adaptations: jsonb("adaptations").$type<Adaptation[]>().notNull(),

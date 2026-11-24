@@ -1,7 +1,7 @@
 // A file that requires settings, with `${NAME:?message}` or `${NAME?message}`: a check that asks for
 // placeholders resolves it before the owner gives them, and an apply never does.
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { apply, check, PLACEHOLDER, SpecError, validateSpec, withPlaceholders } from "../src/apps.ts";
+import { apply, blankedVariables, check, PLACEHOLDER, SpecError, validateSpec, withPlaceholders } from "../src/apps.ts";
 import { docker, engineInfo, inspectImage, type CliResult } from "../src/engine.ts";
 
 vi.mock("../src/engine.ts", async (load) => ({
@@ -32,7 +32,10 @@ const VARIABLES = {
  * resolution's settings.
  */
 let resolutions: Record<string, string>[];
+/** Compose's reading of the file as written, which interpolates nothing, so a required setting doesn't stop it. */
+const AS_WRITTEN: CliResult = { code: 0, stdout: JSON.stringify({ services: { web: { image: "busybox:1.37" } } }), stderr: "" };
 function compose(args: string[], env: Record<string, string> = {}): CliResult {
+  if (args.includes("--no-interpolate")) return AS_WRITTEN;
   if (args.includes("--variables")) return { code: 0, stdout: JSON.stringify(VARIABLES), stderr: "" };
   if (args.includes("up")) throw new Error("Nothing starts in these tests.");
   resolutions.push(env);
@@ -56,14 +59,14 @@ beforeEach(() => {
 
 describe("placeholders for required settings", () => {
   it("fill each required setting without a value, and nothing else", () => {
-    const variables = Object.values(VARIABLES).map((v) => ({ name: v.Name, required: v.Required, default: v.DefaultValue }));
+    const variables = Object.values(VARIABLES).map((v) => ({ name: v.Name, required: v.Required, default: v.DefaultValue, unset: false }));
     expect(withPlaceholders({}, variables)).toEqual({ ADMIN_EMAIL: PLACEHOLDER, SECRET_KEY_BASE: PLACEHOLDER });
     expect(withPlaceholders({ SECRET_KEY_BASE: "", ADMIN_EMAIL: "owner@example.com", GREETING: "hi" }, variables)).toEqual({
       SECRET_KEY_BASE: PLACEHOLDER,
       ADMIN_EMAIL: "owner@example.com",
       GREETING: "hi",
     });
-    expect(withPlaceholders({}, [{ name: "constructor", required: true, default: "" }])).toEqual({ constructor: PLACEHOLDER });
+    expect(withPlaceholders({}, [{ name: "constructor", required: true, default: "", unset: false }])).toEqual({ constructor: PLACEHOLDER });
   });
 
   it("let a check that asks for them resolve the file, keeping the values the spec gives", async () => {
@@ -96,6 +99,7 @@ describe("placeholders for required settings", () => {
   it("leave an image named with one for the install's check to look up", async () => {
     // `image: example/app:${TAG:?Set TAG}`
     vi.mocked(docker).mockImplementation(async (args, env = {}) => {
+      if (args.includes("--no-interpolate")) return AS_WRITTEN;
       if (args.includes("--variables")) return { code: 0, stdout: JSON.stringify({ TAG: { Name: "TAG", DefaultValue: "", PresenceValue: "", Required: true } }), stderr: "" };
       if (!env.TAG) return { code: 1, stdout: "", stderr: "required variable TAG is missing a value: Set TAG\n" };
       return { code: 0, stdout: JSON.stringify({ services: { web: { image: `example/app:${env.TAG}` } } }), stderr: "" };
@@ -124,6 +128,7 @@ describe("placeholders for required settings", () => {
 
   it("are named when the file can't take one, such as for a port", async () => {
     vi.mocked(docker).mockImplementation(async (args) => {
+      if (args.includes("--no-interpolate")) return AS_WRITTEN;
       if (args.includes("--variables")) return { code: 0, stdout: JSON.stringify({ APP_PORT: { Name: "APP_PORT", DefaultValue: "", PresenceValue: "", Required: true } }), stderr: "" };
       return { code: 1, stdout: "", stderr: `invalid hostPort: ${PLACEHOLDER}\n` };
     });
@@ -135,5 +140,33 @@ describe("placeholders for required settings", () => {
   it("are asked for with true or false", () => {
     expect(spec({ placeholders: true }).placeholders).toBe(true);
     expect(() => spec({ placeholders: "yes" })).toThrow(/placeholders must be true or false/);
+  });
+});
+
+describe("variables with no value and no default", () => {
+  // As Compose v5.7.1 writes the warning, in its log format.
+  const WARNING = 'time="2026-11-24T00:33:06Z" level=warning msg="The \\"TOKEN\\" variable is not set. Defaulting to a blank string."\n';
+
+  it("are the ones Compose warns it left blank", () => {
+    expect([...blankedVariables(WARNING)]).toEqual(["TOKEN"]);
+    expect([...blankedVariables('WARN[0000] The "TOKEN" variable is not set. Defaulting to a blank string.\n')]).toEqual(["TOKEN"]);
+    expect(blankedVariables("").size).toBe(0);
+  });
+
+  it("are marked unset, unlike one whose default is empty, which Compose lists the same way", async () => {
+    vi.mocked(docker).mockImplementation(async (args) => {
+      if (args.includes("--no-interpolate")) return AS_WRITTEN;
+      if (args.includes("--variables")) {
+        // ${TOKEN} and ${EMPTY:-}: both with an empty default, neither required.
+        const listed = Object.fromEntries(["EMPTY", "TOKEN"].map((name) => [name, { Name: name, DefaultValue: "", PresenceValue: "", Required: false }]));
+        return { code: 0, stdout: JSON.stringify(listed), stderr: "" };
+      }
+      return { code: 0, stdout: JSON.stringify({ services: { web: { image: "busybox:1.37" } } }), stderr: WARNING };
+    });
+    const answer = await check(spec());
+    expect(answer.variables).toEqual([
+      { name: "EMPTY", required: false, default: "", unset: false },
+      { name: "TOKEN", required: false, default: "", unset: true },
+    ]);
   });
 });

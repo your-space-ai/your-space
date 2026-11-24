@@ -1,0 +1,5 @@
+# The kit of the fixture app that names files on the machine: only its interface, so it defines no
+# TOKEN either.
+kit: 1
+source: {repo: ys-fixtures/hostfiles, path: compose.yaml, commit: 23b719aca31bfb0b2834cf92564688942eb15acf}
+interface: {service: web, port: 8080}
