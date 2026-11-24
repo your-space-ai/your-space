@@ -114,6 +114,10 @@ describe("a pinned agent-access kit", () => {
       [{ title: 'synthetic"token' }, 'synthetic"token'],
       [{ title: JSON.stringify({ token: 'synthetic"token' }) }, 'synthetic"token'],
       [{ title: JSON.stringify({ token: "back\\slash" }) }, "back\\slash"],
+      // JSON text inside a string that escapes the secret's characters.
+      [{ debug: '{"token":"\\u0073ynthetic-secret"}' }, "synthetic-secret"],
+      [{ debug: '{"token":"synthetic\\/secret"}' }, "synthetic/secret"],
+      [{ debug: JSON.stringify({ inner: '{"token":"\\u0073ynthetic-secret"}' }) }, "synthetic-secret"],
     ] as const) {
       expect(() => passAgentResult(body, ["", secret])).toThrow("Unsafe app result");
     }

@@ -193,6 +193,14 @@ export function agentCredentialHeader(access: AgentAccess, secret: string): Reco
   const { name, scheme } = access.credential.inject;
   return { [name]: scheme ? scheme + " " + secret : secret };
 }
+const JSON_ESCAPE = /\\(?:u([\da-fA-F]{4})|(["\\/bfnrt]))/g;
+const ESCAPED: Record<string, string> = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+/** Undoes one level of JSON string escaping wherever it appears in the text. */
+function unescapeJson(text: string): string {
+  return text.replace(JSON_ESCAPE, (_, hex: string | undefined, char: string) =>
+    hex ? String.fromCharCode(parseInt(hex, 16)) : (ESCAPED[char] ?? char),
+  );
+}
 /**
  * The app's response, for the agent, as it came: any JSON the app returns, of at most
  * AGENT_RESULT_LIMIT bytes, and never one that contains the app credential.
@@ -207,13 +215,14 @@ export function passAgentResult(data: unknown, secrets: readonly string[]): unkn
   check(typeof text === "string", "Unsupported app result.");
   check(Buffer.byteLength(text) <= AGENT_RESULT_LIMIT, "App result is too large.");
   // Upstreams can echo a token anywhere: in a value or a key, in a diagnostic string, or in JSON
-  // encoded as text. Escaping is per character, so a string holding the secret serializes with it
-  // escaped once, and one holding the secret's JSON encoding with it escaped twice.
-  for (const secret of secrets) {
-    if (!secret) continue;
-    const once = JSON.stringify(secret).slice(1, -1);
-    const twice = JSON.stringify(once).slice(1, -1);
-    check(![secret, once, twice].some((form) => text.includes(form)), "Unsafe app result.");
+  // encoded as text, with any of JSON's escapes. Each pass undoes one level of escaping, so a secret
+  // escaped as text inside text shows once the passes reach its level.
+  let view = text;
+  for (let level = 0; level < 4; level++) {
+    check(!secrets.some((secret) => secret && view.includes(secret)), "Unsafe app result.");
+    const next = unescapeJson(view);
+    if (next === view) break;
+    view = next;
   }
   // What the agent gets is exactly the JSON that was checked.
   return JSON.parse(text);
