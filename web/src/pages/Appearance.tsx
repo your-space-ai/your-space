@@ -78,8 +78,12 @@ export function Appearance() {
         const latest = await catalog.refetch();
         await client.cancelQueries({ queryKey: activePaletteQuery.queryKey });
         const active = latest.isSuccess ? selectedTheme(latest.data) : undefined;
-        if (latest.isSuccess && active) client.setQueryData(activePaletteQuery.queryKey, workspaceLook(active, latest.data.mode));
-        else await client.invalidateQueries({ queryKey: activePaletteQuery.queryKey });
+        // A change that succeeded during these waits has already applied its newer look: keep it.
+        const superseded = latest.isSuccess && client.getQueryData(options.queryKey)?.revision !== latest.data.revision;
+        if (!superseded) {
+          if (latest.isSuccess && active) client.setQueryData(activePaletteQuery.queryKey, workspaceLook(active, latest.data.mode));
+          else await client.invalidateQueries({ queryKey: activePaletteQuery.queryKey });
+        }
         setDeleting(null);
       } else setError(errorMessage(cause));
       return false;
