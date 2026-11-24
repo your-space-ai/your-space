@@ -268,7 +268,7 @@ describe("links, kits and settings", () => {
     expect(withEnv(stored)).toEqual(parsed);
     expect(withEnv({ kit: 1, name: "plain" })).toEqual({ kit: 1, name: "plain" });
     // Empty earlier fields named nothing, as a kit without env does.
-    expect(withEnv({ kit: 1, name: "plain", generate: {}, secrets: [] })).toEqual({ kit: 1, name: "plain" });
+    expect(withEnv({ kit: 1, name: "plain", generate: {}, secrets: [] })).toStrictEqual(parseKit("kit: 1\nname: plain\nenv: {}\n"));
   });
 
   it("encrypts settings so the stored form never contains the value", () => {

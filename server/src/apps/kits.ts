@@ -179,7 +179,8 @@ export function parseKit(text: string): Kit {
       }
       if (template.replace(TEMPLATE_REFERENCE, "").includes("${")) throw new KitError(`env.${name} has a placeholder that isn't \${VARIABLE_NAME}.`);
     }
-    kit.env = env;
+    // An empty env names nothing, as a kit without one does, so the two compare equal.
+    if (Object.keys(env).length > 0) kit.env = env;
   }
   if (data.outbound !== undefined) {
     if (!Array.isArray(data.outbound)) throw new KitError("outbound must be a list of host names.");
