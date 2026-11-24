@@ -89,8 +89,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     # npm trusted publishing: npm exchanges this job's GitHub OIDC token (id-token: write) for a
-    # short-lived publish credential. The @your-space-ai/cli package trusts only this workflow file
-    # in this repository, so no npm token is stored anywhere.
+    # short-lived credential that can only stage a version. The @your-space-ai/cli package trusts
+    # only this workflow file in this repository, so no npm token is stored anywhere.
     permissions:
       contents: read
       id-token: write
@@ -112,7 +112,11 @@ jobs:
           awk -v name="$file" '$2 == name { print }' SHA256SUMS | sha256sum -c -
           test "$(tar -xOzf "$file" package/package.json | jq -r .version)" = "$version"
           if [[ $PRERELEASE == true ]]; then dist_tag=next; else dist_tag=latest; fi
-          npm publish "./$file" --provenance --access public --tag "$dist_tag"
+          # Staged publishing: the trusted publisher for @your-space-ai/cli is stage-only, so this
+          # stages the version and a maintainer approves it on npm with 2FA before it goes live.
+          # npm stage needs npm 11.15.0 or newer.
+          npm install --global npm@11.18.0
+          npm stage publish "./$file" --provenance --access public --tag "$dist_tag"
 
   images:
     needs: stranger
