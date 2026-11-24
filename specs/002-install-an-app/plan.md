@@ -69,8 +69,15 @@ data (image platforms and digests without downloading, engine info, network conn
 **Resolving and checking a file (FR-D03, FR-D04).** `docker compose config --format json`, with the
 settings as its environment, resolves anchors, `extends`, `include`, placeholders and profiles. The
 same command with `--profile '*'` lists services behind profiles, which are left out and reported.
-`config --variables` lists the settings the file reads. The resolved JSON is then checked service by
-service:
+`config --variables` lists the variables the file reads, and Compose's warning that it left one
+blank marks each with no value and no default, which the server refuses unless the kit's `env`
+defines it (2026-11-23). First, though, Compose reads the file as
+written, with interpolation, settings files, normalization and paths turned off, because resolving
+it would read every `env_file` and `label_file` into the services and drop the key (2026-11-23).
+Every such file is reset in a second Compose file, so Compose reads none of them. A service whose
+`env_file` names only `.env` gets the environment the app's kit defines in place of the file, under
+the environment its file sets; any other settings file and every label file is refused. The resolved
+JSON is then checked service by service:
 
 | Setting | Rule |
 | --- | --- |
@@ -80,7 +87,7 @@ service:
 | `dns`, `dns_search`, `extra_hosts`, `container_name`, `logging`, `mem_limit`, `cpus`, `deploy.resources` | Removed or replaced by Your Space's values (reported) |
 | `build` with an `image` | Build removed, image used (reported) |
 | `volumes` of type `volume` (named) or `tmpfs` | Allowed; anonymous volumes allowed, and removed with the app |
-| Bind mounts, `devices`, `privileged`, `cap_add`, `security_opt`, `pid`/`ipc`/`uts`/`userns_mode`/`cgroup` other than private, `network_mode: host` or `service:`/`container:`, `volumes_from`, `sysctls`, `env_file` left after resolution, `secrets`/`configs` from files, `group_add`, `runtime`, `isolation`, `gpus`, `build` without `image`, `external` volumes or networks, volume `driver`/`driver_opts` | Refused with the reason |
+| Bind mounts, `devices`, `privileged`, `cap_add`, `security_opt`, `pid`/`ipc`/`uts`/`userns_mode`/`cgroup` other than private, `network_mode: host` or `service:`/`container:`, `volumes_from`, `sysctls`, `env_file` other than `.env`, `label_file`, `secrets`/`configs` from files, `group_add`, `runtime`, `isolation`, `gpus`, `build` without `image`, `external` volumes or networks, volume `driver`/`driver_opts` | Refused with the reason |
 | Any other key | Refused, so a new Compose feature can't slip through |
 
 **The adapted file.** Built from the checked JSON (not the raw text): images pinned to
@@ -127,9 +134,9 @@ corrected.
 | Part | What it does |
 | --- | --- |
 | `apps/github.ts` | Turns `https://github.com/<owner>/<repo>/blob/<ref>/<path>` into the commit (GitHub API, `application/vnd.github.sha`) and the file at that commit (raw content). Refuses other hosts, private repos (404), files over 256 KB. |
-| `apps/kits.ts` | Reads `apps/<owner>/<repo>.yaml` from the optional configured directory at its default branch’s current commit, a kit link the owner gives, or, from `install-app --kit`, a kit file, kits folder or standard input on this machine. A kit names the source file it fits (a kit given with a Compose file on this machine may leave it out), the app's name, the interface service and port, values to generate, values to derive (`app_origin`), plain values from the app's own example settings, settings that are secret, starter outbound hosts, limits, and whether the app can run in a pane. Parsed with `yaml` and validated by hand. |
+| `apps/kits.ts` | Reads `apps/<owner>/<repo>.yaml` from the optional configured directory at its default branch’s current commit, a kit link the owner gives, or, from `install-app --kit`, a kit file, kits folder or standard input on this machine. A kit names the source file it fits (a kit given with a Compose file on this machine may leave it out), the app's name, the interface service and port, the app's environment in `env` (each variable a value, or generated, derived from the app's address or a template, or asked of the owner, optionally or not, as a secret unless it says otherwise), starter outbound hosts, limits, and whether the app can run in a pane. Parsed with `yaml` and validated by hand. |
 | `apps/local.ts` | From `install-app --compose`, a Compose file on this machine or standard input, for an app whose own file doesn't fit Your Space's rules: read with the same 256 KB limit, and recorded by its digest and file name, with no repository or commit. The rules for the command's sources: a link or `--compose`, and only one of `--compose` and `--kit` on standard input. |
-| `apps/settings.ts` | The file's variables become settings. Kit-generated values, and without a kit any variable whose name contains `SECRET`, `PASSWORD`, `TOKEN`, `KEY` and that has a published default, are generated (32 random bytes unless the kit says otherwise) and never use the default (FR-006). Values are encrypted with AES-256-GCM under a key derived from the auth secret. |
+| `apps/settings.ts` | The kit's `env` becomes the app's settings, exactly (2026-11-23): values the kit gives, values it generates (32 random bytes unless it says otherwise), values derived from the app's address or a template, and values the owner gives. The file adds nothing but whether it requires a variable and, for one that isn't secret, its default. No name makes a setting secret. A kit stored before `env` is read as `env` (`kitEnv`). Values are encrypted with AES-256-GCM under the data key. |
 | `apps/runtime-client.ts` | The runtime API client over the Unix socket. |
 | `apps/install.ts` | Preview (fetch, kit, settings, check, pin) and install (record, then a background job that streams the runtime's progress into `install_job`). |
 | `apps/reconcile.ts` | At start and every 15 seconds: marks interrupted jobs failed, starts apps that should run, records each app's state, collects egress denials into access requests. |

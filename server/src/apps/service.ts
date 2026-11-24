@@ -23,7 +23,20 @@ import { fetchPinnedFile, githubEndpoints, SourceError, type GithubEndpoints, ty
 import { composeOf, kitFromFile, kitFromLink, KitError, kitIdentity, NotAKitError, type FoundKit } from "./kits.ts";
 import { localSource, type LocalCompose } from "./local.ts";
 import { RuntimeError, type AppSpec, type CheckAnswer, type Runtime, type ServiceState } from "./runtime-client.ts";
-import { buildSettings, decrypt, encrypt, publicSetting, resolveTemplates, type Setting } from "./settings.ts";
+import {
+  buildSettings,
+  decrypt,
+  encrypt,
+  isAsked,
+  isDerived,
+  kitEnv,
+  publicSetting,
+  resolveTemplates,
+  templateOf,
+  undefinedVariables,
+  withFileDefaults,
+  type Setting,
+} from "./settings.ts";
 
 export const DEFAULT_MEMORY = 1024 * 1024 * 1024;
 export const DEFAULT_CPUS = 1;
@@ -286,9 +299,10 @@ export class AppsService {
     const values = new Map<string, string>();
     if (!row.publish?.link) return values;
     const address = linkAddress(row.publish.link);
-    for (const [name, derive] of Object.entries(row.kit?.derive ?? {})) {
-      if (derive === "app_origin") values.set(name, address.origin);
-      if (derive === "app_host") values.set(name, address.host);
+    for (const [name, source] of Object.entries(kitEnv(row.kit))) {
+      if (typeof source !== "object" || !("derive" in source)) continue;
+      if (source.derive === "app_origin") values.set(name, address.origin);
+      if (source.derive === "app_host") values.set(name, address.host);
     }
     return values;
   }
@@ -385,13 +399,32 @@ export class AppsService {
     const previous = existing ? await this.storedValues(existing.id) : new Map<string, string | null>();
     const address = this.address(name);
 
-    // A first check reads the settings the file uses; the second resolves the file with them. A
-    // setting the file requires and nothing fills gets a placeholder in both, so the review shows
+    // The app's settings are exactly its kit's env (decision 2026-11-23), and the file is checked with
+    // them. A setting the file requires that has no value yet gets a placeholder, so the review shows
     // the file and the owner fills the setting in; installing needs a real value (install).
-    const spec: AppSpec = { project: `ys-${name}`, app: name, compose: source.text, env: {}, interface: kit.interface ?? null, placeholders: true };
-    const first = await this.check(spec);
-    const settings = buildSettings(first.variables, kit, address, previous);
-    const check = await this.check({ ...spec, env: this.envOf(settings) });
+    const settings = buildSettings(kit, address, previous);
+    let check = await this.check({ project: `ys-${name}`, app: name, compose: source.text, env: this.envOf(settings), interface: kit.interface ?? null, placeholders: true });
+    withFileDefaults(settings, check.variables);
+    // A variable the file needs, with no default, is one the kit must define.
+    const env = kitEnv(kit);
+    const missing = undefinedVariables(check.variables, env);
+    // Data kept from a removed app was written with its settings then. A value kept for a variable the
+    // file uses that the kit no longer defines would give way to the file's default, so it is refused.
+    const dropped = [...previous]
+      .filter(([variable, value]) => value !== null && !Object.hasOwn(env, variable) && check.variables.some((v) => v.name === variable))
+      .map(([variable]) => variable)
+      .sort();
+    if (missing.length || dropped.length) {
+      const refusals = [
+        ...missing.map((variable) => ({ service: "", setting: "env", reason: `The kit doesn't define ${variable}, which the Compose file needs. Add it to the kit's env.` })),
+        ...dropped.map((variable) => ({
+          service: "",
+          setting: "env",
+          reason: `Data kept from ${name} was written with a value for ${variable}, which the kit doesn't define. Add it to the kit's env, or delete the kept data.`,
+        })),
+      ];
+      check = { ...check, ok: false, refusals: [...check.refusals, ...refusals] };
+    }
 
     const limits: Record<string, { memory: number; cpus: number }> = {};
     for (const service of check.services) {
@@ -476,7 +509,7 @@ export class AppsService {
       setting.generated = false;
     }
     // Template settings follow the values the owner just gave.
-    const filled = resolveTemplates(p.kit, new Map(settings.map((s) => [s.name, s.value])));
+    const filled = resolveTemplates(kitEnv(p.kit), new Map(settings.map((s) => [s.name, s.value])));
     for (const setting of settings) setting.value = filled.get(setting.name) ?? null;
     const missing = settings.filter((s) => s.required && !s.value).map((s) => s.name);
     if (missing.length) throw new AppError(400, "settings_required", `These settings need a value: ${missing.join(", ")}.`);
@@ -607,7 +640,7 @@ export class AppsService {
       ...(row.kit?.agentAccess ? { appId: row.id } : {}),
       app: row.name,
       compose: row.compose,
-      env: this.envOf([...resolveTemplates(row.kit, values)].map(([name, value]) => ({ name, value }))),
+      env: this.envOf([...resolveTemplates(kitEnv(row.kit), values)].map(([name, value]) => ({ name, value }))),
       pins,
       interface: row.interface,
       limits: row.limits,
@@ -862,6 +895,7 @@ export class AppsService {
       // The runtime manager is down; the record still shows.
     }
     const fromLink = this.linkValues(row);
+    const env = kitEnv(row.kit);
     return {
       id: row.id,
       name: row.name,
@@ -884,10 +918,10 @@ export class AppsService {
           name: s.name,
           secret: s.secret,
           generated: s.generated,
-          required: false,
+          required: isAsked(env, s.name),
           publishedDefault: s.publishedDefault,
           value: s.value === null ? null : s.secret ? "set" : (fromLink.get(s.name) ?? this.readOrNull(s.value)),
-          derived: Boolean(row.kit?.derive?.[s.name]),
+          derived: isDerived(env, s.name),
         }),
       ),
       outbound: outbound.map((o) => ({ host: o.host, source: o.source, createdAt: o.createdAt })),
@@ -955,22 +989,27 @@ export class AppsService {
     const row = await this.liveRow(name);
     const current = await this.db.select().from(appSetting).where(eq(appSetting.appId, row.id));
     const changes = Object.entries(values ?? {});
+    const env = kitEnv(row.kit);
     // Every value is checked before any is written, and they are written together.
     for (const [key, value] of changes) {
       const setting = current.find((s) => s.name === key);
-      if (!setting || row.kit?.derive?.[key]) throw new AppError(400, "unknown_setting", `${key} isn't a setting you can change.`);
+      if (!setting || isDerived(env, key)) throw new AppError(400, "unknown_setting", `${key} isn't a setting you can change.`);
       if (value !== null && typeof value !== "string") throw new AppError(400, "invalid_setting", `${key} must be text.`);
       // A blank secret would let the app fall back to its published default (FR-006).
       if (setting.secret && (value === null || value === "")) {
         throw new AppError(400, "secret_required", `${key} is a secret. Replace it with a new value instead of clearing it.`);
       }
+      // Nothing else stops the app from starting without a value its kit asks the owner for.
+      if (isAsked(env, key) && (value === null || value === "")) {
+        throw new AppError(400, "setting_required", `${key} is required. Replace it with a new value instead of clearing it.`);
+      }
     }
     // Template settings that use a changed value are rewritten with it.
     const next = new Map(current.map((s) => [s.name, s.value === null ? null : this.read(s.value)]));
     for (const [key, value] of changes) next.set(key, value === null || value === "" ? null : value);
-    const filled = resolveTemplates(row.kit, next);
-    const templates = Object.entries(row.kit?.derive ?? {})
-      .filter(([name, derive]) => typeof derive === "object" && current.some((s) => s.name === name))
+    const filled = resolveTemplates(env, next);
+    const templates = Object.entries(env)
+      .filter(([name, source]) => templateOf(source) !== undefined && current.some((s) => s.name === name))
       .map(([name]) => [name, filled.get(name) ?? null] as const);
     await this.db.transaction(async (tx) => {
       for (const [key, value] of changes) {

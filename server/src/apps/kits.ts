@@ -5,9 +5,9 @@ import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { parse } from "yaml";
 import { parseAgentAccess, AgentKitError } from "./agent-kit.ts";
-import type { Kit } from "../db/schema.ts";
+import type { EnvSource, Kit } from "../db/schema.ts";
 import { fetchLatestFile, fetchPinnedFile, fetchSource, githubEndpoints, MAX_FILE_BYTES, SourceError, type GithubEndpoints, type SourceFile } from "./github.ts";
-import { TEMPLATE_REFERENCE, templateNames } from "./settings.ts";
+import { TEMPLATE_REFERENCE, templateNames, templateOf } from "./settings.ts";
 
 export class KitError extends Error {
   constructor(message: string) {
@@ -18,7 +18,7 @@ export class KitError extends Error {
 
 /** What Your Space says when it is given a Compose file where a kit belongs. */
 export const KIT_REQUIRED =
-  "That's a Compose file, not a Your Space kit. Your Space installs an app from its kit: a small YAML file that names the app's Compose file and says what Your Space needs to run and show the app, such as its interface, the settings to generate, the internet hosts it needs and its limits. Give the link to the app's kit instead.";
+  "That's a Compose file, not a Your Space kit. Your Space installs an app from its kit: a small YAML file that names the app's Compose file and says what Your Space needs to run and show the app, such as its interface, its environment, the internet hosts it needs and its limits. Give the link to the app's kit instead.";
 
 /** A Compose file given where a kit belongs. */
 export class NotAKitError extends KitError {
@@ -34,7 +34,9 @@ const NAME = /^[a-z][a-z0-9-]{0,29}$/;
 const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const HOST = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
-const TOP_KEYS = new Set(["kit", "source", "name", "title", "interface", "pane", "generate", "derive", "set", "secrets", "outbound", "limits"]);
+const TOP_KEYS = new Set(["kit", "source", "name", "title", "interface", "pane", "env", "outbound", "limits"]);
+/** The fields kits named settings in before `env` (2026-11-23). */
+const SETTINGS_FIELDS = new Set(["generate", "derive", "set", "secrets"]);
 const SOURCE_KEYS = new Set(["repo", "path", "commit"]);
 /** A full commit SHA, as GitHub gives it. */
 const COMMIT = /^[0-9a-f]{40}$/;
@@ -52,6 +54,40 @@ export function parseMemory(value: string | number): number {
   return Math.round(Number(match[1]) * unit);
 }
 
+/** One entry of a kit's `env`: a value, or where the value comes from. */
+function envSource(name: string, entry: unknown): EnvSource {
+  if (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean") return String(entry);
+  if (!isObject(entry)) throw new KitError(`env.${name} must be a value, or generate, derive or ask.`);
+  const keys = Object.keys(entry);
+  const from = keys.filter((key) => key === "generate" || key === "derive" || key === "ask");
+  if (from.length !== 1) throw new KitError(`env.${name} must be a value, or exactly one of generate, derive or ask.`);
+  for (const key of keys) {
+    if (key !== from[0] && !(from[0] === "ask" && key === "secret")) throw new KitError(`env.${name} has the unknown field ${key}.`);
+  }
+  if ("generate" in entry) {
+    const o = entry.generate === true || entry.generate === null ? {} : entry.generate;
+    if (!isObject(o)) throw new KitError(`env.${name}.generate must be true or options.`);
+    for (const key of Object.keys(o)) if (key !== "bytes" && key !== "encoding") throw new KitError(`env.${name}.generate has the unknown field ${key}.`);
+    const bytes = o.bytes ?? 32;
+    if (!Number.isInteger(bytes) || (bytes as number) < 16 || (bytes as number) > 128) throw new KitError(`env.${name}.generate.bytes must be 16 to 128.`);
+    const encoding = o.encoding ?? "base64url";
+    if (encoding !== "hex" && encoding !== "base64url") throw new KitError(`env.${name}.generate.encoding must be hex or base64url.`);
+    return { generate: { bytes: bytes as number, encoding } };
+  }
+  if ("derive" in entry) {
+    const value = entry.derive;
+    if (value === "app_origin" || value === "app_host") return { derive: value };
+    if (isObject(value) && Object.keys(value).length === 1 && typeof value.template === "string" && value.template.length <= 1000) {
+      return { derive: { template: value.template } };
+    }
+    throw new KitError(`env.${name}.derive must be app_origin, app_host or { template: ... }.`);
+  }
+  if (entry.ask !== true && entry.ask !== "optional") throw new KitError(`env.${name}.ask must be true, or optional when the app runs without it.`);
+  if (entry.secret !== undefined && typeof entry.secret !== "boolean") throw new KitError(`env.${name}.secret must be true or false.`);
+  // What the owner types is shown only as set unless the kit says it isn't secret.
+  return { ask: entry.ask, secret: entry.secret ?? true };
+}
+
 /** Validates a kit strictly, so a kit for a newer format never half-applies. */
 export function parseKit(text: string): Kit {
   let data: unknown;
@@ -62,7 +98,14 @@ export function parseKit(text: string): Kit {
   }
   if (!isObject(data)) throw new KitError("it isn't a YAML mapping.");
   if (data.kit === undefined && isObject(data.services)) throw new NotAKitError();
-  for (const key of Object.keys(data)) if (!TOP_KEYS.has(key) && !(data.kit === 2 && key === "agentAccess")) throw new KitError(`it has the unknown field ${key}.`);
+  for (const key of Object.keys(data)) {
+    if (SETTINGS_FIELDS.has(key)) {
+      throw new KitError(
+        `it names settings in ${key}, which kits no longer have. A kit gives the app's whole environment in env: each variable with a value, or with where its value comes from (generate, derive or ask).`,
+      );
+    }
+    if (!TOP_KEYS.has(key) && !(data.kit === 2 && key === "agentAccess")) throw new KitError(`it has the unknown field ${key}.`);
+  }
   if (data.kit !== 1 && data.kit !== 2) throw new KitError("it is for a kit format this Your Space doesn't know (use kit: 1 or kit: 2).");
   // The source names the app's Compose file at an exact commit (contracts/kit-format.md). Only a kit
   // given with a Compose file on this machine (install-app --compose) may leave it out (composeOf).
@@ -119,56 +162,25 @@ export function parseKit(text: string): Kit {
     if (typeof data.pane !== "boolean") throw new KitError("pane must be true or false.");
     kit.pane = data.pane;
   }
-  if (data.generate !== undefined) {
-    if (!isObject(data.generate)) throw new KitError("generate must map setting names to options.");
-    kit.generate = {};
-    for (const [name, options] of Object.entries(data.generate)) {
-      if (!VARIABLE.test(name)) throw new KitError(`${name} isn't a setting name.`);
-      const o = options ?? {};
-      if (!isObject(o)) throw new KitError(`generate.${name} must be options.`);
-      const bytes = o.bytes ?? 32;
-      if (!Number.isInteger(bytes) || (bytes as number) < 16 || (bytes as number) > 128) throw new KitError(`generate.${name}.bytes must be 16 to 128.`);
-      const encoding = o.encoding ?? "base64url";
-      if (encoding !== "hex" && encoding !== "base64url") throw new KitError(`generate.${name}.encoding must be hex or base64url.`);
-      kit.generate[name] = { bytes: bytes as number, encoding };
+  if (data.env !== undefined) {
+    if (!isObject(data.env)) throw new KitError("env must map the app's variables to their values.");
+    const env: Record<string, EnvSource> = {};
+    for (const [name, entry] of Object.entries(data.env)) {
+      // `__proto__` can't be a key of an ordinary object, so it can't be a variable Your Space keeps.
+      if (!VARIABLE.test(name) || name === "__proto__") throw new KitError(`${name} isn't a variable name.`);
+      env[name] = envSource(name, entry);
     }
-  }
-  if (data.derive !== undefined) {
-    if (!isObject(data.derive)) throw new KitError("derive must map setting names to values.");
-    kit.derive = {};
-    for (const [name, value] of Object.entries(data.derive)) {
-      if (!VARIABLE.test(name)) throw new KitError(`${name} isn't a setting name.`);
-      if (value === "app_origin" || value === "app_host") {
-        kit.derive[name] = value;
-      } else if (isObject(value) && Object.keys(value).length === 1 && typeof value.template === "string" && value.template.length <= 1000) {
-        kit.derive[name] = { template: value.template };
-      } else {
-        throw new KitError(`derive.${name} must be app_origin, app_host or { template: ... }.`);
+    for (const [name, source] of Object.entries(env)) {
+      const template = templateOf(source);
+      if (template === undefined) continue;
+      for (const ref of templateNames(template)) {
+        if (!Object.hasOwn(env, ref)) throw new KitError(`env.${name} uses ${ref}, which the kit's env doesn't define.`);
+        if (templateOf(env[ref]) !== undefined) throw new KitError(`env.${name} uses ${ref}, another template; a template can use only values.`);
       }
+      if (template.replace(TEMPLATE_REFERENCE, "").includes("${")) throw new KitError(`env.${name} has a placeholder that isn't \${VARIABLE_NAME}.`);
     }
-  }
-  if (data.set !== undefined) {
-    if (!isObject(data.set)) throw new KitError("set must map setting names to values.");
-    kit.set = {};
-    for (const [name, value] of Object.entries(data.set)) {
-      if (!VARIABLE.test(name)) throw new KitError(`${name} isn't a setting name.`);
-      if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") throw new KitError(`set.${name} must be a value.`);
-      kit.set[name] = String(value);
-    }
-  }
-  for (const [name, value] of Object.entries(kit.derive ?? {})) {
-    if (typeof value === "string") continue;
-    for (const ref of templateNames(value.template)) {
-      const known = kit.generate?.[ref] !== undefined || kit.set?.[ref] !== undefined || typeof kit.derive?.[ref] === "string";
-      if (!known) throw new KitError(`derive.${name} uses ${ref}, which the kit doesn't generate, set or derive from the app's address.`);
-    }
-    if (value.template.replace(TEMPLATE_REFERENCE, "").includes("${")) throw new KitError(`derive.${name} has a placeholder that isn't \${SETTING_NAME}.`);
-  }
-  if (data.secrets !== undefined) {
-    if (!Array.isArray(data.secrets) || !data.secrets.every((s) => typeof s === "string" && VARIABLE.test(s))) {
-      throw new KitError("secrets must be a list of setting names.");
-    }
-    kit.secrets = data.secrets as string[];
+    // An empty env names nothing, as a kit without one does, so the two compare equal.
+    if (Object.keys(env).length > 0) kit.env = env;
   }
   if (data.outbound !== undefined) {
     if (!Array.isArray(data.outbound)) throw new KitError("outbound must be a list of host names.");

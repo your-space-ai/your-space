@@ -1,0 +1,12 @@
+# An app whose file loads its settings with `env_file: .env`, as many self-hosted apps' files do, for
+# the browser tests. Its kit defines the environment; Your Space gives it to the service in place of
+# the file, under the environment the file sets itself.
+services:
+  web:
+    image: busybox:1.37
+    command: ["sh", "-c", "mkdir -p /www && echo ok > /www/index.html && exec httpd -f -p 8080 -h /www"]
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      GREETING: from-the-file

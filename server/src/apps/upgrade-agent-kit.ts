@@ -5,6 +5,7 @@ import { operatorActorId, recordEvent } from "../actors.ts";
 import type { Db } from "../db/client.ts";
 import { app, event, installJob } from "../db/schema.ts";
 import { kitFromFile } from "./kits.ts";
+import { withEnv } from "./settings.ts";
 import { AppError } from "./service.ts";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -98,9 +99,10 @@ export async function upgradeAgentKit(
     if (found.kit.kit !== 2 || !found.kit.agentAccess) {
       throw new AppError(400, "invalid_kit", "Supply a version 2 kit with agentAccess.");
     }
-    // Both sides contain parsed kit fields, including normalized units and defaults.
+    // Both sides contain parsed kit fields, including normalized units and defaults; a kit stored
+    // before env compares in env's form.
     const { agentAccess, ...fields } = found.kit;
-    if (!isDeepStrictEqual({ ...fields, kit: 1 }, row.kit)) {
+    if (!isDeepStrictEqual({ ...fields, kit: 1 }, withEnv(row.kit))) {
       throw new AppError(
         409,
         "upgrade_conflict",

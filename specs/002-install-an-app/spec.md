@@ -110,7 +110,7 @@ Your Space needs these components. Each slice brings in only what it uses.
 | C | Source fetch | Turns a GitHub link into one file at an exact commit | |
 | D | App description and kits | Imports the app's own file into an app description, applies its installation kit, checks it against Your Space's rules, refuses the rest with reasons | |
 | E | Image pinning | Resolves each image to an exact version that runs on the runtime's processor type | |
-| F | Settings and secrets | Values for the file's variables; generates secrets; keeps them out of logs and output | A |
+| F | Settings and secrets | Values for the variables the kit's environment defines; generates secrets; keeps them out of logs and output | A |
 | G | Restart recovery | Brings apps back when Your Space starts, and corrects recorded state that no longer matches | A, B |
 | H | Install jobs | Runs an install in the background and reports progress | A, B |
 | I | Apps API | Owner-only endpoints to preview, install, list and manage apps | A, H |
@@ -459,7 +459,10 @@ Level 1 matters most once there are members (journey 004); level 2 is for develo
   owner sees and sets these values is designed with the review screen in slice 3 (see Q3).
   (2026-11-23: one exception, a reinstall that reuses a removed app's data. A setting kept with the
   data keeps its value, even an unset one, so a secret never set before leaves the app on its
-  published default until the owner gives it a value; see Q3.)
+  published default until the owner gives it a value; see Q3.) (2026-11-23, later: the kit's `env`
+  is the app's whole environment and says which values Your Space generates; Your Space no longer
+  generates a value for a variable the kit leaves out because its name looks secret. A variable the
+  kit doesn't define gets the file's default, and one with no default is refused; see Q3.)
 - **FR-007**: Apps must come back when Your Space starts, and Your Space must not report a state that
   doesn't match what is running.
 - **FR-008**: Stopping Your Space on purpose stops the apps it manages, and starting it brings them
@@ -699,7 +702,12 @@ request after agreement.
    never their values, and the owner can give a value for any setting before installing. How to keep
    less experienced owners safe with apps that have no kit (for example, clearer warnings, or
    installing only apps with kits by default) is left for later. (Decided 2026-11-23: Your Space
-   installs only apps with kits.)
+   installs only apps with kits.) (Superseded 2026-11-23, later: the kit's `env` names the app's
+   whole environment, each variable a value, generated, worked out or asked of the owner, and only
+   those are settings. No setting is secret or generated because of its name: the kit says which
+   values to generate and which values the owner gives are secret. A variable the app's file needs,
+   with no default, that the kit doesn't define is refused in the review. See the
+   [kit format](contracts/kit-format.md).)
 4. **Q4, processor types (decided 2026-11-14)**: an app installs if its images run on the runtime's
    processor type; nothing more is required.
 5. **Q5, app addresses (decided 2026-11-14)**: every app is at `<app>.<Your Space's address>` in

@@ -19,9 +19,8 @@ const base = {
   kit: 1,
   title: "Records",
   interface: { service: "ui", port: 8080 },
-  generate: { APP_SECRET: {} },
+  env: { APP_SECRET: { generate: {} }, BATCH: 20 },
   limits: { ui: { memory: "128M" } },
-  set: { BATCH: 20 },
   pane: false,
 };
 const agentAccess = {
@@ -139,8 +138,8 @@ it("rejects retargeting, nonlocal or stale sources, changed settings, and invali
     { limits: { ui: { memory: "512M" } } },
     { source: { repo: "someone/records", path: "compose.yaml", commit: "c".repeat(40) } },
     { interface: { service: "other", port: 8080 } },
-    { generate: {} },
-    { set: {} },
+    { env: { APP_SECRET: { generate: {} } } },
+    { env: { APP_SECRET: { generate: {} }, BATCH: 20, MORE: "x" } },
     { pane: true },
   ]) {
     await expect(
@@ -172,10 +171,17 @@ it("checks the source for GitHub Compose installs and accepts equivalent normali
   await expect(
     upgradeAgentKit(t.db, "records", generation, original.source, JSON.stringify({ ...candidate, source: { ...pin, commit: "d".repeat(40) } })),
   ).rejects.toMatchObject({ code: "upgrade_conflict" });
-  const text = JSON.stringify({ ...candidate, source: pin, limits: { ui: { memory: 128 * 1024 * 1024 } }, set: { BATCH: "20" } });
+  const text = JSON.stringify({ ...candidate, source: pin, limits: { ui: { memory: 128 * 1024 * 1024 } }, env: { APP_SECRET: { generate: true }, BATCH: "20" } });
   await expect(upgradeAgentKit(t.db, "records", generation, original.source, text)).resolves.toMatchObject({
     kitSource: kitFromFile(text, source).source,
   });
+});
+
+it("upgrades a kit stored before env, whose settings are the same in env", async () => {
+  const { env, ...rest } = oldKit.kit;
+  const stored = { ...rest, generate: { APP_SECRET: { bytes: 32, encoding: "base64url" as const } }, set: { BATCH: "20" } };
+  await t.db.update(app).set({ kit: stored }).where(eq(app.id, id));
+  await expect(upgradeAgentKit(t.db, "records", generation, oldKit.source, candidateText)).resolves.toMatchObject({ kitVersion: 2 });
 });
 
 it("serializes competing upgrades and retires stale grants and credentials through the persisted kit change", async () => {

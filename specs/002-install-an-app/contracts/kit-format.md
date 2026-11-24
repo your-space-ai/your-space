@@ -36,30 +36,65 @@ interface:
   service: web
   port: 3000
 pane: true                    # false: opens in its own tab
-generate:                     # values Your Space generates; the published default is never used
-  SECRET_KEY_BASE: { bytes: 64, encoding: hex }
-  POSTGRES_PASSWORD: {}       # default: 32 bytes, base64url
-derive:                       # values Your Space works out
-  APP_URL: app_origin         # the app's own address, e.g. http://finance.space.localhost
-  DATABASE_URL:               # built from other settings, so a generated password reaches it
-    template: "postgresql://finance:${POSTGRES_PASSWORD}@db/finance"
-set:                          # values from the app's own example settings; the owner can change them
-  STORAGE_TYPE: local
-secrets: [OPENAI_API_KEY]     # settings shown only as set or not set
+env:                          # the app's whole environment: each variable, and where its value comes from
+  SECRET_KEY_BASE: { generate: { bytes: 64, encoding: hex } }  # generated once, never shown
+  POSTGRES_PASSWORD: { generate: true }                         # 32 bytes, base64url
+  APP_URL: { derive: app_origin }   # the app's own address, e.g. http://finance.space.localhost
+  DATABASE_URL:                     # built from other variables, so a generated password reaches it
+    derive: { template: "postgresql://finance:${POSTGRES_PASSWORD}@db/finance" }
+  OWNER_KEY: { ask: true }          # the owner gives it in the review; the install needs it
+  ADMIN_EMAIL: { ask: true, secret: false }
+  OPENAI_API_KEY: { ask: optional } # the owner may give it, now or later
+  STORAGE_TYPE: local               # a value; the owner can change it
 outbound:                     # starter hosts, approved when the install is confirmed
   - api.openai.com
 limits:
   web: { memory: 1536M, cpus: 1 }
 ```
 
-A `derive` value is `app_origin`, `app_host`, or `{ template: ... }`. A template is text with
-`${NAME}` placeholders, each naming a setting the kit generates, sets, or derives from the app's
-address; a template can't use another template. Your Space fills it whenever it starts the app, so
-when the owner changes a setting it uses, the template follows. The owner can't change a template
-setting directly, and it is shown only as set when any setting it uses is secret. Values are
+**The environment** (decision 2026-11-23). `env` is the app's whole environment: every variable
+Your Space gives the app, each with a value or with where its value comes from. Your Space gives
+exactly this map to the app's Compose file, for every `${VARIABLE}` in it, and to every service that
+loads it with `env_file: .env` (or `./.env`), the file next to the Compose file where self-hosted apps
+keep their settings. Nothing else in the file becomes a setting, and no variable's name makes it
+secret. Each entry is one of:
+
+- **A value**, such as `info`, `2` or `false`, kept as text. It is shown, and the owner can change it.
+  An empty value is no value, as one the owner clears is: Your Space doesn't give the app the
+  variable, so the file's default applies.
+- **`{ generate: ... }`**, a random value generated when the app is installed: `true` for 32 bytes in
+  base64url, or `{ bytes, encoding }` with 16 to 128 bytes and `hex` or `base64url`. It is secret,
+  shown only as set.
+- **`{ derive: ... }`**, a value Your Space works out: `app_origin`, the app's address, such as
+  `http://finance.space.localhost` or the link the owner publishes it at; `app_host`, its host name;
+  or `{ template: ... }`. The owner can't change it.
+- **`{ ask: true }`**, a value the owner gives in the review, which the install needs and which can
+  later be replaced but not cleared, or **`{ ask: optional }`**, one the owner may give, now or later.
+  It is secret unless the entry adds `secret: false`.
+
+A template is text with `${NAME}` placeholders, each naming another variable in `env` that isn't a
+template. Your Space fills it whenever it starts the app, so when the owner changes a value it uses,
+the template follows. It is shown only as set when any variable it uses is secret. Values are
 inserted as they are: generated values are hex or base64url and safe in URLs, while a value the
-owner types is not encoded. Use a template when the app's file reads one setting that contains
+owner types is not encoded. Use a template when the app's file reads one variable that contains
 another, such as a database URL with a password the kit generates.
+
+A variable the Compose file reads with no default, as `${NAME}` or `$NAME`, or requires, as
+`${NAME:?message}` or `${NAME?message}`, must be in `env`, even one that only a service left out with its profile uses; the review refuses
+the app until it is, with `The kit doesn't define NAME`. One with a default, such as `${NAME:-}` or `${NAME:-info}`, gets
+the default unless `env` defines it. A variable the file requires is required in the review even
+when the kit marks it `ask: optional`. A service whose `env_file` names any other file, and any
+`label_file`, is refused: Compose reads no file an app's file names. So is a Compose file that
+includes others (`include`) or extends a service in another file (`extends` with `file`), before
+Compose sees it: an app is one Compose file, and `extends` within it still works. The `environment` a `.env`
+service's file sets itself wins over `env`, as it does over `.env`. Your Space writes no settings
+file: the values stay encrypted in its database and reach Compose only as its environment.
+
+`env` replaced four fields on 2026-11-23: `generate`, `derive` and `set`, whose entries are now
+`env` entries, and `secrets`, whose names are now `{ ask: optional }`. A kit with any of them is
+refused with a message that names `env`. Apps installed before keep their settings: Your Space reads
+their stored kits' fields as `env`. Older Your Space versions refuse a kit with `env` as an unknown
+field, so the change needs no new format version; `kit: 1` and `kit: 2` both take it.
 
 Every field except `kit` and `source` is optional. A kit given with a Compose file on this machine
 may leave out `source`, and its `source` isn't matched. Any other kit without `source` is refused, as
@@ -68,5 +103,5 @@ one, such as a branch, a tag or a short commit; the message names the missing fi
 `kit: 1` and `kit: 2` alike: a kit written before kits pinned their Compose file is refused until it
 adds `source.commit`. Unknown fields are refused, in `source` too, so a kit written for a newer
 format doesn't half-apply. A Compose file given where a kit belongs is refused with a message that
-explains kits. A kit can't change the Docker adapter's rules: it can only name values, hosts, limits
-and the interface.
+explains kits. A kit can't change the Docker adapter's rules: it can only name the app's environment,
+hosts, limits and the interface.

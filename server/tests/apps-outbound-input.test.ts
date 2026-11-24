@@ -5,7 +5,7 @@ import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
 import { fakeGithub, FakeRuntime, kitLink, plainKit } from "./helpers/runtime.ts";
 import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
 
-// An app whose kit names its interface and nothing else.
+// An app whose kit names its interface and its environment.
 const PLAIN = `services:
   web:
     image: traefik/whoami:latest
@@ -23,7 +23,7 @@ let cookie: string;
 function useServer(runtime: FakeRuntime): void {
   beforeAll(async () => {
     t = await createTestDatabase();
-    server = await startServer(t.db, { apps: { runtime, fetch: fakeGithub({ "ys-fixtures/plain/compose.yaml": PLAIN, ...plainKit("plain") }) } });
+    server = await startServer(t.db, { apps: { runtime, fetch: fakeGithub({ "ys-fixtures/plain/compose.yaml": PLAIN, ...plainKit("plain", "env: { GREETING: hello, API_TOKEN: { generate: true } }\n") }) } });
     await createOwnerWithPassword(t.db, OWNER, server.publicUrl);
     const signedIn = await server.request("/api/auth/sign-in/username", { method: "POST", body: JSON.stringify({ username: OWNER.username, password: OWNER.password }) });
     cookie = cookieHeader(signedIn);

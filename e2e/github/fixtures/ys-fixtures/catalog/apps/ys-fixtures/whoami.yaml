@@ -8,8 +8,10 @@ title: Who Am I
 interface:
   service: web
   port: 80
-generate:
-  API_TOKEN: { bytes: 24 }
+env:
+  API_TOKEN: { generate: { bytes: 24 } }
+  # Optional, so the app gets the file's default, hello, until the owner gives one.
+  GREETING: { ask: optional, secret: false }
 outbound:
   - example.com
 limits:

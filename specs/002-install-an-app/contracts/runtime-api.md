@@ -40,10 +40,27 @@ image named with a placeholder isn't looked up and has no digest; the server che
 with the owner's values before installing it. `/apply` ignores `placeholders` and refuses a file
 whose required settings have no value, so a placeholder never reaches a running app.
 
+`env` (2026-11-23) is how settings reach the app: the server sends exactly the variables the app's
+kit defines that have a value, and Compose resolves the file with them as its environment. Before it resolves anything, the runtime manager has Compose read the file as written
+(`config` with interpolation, settings files, normalization and paths turned off, every profile
+included), so it can check every `env_file` and `label_file` before Compose would read one. It tells
+Compose to read none of them, with a second Compose file that resets each, and writes no settings
+file. A service whose `env_file` names only `.env` (or `./.env`), required or not, gets every `env`
+value as its environment, under the environment its file sets, and `adaptations` reports it.
+`variables` marks `unset` each variable Compose had no value and no default for, and so left blank,
+which Compose tells apart from one whose default is empty only in its warning; the server refuses
+each one, and each `required` one, that the kit doesn't define. Any
+other `env_file`, such as an absolute path, `../x` or a second file, and any `label_file`, is a
+refusal naming the file, unless its service is left out with its profile. A file Compose can't read
+as written is refused with Compose's error, as an unreadable file always was. Compose reads the
+other Compose files a file names, with `include` (and an include's own `env_file`) or with
+`extends: { file }`, even as written, so the server refuses such a file, `400 refused`, before it
+sends it to `/check`, `/apply` or an interface refresh (2026-11-24).
+
 | Method and path | Body | Answer |
 | --- | --- | --- |
 | `GET /engine` | | `{ reachable, version, os, arch, cpus, memory, connection, stopping }`; `stopping` is true after `/stop-all` |
-| `POST /check` | app spec, `pins` and `placeholders` optional | `{ ok, services: [{ name, image, interface, ports, published: [{ target, host }], volumes, dependsOn }], variables: [{ name, required, default }], adaptations: [...], refusals: [{ service, setting, reason }], images: [{ ref, digest, runsHere, platforms }] }` |
+| `POST /check` | app spec, `pins` and `placeholders` optional | `{ ok, services: [{ name, image, interface, ports, published: [{ target, host }], volumes, dependsOn }], variables: [{ name, required, default, unset }], adaptations: [...], refusals: [{ service, setting, reason }], images: [{ ref, digest, runsHere, platforms }] }` |
 | `POST /apply` | app spec | NDJSON stream: `{ "step": "pull", "image" }`, `{ "step": "start" }`, …, then `{ "done": true }` or `{ "error": "…" }`; a published port something else took since it was checked gives an error naming it. While the app runs, a one-time service that finished and is unchanged isn't started again |
 | `POST /apps/{project}/down` | | Removes containers, networks and the anonymous volumes the containers mounted; keeps named volumes |
 | `DELETE /apps/{project}/volumes` | | Removes the app's volumes |

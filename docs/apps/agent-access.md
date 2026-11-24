@@ -14,7 +14,7 @@ your-space app upgrade-agent-kit <app-name> --kit ./kit-v2.yaml \
   --expect-installation <installation> --expect-kit <kitSource>
 ```
 
-Start with the original file, change `kit: 1` to `kit: 2` and add its `agentAccess` declaration. Keep its existing interface, settings, secrets, limits and other installation fields. To pipe the file, use `--kit - < kit-v2.yaml`. The upgrade preserves the app’s installation ID and data. A running installation refreshes its interface if needed. A stopped installation stays stopped. The owner still needs to bind a credential, enable eligible roles and grant agent access in **Agents**.
+Start with the original file, change `kit: 1` to `kit: 2` and add its `agentAccess` declaration. Keep its existing interface, environment, limits and other installation fields. A kit from before kits gave the environment in `env` names the same values there: its `generate`, `derive` and `set` entries, and each name in `secrets` as `{ ask: optional }`. To pipe the file, use `--kit - < kit-v2.yaml`. The upgrade preserves the app’s installation ID and data. A running installation refreshes its interface if needed. A stopped installation stays stopped. The owner still needs to bind a credential, enable eligible roles and grant agent access in **Agents**.
 
 If the interface refresh fails after the kit is saved, run `--inspect` again. Retry the refresh with the inspected installation token and the **new** kit digest:
 
