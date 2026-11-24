@@ -23,19 +23,34 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ github.event_name != 'pull_request' || steps.base.outputs.code == 'true' }}
-      setups: ${{ github.event_name != 'pull_request' || (steps.base.outputs.code == 'true' && (!github.event.repository.private || steps.base.outputs.bottom == 'true')) }}
-      browser: ${{ github.event_name == 'workflow_dispatch' || (!github.event.repository.private && (github.event_name == 'push' || steps.base.outputs.code == 'true')) }}
+      setups: ${{ steps.changes.outputs.ci_or_docs != 'true' && (github.event_name != 'pull_request' || (steps.base.outputs.code == 'true' && (!github.event.repository.private || steps.base.outputs.bottom == 'true'))) }}
+      browser: ${{ github.event_name == 'workflow_dispatch' || (steps.changes.outputs.ci_or_docs != 'true' && !github.event.repository.private && (github.event_name == 'push' || steps.base.outputs.code == 'true')) }}
     steps:
       - name: Check the branch for a manual run
         if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
         run: |
           echo "Select main to run the full CI checks." >&2
           exit 1
-      - if: github.event_name == 'pull_request'
+      - if: github.event_name != 'workflow_dispatch'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
+      - id: changes
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          # A pull request's changes since its base, or the commits a push added to main.
+          BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # A change to CI configuration or documentation alone leaves the code the Compose setups and
+          # browser journeys test as it was, so they're skipped. A push with no previous commit to
+          # compare, or one git can't find, runs them.
+          if [[ ! $BEFORE =~ ^0*$ ]] &&
+            git diff --quiet "$BEFORE...$AFTER" -- . ':!.github/' ':!.circleci/' ':!*.md' ':!docs/' ':!specs/' ':!.specify/'; then
+            echo "Only CI configuration or documentation changed: the Compose setups and browser journeys are skipped."
+            echo 'ci_or_docs=true' >> "$GITHUB_OUTPUT"
+          fi
       - id: base
         if: github.event_name == 'pull_request'
         env:

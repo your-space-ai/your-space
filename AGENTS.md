@@ -59,8 +59,11 @@ While the repository is private, GitHub Actions minutes are limited. Run the che
 pushing, and push a stack of pull requests once per round of fixes rather than after each fix. The
 browser tests run on CircleCI, on every pull request in a stack: in Chromium on pull requests, and
 in Chromium, Firefox and WebKit on `main`. A pull request whose code (its git tree) already passed
-them doesn't run them again. The Compose setups checks run on GitHub Actions; in a stack, only the
-pull request based on `main` runs them, and the ones above it run them when they reach `main`. A
+them doesn't run them again, and neither does a change to CI configuration (`.github/`,
+`.circleci/`) or documentation alone, on a pull request or on `main`: its browser tests, Arm checks
+and Compose setups stop early or are skipped, and count as passed. The Compose setups checks run on
+GitHub Actions; in a stack, only the pull request based on `main` runs them, and the ones above it
+run them when they reach `main`. A
 draft runs only the GitHub Actions checks: CircleCI's jobs, the browser tests and the Argos
 screenshots included, run when it is marked ready for review. Keep a pull request a draft until its
 reviewer is ready to review it, so that changes merged below it don't cost extra runs. Code review

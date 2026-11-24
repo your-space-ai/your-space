@@ -66,8 +66,10 @@ Space only through its public APIs and contracts.
 - Keep each pull request to one change.
 - Look for **Contribution checks**. For code changes it includes unit tests, typechecks and
   builds. Public code PRs also exercise Compose and Chromium on disposable GitHub-hosted
-  runners. These checks use synthetic accounts and apps. You don’t need any project credentials.
-  A maintainer may need to approve the run from a fork.
+  runners. A change to CI configuration (`.github/`, `.circleci/`) or documentation alone skips
+  Compose and the browser tests, on GitHub and CircleCI, since the code they test is unchanged;
+  the skipped jobs count as passed. These checks use synthetic accounts and apps. You don’t need
+  any project credentials. A maintainer may need to approve the run from a fork.
 
 Maintainers can run the full GitHub checks on `main` with `gh workflow run ci.yml --ref main`
 or **Actions → CI → Run workflow**. This runs the workspace, Compose and Chromium checks on
