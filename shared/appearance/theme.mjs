@@ -138,7 +138,8 @@ export function validateTheme(value) {
   return {version: 2, name, style: value.style, fonts, light: colors(value.light, colorKeys), dark: colors(value.dark, colorKeys)};
 }
 
-function fontStack(name) {
+// An unknown family falls back by its role: the monospace family to monospace, others by name.
+function fontStack(name, role) {
   const stacks = {
     'system-ui': 'system-ui, sans-serif',
     'sans-serif': 'system-ui, sans-serif',
@@ -148,8 +149,8 @@ function fontStack(name) {
     'ui-monospace': 'ui-monospace, Menlo, Consolas, monospace',
   };
   if (Object.hasOwn(stacks, name)) return stacks[name];
-  const fallback = ['Fraunces', 'Georgia', 'Iowan Old Style', 'Baskerville', 'Times New Roman'].includes(name) ? stacks.serif :
-    ['IBM Plex Mono', 'Menlo', 'Consolas', 'Courier New'].includes(name) ? stacks.monospace : stacks['system-ui'];
+  const fallback = role === 'mono' || ['IBM Plex Mono', 'Menlo', 'Consolas', 'Courier New'].includes(name) ? stacks.monospace :
+    ['Fraunces', 'Georgia', 'Iowan Old Style', 'Baskerville', 'Times New Roman'].includes(name) ? stacks.serif : stacks['system-ui'];
   return '"' + name + '", ' + fallback;
 }
 
@@ -176,7 +177,7 @@ export function themeVariables(look, scheme) {
     '--accent': colors.accent, '--accent-ink': colors.accentInk, '--border': colors.border,
     '--danger': colors.danger, '--success': colors.success, '--warning': colors.warning,
     '--font-body': fontStack(theme.fonts.body), '--font-heading': fontStack(theme.fonts.heading),
-    '--font-mono': fontStack(theme.fonts.mono), '--theme-style': theme.style, ...styleVariables[theme.style],
+    '--font-mono': fontStack(theme.fonts.mono, 'mono'), '--theme-style': theme.style, ...styleVariables[theme.style],
   };
 }
 

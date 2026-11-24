@@ -113,3 +113,11 @@ test('Soft tints surfaces with the accent, and the other styles leave them as th
     }
   }
 });
+
+test('an unknown monospace family falls back to monospace, and other families by their name', () => {
+  const look = {...builtInThemes[0].theme, fonts: {heading: 'Fraunces', body: 'Some Sans', mono: 'Some Mono'}};
+  const variables = themeVariables(look, 'light');
+  assert.equal(variables['--font-mono'], '"Some Mono", ui-monospace, Menlo, Consolas, monospace');
+  assert.equal(variables['--font-body'], '"Some Sans", system-ui, sans-serif');
+  assert.equal(variables['--font-heading'], '"Fraunces", ui-serif, Georgia, serif');
+});
