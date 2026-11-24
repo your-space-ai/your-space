@@ -88,13 +88,15 @@ jobs:
     if: github.repository == 'your-space-ai/your-space'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # npm trusted publishing: npm exchanges this job's GitHub OIDC token (id-token: write) for a
+    # short-lived publish credential. The @your-space-ai/cli package trusts only this workflow file
+    # in this repository, so no npm token is stored anywhere.
     permissions:
       contents: read
       id-token: write
     env:
       TAG: ${{ github.event.release.tag_name }}
       PRERELEASE: ${{ github.event.release.prerelease }}
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -104,10 +106,6 @@ jobs:
       - name: Publish the release's npm package
         run: |
           set -o pipefail
-          if [[ -z $NODE_AUTH_TOKEN ]]; then
-            echo "::error::Add the NPM_TOKEN repository secret, then re-run this job."
-            exit 1
-          fi
           version=${TAG#v}
           file="your-space-ai-cli-$version.tgz"
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$file" --pattern SHA256SUMS

@@ -98,7 +98,7 @@ The release workflow gains a `cli` job and a shared script:
   Intel runner builds both.
 - `cli/scripts/packages.sh <arch>` builds `.deb` with `dpkg-deb` and `.rpm` with `rpmbuild`.
 - The workflow uploads the executables, packages and tarball with one `SHA256SUMS` file, and
-  publishes the npm package when an `NPM_TOKEN` secret is set.
+  publishes the npm package with npm trusted publishing (GitHub OIDC), with no stored token.
 
 ### Dependencies
 
