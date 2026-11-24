@@ -3,23 +3,27 @@ import type { PaneLayout, ViewComposition } from "./workspace-layout.ts";
 import { gridShape, maxPanes } from "../../shared/workspace-layout/model.mjs";
 export { gridShape, maxPanes };
 const appName = /^[a-z][a-z0-9-]{0,29}$/;
-const presets: PaneLayout[] = ["columns", "rows", "grid", "main"];
 export type Sizes = ViewComposition["sizes"];
-export type PaneSearch = { with?: string; layout?: PaneLayout; sizes?: string; view?: string };
+// The apps in the pane and the saved view it came from. There is no layout or size in the address:
+// no preset choice and no layout link (decision 2026-11-23, Alpha scope). With a view, `with` is set,
+// even to "", only when the apps differ from the view's, so one app left open stays one app.
+export type PaneSearch = { with?: string; view?: string };
 type Cell = { row: number; column: number; rowSpan?: number; columnSpan?: number };
 
 export function paneSearch(raw: Record<string, unknown>): PaneSearch {
   const search: PaneSearch = {};
   if (typeof raw.with === "string") {
     const withApps = [...new Set(raw.with.split(",").filter((name) => appName.test(name)))].slice(0, maxPanes - 1);
-    if (withApps.length) search.with = withApps.join(",");
+    search.with = withApps.join(",");
   }
-  if (presets.includes(raw.layout as PaneLayout)) search.layout = raw.layout as PaneLayout;
-  if (typeof raw.sizes === "string" && raw.sizes.length <= 400 && /^[\d.,/]+$/.test(raw.sizes))
-    search.sizes = raw.sizes;
   if (typeof raw.view === "string" && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(raw.view))
     search.view = raw.view;
   return search;
+}
+
+/** The layout for apps opened together: side by side, a main app with two beside it, then a grid. */
+export function layoutFor(count: number): PaneLayout {
+  return count === 3 ? "main" : count > 3 ? "grid" : "columns";
 }
 
 export function cellsFor(layout: PaneLayout, count: number): Cell[] {
@@ -78,19 +82,7 @@ export function encodeSizes(sizes: Sizes) {
   return [sizes.columns, sizes.rows].map((axis) => axis.map((n) => Number(n.toFixed(4))).join(",")).join("/");
 }
 
-export function decodeSizes(raw: string | undefined, layout: PaneLayout, count: number): Sizes | undefined {
-  if (!raw) return;
-  const pair = raw.split("/");
-  if (pair.length !== 2) return;
-  const sizes = { columns: pair[0]!.split(",").map(Number), rows: pair[1]!.split(",").map(Number) };
-  return validSizes(sizes, layout, count) ? sizes : undefined;
-}
-
-export function compositionSearch(view: ViewComposition, viewId?: string): PaneSearch {
-  return {
-    with: view.apps.slice(1).join(",") || undefined,
-    layout: view.layout,
-    sizes: encodeSizes(view.sizes),
-    view: viewId,
-  };
+export function compositionSearch(apps: string[], viewId?: string): PaneSearch {
+  const companions = apps.slice(1).join(",");
+  return { with: viewId ? companions : companions || undefined, view: viewId };
 }

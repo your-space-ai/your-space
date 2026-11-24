@@ -1,9 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Cell, Grid, Gridline, type GridImperativeHandle, type GridLayout } from "react-resizable-panels";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { appsQuery, errorMessage, STATE_LABEL, type AppSummary } from "../apps-api.ts";
-import { sessionQuery, workspaceQuery } from "../queries.ts";
 import {
   createView,
   updateView,
@@ -15,11 +14,11 @@ import {
 import {
   cellsFor,
   compositionSearch,
-  decodeSizes,
   defaultSizes,
   dividersFor,
   encodeSizes,
   gridShape,
+  layoutFor,
   maxPanes,
   validSizes,
   type PaneSearch,
@@ -30,8 +29,6 @@ import "./app-pane.css";
 export function AppPane({ name, search }: { name: string; search: PaneSearch }) {
   const apps = useQuery(appsQuery);
   const settings = useQuery(workspaceLayoutQuery);
-  const session = useQuery(sessionQuery);
-  const workspace = useQuery(workspaceQuery);
   if (apps.isError || (search.view && settings.isError)) {
     return (
       <main className="page">
@@ -56,8 +53,8 @@ export function AppPane({ name, search }: { name: string; search: PaneSearch }) 
       </main>
     );
   }
-  const fromSaved = saved && !search.layout && !search.with && !search.sizes;
-  const names = fromSaved ? saved.composition.apps : [...new Set([name, ...(search.with?.split(",") ?? [])])];
+  const fromSaved = saved && search.with === undefined;
+  const names = fromSaved ? saved.composition.apps : [...new Set([name, ...(search.with ? search.with.split(",") : [])])];
   const selected = names.flatMap((id) => {
     const app = openable.find((a) => a.name === id);
     return app ? [app] : [];
@@ -70,19 +67,16 @@ export function AppPane({ name, search }: { name: string; search: PaneSearch }) 
       </main>
     );
   }
-  const layout = search.layout ?? (fromSaved ? saved.composition.layout : "columns");
-  const ownerId = session.data?.user.id,
-    workspaceId = workspace.data?.id;
-  const storageKey = ownerId && workspaceId ? "ys-pane-sizes-v1:" + workspaceId + ":" + ownerId : undefined;
-  const previous = fromSaved && names.length === selected.length ? saved.composition.sizes : undefined;
+  // A saved view opens as it was saved. Apps opened together are laid out by how many there are.
+  const exact = fromSaved && names.length === selected.length;
+  const layout = exact ? saved.composition.layout : layoutFor(selected.length);
   return (
     <PaneWorkspace
       apps={selected}
       installed={openable}
       saved={saved}
       layout={layout}
-      storageKey={storageKey}
-      requested={previous ?? decodeSizes(search.sizes, layout, selected.length)}
+      requested={exact ? saved.composition.sizes : undefined}
       missing={names.length - selected.length}
     />
   );
@@ -93,25 +87,11 @@ function proportions(sizes: Sizes): GridLayout {
   return { columns: axis(sizes.columns), rows: axis(sizes.rows) };
 }
 
-function recentlyUsed(storageKey?: string): [string, string][] {
-  if (!storageKey) return [];
-  try {
-    const values: unknown = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
-    if (!Array.isArray(values)) return [];
-    return values
-      .filter((entry) => Array.isArray(entry) && entry.length === 2 && entry.every((item) => typeof item === "string"))
-      .slice(-40);
-  } catch {
-    return [];
-  }
-}
-
 function PaneWorkspace({
   apps,
   installed,
   saved,
   layout,
-  storageKey,
   requested,
   missing,
 }: {
@@ -119,7 +99,6 @@ function PaneWorkspace({
   installed: AppSummary[];
   saved?: SavedView;
   layout: PaneLayout;
-  storageKey?: string;
   requested?: Sizes;
   missing: number;
 }) {
@@ -129,17 +108,20 @@ function PaneWorkspace({
   const [navigating, setNavigating] = useState(false);
   const [editName, setEditName] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
-  const [link, setLink] = useState("");
   const [focused, setFocused] = useState("");
   const element = useRef<HTMLDivElement>(null);
   const grid = useRef<GridImperativeHandle>(null);
   const savingViewId = useRef<string | undefined>(undefined);
+  // Divider sizes last while these apps stay open together in the same view; nothing remembers them in
+  // the browser. Another saved view with the same apps opens at its own sizes.
   const scope = layout + "/" + apps.map((app) => app.name).join(",");
-  const remembered = useMemo(
-    () => decodeSizes(recentlyUsed(storageKey).find(([key]) => key === scope)?.[1], layout, apps.length),
-    [storageKey, scope, layout, apps.length],
-  );
-  const sizes = requested ?? remembered ?? defaultSizes(layout, apps.length);
+  const [resized, setResized] = useState<{ scope: string; view?: string; sizes: Sizes } | null>(null);
+  const kept = resized?.scope === scope && resized.view === saved?.id ? resized.sizes : undefined;
+  // Leaving a saved view drops its unsaved sizes, so going back opens it at its saved ones.
+  useEffect(() => {
+    setResized((previous) => (previous?.view !== undefined && previous.view !== saved?.id ? null : previous));
+  }, [saved?.id]);
+  const sizes = kept ?? requested ?? defaultSizes(layout, apps.length);
   const geometry = encodeSizes(sizes);
   const { columns, rows } = gridShape(layout, apps.length);
   const cells = cellsFor(layout, apps.length);
@@ -154,8 +136,8 @@ function PaneWorkspace({
     return () => media.removeEventListener("change", update);
   }, []);
 
-  // Keep each iframe's element and browsing context when headers, companions, presets or sizes change.
-  // The library's grids resize in place. Feed the validated proportions when the URL/view changes.
+  // Keep each iframe's element and browsing context when headers, companions or sizes change.
+  // The library's grids resize in place. Feed the validated proportions when the apps or view change.
   useLayoutEffect(() => {
     if (!compact) grid.current?.setLayout(proportions(sizes));
   }, [scope, geometry, compact]);
@@ -172,47 +154,25 @@ function PaneWorkspace({
     };
   }, []);
 
-  const shape = (preset: PaneLayout, names: string[], exact?: Sizes): ViewComposition => ({
-    apps: names,
-    layout: preset,
-    sizes:
-      exact ??
-      decodeSizes(
-        recentlyUsed(storageKey).find(([key]) => key === preset + "/" + names.join(","))?.[1],
-        preset,
-        names.length,
-      ) ??
-      defaultSizes(preset, names.length),
-  });
   function current(): ViewComposition {
-    // Requested proportions survive a temporary small viewport and are exactly what's saved in the URL.
+    // Proportions survive a temporary small viewport and are exactly what a saved view keeps.
     return { layout, apps: apps.map((app) => app.name), sizes };
   }
-  function visit(view: ViewComposition, replace = false) {
+  function visit(names: string[]) {
     setNotice("");
-    setLink("");
     setNavigating(true);
     void navigate({
       to: "/open/$name",
-      params: { name: view.apps[0]! },
+      params: { name: names[0]! },
       // A just-saved view can be in the URL before its route finishes loading.
-      search: (previous) => compositionSearch(view, previous.view === savingViewId.current ? previous.view : saved?.id),
-      replace,
+      search: (previous) => compositionSearch(names, previous.view === savingViewId.current ? previous.view : saved?.id),
     }).finally(() => setNavigating(false));
   }
   function resize(value: GridLayout) {
     const read = (axis: Record<string, number>, length: number) => Array.from({ length }, (_, i) => axis[String(i)]!);
     const updated = { columns: read(value.columns, columns), rows: read(value.rows, rows) };
     if (!validSizes(updated, layout, apps.length) || geometry === encodeSizes(updated)) return;
-    if (storageKey) {
-      try {
-        const recent = recentlyUsed(storageKey).filter(([key]) => key !== scope);
-        localStorage.setItem(storageKey, JSON.stringify([...recent.slice(-39), [scope, encodeSizes(updated)]]));
-      } catch {
-        /* The URL also carries these proportions. */
-      }
-    }
-    visit({ ...current(), sizes: updated }, true);
+    setResized({ scope, view: saved?.id, sizes: updated });
   }
   async function save(event?: FormEvent) {
     event?.preventDefault();
@@ -227,7 +187,10 @@ function PaneWorkspace({
       await queryClient.invalidateQueries({ queryKey: workspaceLayoutQuery.queryKey });
       setEditName(null);
       savingViewId.current = view.id;
+      // The sizes being saved, and any drag while the view opens, now belong to the saved view.
+      setResized((previous) => (previous ? { ...previous, view: view.id } : previous));
       await navigate({ to: "/open/$name", params: { name: composition.apps[0]! }, search: { view: view.id } });
+      setResized((previous) => (previous ? { ...previous, view: view.id } : previous));
       setNotice("View saved.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The view could not be saved.");
@@ -236,36 +199,9 @@ function PaneWorkspace({
       setSaving(false);
     }
   }
-  async function share() {
-    const view = current();
-    const url = new URL("/open/" + view.apps[0], window.location.origin);
-    for (const [key, value] of Object.entries(compositionSearch(view))) if (value) url.searchParams.set(key, value);
-    try {
-      await navigator.clipboard.writeText(url.href);
-      setNotice("Layout link copied.");
-      setLink("");
-    } catch {
-      setLink(url.href);
-    }
-  }
-
   return (
     <main className="pane-workspace" data-state="app-pane">
       <div className="pane-tools">
-        <label>
-          Layout{" "}
-          <select
-            aria-label="Layout preset"
-            disabled={navigating}
-            value={layout}
-            onChange={(e) => visit(shape(e.target.value as PaneLayout, current().apps))}
-          >
-            <option value="columns">Columns</option>
-            <option value="rows">Rows</option>
-            <option value="grid">Grid</option>
-            <option value="main">Main with companions</option>
-          </select>
-        </label>
         {apps.length < maxPanes && installed.some((app) => !apps.some((selected) => selected.name === app.name)) && (
           <label>
             Add app{" "}
@@ -275,7 +211,7 @@ function PaneWorkspace({
               disabled={navigating}
               onChange={(e) => {
                 const name = e.target.value;
-                if (name) visit(shape(layout, [...current().apps, name]));
+                if (name) visit([...current().apps, name]);
               }}
             >
               <option value="">Choose an app…</option>
@@ -316,9 +252,6 @@ function PaneWorkspace({
         >
           Save {saved ? "as new view" : "view"}
         </button>
-        <button type="button" className="secondary" onClick={() => void share()}>
-          Copy layout link
-        </button>
       </div>
       {editName !== null && (
         <form className="pane-save" onSubmit={save}>
@@ -335,11 +268,6 @@ function PaneWorkspace({
         <p className="pane-note" role="status">
           {notice}
         </p>
-      )}
-      {link && (
-        <label className="pane-note">
-          Layout link <input readOnly value={link} onFocus={(e) => e.target.select()} />
-        </label>
       )}
       {missing > 0 && (
         <p className="pane-note" role="status">
@@ -374,17 +302,7 @@ function PaneWorkspace({
             >
               <Pane
                 app={app}
-                onClose={
-                  apps.length < 2
-                    ? undefined
-                    : () =>
-                        visit(
-                          shape(
-                            layout,
-                            current().apps.filter((name) => name !== app.name),
-                          ),
-                        )
-                }
+                onClose={apps.length < 2 ? undefined : () => visit(current().apps.filter((name) => name !== app.name))}
               />
             </Cell>
           ))}

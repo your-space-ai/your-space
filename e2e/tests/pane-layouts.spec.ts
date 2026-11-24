@@ -65,36 +65,35 @@ const input = (page: Page, name: string) => section(page, name).frameLocator("if
 const separators = (page: Page, axis: "vertical" | "horizontal") =>
   page.locator('[role=separator][aria-orientation="' + axis + '"]');
 
-test("layouts preserve each app's document, all divider sizes, named views and shareable links", async ({ page }) => {
+const value = async (page: Page, axis: "vertical" | "horizontal") =>
+  Number(await separators(page, axis).first().getAttribute("aria-valuenow"));
+
+test("panes keep each app's document and lay apps out by count, and named views keep their sizes", async ({ page }) => {
   const views = await fixture(page);
   await page.goto("/open/notes?with=calendar");
   await expect(page.locator("section[data-pane]")).toHaveCount(2);
   await input(page, "notes").fill("unfinished draft");
-  await page.getByLabel("Add an app to this layout").selectOption("projects");
-  await page.getByLabel("Add an app to this layout").selectOption("library");
-  await expect(input(page, "notes")).toHaveValue("unfinished draft");
-
-  for (const [preset, vertical, horizontal] of [
-    ["columns", 3, 0],
-    ["rows", 0, 3],
-    ["grid", 1, 1],
-    ["main", 1, 2],
+  // No preset choice and no layout link (decision 2026-11-23, Alpha scope).
+  await expect(page.getByLabel("Layout preset")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Copy layout link" })).toHaveCount(0);
+  for (const [app, vertical, horizontal] of [
+    [null, 1, 0],
+    ["projects", 1, 1],
+    ["library", 1, 1],
   ] as const) {
-    await page.getByLabel("Layout preset").selectOption(preset);
+    if (app) await page.getByLabel("Add an app to this layout").selectOption(app);
     await expect(separators(page, "vertical")).toHaveCount(vertical);
     await expect(separators(page, "horizontal")).toHaveCount(horizontal);
-    for (const axis of ["vertical", "horizontal"] as const) {
-      const handles = separators(page, axis);
-      for (const handle of await handles.all()) {
-        const original = await handle.boundingBox();
-        await handle.focus();
-        await page.keyboard.press(axis === "vertical" ? "ArrowRight" : "ArrowDown");
-        await expect
-          .poll(async () => (await handle.boundingBox())![axis === "vertical" ? "x" : "y"])
-          .not.toBe(original![axis === "vertical" ? "x" : "y"]);
-      }
-    }
     await expect(input(page, "notes")).toHaveValue("unfinished draft");
+  }
+  for (const axis of ["vertical", "horizontal"] as const) {
+    const handle = separators(page, axis).first();
+    const original = await handle.boundingBox();
+    await handle.focus();
+    await page.keyboard.press(axis === "vertical" ? "ArrowRight" : "ArrowDown");
+    await expect
+      .poll(async () => (await handle.boundingBox())![axis === "vertical" ? "x" : "y"])
+      .not.toBe(original![axis === "vertical" ? "x" : "y"]);
   }
 
   const line = separators(page, "vertical").first();
@@ -107,22 +106,26 @@ test("layouts preserve each app's document, all divider sizes, named views and s
   await page.mouse.up();
   await expect.poll(async () => (await section(page, "notes").boundingBox())!.width).toBeLessThan(original - 30);
   await input(page, "notes").fill("still editable");
+  // Sizes stay out of the address and out of the browser's storage.
+  expect([...new URL(page.url()).searchParams.keys()]).toEqual(["with"]);
+  expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("ys-pane")))).toEqual([]);
 
   const url = page.url();
   await page.getByRole("button", { name: "Save view", exact: true }).click();
   await page.getByLabel("View name").fill("Daily desk");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page).toHaveURL(/view=b111/);
-  expect(views[0]!.composition).toMatchObject({ layout: "main", apps: ["notes", "calendar", "projects", "library"] });
+  expect(views[0]!.composition).toMatchObject({ layout: "grid", apps: ["notes", "calendar", "projects", "library"] });
   const proportions = views[0]!.composition.sizes;
   expect(proportions.columns).toHaveLength(2);
-  expect(proportions.rows).toHaveLength(3);
+  expect(proportions.rows).toHaveLength(2);
   const before = (await section(page, "notes").boundingBox())!.width;
   await page.goto("/open/calendar");
   await page.goto("/open/notes?view=" + views[0]!.id);
   await expect.poll(async () => Math.abs((await section(page, "notes").boundingBox())!.width - before)).toBeLessThan(2);
+  // The same apps opened again without the view start at even sizes.
   await page.goto(url);
-  await expect.poll(async () => Math.abs((await section(page, "notes").boundingBox())!.width - before)).toBeLessThan(2);
+  await expect.poll(() => value(page, "vertical")).toBeCloseTo(50, 0);
   await page.getByRole("button", { name: "Close calendar", exact: true }).click();
   await expect(section(page, "calendar")).toHaveCount(0);
   await page.getByLabel("Add an app to this layout").selectOption("outside");
@@ -155,16 +158,8 @@ test("touch resizes a grid boundary through an app iframe", async ({ page, brows
   await expect.poll(async () => (await line.boundingBox())!.x).toBeLessThan(box.x - 25);
 });
 
-test("a saved view changes on explicit update and a standalone composition link opens without its saved record", async ({
-  page,
-  browser,
-  baseURL,
-}) => {
+test("a saved view changes on explicit update, and a layout link from before opens with even sizes", async ({ page }) => {
   const views = await fixture(page);
-  // Exercise the copy fallback available when a browser doesn't grant clipboard access.
-  await page.addInitScript(() =>
-    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true }),
-  );
   await page.goto("/open/notes?with=calendar");
   await page.getByRole("button", { name: "Save view", exact: true }).click();
   await page.getByLabel("View name").fill("Morning");
@@ -176,33 +171,33 @@ test("a saved view changes on explicit update and a standalone composition link 
   }, { times: 1 });
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page).toHaveURL(/view=b111/);
+  const divider = separators(page, "vertical").first();
   try {
-    await page.getByLabel("Layout preset").selectOption("rows");
+    await expect(divider).toBeVisible();
+    await divider.focus();
+    await page.keyboard.press("ArrowRight");
   } finally {
     navigating.resolve();
   }
-  const divider = separators(page, "horizontal").first();
-  await expect(divider).toBeVisible();
-  await divider.focus();
-  await page.keyboard.press("ArrowDown");
-  await expect(page).toHaveURL(/sizes=/);
-  expect(views[0]!.composition.layout).toBe("columns");
+  await expect.poll(() => value(page, "vertical")).toBeGreaterThan(50);
+  expect(views[0]!.composition.sizes.columns[0]).toBeCloseTo(50, 0);
   await page.getByRole("button", { name: "Update view" }).click();
   await expect.poll(() => views[0]!.revision).toBe(2);
-  expect(views[0]!.composition.layout).toBe("rows");
-  await page.getByRole("button", { name: "Copy layout link" }).click();
-  const shared = await page.getByRole("textbox", { name: "Layout link" }).inputValue();
-  expect(new URL(shared).searchParams.get("view")).toBeNull();
-  await page.goto("/open/library?with=projects&layout=columns&sizes=32,68/100");
+  expect(views[0]!.composition.sizes.columns[0]).toBeGreaterThan(50);
+  // A layout link from before keeps its apps; its layout and sizes are ignored.
+  await page.goto("/open/library?with=projects&layout=rows&sizes=32,68/100");
+  await expect(separators(page, "vertical")).toHaveCount(1);
+  await expect(separators(page, "horizontal")).toHaveCount(0);
+  await expect.poll(() => value(page, "vertical")).toBeCloseTo(50, 0);
   await page.getByRole("button", { name: "Save view", exact: true }).click();
   await page.getByLabel("View name").fill("Reference");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("link", { name: "Reference", exact: true })).toBeVisible();
   expect(views).toHaveLength(2);
+  expect(views.map((view) => view.revision)).toEqual([2, 1]);
   await page.reload();
   for (const expected of [views[0]!, views[1]!, views[0]!]) {
     await page.getByRole("link", { name: expected.name, exact: true }).click();
-    await expect(page.getByLabel("Layout preset")).toHaveValue(expected.composition.layout);
     await expect
       .poll(() =>
         page
@@ -210,34 +205,14 @@ test("a saved view changes on explicit update and a standalone composition link 
           .evaluateAll((elements) => elements.map((element) => element.getAttribute("data-pane"))),
       )
       .toEqual(expected.composition.apps);
-    const axis = expected.composition.layout === "columns" ? "vertical" : "horizontal";
-    const first = expected.composition.sizes[axis === "vertical" ? "columns" : "rows"][0]!;
     await expect
-      .poll(async () => Math.abs(Number(await separators(page, axis).first().getAttribute("aria-valuenow")) - first))
+      .poll(async () => Math.abs((await value(page, "vertical")) - expected.composition.sizes.columns[0]!))
       .toBeLessThan(1);
   }
-  // The same owner can open the standalone link without editing either of their saved views.
-  await page.goto(shared);
-  await expect(page.getByLabel("Layout preset")).toHaveValue("rows");
-  await page.getByLabel("Layout preset").selectOption("columns");
-  await expect(page).toHaveURL(/layout=columns/);
-  expect(new URL(page.url()).searchParams.get("view")).toBeNull();
-  await expect(page.getByRole("button", { name: "Update view" })).toHaveCount(0);
-  expect(views.map((view) => view.revision)).toEqual([2, 1]);
-  const visitor = await browser.newPage({ baseURL, viewport: { width: 1280, height: 850 } });
-  try {
-    const empty = await fixture(visitor);
-    await visitor.goto(shared);
-    await expect(visitor.locator("section[data-pane=calendar]")).toBeVisible();
-    await expect(visitor.getByLabel("Layout preset")).toHaveValue("rows");
-    const expected = views[0]!.composition.sizes.rows[0]!;
-    await expect
-      .poll(async () =>
-        Math.abs(Number(await separators(visitor, "horizontal").first().getAttribute("aria-valuenow")) - expected),
-      )
-      .toBeLessThan(1);
-    expect(empty).toHaveLength(0);
-  } finally {
-    await visitor.close();
-  }
+  // Closing a pane of a saved view leaves the one app open, and the view can be updated to it.
+  await page.getByRole("button", { name: "Close calendar", exact: true }).click();
+  await expect(page.locator("section[data-pane]")).toHaveCount(1);
+  await expect(section(page, "notes")).toBeVisible();
+  await page.getByRole("button", { name: "Update view" }).click();
+  await expect.poll(() => views[0]!.composition.apps).toEqual(["notes"]);
 });

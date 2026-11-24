@@ -2,6 +2,8 @@
 
 An owner who works in several installed apps can put them on one screen and return to the same arrangement from the sidebar. A short-lived arrangement can also be opened from its URL.
 
+**Alpha scope (2026-11-23).** The layout preset choice, **Copy layout link** with its `layout` and `sizes` parameters, the divider sizes the browser remembered, and reordering sidebar shortcuts (step 5's first sentence) are out of the alpha. Apps opened together are laid out by count: two side by side, three as a main app with two beside it, four or more in a grid. A saved view keeps and restores its layout and sizes, and `with` still opens apps together. Journey 013's views replace the rest when they come. [Decision](../../docs/architecture/decisions.md#alpha-scope)
+
 ## Owner journey
 
 1. Open an installed app. Add companion apps and choose columns, rows, a grid, or a main app with companions. The first app occupies the main area in the last preset.
