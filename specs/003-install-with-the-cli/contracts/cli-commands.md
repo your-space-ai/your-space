@@ -3,7 +3,8 @@
 **Spec**: [spec.md](../spec.md) · **Plan**: [plan.md](../plan.md)
 
 The desktop app (journey 008) and people's scripts drive these commands, so their options, JSON
-output and exit statuses are a contract. Human output may change; JSON fields are only added.
+output and exit statuses are a contract. Human output may change; JSON fields are only added,
+except for a removal this contract records.
 
 ```text
 your-space engine check
@@ -107,7 +108,8 @@ code and the server's exit status, with the server's other fields.
 - `apps` is `null` when Your Space isn't running. A published app (decision 2026-11-19) also has
   `"publish": { "port": 8081, "bind": "127.0.0.1", "link": "https://notes.example.com", "inPane": true }`,
   and its `address` is its link when it has one. `inPane` is whether Your Space shows it in its pane
-  at its link (decision 2026-11-20; the owner's `frame` switch left with the alpha scope, 2026-11-23).
+  at its link (decision 2026-11-20). `publish.frame`, the owner's switch to show the app inside Your
+  Space, was removed with the alpha scope (2026-11-23).
 - `forward` (proxy setup): `{ "to": "http://127.0.0.1:8080", "network": "your-space_edge", "names": ["space.example.com", "notes.space.example.com"], "wildcard": "*.space.example.com" }`.
   An app with its own link isn't in `names`: the proxy or tunnel sends its link to its published port.
 - `certificate` (domain setup): `{ "state": "valid" | "waiting" | "failed", "issuer": "...", "message": "..." }`.

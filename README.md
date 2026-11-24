@@ -31,7 +31,8 @@ The [roadmap](docs/roadmap.md) tracks what’s implemented and what’s planned.
 ## Current limits
 
 An external agent has completed an owner-approved read from an independently installed app. Agents
-only read: a kit can't give them routes that create or change records.
+only read: a kit can declare only `GET` routes with `effect: read`. Your Space checks the
+declaration, not the app's handler, so a kit must map only app routes that don't change records.
 [Agent verification](specs/005-owner-agent/tasks.md)
 
 ## Feedback and contributions
