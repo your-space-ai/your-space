@@ -3,9 +3,8 @@ import type { Auth } from "../auth.ts";
 import type { Db } from "../db/client.ts";
 import { ownerFor } from "../apps/routes.ts";
 import { AppsService, AppError } from "../apps/service.ts";
-import { getGithubClient } from "./connection.ts";
 import { publicGithubClient } from "./github.ts";
-import { catalog, previewKitUrl } from "./sources.ts";
+import { catalog } from "./sources.ts";
 
 function kitLink(value: unknown): string {
   if (typeof value !== "string" || !value.trim() || value.length > 2048) {
@@ -16,11 +15,10 @@ function kitLink(value: unknown): string {
 
 /**
  * The kit directory's listing, and the review of an app from its kit's link: the only way the web
- * client installs an app (decision 2026-11-23). With the owner's GitHub connection, the kit is read
- * through it, which reaches a kit in a private repository when the connection has private access.
- * Without one, Your Space reads a public kit as the server command does.
+ * client installs an app (decision 2026-11-23). Both read public GitHub, as the server command does;
+ * a kit in a private repository installs from this machine with the server command instead.
  */
-export function kitRoutes(auth: Auth, db: Db, dataKey: string, apps: AppsService) {
+export function kitRoutes(auth: Auth, db: Db, apps: AppsService) {
   const router = Router();
   router.all(["/catalog", "/preview"], async (req, res, next) => {
     try {
@@ -38,22 +36,20 @@ export function kitRoutes(auth: Auth, db: Db, dataKey: string, apps: AppsService
         (!req.is("application/json") || req.get("origin") !== new URL(auth.options.baseURL as string).origin)
       )
         throw new AppError(403, "forbidden", "Open the kit from the signed-in workspace.");
-      const connected = await getGithubClient(db, owner.actorId, dataKey).catch((error) => {
-        if (error instanceof AppError && error.code === "github_not_connected") return null;
-        throw error;
-      });
       const kitUrl: unknown = req.body?.kitUrl;
       res.json(
         listing
-          ? await catalog(connected ?? publicGithubClient(), apps.config.kitsRepository)
-          : connected
-            ? await previewKitUrl(db, owner.actorId, connected, apps, kitUrl)
-            : await apps.preview({ link: kitLink(kitUrl) }).catch((error: unknown) => {
-                if (error instanceof AppError && error.code === "kit_not_found") {
-                  throw new AppError(404, error.code, `${error.message} If the kit is in a private repository, connect GitHub with private repositories included in Repositories, then paste its link again.`);
-                }
-                throw error;
-              }),
+          ? await catalog(publicGithubClient(), apps.config.kitsRepository)
+          : await apps.preview({ link: kitLink(kitUrl) }).catch((error: unknown) => {
+              if (error instanceof AppError && error.code === "kit_not_found") {
+                throw new AppError(
+                  404,
+                  error.code,
+                  `${error.message} If the kit is in a private repository, install it from this machine with the server command: docker compose exec -T server install-app --kit - < kit.yaml.`,
+                );
+              }
+              throw error;
+            }),
       );
     } catch (error) {
       if (error instanceof AppError) res.status(error.status).json({ error: error.code, message: error.message });

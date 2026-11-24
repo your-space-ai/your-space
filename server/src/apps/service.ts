@@ -9,7 +9,6 @@ import type { Db } from "../db/client.ts";
 import {
   app,
   appAccessRequest,
-  appReplacement,
   appOutbound,
   appSetting,
   installJob,
@@ -365,8 +364,8 @@ export class AppsService {
     return this.previewResolved(source, found, appName);
   }
 
-  /** Internal handoff from the owner-authorized GitHub source reader. HTTP callers
-   * never supply trusted source, commit, or review metadata. */
+  /** The review of a kit and the Compose file it names, both already read. HTTP callers never
+   * supply trusted source, commit, or review metadata. */
   async previewResolved(source: SourceFile, found: FoundKit, appName?: string): Promise<ReturnType<AppsService["reviewOf"]>> {
     for (const [id, p] of this.previews) if (p.expiresAt < Date.now()) this.previews.delete(id);
     const kit = found.kit;
@@ -632,29 +631,11 @@ export class AppsService {
     return { jobId };
   }
 
-  /** Hold the same per-app lifecycle lock for the entire managed replacement or install job. */
-  async withAppChange<T>(appId: string, change: () => Promise<T>): Promise<T> {
-    if (this.busy.has(appId)) throw new AppError(409, "busy", "The app is busy with another change.");
-    this.busy.add(appId);
-    try {
-      return await change();
-    } finally {
-      this.busy.delete(appId);
-    }
-  }
-
-  private async checkReplacement(appId: string) {
-    const [pending] = await this.db.select({ id: appReplacement.id }).from(appReplacement)
-      .where(and(eq(appReplacement.appId, appId), eq(appReplacement.state, "applying"))).limit(1);
-    if (pending) throw new AppError(409, "replacement_pending", "Finish the pending managed deployment first.");
-  }
-
   /** Starts a job that applies the app; one job per app at a time. */
   async startJob(appId: string, kind: "install" | "apply" | "remove"): Promise<{ jobId: string; done: Promise<void> }> {
     if (this.busy.has(appId)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
     this.busy.add(appId);
     try {
-      await this.checkReplacement(appId);
       const inserted = await this.db.insert(installJob).values({ appId, kind }).returning({ id: installJob.id });
       const jobId = inserted[0]!.id;
       return { jobId, done: this.runJob(jobId, appId, kind).finally(() => this.busy.delete(appId)) };
@@ -751,10 +732,8 @@ export class AppsService {
       return;
     }
     const rows = await this.db.select().from(app).where(ne(app.state, "removed"));
-    const interrupted = new Set((await this.db.select({ id: appReplacement.appId }).from(appReplacement)
-      .where(eq(appReplacement.state, "applying"))).map(row => row.id));
     for (const row of rows) {
-      if (this.busy.has(row.id) || interrupted.has(row.id)) continue;
+      if (this.busy.has(row.id)) continue;
       const services = reports.find((r) => r.app === row.name)?.services ?? [];
       const running = services.some((s) => s.role === "app" && (s.state === "running" || s.state === "restarting"));
       if (row.desired === "running" && !running && row.state !== "failed" && row.state !== "installing") {
@@ -960,7 +939,6 @@ export class AppsService {
   private async liveRow(name: string): Promise<AppRow> {
     const row = await this.rowByName(name);
     if (this.busy.has(row.id)) throw new AppError(409, "busy", "The app is busy with another change.");
-    await this.checkReplacement(row.id);
     if (row.state === "removed") throw new AppError(409, "removed", "The app has been removed. Install it again to use it.");
     return row;
   }

@@ -55,8 +55,8 @@
       "parent": "The your-space CLI"
     },
     {
-      "title": "App Authoring Commands and Scaffolding",
-      "purpose": "CLI commands for building and scaffolding apps and kits.",
+      "title": "App Kit Commands",
+      "purpose": "your-space app upgrade-agent-kit, which adds agent access declarations to an installed app's kit.",
       "parent": "The your-space CLI"
     },
     {
@@ -115,8 +115,8 @@
       "parent": "Apps Subsystem"
     },
     {
-      "title": "Managed Repositories and Kit Directory",
-      "purpose": "Managed repositories, forks with edits, and the kit directory.",
+      "title": "Kit Links and Kit Directory",
+      "purpose": "Reviewing an app from its kit's link and the optional kit directory, both read from public GitHub, and kit files given to the server command.",
       "parent": "Apps Subsystem"
     },
     {

@@ -2,9 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { HomeFrame } from "../components/HomeFrame.tsx";
 import { appsQuery } from "../apps-api.ts";
-import { homeQuery } from "../home-api.ts";
 import { authClient } from "../auth-client.ts";
 import { ErrorState } from "../components/ErrorState.tsx";
 import { AppError, failureForStatus, failureKind } from "../errors.ts";
@@ -17,17 +15,6 @@ function hasOwnEmail(email: string): boolean {
 }
 
 export function Home() {
-  const session = useQuery(sessionQuery);
-  const state = useQuery(homeQuery(session.data?.user.id ?? ""));
-  if (session.data && state.isPending) return <main className="panel" aria-busy="true"><p>Opening Home…</p></main>;
-  if (state.data?.activeHome && !state.isError) {
-    const active = state.data.activeHome;
-    return <HomeFrame key={active.generation + ":" + state.data.revision} home={active} revision={state.data.revision} />;
-  }
-  return <BuiltInHome unavailable={state.isError || !!state.data?.selectedId} />;
-}
-
-export function BuiltInHome({ unavailable = false }: { unavailable?: boolean }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const session = useQuery(sessionQuery);
@@ -92,12 +79,10 @@ export function BuiltInHome({ unavailable = false }: { unavailable?: boolean }) 
   return (
     <main className="panel" data-state="home">
       <h1>{workspace.data?.name}</h1>
-      {unavailable ? <p className="notice">Your selected Home is unavailable. You can keep using the built-in dashboard.</p> : null}
       {apps.data ? (apps.data.apps.length ? <p><Link to="/apps">Browse installed apps</Link></p> : <section aria-label="Getting started">
         <p>Choose an app for your workspace. Its kit describes what will run, so you can review it before installing.</p>
         <Link className="button" to="/apps">Install your first kit</Link>
       </section>) : null}
-      <p><Link to="/home/settings">Home settings</Link></p>
       <dl>
         <dt>Name</dt>
         <dd data-field="name">{user.name}</dd>

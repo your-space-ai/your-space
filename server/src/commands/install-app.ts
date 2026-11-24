@@ -5,7 +5,7 @@
 import { parseArgs } from "node:util";
 import { operatorActorId } from "../actors.ts";
 import { errorFields, log } from "../log.ts";
-import { MAX_FILE_BYTES, SourceError } from "../apps/github.ts";
+import { SourceError } from "../apps/github.ts";
 import { KitFileError, readLocalKit } from "../apps/kits.ts";
 import { ComposeFileError, isLocalSource, readLocalCompose, sourcesProblem } from "../apps/local.ts";
 import { socketRuntime } from "../apps/runtime-client.ts";
@@ -13,30 +13,12 @@ import { AppError, AppsService } from "../apps/service.ts";
 import { EXIT, localFileLine, openForCommand, output, publishedLine } from "./output.ts";
 
 const USAGE =
-  "Usage: install-app --files-stdin | <github-link-to-kit> | --kit <file | -> | --compose <file | -> --kit <file | -> [--name <name>], then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]";
-
-async function readPairedFiles(input: NodeJS.ReadableStream): Promise<{compose:string; kit:string}> {
-  const chunks: Buffer[] = [];
-  let bytes = 0;
-  for await (const chunk of input) {
-    const part = Buffer.from(chunk);
-    bytes += part.length;
-    if (bytes > 4 * MAX_FILE_BYTES) throw new ComposeFileError("The input package is too large.");
-    chunks.push(part);
-  }
-  try {
-    const pair = JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(Buffer.concat(chunks)));
-    if (typeof pair?.compose !== "string" || typeof pair.kit !== "string" ||
-        Buffer.byteLength(pair.compose) > MAX_FILE_BYTES || Buffer.byteLength(pair.kit) > MAX_FILE_BYTES) throw new Error();
-    return pair;
-  } catch { throw new ComposeFileError("Supply a UTF-8 JSON object with bounded compose and kit text."); }
-}
+  "Usage: install-app <github-link-to-kit> | --kit <file | -> | --compose <file | -> --kit <file | -> [--name <name>], then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>] [--no-frame]] [--json]";
 
 async function main(argv: string[]): Promise<number> {
   let values: {
     kit?: string;
     compose?: string;
-    "files-stdin"?: boolean;
     name?: string;
     json?: boolean;
     help?: boolean;
@@ -54,7 +36,6 @@ async function main(argv: string[]): Promise<number> {
       options: {
         kit: { type: "string" },
         compose: { type: "string" },
-        "files-stdin": { type: "boolean" },
         name: { type: "string" },
         "reuse-data": { type: "boolean", default: false },
         publish: { type: "boolean", default: false },
@@ -85,10 +66,7 @@ async function main(argv: string[]): Promise<number> {
     return values.help ? EXIT.ok : EXIT.usage;
   }
   const link = positionals[0];
-  const bundled = values["files-stdin"] === true;
-  const problem = bundled
-    ? (link || values.compose !== undefined || values.kit !== undefined ? "Use --files-stdin on its own to supply a Compose file and kit." : null)
-    : sourcesProblem({ link, compose: values.compose, kit: values.kit, name: values.name });
+  const problem = sourcesProblem({ link, compose: values.compose, kit: values.kit, name: values.name });
   if (problem) {
     out.failure({ ok: false, error: "usage", message: `${problem} ${USAGE}` }, `${problem}\n${USAGE}`);
     return EXIT.usage;
@@ -102,9 +80,8 @@ async function main(argv: string[]): Promise<number> {
     // The command runs in the server's container, so standard input (`--kit -` or `--compose -`) is
     // how a file on the host reaches it. A kit's link is read from GitHub, and the kit names the
     // app's Compose file there; a kit file on this machine names it too, unless --compose gives it.
-    const files = bundled ? await readPairedFiles(process.stdin) : undefined;
-    const compose = files ? { name: "compose.yaml", text: files.compose } : values.compose !== undefined ? readLocalCompose(values.compose) : undefined;
-    const kitText = files ? files.kit : values.kit !== undefined ? readLocalKit(values.kit) : undefined;
+    const compose = values.compose !== undefined ? readLocalCompose(values.compose) : undefined;
+    const kitText = values.kit !== undefined ? readLocalKit(values.kit) : undefined;
     const review = await apps.preview(kitText !== undefined ? { text: kitText } : { link: link! }, compose, values.name);
     if (!review.ok) {
       const reasons = review.refusals.map((r) => `  - ${r.service ? `${r.service}: ` : ""}${r.reason}`);

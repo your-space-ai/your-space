@@ -3,7 +3,7 @@
 import { CliError, EXIT, ServerFailure, type ErrorCode } from "./errors.ts";
 import type { Compose } from "./compose.ts";
 
-export type ServerCommand = "create-owner" | "reset-link" | "show-secrets" | "show-owner" | "list-apps" | "upgrade-agent-kit" | "install-app";
+export type ServerCommand = "create-owner" | "reset-link" | "show-secrets" | "show-owner" | "list-apps" | "upgrade-agent-kit";
 
 export interface ServerResult {
   status: number;
@@ -40,19 +40,12 @@ const CODES: Record<string, ErrorCode> = {
 /** A plain snake_case code, as the server's commands write them. */
 const SERVER_CODE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 
-/** What went wrong, in the server's words, or from the fields it named or the reasons it refused a kit. */
+/** What went wrong, in the server's words, or from the fields it named. */
 function failureMessage(message: unknown, fields: Record<string, unknown>): string {
   if (message !== undefined && message !== null) return String(message);
   // create-owner names each field that fails the account rules instead of one message.
   const problems = fields.fields ? Object.entries(fields.fields as Record<string, string>).map(([field, problem]) => `${field}: ${problem}`) : [];
   if (problems.length) return problems.join(" ");
-  // install-app lists why it refused a kit, a `service: reason` line each.
-  const reasons = Array.isArray(fields.refusals)
-    ? fields.refusals.flatMap((r: { service?: unknown; reason?: unknown } | null) =>
-        typeof r?.reason === "string" ? [`  - ${typeof r.service === "string" && r.service ? `${r.service}: ` : ""}${r.reason}`] : [],
-      )
-    : [];
-  if (reasons.length) return [`Your Space can't run ${typeof fields.name === "string" ? fields.name : "this app"} as it is:`, ...reasons].join("\n");
   return "The server's command failed.";
 }
 
@@ -62,7 +55,7 @@ export function expectOk(result: ServerResult): Record<string, unknown> {
   const { ok: _ok, error, message, ...fields } = result.json;
   const said = failureMessage(message, fields);
   if (typeof error === "string" && Object.hasOwn(CODES, error)) throw new CliError(CODES[error]!, said, fields);
-  // Any other code is the server's own, such as `refused` or `name_taken`, kept with its exit status.
+  // Any other code is the server's own, such as `name_taken`, kept with its exit status.
   if (typeof error === "string" && SERVER_CODE.test(error)) {
     throw new ServerFailure(error, result.status >= EXIT.usage && result.status <= EXIT.unexpected ? result.status : EXIT.unexpected, said, fields);
   }

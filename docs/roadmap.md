@@ -88,7 +88,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 - [x] **Install and open apps (002).** Install a Compose file and kit, inspect the review, and open the app in its own pane. Local Compose installs, opt-in port publishing, framing for published apps, and explicit complete removal also shipped. (2026-11-20, [PR #48](https://github.com/your-space-ai/your-space/pull/48), [PR #54](https://github.com/your-space-ai/your-space/pull/54), [PR #56](https://github.com/your-space-ai/your-space/pull/56), [PR #57](https://github.com/your-space-ai/your-space/pull/57)) [App installation tasks](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/tasks.md)
 - [x] Upgrade a running local installation’s kit in place to add agent routes while retaining its app ID and volume. (2026-11-21, [PR #66](https://github.com/your-space-ai/your-space/pull/66))
 - [ ] **Apps screen (013)** · *First packaged release*. List installed apps with their status beside the selected app's details: update notice, version, address, agent access, internet access requests, and Open, Restart and Remove. [Workspace redesign journey](https://github.com/your-space-ai/your-space/blob/main/specs/013-workspace-redesign/spec.md)
-- [ ] Install an app only from the link to its kit, which pins the app's Compose file to an exact commit (`source.commit`), and explain kits when the owner pastes a bare Compose link. A kit's link resolves to the kit's commit at review, and nothing is read at a branch's latest commit. A Compose file given on this machine and an install from a managed repository need a kit too. (In review, [PR #112](https://github.com/your-space-ai/your-space/pull/112)) [Kits define apps](architecture/decisions.md#kits-define-apps)
+- [x] Install an app only from the link to its kit, which pins the app's Compose file to an exact commit (`source.commit`), and explain kits when the owner pastes a bare Compose link. A kit's link resolves to the kit's commit at review, and nothing is read at a branch's latest commit. A Compose file given on this machine needs a kit too. (2026-11-23, [PR #112](https://github.com/your-space-ai/your-space/pull/112)) [Kits define apps](architecture/decisions.md#kits-define-apps)
 - [ ] **First packaged release.** Follow the documented install from a live upstream GitHub source through the server, open the independent app in each supported browser, and identify its supported agent actions. Include native Safari on macOS with the local app hostnames.
 
 <details>
@@ -123,14 +123,25 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### Custom apps and sources
 
-- [x] **Build a custom Home with an agent (011).** Resumable provisioning ran on disposable Docker. A scaffolded Home app ran in Chromium with reads from only the apps and roles the owner chose. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70)) [Creator journey](https://github.com/your-space-ai/your-space/blob/main/specs/011-agent-workspace/spec.md)
-- [x] Manage public and private GitHub repositories, grant an agent scoped file edits, and preview an install from a direct kit URL or an optional owner-selected directory. Public GitHub reads ran live. OAuth and write operations used a synthetic GitHub provider. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70), [PR #72](https://github.com/your-space-ai/your-space/pull/72))
-- [x] Require owner confirmation of the pinned replacement and its storage changes. A running replacement read its predecessor’s volume marker under the same installation ID. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70))
-- [ ] **First packaged release.** Rehearse the creator journey with a disposable live GitHub account and production OAuth configuration. Verify a private repo, an authorized fork and edit, and the owner-confirmed deployment from that commit.
+- [x] **Build a custom Home with an agent (011).** Resumable provisioning ran on disposable Docker. A scaffolded Home app ran in Chromium with reads from only the apps and roles the owner chose. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70)) [Creator journey](https://github.com/your-space-ai/your-space/blob/main/specs/011-agent-workspace/spec.md) **Removed in part (2026-11-23):** the custom Home, Home read grants and `app new`, `app pack` and `app install-local` left the product for the alpha; agent setup from a shell stays. [Creator workflow deferred](architecture/decisions.md#creator-workflow-deferred)
+- [x] Manage public and private GitHub repositories, grant an agent scoped file edits, and preview an install from a direct kit URL or an optional owner-selected directory. Public GitHub reads ran live. OAuth and write operations used a synthetic GitHub provider. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70), [PR #72](https://github.com/your-space-ai/your-space/pull/72)) **Removed in part (2026-11-23):** managed repositories, agents' file edits and the GitHub connection left the product for the alpha; kit links and the kit directory stay, read from public GitHub. [Creator workflow deferred](architecture/decisions.md#creator-workflow-deferred)
+- [x] Require owner confirmation of the pinned replacement and its storage changes. A running replacement read its predecessor’s volume marker under the same installation ID. (2026-11-21, [PR #70](https://github.com/your-space-ai/your-space/pull/70)) **Removed (2026-11-23):** deploying an installed app from a repository commit, and the replacement engine behind it, left the product with managed repositories. [Creator workflow deferred](architecture/decisions.md#creator-workflow-deferred)
+- [ ] **First packaged release.** Rehearse the creator journey with a disposable live GitHub account and production OAuth configuration. Verify a private repo, an authorized fork and edit, and the owner-confirmed deployment from that commit. **Moved (2026-11-23):** to the deferred creator workflow below, with the features it checks.
+
+- [ ] **Creator workflow (011)** · *Deferred journey*
+
+  **Deferred (2026-11-23):** [Creator workflow deferred](architecture/decisions.md#creator-workflow-deferred). Out of the alpha, to get feedback before building more; the delivered work above keeps its history.
+
+  - [ ] Connect GitHub, and install from a kit in a private repository through that connection in the web client. Until then a private kit installs with the server command, `install-app --kit -`.
+  - [ ] Make a dashboard app with `app new`, `app pack` and `app install-local`, choose it as Home, and grant it read roles of other apps.
+  - [ ] Create, import and fork GitHub repositories from Your Space, on a Repositories screen.
+  - [ ] Grant an agent access to selected repositories, with creation and fork rights, and let it commit files through its key.
+  - [ ] Install from a kit in a managed repository, and deploy an installed app from a reviewed repository commit, keeping its installation and volumes.
+  - [ ] Rehearse with a disposable live GitHub account: a private repo, an authorized fork and edit, and the owner-confirmed deployment from that commit.
 
 - [ ] **Additional discovery sources** · *Later direction*
 
-  Journey 011 supports private GitHub sources, direct kit URLs and one optional operator-selected GitHub directory. Later discovery work includes combining multiple directories and preserving update routing when a directory changes.
+  Journey 011 supports private GitHub sources, direct kit URLs and one optional operator-selected GitHub directory. (2026-11-23: private GitHub sources are deferred with the [creator workflow](#custom-apps-and-sources), and the directory must be a public repository.) Later discovery work includes combining multiple directories and preserving update routing when a directory changes.
 
 - [ ] **Kits as app definitions** · *Later direction*
 
@@ -233,8 +244,8 @@ Each branch puts the work on `main` beside the checks and plans for that part of
   - **App updates, history and rollback**
     - [ ] Show the owner when an installed app's kit has a newer commit, as an update the owner chooses to install, such as in the update notice of the [Apps screen (013)](https://github.com/your-space-ai/your-space/blob/main/specs/013-workspace-redesign/spec.md): Your Space reviews the newer kit and the Compose commit it pins, and changes nothing until the owner confirms. Nothing follows a kit's branch by itself. [Kits define apps](architecture/decisions.md#kits-define-apps)
     - [ ] Include app installation, removal and update events in the broader workspace activity history.
-    - [ ] Extend the [confirmed replacement path](#custom-apps-and-sources) to general updates. Preserve app identity, source revision and provenance, enforce the approved update policy, and prevent silent expansion of access.
-    - [ ] Extend 011’s owner-confirmed compatible replacements to general upstream updates with reviewed data migrations.
+    - [ ] Extend the [confirmed replacement path](#custom-apps-and-sources) to general updates. Preserve app identity, source revision and provenance, enforce the approved update policy, and prevent silent expansion of access. (2026-11-23: the confirmed replacement path left the product with managed repositories, deferred in the [creator workflow](#custom-apps-and-sources); updates build their own.)
+    - [ ] Extend 011’s owner-confirmed compatible replacements to general upstream updates with reviewed data migrations. (2026-11-23: those replacements are deferred with managed repositories.)
     - [ ] Back up app data and record image versions before each update; if the update fails, automatically roll back to the previous versions and restore the backup.
 
 - [ ] **Automatic app updates** · *Later direction*
@@ -243,7 +254,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
   - [ ] Support automatic app updates under the owner's approved update policy.
 
-  Journey 011 covers owner-confirmed compatible replacements. Journey 006 adds broader upstream updates.
+  Journey 011 covered owner-confirmed compatible replacements, deferred with managed repositories on 2026-11-23. Journey 006 adds owner-chosen and broader upstream updates.
 
 - [ ] **App backup history and manual rollback** · *Later direction*
 

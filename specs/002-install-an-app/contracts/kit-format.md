@@ -18,11 +18,11 @@ repository as its Compose file names an earlier commit than its own, since a fil
 commit it is in: commit the Compose file, then the kit that names that commit. A newer kit, or a kit
 that pins a newer Compose commit, reaches an installed app only when the owner chooses to install it;
 nothing follows a branch by itself. Your Space doesn't yet show that a newer kit exists: offering it
-as an update the owner chooses to install is on the [roadmap](../../../docs/roadmap.md). The one
-exception is **Update installed app** for a repository the owner manages (journey 011): after the
-owner's review, it deploys the Compose file at the commit the owner selects there, so the app's
-recorded commit can then differ from its kit's `source.commit`. Only a kit given with a Compose file on this machine leaves out
-`source`, since that file is the app's Compose file.
+as an update the owner chooses to install is on the [roadmap](../../../docs/roadmap.md). (The
+exception for **Update installed app** in a repository the owner manages, journey 011, left with
+managed repositories on 2026-11-23.)
+Only a kit given with a Compose file on this machine leaves out `source`, since that file is the
+app's Compose file.
 
 ```yaml
 kit: 1                        # format version

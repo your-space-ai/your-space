@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // your-space: install and run Your Space (journey 003). Every command acts on the installation in the
 // current folder, or the one --workdir names (contracts/cli-commands.md).
-import { newApp, packApp, installLocalApp } from "./commands/scaffold.ts";
 import { Command, CommanderError, Option } from "commander";
 import { registerAgentCommands } from "./commands/agent.ts";
 import { upgradeAgentKit, type UpgradeFlags } from "./commands/app-kit.ts";
@@ -171,12 +170,6 @@ owner
   .action(action(async (ui, g) => ownerResetLink(ui, g.workdir)));
 
 const app = program.command("app").description("manage an installed app");
-app.command("new <folder>").description("create an editable dashboard app and installation kit")
-  .action(action(async (ui, _g, folder: string) => newApp(ui, folder)));
-app.command("pack <folder>").description("update the starter app’s Compose file from index.html")
-  .action(action(async (ui, _g, folder: string) => packApp(ui, folder)));
-app.command("install-local <folder>").description("install a local compose.yaml and kit.yaml in this workspace")
-  .action(action(async (ui, g, folder: string) => installLocalApp(ui, g.workdir, folder)));
 app
   .command("upgrade-agent-kit <name>")
   .description("inspect the installed kit or add agent access declarations from a version 2 kit")
