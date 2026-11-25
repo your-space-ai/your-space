@@ -192,7 +192,9 @@ describe("private Compose files through the GitHub connection", () => {
     expect(notVisible.status).toBe(404);
     expect(notVisible.json).toMatchObject({
       error: "repository_not_visible",
-      message: expect.stringMatching(/^GitHub doesn't show ys-fixtures\/private-other to your GitHub connection \(@ys-fixture-owner\)\./),
+      message: expect.stringMatching(
+        /^GitHub doesn't show ys-fixtures\/private-other, where the kit's Compose file is, to your GitHub connection \(@ys-fixture-owner\)\. Check the kit's source\.repo, /,
+      ),
     });
     const noFile = await review(kitLink("no-file"));
     expect(noFile.status).toBe(404);
@@ -215,6 +217,18 @@ describe("private Compose files through the GitHub connection", () => {
     const moved = await review(kitLink("private-app"));
     expect(moved.json).toEqual({ error: "source", message: `GitHub answered ${COMMIT} in ys-fixtures/private-app with another commit, ${OTHER_COMMIT}.` });
     expect(calls.some((c) => c.url.includes("/contents/"))).toBe(false);
+
+    // A renamed or transferred repository: the kit's source.repo is what to fix, not the link pasted.
+    answer = (url, token) =>
+      token && url.pathname.endsWith(`/commits/${COMMIT}`) ? new Response(null, { status: 301, headers: { location: `https://api.github.test/repositories/2/commits/${COMMIT}` } }) : undefined;
+    calls.length = 0;
+    const renamed = await review(kitLink("private-app"));
+    expect(renamed.status).toBe(400);
+    expect(renamed.json).toEqual({
+      error: "source",
+      message: "GitHub says ys-fixtures/private-app, where the kit's Compose file is, has moved: it was renamed or transferred. Point the kit's source.repo at its new place.",
+    });
+    expect(calls.some((c) => c.url.includes("/repositories/2/"))).toBe(false);
   });
 
   it("marks a token GitHub refuses for a Compose file, and still installs a public kit and Compose file", async () => {

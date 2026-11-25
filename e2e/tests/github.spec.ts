@@ -23,6 +23,8 @@ test("the owner connects GitHub on its page or with the server command, and disc
   expect(`${create.origin}${create.pathname}`).toBe("https://github.com/settings/personal-access-tokens/new");
   expect(create.searchParams.get("name")).toBe("Your Space");
   expect(create.searchParams.get("contents")).toBe("read");
+  // The token must reach the Compose files kits name as well as the kits.
+  await expect(page.getByText("pick the ones with your kits and their Compose files.")).toBeVisible();
   await evidence(page, testInfo, "github-connect");
 
   // A classic token is refused before GitHub is asked: it could reach every repository.

@@ -149,7 +149,7 @@ function refusal(res: Response, repo: string, credential: SourceCredential): Err
   if (res.status === 401) return new TokenRefusedError();
   // GitHub redirects a renamed or transferred repository's API requests to its new place.
   if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) {
-    return new SourceError(`GitHub says ${repo} has moved: it was renamed or transferred. Use the link from its new place on GitHub.`);
+    return new RepositoryMovedError(`GitHub says ${repo} has moved: it was renamed or transferred. Use the link from its new place on GitHub.`);
   }
   if (rateLimited(res)) return new SourceError("GitHub is limiting requests from this machine. Try again in a few minutes.");
   // An organization can require approving a fine-grained token, block such tokens, or require
@@ -158,9 +158,17 @@ function refusal(res: Response, repo: string, credential: SourceCredential): Err
   return new SourceError(`GitHub answered ${res.status}. Try again later.`);
 }
 
-function notVisible(repo: string, credential: SourceCredential): SourceError {
+/** A renamed or transferred repository, which GitHub redirects; the redirect isn't followed with the token. */
+class RepositoryMovedError extends SourceError {}
+
+/**
+ * GitHub doesn't show the repository to the credential. For a kit, the fix may be the pasted link; for
+ * the Compose file a kit pins, it is the kit's `source.repo`.
+ */
+function notVisible(repo: string, credential: SourceCredential, compose = false): SourceError {
+  const [owner, name] = repo.split("/");
   return new SourceError(
-    `GitHub doesn't show ${repo} to your GitHub connection (@${credential.login}). Check the link, and that the token can read ${repo}: at GitHub, its resource owner must be ${repo.split("/")[0]}, and its repositories must include ${repo.split("/")[1]}. An organization may also need to approve the token.`,
+    `GitHub doesn't show ${repo}${compose ? ", where the kit's Compose file is," : ""} to your GitHub connection (@${credential.login}). Check ${compose ? "the kit's source.repo" : "the link"}, and that the token can read ${repo}: at GitHub, its resource owner must be ${owner}, and its repositories must include ${name}. An organization may also need to approve the token.`,
     "not_visible",
   );
 }
@@ -239,7 +247,11 @@ export async function fetchPinnedFileWith(
   fetcher: Fetch = fetch,
 ): Promise<SourceFile> {
   await resolvePinned(fetcher, endpoints, repo, path, commit, credential);
-  return readWith(credential, repo, commit, path, commit, pinnedLink(repo, path, commit), endpoints, fetcher);
+  try {
+    return await readWith(credential, repo, commit, path, commit, pinnedLink(repo, path, commit), endpoints, fetcher);
+  } catch (error) {
+    throw composeMiss(error, repo, commit, credential);
+  }
 }
 
 /** The file at a commit the credential's token resolved, read with the contents API as raw text. */
@@ -273,12 +285,25 @@ async function resolvePinned(fetcher: Fetch, endpoints: GithubEndpoints, repo: s
     // The path as one part, so the commit is the only ref tried.
     ({ commit: resolved } = await resolveRef(fetcher, endpoints, { repo, rest: [commit, path] }, credential));
   } catch (error) {
-    if (error instanceof SourceError && error.miss === "no_ref") throw new SourceError(`Your Space can't find the commit the kit pins, ${commit}, in ${repo}.`, "no_ref");
-    if (error instanceof SourceError && error.miss === "not_found") throw new SourceError(`Your Space can't find ${repo}, where the kit's Compose file is, on public GitHub.`, "not_found");
-    throw error;
+    throw composeMiss(error, repo, commit, credential);
   }
   // A branch or tag can be named like a commit; the kit pins the commit itself.
   if (resolved !== commit) throw new SourceError(`GitHub answered ${commit} in ${repo} with another commit, ${resolved}.`);
+}
+
+/**
+ * A problem reading the Compose file a kit pins, worded for what fixes it: the kit's `source`, not a
+ * link the owner pasted.
+ */
+function composeMiss(error: unknown, repo: string, commit: string, credential?: SourceCredential): unknown {
+  if (error instanceof RepositoryMovedError) {
+    return new RepositoryMovedError(`GitHub says ${repo}, where the kit's Compose file is, has moved: it was renamed or transferred. Point the kit's source.repo at its new place.`);
+  }
+  if (!(error instanceof SourceError)) return error;
+  if (error.miss === "no_ref") return new SourceError(`Your Space can't find the commit the kit pins, ${commit}, in ${repo}.`, "no_ref");
+  if (error.miss === "not_found") return new SourceError(`Your Space can't find ${repo}, where the kit's Compose file is, on public GitHub.`, "not_found");
+  if (error.miss === "not_visible" && credential) return notVisible(repo, credential, true);
+  return error;
 }
 
 /** GitHub doesn't accept a token: it is wrong, expired, deleted or revoked. */
