@@ -71,7 +71,8 @@ runs on drafts too: fix its findings before marking a draft ready. Argos's scree
 Chromium's, and a change to documents alone, or a run skipped because its code already passed,
 uploads none.
 
-Every pull request reports **Contribution checks** and verifies DCO sign-offs. Public code pull
+Every pull request reports **Contribution checks**, which verifies DCO sign-offs and that migrations
+on `main` stay as merged ([Migration order](docs/maintainers/contributor-ci.md#migration-order)). Public code pull
 requests run Compose on every layer and owner/agent journeys in Chromium on GitHub-hosted runners. CircleCI can read public PR metadata
 without a token. Hosted runs report results in job logs and upload selected synthetic screenshots
 only when Argos is configured. Use a local evidence run for HTML reports and video.
