@@ -1,0 +1,5 @@
+# A Compose file whose image is private on a registry other than GitHub's container registry (journey
+# 015, slice 4): the browser tests' registry at another name, which Your Space doesn't sign in to.
+services:
+  web:
+    image: localhost:5591/ys-fixtures/private-image:1

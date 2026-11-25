@@ -2,7 +2,7 @@
 // and the Compose file the kit names. It reads public repositories anonymously, and a private one
 // through the workspace's source credential, the GitHub connection's token (journey 015, R2): only
 // GitHub's commits and contents endpoints, and only this adapter knows how the token is sent. It also
-// asks GitHub which account a token belongs to.
+// asks GitHub which account a token belongs to, and which scopes a classic one has.
 
 /**
  * Why GitHub gave no file: `not_found`, it shows no such repository, as for a private repository read
@@ -39,6 +39,14 @@ export interface GithubEndpoints {
   api: string;
   /** https://raw.githubusercontent.com, or a stand-in in tests. */
   raw: string;
+}
+
+/**
+ * The registry the image token signs the engine in to (journey 015, R9): `ghcr.io`, or in the browser
+ * tests a local registry that stands in for it.
+ */
+export function githubRegistry(env: NodeJS.ProcessEnv = process.env): string {
+  return env.YS_E2E_GHCR || "ghcr.io";
 }
 
 export function githubEndpoints(env: NodeJS.ProcessEnv = process.env): GithubEndpoints {
@@ -323,16 +331,32 @@ export function isFineGrainedToken(token: string): boolean {
   return token.startsWith("github_pat_");
 }
 
+/**
+ * Whether a token is a personal access token (classic), the only kind GHCR takes (decision 4): GitHub
+ * starts each one with `ghp_`.
+ */
+export function isClassicToken(token: string): boolean {
+  return token.startsWith("ghp_");
+}
+
+/** The only scope the image token may have (R2): it downloads container images and reads their metadata. */
+export const IMAGE_SCOPE = "read:packages";
+
 // A login is only shown, so any short run of letters, digits, hyphens and underscores will do:
 // managed users' logins end in `_<shortcode>`.
 const LOGIN = /^[A-Za-z0-9_-]{1,100}$/;
 
 /**
  * The account a token belongs to (`GET /user`, R2): the one request the connection makes besides
- * reading files. Only this adapter knows how a token is sent. Redirects aren't followed, so the
- * token goes only to the API it was meant for.
+ * reading files. For a classic token, GitHub's `X-OAuth-Scopes` header lists its scopes; `scopes` is
+ * null when there is no such header, as for a fine-grained token. Only this adapter knows how a token
+ * is sent. Redirects aren't followed, so the token goes only to the API it was meant for.
  */
-export async function githubAccount(token: string, endpoints: GithubEndpoints = githubEndpoints(), fetcher: Fetch = fetch): Promise<{ login: string }> {
+export async function githubAccount(
+  token: string,
+  endpoints: GithubEndpoints = githubEndpoints(),
+  fetcher: Fetch = fetch,
+): Promise<{ login: string; scopes: string[] | null }> {
   let res: Response;
   try {
     res = await fetcher(`${endpoints.api}/user`, {
@@ -353,7 +377,9 @@ export async function githubAccount(token: string, endpoints: GithubEndpoints = 
   if (!res.ok) throw new SourceError(`GitHub answered ${res.status}. Try again later.`);
   const body = (await res.json().catch(() => undefined)) as { login?: unknown } | undefined;
   if (typeof body?.login !== "string" || !LOGIN.test(body.login)) throw new SourceError("GitHub answered with something that isn't an account.");
-  return { login: body.login };
+  const header = res.headers.get("x-oauth-scopes");
+  const scopes = header === null ? null : header.split(",").map((scope) => scope.trim()).filter(Boolean);
+  return { login: body.login, scopes };
 }
 
 /** A path's segments, each encoded for a URL. */

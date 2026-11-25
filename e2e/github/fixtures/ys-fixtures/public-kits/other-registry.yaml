@@ -1,0 +1,14 @@
+# A public kit whose image is private on a registry other than GitHub's container registry (journey
+# 015, slice 4): Your Space pulls only public images from there, and says so.
+kit: 1
+source:
+  repo: ys-fixtures/other-registry
+  path: compose.yaml
+  commit: d1a3afb7dcceb832c65a5e33dcaa68b7ece45330
+name: other-registry
+title: Other Registry
+interface:
+  service: web
+  port: 80
+limits:
+  web: { memory: 64M, cpus: 0.5 }

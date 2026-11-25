@@ -55,9 +55,9 @@ test("the owner connects GitHub on its page or with the server command, and disc
 
   await page.getByRole("button", { name: "Disconnect", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Disconnect", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Delete the token at GitHub too");
+  await expect(page.getByRole("status")).toContainText("Delete the tokens at GitHub too");
   await expect(page.getByRole("heading", { name: "Connect", exact: true })).toBeVisible();
-  expect((await serverCommand("github", ["status"])).json).toEqual({ ok: true, contents: { set: false } });
+  expect((await serverCommand("github", ["status"])).json).toEqual({ ok: true, contents: { set: false }, images: { set: false } });
 
   // The command refuses a token on its command line, and takes one on standard input.
   const argument = await serverCommand("github", ["connect", TOKEN]);

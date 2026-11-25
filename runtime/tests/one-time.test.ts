@@ -76,7 +76,7 @@ describe("applying an app with a one-time service", () => {
     up = undefined;
     hashed = 0;
     vi.mocked(engineModule.engineInfo).mockResolvedValue({ reachable: true, arch: "arm64", connection: "unix:///var/run/docker.sock" });
-    vi.mocked(engineModule.inspectImage).mockImplementation(async (ref) => ({ ref, digest: "sha256:abc", platforms: [], runsHere: true }));
+    vi.mocked(engineModule.inspectImage).mockImplementation(async (ref) => ({ ref, registry: "docker.io", digest: "sha256:abc", platforms: [], runsHere: true }));
     vi.mocked(engineModule.engine).mockResolvedValue({ status: 200, body: "{}" });
     vi.mocked(engineModule.listContainers).mockImplementation(async (labels) => (labels.includes("com.docker.compose.project=ys-tasks") ? containers : []));
     vi.mocked(engineModule.engineJson).mockImplementation(async (_method, path) => {

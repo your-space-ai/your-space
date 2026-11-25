@@ -120,6 +120,13 @@
       "when": 1795637225338,
       "tag": "0016_app_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795646349630,
+      "tag": "0017_registry_credential",
+      "breakpoints": true
     }
   ]
 }

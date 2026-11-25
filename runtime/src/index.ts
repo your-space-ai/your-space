@@ -86,7 +86,7 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
       log("info", "app.applied", { project: spec.project });
     } catch (error) {
       const message = error instanceof SpecError || error instanceof EngineError ? error.message : "Something went wrong in the runtime manager.";
-      emit({ error: message });
+      emit({ error: message, ...(error instanceof EngineError && error.code ? { code: error.code } : {}) });
       log("warn", "app.apply_failed", { project: spec.project, errorName: (error as Error)?.name });
     }
     res.end();

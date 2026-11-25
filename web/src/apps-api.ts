@@ -162,7 +162,8 @@ export interface Review {
   readsRepository: string | null;
   ok: boolean;
   services: { name: string; image: string; interface: boolean; ports: number[]; published: { target: number; host: number }[]; volumes: string[]; dependsOn: string[] }[];
-  images: { ref: string; digest?: string; runsHere: boolean }[];
+  /** `private`: pulled with the GitHub connection's image token (journey 015, decision 7). */
+  images: { ref: string; digest?: string; runsHere: boolean; private: boolean }[];
   adaptations: Adaptation[];
   refusals: Refusal[];
   settings: PublicSetting[];

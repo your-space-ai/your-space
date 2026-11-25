@@ -6,10 +6,13 @@ export const ENGINE_SOCKET = process.env.YS_ENGINE_SOCKET_PATH ?? "/var/run/dock
 
 export class EngineError extends Error {
   readonly status: number;
-  constructor(message: string, status = 502) {
+  /** `sign_in`: a registry asked for a sign-in to download an image, or refused the one given. */
+  readonly code?: string;
+  constructor(message: string, status = 502, code?: string) {
     super(message);
     this.name = "EngineError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -19,7 +22,7 @@ interface Answer {
 }
 
 /** One engine API call. `onData` streams the body instead of collecting it. */
-export function engine(method: string, path: string, body?: unknown, onData?: (chunk: string) => void): Promise<Answer> {
+export function engine(method: string, path: string, body?: unknown, onData?: (chunk: string) => void, headers: Record<string, string> = {}): Promise<Answer> {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? undefined : JSON.stringify(body);
     const req = request(
@@ -27,7 +30,7 @@ export function engine(method: string, path: string, body?: unknown, onData?: (c
         socketPath: ENGINE_SOCKET,
         method,
         path,
-        headers: payload ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } : {},
+        headers: { ...headers, ...(payload ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } : {}) },
       },
       (res) => {
         let text = "";
@@ -43,17 +46,20 @@ export function engine(method: string, path: string, body?: unknown, onData?: (c
   });
 }
 
+/** The engine's message for an answer it refused. */
+function refusalMessage(answer: Answer): string {
+  let message = answer.body;
+  try {
+    message = (JSON.parse(answer.body) as { message?: string }).message ?? answer.body;
+  } catch {
+    // not JSON
+  }
+  return message.trim() || `The engine answered ${answer.status}.`;
+}
+
 export async function engineJson<T>(method: string, path: string, body?: unknown): Promise<T> {
   const answer = await engine(method, path, body);
-  if (answer.status >= 400) {
-    let message = answer.body;
-    try {
-      message = (JSON.parse(answer.body) as { message?: string }).message ?? answer.body;
-    } catch {
-      // not JSON
-    }
-    throw new EngineError(message.trim() || `The engine answered ${answer.status}.`, answer.status === 404 ? 404 : 502);
-  }
+  if (answer.status >= 400) throw new EngineError(refusalMessage(answer), answer.status === 404 ? 404 : 502);
   return (answer.body ? JSON.parse(answer.body) : {}) as T;
 }
 
@@ -130,35 +136,107 @@ export async function engineInfo(): Promise<EngineInfo> {
 
 export interface ImageCheck {
   ref: string;
+  /** The registry the reference names, `docker.io` for one that names none. */
+  registry: string;
   digest?: string;
   platforms: string[];
   runsHere: boolean;
   error?: string;
+  /** Its registry gave it only with the registry credential: a private image (journey 015, R9). */
+  private?: true;
+  /**
+   * Its registry won't give it without a sign-in: `needed` when the spec has no credential for it,
+   * `refused` when the registry refused the one it has. The server says what to do.
+   */
+  signIn?: "needed" | "refused";
 }
 
-/** The image's index digest and platforms, from its registry, without downloading it. */
-export async function inspectImage(ref: string, arch: string): Promise<ImageCheck> {
+/**
+ * A registry credential (journey 015): signs the engine in to `registry` for the `images` named, as
+ * Docker's `X-Registry-Auth` on that request alone. Nothing is written to a Docker config file.
+ */
+export interface RegistryCredential {
+  registry: string;
+  username: string;
+  secret: string;
+  images: string[];
+}
+
+/** The registry an image reference names: its first part when that is a host, else Docker Hub. */
+export function registryOf(ref: string): string {
+  const slash = ref.indexOf("/");
+  const first = slash === -1 ? "" : ref.slice(0, slash);
+  return first.includes(".") || first.includes(":") || first === "localhost" ? first.toLowerCase() : "docker.io";
+}
+
+/** An image reference without its digest and tag: the repository a sign-in is for. */
+export function repositoryOf(ref: string): string {
+  const at = ref.indexOf("@");
+  const base = at === -1 ? ref : ref.slice(0, at);
+  const lastSlash = base.lastIndexOf("/");
+  const colon = base.indexOf(":", lastSlash + 1);
+  return colon === -1 ? base : base.slice(0, colon);
+}
+
+/**
+ * The `X-Registry-Auth` header for an image, when a credential is for it: for exactly the registry
+ * the image names, and for that image. An app's file is the app author's, so a credential never
+ * reaches a registry or an image it wasn't given for.
+ */
+export function signInFor(ref: string, credentials: RegistryCredential[] = []): Record<string, string> | undefined {
+  const registry = registryOf(ref);
+  const repository = repositoryOf(ref);
+  const credential = credentials.find((c) => c.registry === registry && c.images.some((image) => registryOf(image) === registry && repositoryOf(image) === repository));
+  if (!credential) return undefined;
+  const auth = JSON.stringify({ username: credential.username, password: credential.secret, serveraddress: credential.registry });
+  // URL-safe base64, as the engine reads it.
+  return { "X-Registry-Auth": Buffer.from(auth).toString("base64").replaceAll("+", "-").replaceAll("/", "_") };
+}
+
+/**
+ * Whether a registry, through the engine, wants a sign-in for an image or refused the one given. The
+ * engine passes the registry's answer on in its own words and status: GHCR's and Docker Hub's 403
+ * `denied`, Quay's 401 `unauthorized`, and a registry with a password's `no basic auth credentials`.
+ */
+export function wantsSignIn(status: number, message: string): boolean {
+  return status === 401 || status === 403 || /\b(denied|unauthorized|authentication required|no basic auth credentials)\b/i.test(message);
+}
+
+/**
+ * The image's index digest and platforms, from its registry, without downloading it. An image a
+ * credential is for is looked up with it: the engine's distribution lookup takes `X-Registry-Auth`.
+ */
+export async function inspectImage(ref: string, arch: string, credentials: RegistryCredential[] = []): Promise<ImageCheck> {
+  const registry = registryOf(ref);
+  const signIn = signInFor(ref, credentials);
+  let message: string;
   try {
-    const answer = await engineJson<{ Descriptor: { digest: string }; Platforms: { os: string; architecture: string }[] }>(
-      "GET",
-      `/distribution/${encodeURI(ref)}/json`,
-    );
-    const platforms = (answer.Platforms ?? []).filter((p) => p.os !== "unknown").map((p) => `${p.os}/${p.architecture}`);
-    return {
-      ref,
-      digest: answer.Descriptor.digest,
-      platforms,
-      runsHere: platforms.length === 0 || platforms.includes(`linux/${arch}`),
-    };
+    const answer = await engine("GET", `/distribution/${encodeURI(ref)}/json`, undefined, undefined, signIn);
+    if (answer.status < 400) {
+      const found = JSON.parse(answer.body) as { Descriptor: { digest: string }; Platforms: { os: string; architecture: string }[] };
+      const platforms = (found.Platforms ?? []).filter((p) => p.os !== "unknown").map((p) => `${p.os}/${p.architecture}`);
+      return {
+        ref,
+        registry,
+        digest: found.Descriptor.digest,
+        platforms,
+        runsHere: platforms.length === 0 || platforms.includes(`linux/${arch}`),
+        ...(signIn ? { private: true as const } : {}),
+      };
+    }
+    message = refusalMessage(answer);
+    // The registry wants a sign-in: never an image already on the engine, which would hide that.
+    if (wantsSignIn(answer.status, message)) return { ref, registry, platforms: [], runsHere: false, error: message, signIn: signIn ? "refused" : "needed" };
   } catch (error) {
-    // The registry can't answer (offline, or a rate limit): an image already on the engine is used.
-    const local = await localImage(ref, arch);
-    return local ?? { ref, platforms: [], runsHere: false, error: (error as Error).message };
+    message = (error as Error).message;
   }
+  // The registry can't answer (offline, or a rate limit): an image already on the engine is used.
+  const local = await localImage(ref, arch);
+  return local ? { ...local, registry } : { ref, registry, platforms: [], runsHere: false, error: message };
 }
 
 /** The digest of an image already on the engine, from the registry it was pulled from. */
-async function localImage(ref: string, arch: string): Promise<ImageCheck | undefined> {
+async function localImage(ref: string, arch: string): Promise<Omit<ImageCheck, "registry"> | undefined> {
   try {
     const image = await engineJson<{ RepoDigests?: string[]; Os: string; Architecture: string }>("GET", `/images/${encodeURIComponent(ref)}/json`);
     const base = ref.split("@")[0]!;
@@ -172,8 +250,12 @@ async function localImage(ref: string, arch: string): Promise<ImageCheck | undef
   }
 }
 
-/** Downloads one image, reporting progress as a fraction of bytes. */
-export async function pullImage(image: string, onProgress: (fraction: number) => void): Promise<void> {
+/**
+ * Downloads one image, reporting progress as a fraction of bytes, signed in with the credential for
+ * it, if there is one, for this pull alone.
+ */
+export async function pullImage(image: string, onProgress: (fraction: number) => void, credentials: RegistryCredential[] = []): Promise<void> {
+  const signIn = signInFor(image, credentials);
   const at = image.indexOf("@");
   const from = at === -1 ? image : image.slice(0, at);
   const tag = at === -1 ? undefined : image.slice(at + 1);
@@ -182,7 +264,10 @@ export async function pullImage(image: string, onProgress: (fraction: number) =>
   let failure: string | undefined;
   let buffer = "";
   let lastReport = 0;
+  // A refused pull answers with an error status and the engine's message as its body.
+  let start = "";
   const answer = await engine("POST", `/images/create?${query}`, undefined, (chunk) => {
+    if (start.length < 4096) start += chunk;
     buffer += chunk;
     let newline;
     while ((newline = buffer.indexOf("\n")) !== -1) {
@@ -210,8 +295,12 @@ export async function pullImage(image: string, onProgress: (fraction: number) =>
       }
       onProgress(total ? current / total : 0);
     }
-  });
-  if (answer.status >= 400) failure = answer.body || `The engine answered ${answer.status}.`;
+  }, signIn);
+  if (answer.status >= 400) failure = refusalMessage({ status: answer.status, body: start });
+  if (failure && wantsSignIn(answer.status, failure)) {
+    const refused = signIn ? ", and refused the sign-in Your Space gave" : "";
+    throw new EngineError(`Downloading ${image} failed: its registry asks for a sign-in, as for a private image${refused}.`, 502, "sign_in");
+  }
   if (failure) throw new EngineError(`Downloading ${image} failed: ${failure}`);
 }
 

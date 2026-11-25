@@ -85,8 +85,10 @@ offers a link to open the app in its own tab.
 ## Private Kits
 
 Your Space can keep a GitHub connection: a token that can only read the repositories you choose,
-for kits, and the Compose files they name, in private repositories. Your Space keeps it encrypted on
-this server, never shows it again, and never gives it to apps or agents.
+for kits, and the Compose files they name, in private repositories, and, if you add one, an image
+token for private images on GitHub's container registry (see [Private images](#private-images)).
+Your Space keeps both encrypted on this server, never shows them again, and never gives them to apps
+or agents.
 
 **Connect in the dashboard.** Open **GitHub** in the sidebar and choose **Create a token on GitHub**.
 GitHub opens its new fine-grained token page with a name and read access to contents already chosen.
@@ -145,6 +147,60 @@ organization, so a private kit and its private Compose file must belong to the s
 through the connection as well; without a connection it still installs a kit file whose Compose file
 is public.
 
+### Private Images
+
+An app's images on GitHub's container registry, `ghcr.io`, can be private too. GitHub's container
+registry takes only a personal access token (classic), and fine-grained tokens can't read packages,
+so the connection holds a second, optional token for images: a classic token with only the
+`read:packages` scope.
+
+**Add it in the dashboard.** On the GitHub page, under **Images**, choose **Add an image token**,
+then **Create an image token on GitHub**. On GitHub's new classic token page:
+
+1. Choose only the **read:packages** scope, and nothing else.
+2. Choose when it expires, generate the token and copy it.
+3. If the images belong to an organization with SAML single sign-on, authorize the token for that
+   organization at GitHub.
+4. Paste it on Your Space's GitHub page and choose **Add image token**.
+
+The page then shows **Images: @login**, the account the token belongs to, with **Replace** and
+**Remove**. Your Space asks GitHub which account it is, and GitHub's answer lists the token's
+scopes: a token with any scope besides `read:packages`, or with none, is refused before it is stored.
+The image token doesn't need a contents token, and either can be replaced or removed on its own.
+
+**Add it with the server command.** `github image-token` adds the image token, or replaces it, from
+a hidden prompt or standard input, never from the command line:
+
+```sh
+docker compose exec server github image-token
+docker compose exec -T server github image-token < image-token.txt
+```
+
+**What the image token can read.** It has limits a fine-grained token doesn't:
+
+- A classic token's scopes aren't limited to repositories you choose, so `read:packages` reads every
+  package your GitHub account can see.
+- An organization can stop classic tokens from reaching its resources.
+- An organization with SAML single sign-on reads it only once you authorize the token for that
+  organization.
+
+Your Space uses it for nothing but signing the engine in to `ghcr.io` to look up and download a
+private image, while you review or install an app.
+
+**Install a kit whose image is private.** Paste the kit's link as for any kit. The review looks up
+each image without signing in first. Only when GitHub's container registry doesn't show an image
+that way does Your Space read the image token and look the image up again with it. The review pins
+the image to its digest, as for every image, and labels it **Private image**. Installing downloads it
+signed in with the token, for that image alone: the token goes to the engine as the credentials of
+that one request, and Your Space writes no Docker config file. A public image never uses the image
+token, so a broken one doesn't stop it. Later starts use the image already on this machine; if it is
+gone, remove the app and install it again, reusing its data, with the image token in place.
+
+Registries other than `ghcr.io` stay public-only: Your Space doesn't sign in to them, and the review
+says so for a private image there.
+
+### When a Private Source Can't Be Read
+
 When a private kit or Compose file can't be read, the review says why and, when the connection is
 the fix, links to the GitHub page:
 
@@ -164,10 +220,25 @@ the fix, links to the GitHub page:
 - **No data key here can read the token:** as when the data key was replaced without the one before
   it. Connect GitHub again.
 
-**Disconnect.** **Disconnect** on the GitHub page, or `docker compose exec server github disconnect`,
-makes Your Space forget the token, and installed apps keep running. Your Space can't delete the token
-at GitHub for you: delete it in your
-[fine-grained tokens](https://github.com/settings/personal-access-tokens) on GitHub too.
+For a private image, the review says which of these it is:
+
+- **No image token:** GitHub's container registry doesn't show the image without signing in, as for
+  a private image or one that doesn't exist. Add an image token.
+- **The image token can't read it:** the token's account can't see the package, GitHub no longer
+  accepts the token, or an organization with SAML single sign-on hasn't authorized it. Replace the
+  image token, or fix its access at GitHub.
+- **No data key here can read the image token:** add it again.
+- **Another registry:** the image is on a registry other than `ghcr.io` that asks for a sign-in.
+  Your Space pulls only public images from there.
+
+### Disconnect
+
+**Disconnect** on the GitHub page, or `docker compose exec server github disconnect`, makes Your
+Space forget both tokens, and installed apps keep running. **Remove** under **Images**, or
+`docker compose exec server github disconnect --image-token`, forgets the image token alone. Your
+Space can't delete a token at GitHub for you: delete the contents token in your
+[fine-grained tokens](https://github.com/settings/personal-access-tokens), and the image token in
+your [classic tokens](https://github.com/settings/tokens), on GitHub too.
 
 ## Publish an App on a Port
 

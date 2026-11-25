@@ -2,6 +2,7 @@
 // from `docker compose config --format json`, and build the file Your Space runs. Pure functions, so
 // the rules are tested without Docker.
 import { createHash } from "node:crypto";
+import type { RegistryCredential } from "./engine.ts";
 
 export interface AppSpec {
   /** Stable server installation ID for a kit with agent access; identifies its declared interface. */
@@ -28,6 +29,11 @@ export interface AppSpec {
    * owner can review the file before filling those settings in. An apply ignores it.
    */
   placeholders?: boolean;
+  /**
+   * Signs the engine in to a registry for the images each credential names, for the lookups and
+   * pulls of those images alone (journey 015, R9).
+   */
+  registryCredentials?: RegistryCredential[];
 }
 
 export interface Adaptation {

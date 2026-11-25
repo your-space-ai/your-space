@@ -18,6 +18,11 @@ export class FakeRuntime implements Runtime {
   failPortCheck: string | undefined;
   /** What a check refuses, for the spec it is given. */
   refuse: (spec: AppSpec) => CheckAnswer["refusals"] = () => [];
+  /** The images a check reports, for the spec it is given, as their registries answered. */
+  images: (spec: AppSpec) => CheckAnswer["images"] = () => [
+    { ref: "traefik/whoami:latest", registry: "docker.io", digest: "sha256:aaa", runsHere: true, platforms: ["linux/amd64"] },
+    { ref: "ubuntu/squid:latest", registry: "docker.io", digest: "sha256:bbb", runsHere: true, platforms: ["linux/amd64"] },
+  ];
 
   stopping = false;
 
@@ -33,18 +38,17 @@ export class FakeRuntime implements Runtime {
       throw new RuntimeError(`The file isn't a Compose file Your Space can read: required variable ${missing.name} is missing a value`, 400, "refused");
     }
     const refusals = this.refuse(spec);
+    const images = this.images(spec);
     return {
-      ok: refusals.length === 0,
+      // The runtime manager leaves an image that needs a sign-in for the server to word.
+      ok: refusals.length === 0 && !images.some((i) => i.signIn),
       services: [
         { name: "web", image: "traefik/whoami:latest", interface: spec.interface?.service === "web", ports: [80], published: [{ target: 80, host: 8000 }], volumes: [], dependsOn: [] },
       ],
       variables: this.variables,
       adaptations: [{ service: "web", kind: "changed", detail: "Published ports removed: Your Space routes to the app's interface itself." }],
       refusals,
-      images: [
-        { ref: "traefik/whoami:latest", digest: "sha256:aaa", runsHere: true, platforms: ["linux/amd64"] },
-        { ref: "ubuntu/squid:latest", digest: "sha256:bbb", runsHere: true, platforms: ["linux/amd64"] },
-      ],
+      images,
     };
   }
 
@@ -191,7 +195,11 @@ export function fakeGithub(files: Record<string, string>, options: FakeGithubOpt
  * A stand-in for GitHub's `GET /user`: each token it knows belongs to an account; it refuses any
  * other, as GitHub does a wrong, expired or revoked one. `calls` records what each request sent.
  */
-export function fakeGithubAccounts(accounts: Map<string, string>): { fetch: typeof fetch; calls: { url: string; authorization: string | null }[] } {
+export function fakeGithubAccounts(
+  accounts: Map<string, string>,
+  /** For a classic token, what GitHub's `X-OAuth-Scopes` header lists; a fine-grained token has no such header. */
+  scopes: Map<string, string> = new Map(),
+): { fetch: typeof fetch; calls: { url: string; authorization: string | null }[] } {
   const calls: { url: string; authorization: string | null }[] = [];
   const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -200,7 +208,8 @@ export function fakeGithubAccounts(accounts: Map<string, string>): { fetch: type
     if (url !== "https://api.github.test/user") return new Response("", { status: 404 });
     const login = authorization?.startsWith("Bearer ") ? accounts.get(authorization.slice("Bearer ".length)) : undefined;
     if (!login) return Response.json({ message: "Bad credentials" }, { status: 401 });
-    return Response.json({ login, id: 1, type: "User" });
+    const token = authorization!.slice("Bearer ".length);
+    return Response.json({ login, id: 1, type: "User" }, { headers: scopes.has(token) ? { "X-OAuth-Scopes": scopes.get(token)! } : {} });
   }) as typeof fetch;
   return { fetch: fetcher, calls };
 }

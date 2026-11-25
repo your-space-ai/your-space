@@ -1,0 +1,14 @@
+# A public kit and Compose file whose image is private on GitHub's container registry (journey 015,
+# slice 4): Your Space pulls it with the GitHub connection's image token.
+kit: 1
+source:
+  repo: ys-fixtures/private-image
+  path: compose.yaml
+  commit: 5aa2c7d42cdd6703cf5c0ac8826814b111d9412b
+name: private-image
+title: Private Image
+interface:
+  service: web
+  port: 80
+limits:
+  web: { memory: 64M, cpus: 0.5 }

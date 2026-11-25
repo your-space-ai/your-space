@@ -143,7 +143,7 @@ describe("checking and applying a file that names settings files", () => {
     calls = [];
     started = undefined;
     vi.mocked(engineModule.engineInfo).mockResolvedValue({ reachable: true, arch: "arm64", connection: "fixture" });
-    vi.mocked(engineModule.inspectImage).mockImplementation(async (ref) => ({ ref, digest: `sha256:${"a".repeat(64)}`, platforms: [], runsHere: true }));
+    vi.mocked(engineModule.inspectImage).mockImplementation(async (ref) => ({ ref, registry: "docker.io", digest: `sha256:${"a".repeat(64)}`, platforms: [], runsHere: true }));
     vi.mocked(engineModule.engine).mockResolvedValue({ status: 200, body: "{}" });
     vi.mocked(engineModule.listContainers).mockResolvedValue([]);
     vi.mocked(engineModule.docker).mockImplementation(async (args, env = {}): Promise<CliResult> => {

@@ -310,6 +310,14 @@ function ReviewPanel(props: {
                 </td>
                 <td>
                   <code>{s.image}</code>
+                  {image?.private ? (
+                    <>
+                      {" "}
+                      <span className="source-label" data-private="image">
+                        Private image
+                      </span>
+                    </>
+                  ) : null}
                 </td>
                 <td>
                   <code title={image?.digest}>{shortDigest(image?.digest)}</code>

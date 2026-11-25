@@ -54,7 +54,7 @@ beforeEach(() => {
   vi.mocked(inspectImage).mockClear();
   vi.mocked(docker).mockImplementation(async (args, env) => compose(args, env));
   vi.mocked(engineInfo).mockResolvedValue({ reachable: true, arch: "arm64", connection: "fixture" });
-  vi.mocked(inspectImage).mockImplementation(async (ref) => ({ ref, digest: `sha256:${"a".repeat(64)}`, runsHere: true, platforms: ["linux/arm64"] }));
+  vi.mocked(inspectImage).mockImplementation(async (ref) => ({ ref, registry: "docker.io", digest: `sha256:${"a".repeat(64)}`, runsHere: true, platforms: ["linux/arm64"] }));
 });
 
 describe("placeholders for required settings", () => {
@@ -106,12 +106,12 @@ describe("placeholders for required settings", () => {
     });
     const reviewed = await check(spec({ placeholders: true }));
     expect(reviewed.ok).toBe(true);
-    expect(reviewed.images).toContainEqual({ ref: `example/app:${PLACEHOLDER}`, platforms: [], runsHere: true });
-    expect(inspectImage).not.toHaveBeenCalledWith(`example/app:${PLACEHOLDER}`, "arm64");
+    expect(reviewed.images).toContainEqual({ ref: `example/app:${PLACEHOLDER}`, registry: "docker.io", platforms: [], runsHere: true });
+    expect(inspectImage).not.toHaveBeenCalledWith(`example/app:${PLACEHOLDER}`, "arm64", undefined);
 
     const installing = await check(spec({ env: { TAG: "2.1" } }));
     expect(installing.ok).toBe(true);
-    expect(inspectImage).toHaveBeenCalledWith("example/app:2.1", "arm64");
+    expect(inspectImage).toHaveBeenCalledWith("example/app:2.1", "arm64", undefined);
     expect(installing.images).toContainEqual(expect.objectContaining({ ref: "example/app:2.1", digest: `sha256:${"a".repeat(64)}` }));
   });
 
@@ -122,7 +122,7 @@ describe("placeholders for required settings", () => {
       stderr: "",
     }));
     const answer = await check(spec({ placeholders: true }));
-    expect(inspectImage).toHaveBeenCalledWith(`example/app:${PLACEHOLDER}`, "arm64");
+    expect(inspectImage).toHaveBeenCalledWith(`example/app:${PLACEHOLDER}`, "arm64", undefined);
     expect(answer.images).toContainEqual(expect.objectContaining({ ref: `example/app:${PLACEHOLDER}`, digest: `sha256:${"a".repeat(64)}` }));
   });
 

@@ -24,6 +24,7 @@ import {
   fetchPinnedFileWith,
   fetchSourceWith,
   githubEndpoints,
+  githubRegistry,
   SourceError,
   TokenRefusedError,
   type FileRead,
@@ -34,7 +35,7 @@ import {
 } from "./github.ts";
 import { composeOf, kitFromFile, kitFromLink, kitFromSource, KitError, kitIdentity, NotAKitError, type FoundKit } from "./kits.ts";
 import { localSource, type LocalCompose } from "./local.ts";
-import { RuntimeError, type AppSpec, type CheckAnswer, type Runtime, type ServiceState } from "./runtime-client.ts";
+import { RuntimeError, type AppSpec, type CheckAnswer, type RegistryCredential, type Runtime, type ServiceState } from "./runtime-client.ts";
 import {
   buildSettings,
   decrypt,
@@ -95,6 +96,28 @@ export interface SourceCredentials {
   >;
 }
 
+/**
+ * The workspace's registry credential (journey 015, R9), the GitHub connection's image token: what
+ * signs the engine in to `registry`, GHCR, to look up and pull an image it won't give anonymously. It
+ * is asked for only after a check found such an image.
+ */
+export interface RegistryCredentials {
+  /** The registry the credential signs in to: `ghcr.io`, or a stand-in for it in the browser tests. */
+  readonly registry: string;
+  signingIn(): Promise<
+    | { state: "none" }
+    /** Stored, but no data key here can read it (decision 3). */
+    | { state: "unreadable"; login: string }
+    | {
+        state: "ready";
+        login: string;
+        credential: Omit<RegistryCredential, "images">;
+        /** The registry gave an image with it. */
+        worked(): Promise<void>;
+      }
+  >;
+}
+
 export interface AppsConfig {
   /** Your Space's own address, e.g. http://space.localhost. */
   publicUrl: string;
@@ -104,12 +127,16 @@ export interface AppsConfig {
   fetch?: typeof fetch;
   /** Left out where nothing is connected, as in tests that don't need it. */
   credentials?: SourceCredentials;
+  /** The image token; left out where nothing is connected, as in tests that don't need it. */
+  registries?: RegistryCredentials;
 }
 
 /** The API's error code for each way GitHub gave no file. */
 const MISS_CODE: Record<SourceMiss, string> = { not_found: "not_found", not_visible: "repository_not_visible", no_ref: "not_found", no_file: "file_missing" };
 /** What the owner does about a connection that can't read a private file; the page and the command each say where. */
 const RECONNECT = "Create a new token and connect GitHub again, then try again.";
+/** Where the owner adds the image token: the GitHub page, or the server command. */
+const ADD_IMAGE_TOKEN = "on Your Space's GitHub page, or with docker compose exec server github image-token";
 
 interface Preview {
   id: string;
@@ -312,6 +339,26 @@ export function stateFromServices(services: ServiceState[]): { state: AppState; 
   return starting ? { state: "starting", reason: null } : { state: "running", reason: null };
 }
 
+/**
+ * Why an image its registry won't give without a sign-in can't be installed, and what to do (journey
+ * 015, decision 7): GHCR with no image token, with one no key here can read, or with one that can't
+ * read the image; and another registry, from which Your Space pulls public images only (decision 4).
+ * GHCR answers alike for a private image and one that doesn't exist.
+ */
+function signInReason(image: CheckAnswer["images"][number], registry: string, token: Awaited<ReturnType<RegistryCredentials["signingIn"]>>): string {
+  if (image.registry !== registry) {
+    return `${image.registry} doesn't show ${image.ref} without signing in: it is private, or it doesn't exist. Your Space pulls private images only from GitHub's container registry, ghcr.io, with an image token; from other registries it pulls public images only.`;
+  }
+  const hidden = `GitHub's container registry doesn't show ${image.ref} without signing in: it is private, or it doesn't exist.`;
+  if (image.signIn === "refused" && token.state === "ready") {
+    return `Your image token (@${token.login}) can't read ${image.ref}, or it doesn't exist. Check that @${token.login} can see the package, that GitHub still accepts the token, and that an organization with SAML single sign-on has authorized it. To use another token, replace the image token ${ADD_IMAGE_TOKEN}.`;
+  }
+  if (token.state === "unreadable") {
+    return `${hidden} Your image token (@${token.login}) can't be used: no data key here can read it, as when the data key was replaced without the one before it. Add the image token again ${ADD_IMAGE_TOKEN}.`;
+  }
+  return `${hidden} If it's private, add an image token, a classic token with only read:packages, ${ADD_IMAGE_TOKEN}, then review the kit again.`;
+}
+
 export class AppsService {
   readonly db: Db;
   readonly runtime: Runtime;
@@ -499,7 +546,7 @@ export class AppsService {
     // them. A setting the file requires that has no value yet gets a placeholder, so the review shows
     // the file and the owner fills the setting in; installing needs a real value (install).
     const settings = buildSettings(kit, address, previous);
-    let check = await this.check({ project: `ys-${name}`, app: name, compose: source.text, env: this.envOf(settings), interface: kit.interface ?? null, placeholders: true });
+    let check = await this.checkSigningIn({ project: `ys-${name}`, app: name, compose: source.text, env: this.envOf(settings), interface: kit.interface ?? null, placeholders: true });
     withFileDefaults(settings, check.variables);
     // A variable the file needs, with no default, is one the kit must define.
     const env = kitEnv(kit);
@@ -558,6 +605,29 @@ export class AppsService {
     }
   }
 
+  /**
+   * Checks the app's file, signing in to GHCR for its private images (journey 015, R9). The first
+   * check is anonymous. Only when GHCR won't give an image without a sign-in is the image token read,
+   * and the file checked again with it, for those images alone, so a public image never touches the
+   * token, and a token no key can read, or GitHub refuses, never stops a public install. Each image
+   * a registry won't give is refused with what to do about it.
+   */
+  private async checkSigningIn(spec: AppSpec): Promise<CheckAnswer> {
+    let check = await this.check(spec);
+    const registry = this.config.registries?.registry ?? githubRegistry();
+    const denied = check.images.filter((i) => i.signIn === "needed" && i.registry === registry).map((i) => i.ref);
+    let token: Awaited<ReturnType<RegistryCredentials["signingIn"]>> = { state: "none" };
+    if (denied.length) {
+      token = (await this.config.registries?.signingIn()) ?? { state: "none" };
+      if (token.state === "ready") {
+        check = await this.check({ ...spec, registryCredentials: [{ ...token.credential, images: denied }] });
+        if (check.images.some((i) => i.private)) await token.worked();
+      }
+    }
+    const refusals = check.images.filter((i) => i.signIn).map((i) => ({ service: "", setting: "image", reason: signInReason(i, registry, token) }));
+    return refusals.length ? { ...check, ok: false, refusals: [...check.refusals, ...refusals] } : check;
+  }
+
   private reviewOf(p: Preview) {
     const kit = kitIdentity(p.kitSource);
     return {
@@ -574,7 +644,8 @@ export class AppsService {
         p.source.read?.read === "connection" && p.source.repo.toLowerCase() !== kit.repo?.toLowerCase() ? p.source.repo : null,
       ok: p.check.ok,
       services: p.check.services,
-      images: p.check.images.map((i) => ({ ref: i.ref, digest: i.digest, runsHere: i.runsHere })),
+      // A Private image label on each image pulled with the image token (decision 7).
+      images: p.check.images.map((i) => ({ ref: i.ref, digest: i.digest, runsHere: i.runsHere, private: i.private === true })),
       adaptations: p.check.adaptations,
       refusals: p.check.refusals,
       settings: p.settings.map(publicSetting),
@@ -619,14 +690,15 @@ export class AppsService {
     // Then the file is checked again with the owner's values, so its images and changes are the real ones.
     let check = p.check;
     if (placeheld) {
-      check = await this.check({ project: `ys-${p.name}`, app: p.name, compose: p.source.text, env: this.envOf(settings), interface: p.kit.interface ?? null });
+      check = await this.checkSigningIn({ project: `ys-${p.name}`, app: p.name, compose: p.source.text, env: this.envOf(settings), interface: p.kit.interface ?? null });
       if (!check.ok) {
         const reasons = check.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`).join(" ");
         throw new AppError(400, "refused", `Your Space can't run this app with these settings: ${reasons}`, check.refusals);
       }
     }
 
-    const images = Object.fromEntries(check.images.filter((i) => i.digest).map((i) => [i.ref, { digest: i.digest! }]));
+    // An image pulled with the image token is recorded as private, so the install signs in for it alone.
+    const images = Object.fromEntries(check.images.filter((i) => i.digest).map((i) => [i.ref, { digest: i.digest!, ...(i.private ? { private: true as const } : {}) }]));
     let publish: PublishChoices | null = null;
     if (publishWith !== null && publishWith !== undefined) {
       if (!p.interface || p.publishPort === null) throw new AppError(400, "no_interface", `${p.title} has no interface to publish.`);
@@ -793,6 +865,9 @@ export class AppsService {
       } else {
         await this.db.update(app).set({ state: kind === "install" ? "installing" : "starting", stateReason: null, updatedAt: new Date() }).where(eq(app.id, appId));
         const spec = await this.specFor(row);
+        // The install pulls the app's private images signed in with the image token, for those
+        // images alone (R9). Nothing else uses it: Your Space doesn't sign in in the background (R7).
+        if (kind === "install") spec.registryCredentials = await this.signInToPull(row);
         let lastImage = "";
         let lastPercent = -1;
         const pending: Promise<void>[] = [];
@@ -815,8 +890,15 @@ export class AppsService {
       }
       await this.db.update(installJob).set({ state: "succeeded", finishedAt: new Date() }).where(eq(installJob.id, jobId));
     } catch (error) {
-      const message = error instanceof AppError || error instanceof RuntimeError ? error.message : "Something went wrong on the server.";
+      let message = error instanceof AppError || error instanceof RuntimeError ? error.message : "Something went wrong on the server.";
       if (!(error instanceof AppError || error instanceof RuntimeError)) log("error", "app.job_failed", errorFields(error));
+      // A private image's registry asked for a sign-in while downloading it.
+      if (error instanceof RuntimeError && error.code === "sign_in") {
+        message +=
+          kind === "install"
+            ? ` Check your image token ${ADD_IMAGE_TOKEN}, then install the app again.`
+            : " Your Space signs in to download a private image only while installing the app: remove it, then install it again, reusing its data, with your image token in place.";
+      }
       await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));
       // Refused because Your Space is stopping: the app starts again with Your Space.
       const stopping = error instanceof RuntimeError && error.status === 409;
@@ -826,6 +908,14 @@ export class AppsService {
         .set(stopping ? { state: "stopped", stateReason: message, updatedAt: new Date() } : { state: "failed", stateReason: message, updatedAt: new Date() })
         .where(eq(app.id, appId));
     }
+  }
+
+  /** The image token, for the app's private images alone, or none when it has none or no token is ready. */
+  private async signInToPull(row: AppRow): Promise<RegistryCredential[] | undefined> {
+    const images = Object.entries(row.images).filter(([, image]) => image.private).map(([ref]) => ref);
+    if (!images.length) return undefined;
+    const token = (await this.config.registries?.signingIn()) ?? { state: "none" as const };
+    return token.state === "ready" ? [{ ...token.credential, images }] : undefined;
   }
 
   async job(id: string) {

@@ -14,7 +14,7 @@ Ways to recover, best first:
 
 1. **Restore the `ys-secrets` volume** from a backup, or **put the old values back** in `.env` as
    `BETTER_AUTH_SECRET`, `POSTGRES_PASSWORD` and `YS_DATA_KEY`. Then run `docker compose up -d`.
-   Without the old data key, installed apps' settings and the GitHub connection's token can't be
+   Without the old data key, installed apps' settings and the GitHub connection's tokens can't be
    read; see option 2.
 2. **Start with new secrets.** Your account and workspace stay; every device is signed out. If the
    data key was lost too (it is in the same volume, unless you set `YS_DATA_KEY` in `.env`),
@@ -22,7 +22,7 @@ Ways to recover, best first:
    because that data depends on the settings, such as the app's own database password. Restore the
    old data key if you can. Otherwise remove the app, delete its kept data on its page, and install it
    again: the app starts empty, and deleting its data can't be undone. The GitHub page then shows
-   **Reconnect**: connect GitHub again with a new token. Run:
+   **Reconnect**: connect GitHub again with a new token, and add an image token again if you had one. Run:
 
    ```sh
    your-space start --new-secrets
@@ -77,7 +77,7 @@ first, then runs every step below. `your-space secrets show` says where each sec
   else changes.
 - **Data key:** `docker compose run --rm secrets --new data-key`, then `docker compose restart server`.
   The secrets step keeps the replaced key until the server, as it starts, has re-encrypted every
-  app's settings, and the GitHub connection's token, with the new one. Once `docker compose ps` shows the server healthy, remove the old
+  app's settings, and the GitHub connection's tokens, with the new one. Once `docker compose ps` shows the server healthy, remove the old
   key: `docker compose run --rm secrets --forget previous-data-key`. Until it is removed, the data
   key can't be replaced again.
 - **Database password:** `docker compose run --rm secrets --new database-password`, then

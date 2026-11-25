@@ -5,7 +5,7 @@ import { operatorActorId } from "../src/actors.ts";
 import { moveSettingsToDataKey } from "../src/apps/keys.ts";
 import { AppsService } from "../src/apps/service.ts";
 import { decrypt, encrypt } from "../src/apps/settings.ts";
-import { app, appSetting, sourceCredential } from "../src/db/schema.ts";
+import { app, appSetting, registryCredential, sourceCredential } from "../src/db/schema.ts";
 import { GithubConnection } from "../src/github-connection.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { createOwnerWithPassword } from "./helpers/owner.ts";
@@ -111,6 +111,21 @@ describe("moving the GitHub connection onto the data key (journey 015, decision 
     const { name, done } = await apps.install(review.previewId, {}, false, await operatorActorId(t.db));
     await done;
     expect((await apps.detail(name)).provenance).toEqual({ kit: { read: "connection", login: "ys-fixture-owner" }, compose: { read: "anonymous" } });
+  });
+
+  it("moves the image token too, so a private image still pulls with it (slice 4)", async () => {
+    const IMAGE_TOKEN = "ghp_ys_fixture_packages_0001";
+    const withImages = fakeGithubAccounts(new Map([[TOKEN, "ys-fixture-owner"], [IMAGE_TOKEN, "ys-fixture-owner"]]), new Map([[IMAGE_TOKEN, "read:packages"]]));
+    const images = (dataKey: string) => new GithubConnection(t.db, dataKey, { endpoints, fetch: withImages.fetch });
+    await createOwnerWithPassword(t.db);
+    await images(KEY).connect(TOKEN);
+    await images(KEY).addImageToken(IMAGE_TOKEN);
+    expect(await moveSettingsToDataKey(t.db, { dataKey: NEXT, previousDataKey: KEY })).toEqual({ moved: 2, current: 0, unreadable: 0 });
+    const [row] = await t.db.select({ token: registryCredential.token }).from(registryCredential);
+    expect(decrypt(NEXT, row!.token)).toBe(IMAGE_TOKEN);
+    // Restarted with only the new key, the connection still works.
+    expect((await images(NEXT).status()).images).toMatchObject({ set: true, login: "ys-fixture-owner", accepted: true });
+    expect(await images(NEXT).signingIn()).toMatchObject({ state: "ready", credential: { registry: "ghcr.io", username: "ys-fixture-owner", secret: IMAGE_TOKEN } });
   });
 
   it("leaves a token no key here can read, which shows Reconnect", async () => {

@@ -33,6 +33,20 @@ export interface AppSpec {
    * owner can review the file before filling those settings in. An apply ignores it.
    */
   placeholders?: boolean;
+  /**
+   * Signs the engine in to a registry for the images each credential names (journey 015, R9): on a
+   * review's second check, for the images the first found private, and on an install, for those it
+   * pulls. The runtime manager sends it as X-Registry-Auth on those lookups and pulls alone.
+   */
+  registryCredentials?: RegistryCredential[];
+}
+
+/** A registry credential (journey 015): `secret` signs `username` in to `registry` for `images`. */
+export interface RegistryCredential {
+  registry: string;
+  username: string;
+  secret: string;
+  images: string[];
 }
 
 export interface CheckAnswer {
@@ -51,7 +65,12 @@ export interface CheckAnswer {
   variables: { name: string; required: boolean; default: string; unset?: boolean }[];
   adaptations: { service: string; kind: "changed" | "left_out" | "added"; detail: string }[];
   refusals: { service: string; setting: string; reason: string }[];
-  images: { ref: string; digest?: string; runsHere: boolean; platforms: string[]; error?: string }[];
+  /**
+   * `registry` is the one the reference names; `private`, that its registry gave it only with the
+   * credential; `signIn`, that its registry won't give it without one (`needed`), or refused the one
+   * given (`refused`), which the check leaves for the server to word.
+   */
+  images: { ref: string; registry: string; digest?: string; runsHere: boolean; platforms: string[]; error?: string; private?: true; signIn?: "needed" | "refused" }[];
 }
 
 export interface ServiceState {
@@ -92,6 +111,8 @@ export interface ApplyEvent {
   progress?: number;
   done?: boolean;
   error?: string;
+  /** `sign_in`: a registry asked for a sign-in to download an image, or refused the one given. */
+  code?: string;
 }
 
 /** What the server needs from a runtime; tests give a fake. */
@@ -176,6 +197,7 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
     check: async (spec) => json("POST", "/check", oneFile(spec), socketPath),
     async apply(spec, onEvent) {
       let failure: string | undefined;
+      let code: string | undefined;
       let done = false;
       const { status } = await call(
         "POST",
@@ -185,13 +207,14 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
           if (!line.trim()) return;
           const event = JSON.parse(line) as ApplyEvent;
           if (event.error) failure = event.error;
+          if (event.code) code = event.code;
           if (event.done) done = true;
           onEvent(event);
         },
         socketPath,
       );
       if (status >= 400) throw new RuntimeError(failure ?? "The runtime manager refused the app.", status, "runtime_error");
-      if (failure) throw new RuntimeError(failure, 502, "apply_failed");
+      if (failure) throw new RuntimeError(failure, 502, code ?? "apply_failed");
       if (!done) throw new RuntimeError("The runtime manager stopped before the app started.", 502, "apply_interrupted");
     },
     down: async (project) => void (await json("POST", `${p(project)}/down`, undefined, socketPath)),
