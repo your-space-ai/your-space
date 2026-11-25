@@ -128,9 +128,12 @@ function DeletionList({ sync }: { sync: KnowledgeSync }) {
   );
 }
 
+const deletionsOf = (sync: KnowledgeSync) => sync.deletionCounts.local + sync.deletionCounts.remote;
+
 function Synced({ base, sync }: { base: Base; sync: KnowledgeSync }) {
   const queryClient = useQueryClient();
-  const [confirming, setConfirming] = useState(false);
+  // The run whose deletions the owner opened, as they saw it: later polls don't change what they confirm.
+  const [confirming, setConfirming] = useState<KnowledgeSync | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const run = useMutation({
     mutationFn: (body: { action: "sync" | "resync" | "apply_deletions"; run?: string; count?: number }) => api("POST", `/api/knowledge/${base.name}/sync`, body),
@@ -139,7 +142,7 @@ function Synced({ base, sync }: { base: Base; sync: KnowledgeSync }) {
   const reconnect = useMutation({ mutationFn: signInWithGoogle });
   const disconnected = sync.disconnected || sync.result === "unauthorized";
   const stopped = sync.result === "stopped";
-  const deletionCount = sync.deletionCounts.local + sync.deletionCounts.remote;
+  const deletionCount = deletionsOf(sync);
   const waitingDeletions = stopped && (sync.reason === "max_delete" || sync.reason === "changed") && deletionCount > 0 && sync.lastRunAt !== null;
 
   return (
@@ -205,7 +208,7 @@ function Synced({ base, sync }: { base: Base; sync: KnowledgeSync }) {
             </button>
           ) : null}
           {waitingDeletions ? (
-            <button type="button" className="secondary danger-outline" onClick={() => setConfirming(true)} disabled={disconnected || sync.running || run.isPending}>
+            <button type="button" className="secondary danger-outline" onClick={() => setConfirming(sync)} disabled={disconnected || sync.running || run.isPending}>
               Apply these deletions
             </button>
           ) : null}
@@ -236,13 +239,14 @@ function Synced({ base, sync }: { base: Base; sync: KnowledgeSync }) {
       {confirming ? (
         <ApplyDeletions
           base={base}
-          sync={sync}
+          sync={confirming}
+          outdated={sync.lastRunAt !== confirming.lastRunAt || sync.running}
           onConfirm={() => {
-            // The deletions of the run the owner sees, all of them: the server checks it is still that run's list.
-            run.mutate({ action: "apply_deletions", run: sync.lastRunAt ?? "", count: deletionCount });
-            setConfirming(false);
+            // The deletions of the run the owner opened, all of them: the server checks it is still that run's list.
+            run.mutate({ action: "apply_deletions", run: confirming.lastRunAt ?? "", count: deletionsOf(confirming) });
+            setConfirming(null);
           }}
-          onClose={() => setConfirming(false)}
+          onClose={() => setConfirming(null)}
         />
       ) : null}
       {disconnecting ? <Disconnect base={base} onClose={() => setDisconnecting(false)} /> : null}
@@ -315,10 +319,11 @@ function Backups({ backups }: { backups: KnowledgeSync["backups"] }) {
 /** A modal of Your Space's own, never one of the browser's. */
 function useModal(onClose: () => void) {
   const dialog = useRef<HTMLDialogElement>(null);
+  // No cleanup closes it: React removes the dialog with its component, which takes it out of the top
+  // layer, and a close() there would fire onClose after StrictMode's second showModal().
   useEffect(() => {
     const element = dialog.current;
     if (element && !element.open) element.showModal();
-    return () => element?.close();
   }, []);
   return {
     ref: dialog,
@@ -332,7 +337,11 @@ function useModal(onClose: () => void) {
   };
 }
 
-function ApplyDeletions({ base, sync, onConfirm, onClose }: { base: Base; sync: KnowledgeSync; onConfirm: () => void; onClose: () => void }) {
+/**
+ * The deletions of the run the owner opened. When a newer run is under way or has ended since, they
+ * can't be confirmed here: the owner closes this and checks the new list.
+ */
+function ApplyDeletions({ base, sync, outdated, onConfirm, onClose }: { base: Base; sync: KnowledgeSync; outdated: boolean; onConfirm: () => void; onClose: () => void }) {
   const modal = useModal(onClose);
   // A file deleted in Drive is deleted here, and one deleted here is deleted in Drive.
   const here = sync.deletionCounts.remote;
@@ -349,8 +358,13 @@ function ApplyDeletions({ base, sync, onConfirm, onClose }: { base: Base; sync: 
         <p className="muted small">Your Space checks the list again just before: if more files were deleted since, it deletes nothing and shows you the new list.</p>
         <DeletionList sync={sync} />
       </div>
+      {outdated ? (
+        <p className="notice error" role="alert" data-deletions-outdated>
+          Another sync ran since you opened this list, so it may have changed. Cancel, and check the list again.
+        </p>
+      ) : null}
       <div className="actions">
-        <button type="button" className="danger" onClick={onConfirm}>
+        <button type="button" className="danger" onClick={onConfirm} disabled={outdated}>
           Delete {files(drive + here)}
         </button>
         <button type="button" className="secondary" onClick={onClose}>
@@ -378,6 +392,7 @@ function Disconnect({ base, onClose }: { base: Base; onClose: () => void }) {
       <h2 id="disconnect-heading">Disconnect {base.title} from Drive?</h2>
       <div id="disconnect-detail">
         <p>Both keep their files: the knowledge base here, and the Drive folder. They stop syncing.</p>
+        {base.sync?.backups.length ? <p className="muted small">The replaced files Your Space kept for 30 days are deleted with the sync.</p> : null}
         <p className="muted small">Connecting again starts with a sync that copies both ways and deletes nothing.</p>
       </div>
       {disconnect.isError ? (

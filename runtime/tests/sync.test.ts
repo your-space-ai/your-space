@@ -165,8 +165,10 @@ describe("a step's container", () => {
     expect(exactPattern("back\\slash.md")).toBe("/back\\\\slash.md");
     const args = tieCopyArgs(["a.md", "dir/b [2].md"]);
     expect(args.slice(0, 3)).toEqual(["copy", "/knowledge", "remote:"]);
-    // Whatever the two copies' sizes and times, which rclone's copy would otherwise take as the same.
-    expect(args).toEqual(expect.arrayContaining(["--ignore-times", "--drive-skip-gdocs", "--drive-skip-shortcuts"]));
+    // By content, which rclone's copy would otherwise take as the same for the same size and time,
+    // and never over a remote copy newer than the knowledge base's, as one edited on Drive since.
+    expect(args).toEqual(expect.arrayContaining(["--checksum", "--update", "--drive-skip-gdocs", "--drive-skip-shortcuts"]));
+    expect(args).not.toContain("--ignore-times");
     expect(args.filter((_, i) => args[i - 1] === "--include")).toEqual(["/a.md", "/dir/b \\[2].md"]);
     expect(args.some((a) => a === "--exclude" || a === "--filter" || a.startsWith("--delete") || a === "sync")).toBe(false);
   });
@@ -388,7 +390,10 @@ describe("a run", () => {
 
   it("puts the marker on both sides before a resync, and lets the knowledge base's copy win the ties a resync leaves", async () => {
     const tie = { level: "error", msg: "-                   Checksum not equal in listing. Path1: a, Path2: b - same.md" };
-    logs.bisync = [{ stderr: json([tie, { level: "error", msg: "Bisync critical error: path1 and path2 are out of sync, run --resync to recover" }]), code: 7 }, { stderr: json([{ level: "info", msg: "Bisync successful" }]) }];
+    const edited = { level: "error", msg: "-                   Checksum not equal in listing. Path1: c, Path2: d - edited on Drive.md" };
+    logs.bisync = [{ stderr: json([tie, edited, { level: "error", msg: "Bisync critical error: path1 and path2 are out of sync, run --resync to recover" }]), code: 7 }, { stderr: json([{ level: "info", msg: "Bisync successful" }]) }];
+    // rclone's copy leaves the tie edited on Drive since, as newer there, and names what it copied.
+    logs.copy = [{ stderr: json([{ level: "info", msg: "Copied (replaced existing)", object: "same.md" }]) }];
     const result = await syncKnowledge("notes", { remote, mode: "resync" });
     expect(result).toMatchObject({ result: "synced", ties: ["same.md"], changed: true });
     const [touchHere, touchThere, newer, copy, again] = steps();
@@ -401,7 +406,7 @@ describe("a run", () => {
     // Only the tie is copied over Drive's; then the same resync again, so a file changed on Drive
     // since the first pass still wins as the newer copy, rather than every differing file going to
     // the knowledge base's copy as with `--resync-mode path2`.
-    expect(copy!.body.Cmd).toEqual(tieCopyArgs(["same.md"]));
+    expect(copy!.body.Cmd).toEqual(tieCopyArgs(["same.md", "edited on Drive.md"]));
     expect(envOf(copy!)).toHaveLength(6);
     expect(copy!.body.HostConfig.NetworkMode).toBe(syncNetwork());
     expect(again!.body.Cmd).toEqual(newer!.body.Cmd);
@@ -527,5 +532,21 @@ describe("a run", () => {
     release();
     expect((await first).result).toBe("synced");
     expect(steps().filter((s) => s.body.Cmd[0] === "bisync")).toHaveLength(1);
+  });
+
+  it("stops a step still under way when the run's time is up, and starts no other, so the run answers", async () => {
+    const answer = vi.mocked(engineModule.engineJson).getMockImplementation()!;
+    // bisync's container runs on, as for a very large folder.
+    vi.mocked(engineModule.engineJson).mockImplementation(async (method, path, body) => {
+      if (path.startsWith("/containers/step-") && path.endsWith("/wait")) return new Promise(() => {});
+      return answer(method, path, body);
+    });
+    const started = Date.now();
+    const result = await syncKnowledge("notes", { remote, mode: "sync" }, 200);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(result).toMatchObject({ result: "failed", message: expect.stringContaining("took longer than 2 hours") });
+    expect(result.listed).toBeUndefined();
+    expect(steps().map((s) => s.body.Cmd[0])).toEqual(["bisync"]);
+    expect(removed).toContain("step-0");
   });
 });

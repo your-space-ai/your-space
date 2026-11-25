@@ -98,12 +98,15 @@ let operator: string;
 /** What Google's token endpoint was sent, and what it answers. */
 let exchanged: URLSearchParams[] = [];
 let tokenAnswer: { status: number; body: Record<string, unknown> } = { status: 200, body: {} };
+/** What happens while Google's token endpoint answers, as the operator acting meanwhile. */
+let duringExchange: (() => Promise<void>) | undefined;
 
 const fakeGoogle: typeof fetch = async (input, init) => {
   const url = String(input);
   if (url !== "https://oauth2.google.test/token") throw new Error(`Unexpected request to ${url}`);
   const form = new URLSearchParams(String(init?.body));
   exchanged.push(form);
+  await duringExchange?.();
   return new Response(JSON.stringify(tokenAnswer.body), { status: tokenAnswer.status, headers: { "content-type": "application/json" } });
 };
 
@@ -124,6 +127,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   exchanged = [];
+  duringExchange = undefined;
   tokenAnswer = { status: 200, body: { access_token: ACCESS, refresh_token: REFRESH, expires_in: 3599, token_type: "Bearer", scope: DRIVE_SCOPE } };
 });
 
@@ -133,6 +137,7 @@ const sync = () => KnowledgeSync.for(server.apps!);
 const connection = async () => (await t.db.select().from(googleConnection))[0];
 const syncRow = async () => (await t.db.select().from(knowledgeSync))[0];
 const status = async (name = "notes") => ((await (await api(`/api/knowledge/${name}`)).json()) as { sync: Record<string, unknown> | null }).sync;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const events = (type: string) =>
   t.db.select({ actorId: event.actorId, knowledgeBase: eventKnowledgeBase.name }).from(event).leftJoin(eventKnowledgeBase, eq(eventKnowledgeBase.eventId, event.id)).where(eq(event.type, type));
 
@@ -208,6 +213,24 @@ describe("the Google connection", () => {
     const answered = await (await api("/api/google-drive")).text();
     for (const secret of [CLIENT_SECRET, ACCESS, REFRESH]) expect(answered).not.toContain(secret);
     expect(JSON.parse(answered)).toMatchObject({ state: "connected" });
+  });
+
+  it("keeps a token only for the client it was signed in with: one saved or removed during the exchange makes the sign-in expired", async () => {
+    const connected = (await events("google.connected")).length;
+    // The operator saves another client while Google answers: the token is the earlier client's.
+    duringExchange = async () => void expect((await send("/api/google-drive", { clientId: "5678-efgh.apps.googleusercontent.com", clientSecret: "GOCSPX-another-secret" }, "PUT")).status).toBe(200);
+    expect(await signInWithGoogle()).toBe(`${server.publicUrl}/knowledge?google=expired`);
+    expect(await connection()).toMatchObject({ clientId: "5678-efgh.apps.googleusercontent.com", token: null });
+    // Removed while Google answers: nothing is kept.
+    duringExchange = async () => void expect((await api("/api/google-drive", { method: "DELETE" })).status).toBe(204);
+    expect(await signInWithGoogle()).toBe(`${server.publicUrl}/knowledge?google=expired`);
+    expect(await connection()).toBeUndefined();
+    expect((await events("google.connected")).length).toBe(connected);
+
+    duringExchange = undefined;
+    expect((await send("/api/google-drive", { clientId: CLIENT_ID, clientSecret: CLIENT_SECRET }, "PUT")).status).toBe(200);
+    expect(await signInWithGoogle()).toBe(`${server.publicUrl}/knowledge?google=connected`);
+    expect((await events("google.connected")).length).toBe(connected + 1);
   });
 
   it("keeps the connection when Google refuses a new sign-in, and says why", async () => {
@@ -367,6 +390,92 @@ describe("a knowledge base's sync", () => {
     expect((await events("knowledge.resync_requested")).map((e) => e.actorId)).toEqual([owner]);
   });
 
+  it("starts one Resync of two that arrive together: the first is reserved while it is recorded", async () => {
+    runtime.syncs = [];
+    // The first request's record waits, as a slow database would make it.
+    const locker = await t.pool.connect();
+    try {
+      await locker.query("begin");
+      await locker.query("lock table event in exclusive mode");
+      const first = send("/api/knowledge/notes/sync", { action: "resync" });
+      for (let i = 0; i < 200; i++) {
+        const waiting = await t.pool.query("select count(*)::int as n from pg_locks where not granted and relation = 'event'::regclass");
+        if (waiting.rows[0].n > 0) break;
+        await sleep(10);
+      }
+      const second = await Promise.race([send("/api/knowledge/notes/sync", { action: "resync" }), sleep(1_000).then(() => "waiting" as const)]);
+      await locker.query("rollback");
+      expect(second).not.toBe("waiting");
+      expect((second as Response).status).toBe(409);
+      expect((await first).status).toBe(202);
+    } finally {
+      locker.release();
+    }
+    await settled();
+    expect(runtime.syncs.map((s) => s.request.mode)).toEqual(["resync"]);
+  });
+
+  it("leaves a knowledge base whose run stopped while the scheduled pass waited, and still syncs the others", async () => {
+    expect((await send("/api/knowledge", { name: "plans" })).status).toBe(201);
+    expect((await send("/api/knowledge/plans/sync", { folder: FOLDER }, "PUT")).status).toBe(202);
+    await settled("plans");
+    runtime.syncs = [];
+    // The pass runs notes first, which takes long; meanwhile the owner's run of plans stops.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    runtime.syncGate = (name) => (name === "notes" ? held : undefined);
+    runtime.syncAnswers = [{ result: "synced" }];
+    const pass = sync().scheduled();
+    for (let i = 0; i < 200 && runtime.syncs.length === 0; i++) await sleep(5);
+    runtime.syncAnswers = [{ result: "stopped", reason: "max_delete", side: "local", deletions: [{ side: "local", path: "a.md" }] }];
+    expect((await send("/api/knowledge/plans/sync", { action: "sync" })).status).toBe(202);
+    await settled("plans");
+    runtime.syncAnswers = [{ result: "synced" }];
+    release();
+    await pass;
+    runtime.syncGate = undefined;
+    expect(runtime.syncs.map((s) => s.name)).toEqual(["notes", "plans"]);
+    expect(await status("plans")).toMatchObject({ result: "stopped", reason: "max_delete" });
+    expect(await status()).toMatchObject({ result: "synced" });
+    expect((await api("/api/knowledge/plans", { method: "DELETE" })).status).toBe(204);
+  });
+
+  it("keeps the result of a run under way when the server stops, and starts none after", async () => {
+    // The server's own: a stop ends the schedule's runs and the owner's.
+    const stopping = new KnowledgeSync(server.apps!);
+    runtime.syncs = [];
+    runtime.holdSync = true;
+    runtime.syncAnswers = [{ result: "synced", changed: true }];
+    const before = (await syncRow())!.lastRunAt;
+    const synced = (await events("knowledge.synced")).length;
+    await stopping.start("notes", { action: "sync" }, owner);
+    for (let i = 0; i < 200 && runtime.syncs.length === 0; i++) await sleep(5);
+    let closed = false;
+    const closing = stopping.close(5_000).then(() => (closed = true));
+    await stopping.scheduled();
+    await expect(stopping.start("notes", { action: "resync" }, owner)).rejects.toMatchObject({ status: 409 });
+    await sleep(30);
+    expect(closed).toBe(false);
+    runtime.holdSync = false;
+    runtime.releaseSync();
+    await closing;
+    expect(runtime.syncs).toHaveLength(1);
+    expect((await syncRow())!.lastRunAt).not.toEqual(before);
+    expect((await events("knowledge.synced")).length).toBe(synced + 1);
+
+    // It waits only so long: a run that takes longer is left to the runtime manager.
+    const another = new KnowledgeSync(server.apps!);
+    runtime.holdSync = true;
+    await another.start("notes", { action: "sync" }, owner);
+    for (let i = 0; i < 200 && runtime.syncs.length === 1; i++) await sleep(5);
+    const started = Date.now();
+    await another.close(50);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    runtime.holdSync = false;
+    runtime.releaseSync();
+    await settled();
+  });
+
   it("disconnects the Google connection when Google refuses the token, until the owner signs in again", async () => {
     runtime.syncAnswers = [{ result: "unauthorized", message: "couldn't fetch token: invalid_grant: maybe token expired?" }];
     await sync().scheduled();
@@ -387,6 +496,24 @@ describe("a knowledge base's sync", () => {
     await sync().scheduled();
     expect(runtime.syncs).toHaveLength(1);
     expect(await status()).toMatchObject({ disconnected: false, result: "synced" });
+  });
+
+  it("doesn't disconnect a token the owner signed in with while a run had the earlier one Google refused", async () => {
+    runtime.syncs = [];
+    runtime.holdSync = true;
+    runtime.syncAnswers = [{ result: "unauthorized", message: "couldn't fetch token: invalid_grant: maybe token expired?" }];
+    expect((await send("/api/knowledge/notes/sync", { action: "sync" })).status).toBe(202);
+    for (let i = 0; i < 200 && runtime.syncs.length === 0; i++) await sleep(5);
+    expect(await signInWithGoogle()).toBe(`${server.publicUrl}/knowledge?google=connected`);
+    runtime.holdSync = false;
+    runtime.releaseSync();
+    await settled();
+    expect(await (await api("/api/google-drive")).json()).toMatchObject({ state: "connected", problem: null });
+    expect(await status()).toMatchObject({ disconnected: false, result: "failed", detail: expect.stringContaining("replaced since") });
+    expect((await events("google.refused")).map((e) => e.actorId)).toEqual([operator]);
+    runtime.syncAnswers = [{ result: "synced" }];
+    await sync().scheduled();
+    expect(await status()).toMatchObject({ result: "synced" });
   });
 
   it("still syncs after the data key is replaced: the client secret and token move to the new key", async () => {
@@ -469,6 +596,26 @@ describe("a knowledge base's sync", () => {
     expect((await api("/api/knowledge/recipes", { method: "DELETE" })).status).toBe(204);
     expect(await syncRow()).toBeUndefined();
     expect((await api("/api/google-drive", { method: "DELETE" })).status).toBe(204);
+    expect(await connection()).toBeUndefined();
+  });
+
+  it("forgets the Google connection only with no knowledge base syncing through it, one connecting meanwhile included", async () => {
+    expect((await send("/api/google-drive", { clientId: CLIENT_ID, clientSecret: CLIENT_SECRET }, "PUT")).status).toBe(200);
+    expect(await signInWithGoogle()).toBe(`${server.publicUrl}/knowledge?google=connected`);
+    expect((await send("/api/knowledge", { name: "journal" })).status).toBe(201);
+    let release: () => void = () => {};
+    runtime.holdRemoveSync = new Promise<void>((resolve) => (release = resolve));
+    const cleared = () => runtime.calls.filter((c) => c.method === "removeSync" && c.project === "journal").length;
+    const connecting = send("/api/knowledge/journal/sync", { folder: FOLDER }, "PUT");
+    for (let i = 0; i < 200 && cleared() === 0; i++) await sleep(5);
+    // Forgotten while the connect clears the knowledge base's earlier sync: the connect then finds none.
+    expect((await api("/api/google-drive", { method: "DELETE" })).status).toBe(204);
+    release();
+    runtime.holdRemoveSync = undefined;
+    const connected = await connecting;
+    expect(connected.status).toBe(409);
+    expect(((await connected.json()) as { error: string }).error).toBe("google_not_set_up");
+    expect(await syncRow()).toBeUndefined();
     expect(await connection()).toBeUndefined();
   });
 });

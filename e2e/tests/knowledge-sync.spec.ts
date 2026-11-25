@@ -298,9 +298,26 @@ test("deleting over half the files stops the sync; Resync brings them back, and 
   await expect(page.locator("[data-deletions]")).toContainText("8 files to delete");
   expect(await listing(onDrive)).toBe(drive);
 
+  // The owner opens the list, and meanwhile a sync from another tab stops on a different one: the
+  // dialog keeps the list they opened, says it is out of date, and can't confirm it.
+  await page.getByRole("button", { name: "Apply these deletions" }).click();
+  await expect(dialog.getByRole("button", { name: "Delete 8 files" })).toBeEnabled();
+  await here("rm course/week-1.md");
+  const other = await page.context().newPage();
+  await other.goto(`/knowledge/${KB}`);
+  await run(other);
+  await expect(other.locator("[data-deletions]")).toContainText("9 files to delete");
+  await other.close();
+  await page.bringToFront();
+  await expect(dialog.locator("[data-deletions-outdated]")).toBeVisible({ timeout: 30_000 });
+  await expect(dialog).toContainText("8 files are deleted in Drive");
+  await expect(dialog.getByRole("button", { name: "Delete 8 files" })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  expect(await listing(onDrive)).toBe(drive);
+
   // Confirmed with the new list, they are deleted in Drive; the next run has the limit again.
   await page.getByRole("button", { name: "Apply these deletions" }).click();
-  await dialog.getByRole("button", { name: "Delete 8 files" }).click();
+  await dialog.getByRole("button", { name: "Delete 9 files" }).click();
   await expect(main).toHaveAttribute("data-sync-result", "synced", { timeout: 120_000 });
   expect(await listing(onDrive)).toBe(await listing(here));
   expect(await onDrive("ls")).not.toMatch(/batch|from-/);

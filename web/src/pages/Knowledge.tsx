@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, errorMessage } from "../apps-api.ts";
-import { folderName, googleQuery, knowledgeQuery, signInWithGoogle, syncLine, type GoogleConnection, type KnowledgeBase } from "../knowledge-api.ts";
+import { folderName, googleQuery, knowledgeStatusQuery, signInWithGoogle, syncLine, type GoogleConnection, type KnowledgeBase } from "../knowledge-api.ts";
 
 /** What the Knowledge page says when Google sends the owner back (`?google=`). */
 const SIGN_IN: Record<string, { text: string; error: boolean }> = {
@@ -19,7 +19,7 @@ const SIGN_IN: Record<string, { text: string; error: boolean }> = {
 };
 
 export function Knowledge({ google }: { google?: string }) {
-  const knowledge = useQuery(knowledgeQuery);
+  const knowledge = useQuery(knowledgeStatusQuery);
   const list = knowledge.data?.knowledgeBases ?? [];
   const signIn = google ? SIGN_IN[google] : undefined;
 

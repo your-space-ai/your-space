@@ -11,6 +11,8 @@
 // next one starts (removeLeftoverSteps). bisync's state, and the files a sync replaced, are in a volume
 // of Your Space's for each knowledge base, outside the knowledge base. A run holds its knowledge base
 // from before its first step to after its last, so neither it nor its sync is deleted in between.
+// Once Your Space is stopping (/stop-all), no run, step or proxy starts; a step under way is stopped
+// as Ctrl+C stops bisync, which saves its state for the next run, and the stop waits for every run.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -26,7 +28,7 @@ import {
   pinnedImage,
 } from "./adapter.ts";
 import { deleteKnowledgeState, holdingKnowledge, imagePresent, initKnowledge, INSTALLATION, isStopping, knowledgeHold, knowledgeOf, SpecError } from "./apps.ts";
-import { docker, engine, engineInfo, engineJson, EngineError, inspectImage, pullImage, scrub } from "./engine.ts";
+import { docker, engine, engineInfo, engineJson, EngineError, inspectImage, listContainers, pullImage, scrub } from "./engine.ts";
 
 /** rclone 1.75.2's official image, for every processor it is published for, by its index digest. */
 export const RCLONE_IMAGE = "rclone/rclone@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5";
@@ -44,6 +46,14 @@ export const SYNC_HOSTS = ["oauth2.googleapis.com", "www.googleapis.com"];
 export const BACKUP_DAYS = 30;
 /** A step that runs longer is stopped. */
 const STEP_TIMEOUT_MS = 25 * 60_000;
+/**
+ * A run's whole time: a step still under way then is stopped, and no other starts, so the run answers
+ * soon after. The server waits longer for the answer (SYNC_TIMEOUT_MS in server/src/apps/runtime-client.ts).
+ */
+export const RUN_TIMEOUT_MS = 2 * 60 * 60_000;
+/** How long a step stopped by Your Space's stop has before it is killed: bisync's graceful shutdown takes 90 seconds at most. */
+const STOP_GRACE_S = 100;
+const STOPPING = "Your Space is stopping, so nothing syncs until it starts again.";
 /** The markers' modification time, the same on both sides, so creating them again changes nothing. */
 const MARKER_TIME = "2000-01-01T00:00:00";
 const SYNC_MEMORY = 512 * 1024 * 1024;
@@ -287,11 +297,18 @@ export function exactPattern(path: string): string {
 const TIES_PER_STEP = 100;
 
 /**
- * Copies the knowledge base's copy of each file over the remote's, whatever their sizes and times:
- * the files a resync found with the same size and time on both sides but different content.
+ * Copies the knowledge base's copy of each file over the remote's: the files a resync found with the
+ * same size and time on both sides but different content. `--checksum` copies such a file, which the
+ * same size and time would otherwise skip; `--update` leaves one whose remote copy is newer than the
+ * knowledge base's, as after an edit on Drive since the resync compared them, so that edit is kept.
  */
 export function tieCopyArgs(ties: string[]): string[] {
-  return ["copy", "/knowledge", "remote:", "--ignore-times", ...DRIVE_SCOPE, ...ties.flatMap((path) => ["--include", exactPattern(path)]), ...LOGGING];
+  return ["copy", "/knowledge", "remote:", "--update", "--checksum", ...DRIVE_SCOPE, ...ties.flatMap((path) => ["--include", exactPattern(path)]), ...LOGGING];
+}
+
+/** The files a copy step copied, by name. */
+export function copiedOf(lines: LogLine[]): string[] {
+  return lines.filter((l) => typeof l.object === "string" && /^Copied\b/.test(l.msg)).map((l) => l.object!);
 }
 
 const LOGGING = ["-v", "--use-json-log", "--color", "NEVER"];
@@ -299,6 +316,8 @@ const LOGGING = ["-v", "--use-json-log", "--color", "NEVER"];
 export interface LogLine {
   level: string;
   msg: string;
+  /** The file a line is about, as rclone's JSON log names it. */
+  object?: string;
   stats?: { transfers?: number; deletes?: number; renames?: number; serverSideMoves?: number };
 }
 
@@ -468,22 +487,44 @@ async function create(name: string, body: Record<string, unknown>): Promise<stri
   }
 }
 
-/** Runs one step to its end and removes its container; its output is cleaned of the secrets. */
-async function step(name: string, args: string[], options: { env?: Record<string, string>; network?: string; mounts: Mount[]; secrets: Record<string, string> }): Promise<StepResult | "busy"> {
+/** A step that didn't start, and why. */
+const notStarted = (msg: string): StepResult => ({ code: 10, lines: [{ level: "error", msg }], stdout: "" });
+
+/**
+ * Runs one step to its end and removes its container; its output is cleaned of the secrets. None
+ * starts once Your Space is stopping, or once the run's time is up, which also ends a step under way.
+ */
+async function step(name: string, args: string[], options: { env?: Record<string, string>; network?: string; mounts: Mount[]; secrets: Record<string, string>; deadline: number }): Promise<StepResult | "busy"> {
+  if (isStopping()) return notStarted(STOPPING);
+  const left = options.deadline - Date.now();
+  if (left <= 0) return notStarted(RUN_OVER);
   const id = await create(name, syncContainer(name, args, options));
   if (!id) return "busy";
   try {
     await engineJson("POST", `/containers/${id}/start`);
+    // A stop that began while the container was made: /stop-all's own pass may have missed it.
+    if (isStopping()) void interrupt(id);
+    const limit = Math.min(STEP_TIMEOUT_MS, left);
     let timer: NodeJS.Timeout | undefined;
-    const timeout = new Promise<"timeout">((resolve) => (timer = setTimeout(() => resolve("timeout"), STEP_TIMEOUT_MS)));
+    const timeout = new Promise<"timeout">((resolve) => (timer = setTimeout(() => resolve("timeout"), limit)));
     const waited = await Promise.race([engineJson<{ StatusCode: number }>("POST", `/containers/${id}/wait`), timeout]).finally(() => clearTimeout(timer));
     const logs = await docker(["logs", id]);
     const lines = logLines(scrub(logs.stderr, options.secrets));
-    if (waited === "timeout") return { code: 10, lines: [...lines, { level: "error", msg: `The sync step took longer than ${STEP_TIMEOUT_MS / 60_000} minutes and was stopped.` }], stdout: "" };
+    if (waited === "timeout") {
+      const msg = limit < STEP_TIMEOUT_MS ? RUN_OVER : `The sync step took longer than ${STEP_TIMEOUT_MS / 60_000} minutes and was stopped.`;
+      return { code: 10, lines: [...lines, { level: "error", msg }], stdout: "" };
+    }
     return { code: waited.StatusCode, lines, stdout: scrub(logs.stdout, options.secrets) };
   } finally {
     await engine("DELETE", `/containers/${id}?force=1`).catch(() => {});
   }
+}
+
+const RUN_OVER = `The sync took longer than ${RUN_TIMEOUT_MS / 3_600_000} hours, so it was stopped. The next sync continues from there.`;
+
+/** Stops a step as Ctrl+C stops rclone: bisync finishes or cancels its transfers and saves its state. */
+async function interrupt(id: string): Promise<void> {
+  await engine("POST", `/containers/${encodeURIComponent(id)}/stop?signal=SIGINT&t=${STOP_GRACE_S}`).catch(() => {});
 }
 
 async function ensureImage(image: string): Promise<void> {
@@ -519,6 +560,8 @@ let proxyStarting: Promise<void> = Promise.resolve();
  */
 function ensureProxy(): Promise<void> {
   const next = proxyStarting.catch(() => undefined).then(async () => {
+    // Checked when its turn comes: a stop may have begun while it waited.
+    if (isStopping()) throw new EngineError(STOPPING, 409);
     if (!squid) {
       const info = await engineInfo();
       if (!info.reachable) throw new EngineError("The engine can't be reached.", 503);
@@ -540,8 +583,20 @@ function ensureProxy(): Promise<void> {
   return next;
 }
 
-/** Stops the sync's proxy, as Your Space's apps are stopped (`stop-apps`). */
-export async function stopSyncProxy(): Promise<void> {
+/** The runs under way, which a stop waits for. */
+const underway = new Set<Promise<unknown>>();
+
+/**
+ * Stops the syncs as Your Space's apps are stopped (`stop-apps`), once Your Space is stopping: every
+ * step under way is stopped as Ctrl+C stops it, then this waits for every run to end and for a proxy
+ * start under way, and stops the sync's proxy.
+ */
+export async function stopSyncs(): Promise<void> {
+  if (!isStopping()) throw new Error("The syncs stop only once Your Space is stopping.");
+  const steps = await listContainers([`ai.your-space.installation=${INSTALLATION}`, "ai.your-space.role=knowledge-sync", "ai.your-space.knowledge"]);
+  await Promise.all(steps.filter((c) => c.State === "running").map((c) => interrupt(c.Id)));
+  await Promise.allSettled([...underway]);
+  await proxyStarting.catch(() => undefined);
   await docker(["compose", "-p", syncProject(), "stop"]);
 }
 
@@ -551,10 +606,16 @@ const BUSY: SyncResult = { result: "busy", message: "Another sync of this knowle
  * Runs a sync of the knowledge base, holding it until the run ends; another run of it answers busy,
  * and its deletion, or its sync's, refuses the run with 409.
  */
-export function syncKnowledge(name: string, request: SyncRequest): Promise<SyncResult> {
-  if (isStopping()) throw new EngineError("Your Space is stopping, so nothing syncs until it starts again.", 409);
+export function syncKnowledge(name: string, request: SyncRequest, runMs = RUN_TIMEOUT_MS): Promise<SyncResult> {
+  if (isStopping()) throw new EngineError(STOPPING, 409);
   if (knowledgeHold(name) === "sync") return Promise.resolve(BUSY);
-  return holdingKnowledge(name, "sync", () => runSync(name, request));
+  const run = holdingKnowledge(name, "sync", () => runSync(name, request, Date.now() + runMs));
+  underway.add(run);
+  void run.then(
+    () => underway.delete(run),
+    () => underway.delete(run),
+  );
+  return run;
 }
 
 /** Removes a knowledge base's sync state; its files and the remote's stay. Refused while it syncs. */
@@ -562,8 +623,9 @@ export function removeSync(name: string): Promise<void> {
   return deleteKnowledgeState(name);
 }
 
-async function runSync(name: string, request: SyncRequest): Promise<SyncResult> {
+async function runSync(name: string, request: SyncRequest, deadline: number): Promise<SyncResult> {
   if (!(await knowledgeOf(name))) throw new EngineError(`The knowledge base ${name} isn't on this machine's engine.`, 404);
+  if (isStopping()) throw new EngineError(STOPPING, 409);
   const fixture = fixtureEnabled();
   const state = knowledgeStateVolume(INSTALLATION, name);
   await ensureImage(RCLONE_IMAGE);
@@ -575,8 +637,8 @@ async function runSync(name: string, request: SyncRequest): Promise<SyncResult> 
   const local: Mount = { source: knowledgeVolume(INSTALLATION, name), target: "/knowledge" };
   const mounts: Mount[] = [local, { source: state, target: "/state" }, ...(fixture ? [{ source: fixtureVolume(), target: "/remote" }] : [])];
   const env = remoteEnv(request.remote, fixture);
-  const remote = (args: string[]) => step(name, args, { env, network: syncNetwork(), mounts, secrets });
-  const offline = (args: string[], only: Mount[]) => step(name, args, { mounts: only, secrets });
+  const remote = (args: string[]) => step(name, args, { env, network: syncNetwork(), mounts, secrets, deadline });
+  const offline = (args: string[], only: Mount[]) => step(name, args, { mounts: only, secrets, deadline });
   const backup = runFolder(new Date());
   const empty: SyncResult = { result: "synced", deletions: [], ties: [], conflicts: [], backups: [], changed: false };
   const finish = (ran: StepResult | "busy", more: Partial<SyncResult> = {}): SyncResult =>
@@ -595,14 +657,16 @@ async function runSync(name: string, request: SyncRequest): Promise<SyncResult> 
       if (first === "busy" || first.code === 0 || ties.length === 0) return finish(first);
       // The newer copy won everywhere else. Where both copies have the same size and modification
       // time but different content, the knowledge base's copy replaces the remote's (journey 014),
-      // and Drive keeps the replaced one in its version history. Only those files are copied; then
-      // the same resync runs again, so the newer copy still wins every other file, one changed on
-      // either side since the first pass included.
+      // and Drive keeps the replaced one in its version history. Only those files are copied, and a
+      // remote copy changed since the first pass, so newer now, is left; then the same resync runs
+      // again, so the newer copy still wins every other file, one changed on either side included.
+      const replaced: string[] = [];
       for (let i = 0; i < ties.length; i += TIES_PER_STEP) {
         const copied = await remote(tieCopyArgs(ties.slice(i, i + TIES_PER_STEP)));
         if (copied === "busy" || copied.code !== 0) return { ...finish(copied), changed: true };
+        replaced.push(...copiedOf(copied.lines));
       }
-      return { ...finish(await remote(resync), { ties }), changed: true };
+      return { ...finish(await remote(resync), { ties: replaced }), changed: true };
     }
     if (request.mode === "force") {
       // Only the deletions the owner confirmed: a dry run lists them again first.

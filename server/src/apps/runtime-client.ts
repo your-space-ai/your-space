@@ -4,6 +4,15 @@ import { otherComposeFiles } from "./compose-file.ts";
 
 export const RUNTIME_SOCKET = process.env.YS_RUNTIME_SOCKET ?? "/run/ys-runtime/runtime.sock";
 
+/** How long a request waits for the runtime manager to say anything, an app's whole apply included. */
+export const CALL_TIMEOUT_MS = 30 * 60_000;
+/**
+ * How long a sync run's request waits, which answers only when the run ends: past the runtime
+ * manager's limit on a run (two hours, RUN_TIMEOUT_MS in runtime/src/sync.ts), which stops a step
+ * still under way then and starts no other, so its answer comes before this.
+ */
+export const SYNC_TIMEOUT_MS = 2.5 * 60 * 60_000;
+
 export class RuntimeError extends Error {
   readonly status: number;
   readonly code: string;
@@ -178,7 +187,7 @@ export interface Runtime {
   removeSync(name: string): Promise<void>;
 }
 
-function call(method: string, path: string, body?: unknown, onLine?: (line: string) => void, socketPath = RUNTIME_SOCKET, deadlineMs?: number): Promise<{ status: number; text: string }> {
+function call(method: string, path: string, body?: unknown, onLine?: (line: string) => void, socketPath = RUNTIME_SOCKET, deadlineMs?: number, idleMs = CALL_TIMEOUT_MS): Promise<{ status: number; text: string }> {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? undefined : JSON.stringify(body);
     const req = request(
@@ -203,15 +212,16 @@ function call(method: string, path: string, body?: unknown, onLine?: (line: stri
         res.on("error", reject);
       },
     );
-    req.on("error", () => reject(new RuntimeError("Your Space's runtime manager isn't running.", 503, "runtime_unavailable")));
-    req.setTimeout(30 * 60_000, () => req.destroy(new RuntimeError("The runtime manager stopped answering.", 504, "runtime_timeout")));
+    // A timeout's own error says the runtime manager stopped answering, not that it isn't running.
+    req.on("error", (error) => reject(error instanceof RuntimeError ? error : new RuntimeError("Your Space's runtime manager isn't running.", 503, "runtime_unavailable")));
+    req.setTimeout(idleMs, () => req.destroy(new RuntimeError("The runtime manager stopped answering.", 504, "runtime_timeout")));
     if (payload) req.write(payload);
     req.end();
   });
 }
 
-async function json<T>(method: string, path: string, body?: unknown, socketPath?: string, deadlineMs?: number): Promise<T> {
-  const { status, text } = await call(method, path, body, undefined, socketPath, deadlineMs);
+async function answer<T>(method: string, path: string, body?: unknown, socketPath?: string, deadlineMs?: number, idleMs?: number): Promise<T> {
+  const { status, text } = await call(method, path, body, undefined, socketPath, deadlineMs, idleMs);
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -228,7 +238,7 @@ async function json<T>(method: string, path: string, body?: unknown, socketPath?
 /** Resolve through the private engine-owning runtime just before dispatch. */
 export function installedInterface(project: string, id: string, service: string, port: number): Promise<{ address: string }> {
   const query = new URLSearchParams({ id, service, port: String(port) });
-  return json("GET", `/apps/${encodeURIComponent(project)}/interface?${query}`, undefined, undefined, 5_000);
+  return answer("GET", `/apps/${encodeURIComponent(project)}/interface?${query}`, undefined, undefined, 5_000);
 }
 
 /** The app's spec, once its file names no other Compose file, which Compose would read (compose-file.ts). */
@@ -238,8 +248,10 @@ function oneFile(spec: AppSpec): AppSpec {
   return spec;
 }
 
-export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
+/** `timeouts` are for tests: how long a request, and a sync run's, waits for the runtime manager. */
+export function socketRuntime(socketPath = RUNTIME_SOCKET, timeouts: { callMs: number; syncMs: number } = { callMs: CALL_TIMEOUT_MS, syncMs: SYNC_TIMEOUT_MS }): Runtime {
   const p = (project: string) => `/apps/${encodeURIComponent(project)}`;
+  const json = <T>(method: string, path: string, body?: unknown, sock?: string, deadlineMs?: number, idleMs = timeouts.callMs) => answer<T>(method, path, body, sock, deadlineMs, idleMs);
   return {
     engine: () => json("GET", "/engine", undefined, socketPath),
     check: async (spec) => json("POST", "/check", oneFile(spec), socketPath),
@@ -260,6 +272,8 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
           onEvent(event);
         },
         socketPath,
+        undefined,
+        timeouts.callMs,
       );
       if (status >= 400) throw new RuntimeError(failure ?? "The runtime manager refused the app.", status, "runtime_error");
       if (failure) throw new RuntimeError(failure, 502, code ?? "apply_failed");
@@ -276,7 +290,8 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
     createKnowledge: (name) => json("POST", "/knowledge", { name }, socketPath),
     knowledgeUsers: (name) => json("GET", `/knowledge/${encodeURIComponent(name)}`, undefined, socketPath),
     deleteKnowledge: async (name) => void (await json("DELETE", `/knowledge/${encodeURIComponent(name)}`, undefined, socketPath)),
-    syncKnowledge: (name, request) => json("POST", `/knowledge/${encodeURIComponent(name)}/sync`, request, socketPath),
+    // No answer until the run ends, which can take longer than any other request.
+    syncKnowledge: (name, run) => json("POST", `/knowledge/${encodeURIComponent(name)}/sync`, run, socketPath, undefined, timeouts.syncMs),
     removeSync: async (name) => void (await json("DELETE", `/knowledge/${encodeURIComponent(name)}/sync`, undefined, socketPath)),
   };
 }

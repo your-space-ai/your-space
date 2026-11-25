@@ -150,12 +150,17 @@ export class FakeRuntime implements Runtime {
   removedSyncs: string[] = [];
   /** The knowledge bases a run is under way for, as the runtime manager holds them. */
   syncingNow = new Set<string>();
+  /** Holds a run of the knowledge base it is given until what it answers settles, as one that takes long. */
+  syncGate: ((name: string) => Promise<void> | undefined) | undefined;
+  /** Held until released, so a test can act while the server connects a knowledge base. */
+  holdRemoveSync: Promise<void> | undefined;
 
   async syncKnowledge(name: string, request: SyncRequest): Promise<SyncRunResult> {
     this.syncs.push({ name, request });
     this.syncingNow.add(name);
     try {
       if (this.holdSync) await new Promise<void>((resolve) => (this.releaseSync = resolve));
+      await this.syncGate?.(name);
     } finally {
       this.syncingNow.delete(name);
     }
@@ -164,6 +169,8 @@ export class FakeRuntime implements Runtime {
   }
 
   async removeSync(name: string): Promise<void> {
+    this.calls.push({ method: "removeSync", project: name });
+    await this.holdRemoveSync;
     if (this.syncingNow.has(name)) throw new RuntimeError(`The knowledge base ${name} is syncing. Try again when the sync finishes.`, 409, "engine_error");
     this.removedSyncs.push(name);
   }

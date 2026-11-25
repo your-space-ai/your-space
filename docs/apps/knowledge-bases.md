@@ -93,10 +93,13 @@ The knowledge base's page shows:
   base.
 - Why a sync stopped, when it did, with **Resync**, which copies both ways and deletes nothing, and,
   after more than half of the files were deleted on one side, the deletions (the first 500 by name,
-  and how many more) and **Apply these deletions**.
+  and how many more) and **Apply these deletions**. Where both sides changed a file, Resync keeps
+  the newer copy rather than both: a copy it replaced here is under **Replaced files**, and one it
+  replaced in Drive is in the file's version history there.
 - **Reconnect**, when Google refused Your Space's access.
 - **Disconnect**, which stops the sync. The knowledge base and the Drive folder both keep their
-  files.
+  files, but the replaced files Your Space kept go with the sync: copy any you need first (see
+  [How it runs](../operate/google-drive.md#how-it-runs)).
 
 ## For app developers
 

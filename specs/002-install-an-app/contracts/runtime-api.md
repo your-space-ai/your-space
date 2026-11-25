@@ -92,7 +92,7 @@ sends it to `/check` or `/apply` (2026-11-24).
 | `GET /apps/{project}/stats` | | `{ services: [{ name, memory, memoryLimit, cpuPercent }] }` |
 | `GET /apps/{project}/denials` | | `{ hosts: [{ host, attempts, lastSeen }] }` from the egress proxy's log |
 | `POST /apps/{project}/port` | `{ publish: { port, bind } }` | `{ inUse, by? }`: whether the app can be published on `bind:port`. `by` names a running container that publishes it (the app's own Caddy doesn't count); otherwise a short-lived container of Your Space's Caddy's image tries to publish it, and `inUse` without `by` means another program uses it. 502 when the check itself fails, 503 when Your Space's Caddy isn't running |
-| `POST /stop-all` | | Stops every managed app and refuses `/apply` until the runtime manager restarts |
+| `POST /stop-all` | | Stops every managed app and refuses `/apply` until the runtime manager restarts. Syncs too: a sync asked for answers 409, a step under way is stopped as Ctrl+C stops rclone (`SIGINT`, killed after 100 seconds), so bisync saves its state, and no run starts another step or the sync's proxy; it answers once every run has ended, and the proxy is stopped |
 | `POST /knowledge` | `{ name }` | `{ created }`: creates the knowledge base's volume, labelled `ai.your-space.installation`, `ai.your-space.role=knowledge` and `ai.your-space.knowledge=<name>`, never with a Compose project's labels, and gives its folder to user and group 1000 with mode 2777 in a short-lived container of the runtime manager's own image (no network, only the CHOWN, FOWNER and FSETID capabilities). `created: false` keeps this installation's own volume of that name, with its files, and sets up its folder's owner and mode again, so a volume an earlier try made but didn't set up is set up now; a volume of that name Your Space didn't make is refused with 409. A new volume whose folder can't be set up is deleted |
 | `GET /knowledge/{name}` | | `{ apps, syncing }`: the apps of this installation whose containers mount the knowledge base's volume, running or stopped, by their `ai.your-space.app` label, `[]` when there is no such volume; and whether a run of its sync is under way, by this process or a step's container that still runs. The server asks before deleting a knowledge base, so it applies each again without it, even one it has no grant for, and waits for a run, even one it started before it restarted. 409 when the volume isn't Your Space's |
 | `DELETE /knowledge/{name}` | | Deletes the knowledge base's volume and its files, and its sync state volume when it has one, after removing any of its sync's step containers left behind that don't run. 409 while any other container mounts it, running or stopped, while it syncs (from before a run's first step to after its last), or when either volume isn't Your Space's, before anything is deleted; a volume already gone is deleted. No run of it starts until the deletion ends. Removing an app (`/down`) or deleting its volumes (`DELETE /apps/{project}/volumes`) never deletes a knowledge base's, or its sync state |
@@ -133,10 +133,11 @@ run in `/state/backups`. The modes:
 - `resync`: puts the marker at both roots (`rclone touch` with a fixed time), then
   `--resync --resync-mode newer`, which copies both ways and deletes nothing. When that leaves only
   files whose two copies have the same size and modification time but different content, `rclone
-  copy --ignore-times` with an anchored, escaped `--include` for each of them (at most 100 a step)
-  copies the knowledge base's copy over the remote's, then the same `--resync-mode newer` pass runs
-  again, and `ties` lists those files. No other file goes to the knowledge base's copy: one changed
-  on either side between the passes is still the newer copy's.
+  copy --update --checksum` with an anchored, escaped `--include` for each of them (at most 100 a
+  step) copies the knowledge base's copy over the remote's, except where the remote's is newer, as
+  after an edit there since the first pass; then the same `--resync-mode newer` pass runs again,
+  and `ties` lists the files the copy replaced. No other file goes to the knowledge base's copy: one
+  changed on either side between the passes is still the newer copy's.
 - `force`: the owner's confirmed deletions, up to 10,000 (the request body may be up to 48 MB). A
   `--force --dry-run` lists the deletions first; unless they are exactly `confirm`, nothing is
   deleted and the answer is `stopped` with reason `changed` and the new list. Otherwise one
@@ -144,7 +145,10 @@ run in `/state/backups`. The modes:
 
 A run holds its knowledge base from before its first step to after its last: `DELETE
 /knowledge/{name}` and `DELETE /knowledge/{name}/sync` answer 409 meanwhile, and a run asked for
-while either of those is under way answers 409.
+while either of those is under way answers 409. A step that runs 25 minutes is stopped, and a run
+has two hours in all: a step still under way then is stopped and no other starts, so the answer
+comes soon after (the server waits two and a half hours for it). After `/stop-all`, a run asked for
+answers 409, and one under way starts no further step and doesn't start the proxy.
 
 `result` is `stopped` with `reason` `max_delete` (over the limit; `deletions` lists them, each with
 the `side` it was deleted on), `empty` (one side is empty), `marker` (a marker is missing) or

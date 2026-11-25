@@ -60,8 +60,13 @@ const whileSyncing = (bases: KnowledgeBase[] | undefined) => (bases?.some((b) =>
 export const knowledgeQuery = queryOptions({
   queryKey: ["knowledge"],
   queryFn: () => api<{ knowledgeBases: KnowledgeBase[] }>("GET", "/api/knowledge"),
-  refetchInterval: (query) => whileSyncing(query.state.data?.knowledgeBases),
   retry: false,
+});
+
+/** The list as the Knowledge page shows it, with each sync's status, which it polls; an app's page doesn't. */
+export const knowledgeStatusQuery = queryOptions({
+  ...knowledgeQuery,
+  refetchInterval: (query) => whileSyncing(query.state.data?.knowledgeBases),
 });
 
 export const knowledgeBaseQuery = (name: string) =>

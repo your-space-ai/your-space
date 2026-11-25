@@ -119,8 +119,9 @@ while it is being deleted or disconnected.
 ## Disconnect, change or remove
 
 - **Disconnect** on a knowledge base's page stops its sync. Both keep their files: the knowledge
-  base and the Drive folder. Connecting again, to the same folder or another, starts with a first
-  sync that deletes nothing.
+  base and the Drive folder. The sync's own storage goes with it, and with it the replaced files
+  Your Space kept, however recent: copy any you need out of it first (see below). Connecting again,
+  to the same folder or another, starts with a first sync that deletes nothing.
 - **Change client** on the **Knowledge** page saves another OAuth client; sign in with Google again
   afterwards.
 - **Remove connection** forgets the client and the token, once no knowledge base syncs. To revoke
@@ -150,11 +151,15 @@ sign-in.
 On the Docker engine:
 
 - `ys-knowledge.<installation>.<name>.sync`: a knowledge base's sync state, rclone's listings and
-  the replaced files of the last 30 days. Disconnecting or deleting the knowledge base deletes it;
-  removing an app or deleting its data never does.
+  the replaced files of the last 30 days, in its `backups` folder: a folder for each sync, named
+  by its time, with the files that sync replaced at their paths in the knowledge base.
+  Disconnecting or deleting the knowledge base deletes it; removing an app or deleting its data
+  never does.
 - `<installation>_knowledge-sync`: the Compose project of the sync's outbound proxy. It starts with
-  the first sync and stops with your apps (`docker compose exec runtime stop-apps`). Deleting
-  knowledge bases leaves it; [Remove Your Space](index.md#remove-your-space) removes it.
+  the first sync and stops with your apps (`docker compose exec runtime stop-apps`), which also
+  stops a sync under way as Ctrl+C stops rclone, so it saves its state, and waits for it: the next
+  sync carries on. Deleting knowledge bases leaves it; [Remove Your Space](index.md#remove-your-space)
+  removes it.
 - `<installation>.knowledge-sync.<name>`: the container of a step that is running now. The runtime
   manager removes one left behind when it starts, and before it deletes the knowledge base or its
   sync.
@@ -162,4 +167,4 @@ On the Docker engine:
 `<installation>` is your installation's Compose project name, `your-space` unless you changed it.
 
 A step that runs longer than 25 minutes, as the first sync of a very large folder can, is stopped,
-and the next sync carries on.
+and the next sync carries on; so is a sync that runs longer than two hours in all.

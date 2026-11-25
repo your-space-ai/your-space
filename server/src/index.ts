@@ -138,13 +138,18 @@ const server: Server = app.listen(PORT, "0.0.0.0", () => {
   log("info", "server.listening", { port: PORT, setup: config.mode, address: config.publicUrl });
 });
 
+/** How long a stop waits for the knowledge base syncs under way, so their results are kept. */
+const SYNC_STOP_WAIT_MS = 8_000;
+
 function shutdown(signal: string): void {
   log("info", "server.stopping", { signal });
   clearInterval(reconcileTimer);
   clearInterval(syncTimer);
   gateServer.close();
+  // No sync starts from now on; one under way that ends meanwhile is recorded before the pool closes.
+  const syncsEnded = knowledgeSync.close(SYNC_STOP_WAIT_MS);
   server.close(() => {
-    void pool.end().finally(() => process.exit(0));
+    void syncsEnded.then(() => pool.end()).finally(() => process.exit(0));
   });
   setTimeout(() => process.exit(0), 10_000).unref();
 }

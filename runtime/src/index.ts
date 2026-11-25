@@ -28,7 +28,7 @@ import {
   validateSpec,
 } from "./apps.ts";
 import { engineInfo, EngineError } from "./engine.ts";
-import { removeSync, stopSyncProxy, syncKnowledge, validateSyncRequest } from "./sync.ts";
+import { removeSync, stopSyncs, syncKnowledge, validateSyncRequest } from "./sync.ts";
 
 import { SOCKET_PATH as SOCKET } from "./socket.ts";
 /** The server runs as node (1000), which must be able to use the socket. */
@@ -83,7 +83,8 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (method === "POST" && pathname === "/check") return send(res, 200, await check(validateSpec(await readBody(req))));
   if (method === "POST" && pathname === "/stop-all") {
     const stopped = await stopAll();
-    await stopSyncProxy();
+    // The syncs too: a step under way stops as Ctrl+C stops it, and this answers once every run has ended.
+    await stopSyncs();
     return send(res, 200, { stopped });
   }
   if (method === "POST" && pathname === "/knowledge") {

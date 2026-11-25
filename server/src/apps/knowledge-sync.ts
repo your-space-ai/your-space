@@ -5,7 +5,7 @@
 // when the owner asks, one run per knowledge base at a time. A run that stops for safety waits for the
 // owner. Connecting, disconnecting, resyncing and applying deletions are the owner's; each run is
 // Your Space's own.
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { operatorActorId, recordEvent } from "../actors.ts";
 import { googleConnection, knowledgeBase, knowledgeSync, type SyncDeletion } from "../db/schema.ts";
 import { errorFields, log } from "../log.ts";
@@ -99,8 +99,12 @@ export class KnowledgeSync {
   /** Runs under way, by knowledge base; a Sync now during one runs once more after it. */
   private readonly runs = new Map<string, Promise<void>>();
   private readonly again = new Map<string, Promise<void>>();
+  /** Runs the owner asked for whose start is being recorded: nothing else starts or holds them meanwhile. */
+  private readonly starting = new Set<string>();
   /** Knowledge bases being deleted, connected or disconnected: no run starts for them meanwhile. */
   private readonly held = new Set<string>();
+  /** Set once the server stops: no run starts after it. */
+  private closed = false;
 
   /** The one sync service of the apps service, which the routes and the schedule share. */
   static for(apps: AppsService): KnowledgeSync {
@@ -125,9 +129,9 @@ export class KnowledgeSync {
     return (await this.db.select().from(googleConnection).where(eq(googleConnection.id, 1)))[0];
   }
 
-  /** Whether a knowledge base syncs now, or has a run waiting for the one under way. */
+  /** Whether a knowledge base syncs now, is about to, or has a run waiting for the one under way. */
   isRunning(knowledgeBaseId: string): boolean {
-    return this.runs.has(knowledgeBaseId) || this.again.has(knowledgeBaseId);
+    return this.runs.has(knowledgeBaseId) || this.again.has(knowledgeBaseId) || this.starting.has(knowledgeBaseId);
   }
 
   /**
@@ -148,6 +152,17 @@ export class KnowledgeSync {
   /** Whether a knowledge base is held, as `hold` holds it. */
   isHeld(knowledgeBaseId: string): boolean {
     return this.held.has(knowledgeBaseId);
+  }
+
+  /**
+   * For the server's stop: no run starts from now on, and the runs under way are waited for, up to
+   * `waitMs`, so each one's result and events are kept before the database closes.
+   */
+  async close(waitMs: number): Promise<void> {
+    this.closed = true;
+    let timer: NodeJS.Timeout | undefined;
+    const waited = new Promise<void>((resolve) => (timer = setTimeout(resolve, waitMs)));
+    await Promise.race([Promise.allSettled([...this.runs.values(), ...this.again.values()]), waited]).finally(() => clearTimeout(timer));
   }
 
   // The Google connection.
@@ -186,15 +201,21 @@ export class KnowledgeSync {
     return this.google();
   }
 
-  /** Forgets the Google connection. Refused while a knowledge base syncs through it. */
+  /**
+   * Forgets the Google connection. Refused while a knowledge base syncs through it. The connection is
+   * locked first, as a connect locks it before saving its sync, so a connect under way is saved before
+   * the check and one after finds no connection.
+   */
   async removeGoogle(actorId: string): Promise<void> {
-    const synced = await this.db.select({ title: knowledgeBase.title }).from(knowledgeSync).innerJoin(knowledgeBase, eq(knowledgeSync.knowledgeBaseId, knowledgeBase.id)).orderBy(asc(knowledgeBase.title));
-    if (synced.length > 0) {
-      throw new AppError(409, "in_use", `Disconnect ${synced.map((s) => s.title).join(", ")} from Drive first: ${synced.length === 1 ? "it syncs" : "they sync"} through this connection.`);
-    }
     await this.db.transaction(async (tx) => {
-      const removed = await tx.delete(googleConnection).returning({ id: googleConnection.id });
-      if (removed.length) await recordEvent(tx, "google.removed", actorId, null);
+      const locked = await tx.select({ id: googleConnection.id }).from(googleConnection).where(eq(googleConnection.id, 1)).for("update");
+      const synced = await tx.select({ title: knowledgeBase.title }).from(knowledgeSync).innerJoin(knowledgeBase, eq(knowledgeSync.knowledgeBaseId, knowledgeBase.id)).orderBy(asc(knowledgeBase.title));
+      if (synced.length > 0) {
+        throw new AppError(409, "in_use", `Disconnect ${synced.map((s) => s.title).join(", ")} from Drive first: ${synced.length === 1 ? "it syncs" : "they sync"} through this connection.`);
+      }
+      if (locked.length === 0) return;
+      await tx.delete(googleConnection).where(eq(googleConnection.id, 1));
+      await recordEvent(tx, "google.removed", actorId, null);
     });
   }
 
@@ -236,10 +257,22 @@ export class KnowledgeSync {
       log("warn", "google.sign_in_refused", { code: error.code });
       return error.code === "no_drive" ? "no_drive" : "refused";
     }
-    await this.db.transaction(async (tx) => {
-      await tx.update(googleConnection).set({ token: encrypt(this.apps.config.dataKey, token), problem: null, connectedAt: new Date(), updatedAt: new Date() }).where(eq(googleConnection.id, 1));
+    // Kept only for the client it was signed in with: a client saved or removed during the exchange
+    // makes it the sign-in of a client that is gone.
+    const saved = await this.db.transaction(async (tx) => {
+      const updated = await tx
+        .update(googleConnection)
+        .set({ token: encrypt(this.apps.config.dataKey, token), problem: null, connectedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(googleConnection.id, 1), eq(googleConnection.clientId, row.clientId), eq(googleConnection.clientSecret, row.clientSecret)))
+        .returning({ id: googleConnection.id });
+      if (updated.length === 0) return false;
       await recordEvent(tx, "google.connected", who.actorId, null);
+      return true;
     });
+    if (!saved) {
+      log("warn", "google.sign_in_outdated", {});
+      return "expired";
+    }
     log("info", "google.connected", {});
     return "connected";
   }
@@ -289,11 +322,7 @@ export class KnowledgeSync {
 
   /** The Google connection, ready for a run, or why it isn't. */
   private async usableConnection() {
-    const row = await this.connection();
-    if (!row) throw new AppError(409, "google_not_set_up", "Set up the Google Drive connection on the Knowledge page first.");
-    if (!row.token) throw new AppError(409, "google_signed_out", "Sign in with Google on the Knowledge page first.");
-    if (row.problem) throw new AppError(409, "google_disconnected", "Google refused Your Space's access to Drive. Reconnect on the Knowledge page first.");
-    return row;
+    return usable(await this.connection());
   }
 
   /**
@@ -316,14 +345,18 @@ export class KnowledgeSync {
         throw new AppError(409, error instanceof RuntimeError ? error.code : "busy", error instanceof Error ? error.message : "The knowledge base's earlier sync can't be removed.");
       });
       await this.db.transaction(async (tx) => {
+        // Checked again with the connection locked until this commits: forgetting it meanwhile waits,
+        // then refuses, as this knowledge base syncs through it.
+        usable((await tx.select().from(googleConnection).where(eq(googleConnection.id, 1)).for("share"))[0]);
         await tx.insert(knowledgeSync).values({ knowledgeBaseId: base.id, folderId, connectedBy: actorId });
         await recordEvent(tx, "knowledge.connected", actorId, null, null, { id: base.id, name: base.name });
       });
     } finally {
       this.release(base.id);
     }
-    const row = (await this.syncRow(base.id))!;
+    // Started as it is released, before anything else can start a run of it.
     this.launch(base.id, base.name, "resync");
+    const row = (await this.syncRow(base.id))!;
     return this.status(row, false);
   }
 
@@ -363,7 +396,7 @@ export class KnowledgeSync {
       const waiting = this.again.get(base.id);
       if (waiting) return { done: waiting };
       const current = this.runs.get(base.id);
-      if (!current) return { done: this.launch(base.id, base.name, row.resync ? "resync" : "sync") };
+      if (!current) return { done: this.started(this.launch(base.id, base.name, row.resync ? "resync" : "sync")) };
       // A file changed just now may have missed the run under way, so one more follows it. It counts
       // as running until that one ends, so the owner never sees a gap between the two.
       const next = current
@@ -378,8 +411,14 @@ export class KnowledgeSync {
     }
     if (this.isRunning(base.id)) throw new AppError(409, "busy", "The knowledge base is syncing. Try again when the sync finishes.");
     if (action === "resync") {
-      await recordEvent(this.db, "knowledge.resync_requested", actorId, null, null, { id: base.id, name: base.name });
-      return { done: this.launch(base.id, base.name, "resync") };
+      // Reserved while the request is recorded, so a second Resync, a run or a hold can't start meanwhile.
+      this.starting.add(base.id);
+      try {
+        await recordEvent(this.db, "knowledge.resync_requested", actorId, null, null, { id: base.id, name: base.name });
+      } finally {
+        this.starting.delete(base.id);
+      }
+      return { done: this.started(this.launch(base.id, base.name, "resync")) };
     }
     if (action === "apply_deletions") {
       if (row.result !== "stopped" || (row.reason !== "max_delete" && row.reason !== "changed") || row.deletions.length === 0) {
@@ -394,32 +433,46 @@ export class KnowledgeSync {
       if (!row.lastRunAt || Date.parse(run) !== row.lastRunAt.getTime() || count !== row.deletions.length) {
         throw new AppError(409, "deletions_changed", "The deletions waiting changed since you looked, so nothing was deleted. Check the new list.");
       }
-      return { done: this.launch(base.id, base.name, "force", row.deletions, actorId) };
+      return { done: this.started(this.launch(base.id, base.name, "force", row.deletions, actorId)) };
     }
     throw new AppError(400, "bad_action", "The action must be sync, resync or apply_deletions.");
+  }
+
+  /** The run the owner asked for, or busy when it didn't start. */
+  private started(run: Promise<void> | undefined): Promise<void> {
+    if (!run) throw new AppError(409, "busy", "The knowledge base is syncing, or being deleted, connected or disconnected. Try again when that finishes.");
+    return run;
   }
 
   /** Every connected knowledge base's run, one after another; a stopped one waits for the owner. */
   async scheduled(): Promise<void> {
     const connection = await this.connection();
     if (!connection?.token || connection.problem) return;
-    const rows = await this.db
-      .select({ id: knowledgeBase.id, name: knowledgeBase.name, result: knowledgeSync.result, resync: knowledgeSync.resync })
+    const bases = await this.db
+      .select({ id: knowledgeBase.id, name: knowledgeBase.name })
       .from(knowledgeSync)
       .innerJoin(knowledgeBase, eq(knowledgeSync.knowledgeBaseId, knowledgeBase.id))
       .orderBy(asc(knowledgeBase.name));
-    for (const row of rows) {
-      if (row.result === "stopped" || this.isRunning(row.id) || this.held.has(row.id)) continue;
-      await this.launch(row.id, row.name, row.resync ? "resync" : "sync");
+    for (const base of bases) {
+      // Read when its turn comes: a run of it the owner started while the pass waited may have stopped.
+      const row = await this.syncRow(base.id);
+      if (!row || row.result === "stopped" || this.isRunning(base.id) || this.held.has(base.id)) continue;
+      await this.launch(base.id, base.name, row.resync ? "resync" : "sync");
     }
   }
 
-  /** Starts a run of the knowledge base, which no other run of it is under way for; none while it is held. */
-  private launch(id: string, name: string, mode: Mode, confirm?: SyncDeletion[], confirmedBy?: string): Promise<void> {
-    if (this.held.has(id)) return Promise.resolve();
-    const run = this.execute(id, name, mode, confirm, confirmedBy)
+  /**
+   * Starts a run of the knowledge base, the one place a run starts: none while one of it is under way
+   * or about to start, while it is held, or once the server stops. Answers the run, or undefined when
+   * it didn't start. The check and the start have no wait between them.
+   */
+  private launch(id: string, name: string, mode: Mode, confirm?: SyncDeletion[], confirmedBy?: string): Promise<void> | undefined {
+    if (this.closed || this.held.has(id) || this.runs.has(id) || this.starting.has(id)) return undefined;
+    const run: Promise<void> = this.execute(id, name, mode, confirm, confirmedBy)
       .catch((error: unknown) => log("warn", "knowledge.sync_failed", { name, ...errorFields(error) }))
-      .finally(() => this.runs.delete(id));
+      .finally(() => {
+        if (this.runs.get(id) === run) this.runs.delete(id);
+      });
     this.runs.set(id, run);
     return run;
   }
@@ -437,7 +490,7 @@ export class KnowledgeSync {
       token = decrypt(this.apps.config.dataKey, connection.token);
     } catch {
       outcome = failure("The Google connection can't be read with Your Space's data key. Set up the Google Drive connection again on the Knowledge page.");
-      return this.record(id, name, row, mode, startedAt, outcome, confirmedBy);
+      return this.record(id, name, row, mode, startedAt, outcome, connection.token, confirmedBy);
     }
     try {
       outcome = await this.apps.runtime.syncKnowledge(name, { remote: { type: "drive", clientId: connection.clientId, clientSecret, token, folderId: row.folderId }, mode, ...(confirm ? { confirm } : {}) });
@@ -445,17 +498,32 @@ export class KnowledgeSync {
       outcome = failure(error instanceof RuntimeError ? error.message : "The runtime manager couldn't run the sync.");
     }
     if (outcome.result === "busy") return;
-    await this.record(id, name, row, mode, startedAt, outcome, confirmedBy);
+    await this.record(id, name, row, mode, startedAt, outcome, connection.token, confirmedBy);
   }
 
-  /** Keeps a run's result on the knowledge base's sync, and records it against Your Space. */
-  private async record(id: string, name: string, before: SyncRow, mode: Mode, startedAt: Date, outcome: SyncRunResult, confirmedBy?: string): Promise<void> {
-    const synced = outcome.result === "synced";
-    // More deletions than the owner can confirm: the run stays stopped, and none of them is kept.
-    const tooMany = outcome.result === "stopped" && outcome.deletions.length > MAX_DELETIONS;
+  /**
+   * Keeps a run's result on the knowledge base's sync, and records it against Your Space. `token` is
+   * the stored token the run was given, encrypted, as Google's refusal is about that one only.
+   */
+  private async record(id: string, name: string, before: SyncRow, mode: Mode, startedAt: Date, ran: SyncRunResult, token: string, confirmedBy?: string): Promise<void> {
     const yourSpace = await operatorActorId(this.db);
     const subject = { id, name };
     await this.db.transaction(async (tx) => {
+      let outcome = ran;
+      if (outcome.result === "unauthorized") {
+        // Only while the connection still has the token Google refused: one the owner signed in with
+        // since, or a connection set up again, isn't refused by it.
+        const refused = await tx
+          .update(googleConnection)
+          .set({ problem: outcome.message?.slice(0, 500) ?? "Google refused the token.", updatedAt: new Date() })
+          .where(and(eq(googleConnection.id, 1), eq(googleConnection.token, token)))
+          .returning({ id: googleConnection.id });
+        if (refused.length) await recordEvent(tx, "google.refused", yourSpace, null);
+        else outcome = { ...outcome, result: "failed", message: "Google refused the token this run had, which has been replaced since. The next sync uses the new one." };
+      }
+      const synced = outcome.result === "synced";
+      // More deletions than the owner can confirm: the run stays stopped, and none of them is kept.
+      const tooMany = outcome.result === "stopped" && outcome.deletions.length > MAX_DELETIONS;
       const updated = await tx
         .update(knowledgeSync)
         .set({
@@ -479,19 +547,19 @@ export class KnowledgeSync {
       if (outcome.result === "stopped") await recordEvent(tx, "knowledge.sync_stopped", yourSpace, null, null, subject);
       // A run that keeps failing, as while offline, is recorded once.
       if (outcome.result === "failed" && before.result !== "failed") await recordEvent(tx, "knowledge.sync_failed", yourSpace, null, null, subject);
-      if (outcome.result === "unauthorized") {
-        const refused = await tx
-          .update(googleConnection)
-          .set({ problem: outcome.message?.slice(0, 500) ?? "Google refused the token.", updatedAt: new Date() })
-          .where(eq(googleConnection.id, 1))
-          .returning({ id: googleConnection.id });
-        if (refused.length) await recordEvent(tx, "google.refused", yourSpace, null);
-      }
     });
-    log(synced ? "info" : "warn", "knowledge.synced", { name, mode, result: outcome.result, reason: outcome.reason, changed: outcome.changed });
+    log(ran.result === "synced" ? "info" : "warn", "knowledge.synced", { name, mode, result: ran.result, reason: ran.reason, changed: ran.changed });
   }
 }
 
 function failure(message: string): SyncRunResult {
   return { result: "failed", message, deletions: [], ties: [], conflicts: [], backups: [], changed: false };
+}
+
+/** The Google connection, when a run can use it, or why it can't. */
+function usable(row: typeof googleConnection.$inferSelect | undefined) {
+  if (!row) throw new AppError(409, "google_not_set_up", "Set up the Google Drive connection on the Knowledge page first.");
+  if (!row.token) throw new AppError(409, "google_signed_out", "Sign in with Google on the Knowledge page first.");
+  if (row.problem) throw new AppError(409, "google_disconnected", "Google refused Your Space's access to Drive. Reconnect on the Knowledge page first.");
+  return row;
 }
