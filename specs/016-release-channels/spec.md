@@ -303,7 +303,11 @@ lists the newest 10 of the repository's tags, with or without a published releas
 first whose tag is a version, so it skips `alpha` and `canary`
 ([GitHubProvider.ts](https://github.com/electron-userland/electron-builder/blob/electron-updater%406.8.11/packages/electron-updater/src/providers/GitHubProvider.ts),
 lines 81–113). With only the two rolling releases beside the `v` tags, those two take at most two of
-the 10 places, wherever the feed lists them. So the newest release is always in the feed, and
+the 10 places, wherever the feed lists them. The feed doesn't order entries by when a release was
+published: Ghostty's `tip`, published in 2022 and edited in place since, is listed first because its
+tag moves to each new build. Every release here is tagged at the tip of `main`, as the
+[release steps](../../docs/maintainers/releasing.md#release-steps) require, so the first version in
+the feed is the release tagged last, the newest. So the newest release is always in the feed, and
 alpha.2 stays there until eight to ten later releases follow it. An alpha.1 app that checks at any
 time finds the newest release and updates to it from that release's `latest-mac.yml`. One likely
 gap, inferred from other repositories' feeds, which list tags that have no published release: a
