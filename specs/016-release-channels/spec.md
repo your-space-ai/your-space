@@ -86,10 +86,10 @@ remember leaving Canary.
   betas and stable releases, when there are any, are tagged the same way.
 - **Canary**: the canary builds, tagged `canary-<date>.<run>`.
 
-Until the owner chooses, an app built as a canary follows Canary and any other app follows Alpha,
-so the first Mac canary, installed by hand, keeps getting canaries. The CLI names a channel with
-`--channel alpha` or `--channel canary`. The app's setting is a **Your Space › Update Channel**
-submenu with the two as radio items, beside **Check for Updates Automatically**. Choosing Canary
+Every app follows Alpha until the owner picks a channel, a canary build included, so the owner
+chooses Canary once in the first Mac canary, installed by hand (decision 10). The CLI names a
+channel with `--channel alpha` or `--channel canary`. The app's setting is a **Your Space › Update
+Channel** submenu with the two as radio items, beside **Check for Updates Automatically**. Choosing Canary
 first says that canaries are unsupported and may change the data in ways the next alpha doesn't
 expect. The Mac canary is daily (decision 3) while the Linux canary follows every push; both are
 called Canary. Channels added later get names of their own, and the default can change then.
@@ -144,7 +144,9 @@ version's last two parts: `0.1.0-alpha.1.canary.20261125.3` is `canary-20261125.
 files. The rolling `canary` prerelease stays, as the shortcut to the newest build. All are kept,
 with no cleanup, and each is marked prerelease, which GitHub never makes the latest release
 ([GitHub](https://docs.github.com/en/rest/releases/releases)). A build's version-tagged images are
-never deleted either, so every kept build stays installable. Kept builds fill Releases, and the
+never deleted either, so every kept build stays installable. Kept builds fill Releases, and each new
+one notifies people who watch the repository's releases, since GitHub has no setting that leaves
+prereleases out ([discussion](https://github.com/orgs/community/discussions/10776)). The
 repository's immutable releases setting stays off, since the rolling prerelease and the Mac files
 change after publishing.
 
@@ -152,7 +154,9 @@ change after publishing.
 
 `canary.yml` publishes both in one run, in [PR #128](https://github.com/your-space-ai/your-space/pull/128)'s
 way: every GitHub call is retried on a server error, each step looks at what an earlier attempt
-left before it changes anything, and a re-run finishes what a failed run started.
+left before it changes anything, and a re-run finishes what a failed run started. Since every
+build is kept, the list of releases grows with each one, so a step finds a published release by
+its tag rather than by reading the whole list.
 
 1. **The build's own prerelease.** Found by its tag before one is created; a draft an attempt
    left is published as it is. It is a prerelease on the build's commit, titled and described as
@@ -192,9 +196,14 @@ identifiers:
   and each release by its tag ([by tag](https://docs.github.com/en/rest/releases/releases#get-a-release-by-tag-name)),
   which GitHub shows only once it is published.
 - **Canary** looks only at `canary-<date>.<run>` tags. The newest is the build the `canary`
-  prerelease holds. Any kept build can be chosen instead: `your-space upgrade --channel canary
-  --version canary-20261125.3` (the build's tag or its full version), and the Mac app lists the
-  kept builds that have Mac files, newest first.
+  prerelease holds; for the Mac app, the newest with Mac files, which the shortcut's
+  `canary-mac.yml` names and which can be up to a day behind (decision 3). Any kept build can be
+  chosen instead: `your-space upgrade --channel canary --version canary-20261125.3` (the build's
+  tag or its full version), and the Mac app lists the kept builds that have Mac files, newest
+  first.
+
+`--version` needs `--channel` and names a build of that channel: a canary under Alpha, or a `v`
+release under Canary, is refused with nothing changed.
 
 A lookup that fails, such as one GitHub rate-limits, says it couldn't check: it never reads as
 nothing newer and never picks another build. A build older than the installation is a downgrade:
@@ -312,22 +321,23 @@ taken from releases, plus the newest.
 and `--version`, a prerelease for every canary build, and daily Mac canaries. The alpha.1 app has no
 setting, so the setting reaches people with alpha.2. Before the first Mac canary the Account Holder
 creates the second certificate and its API key (decision 4). The owner then installs the first Mac
-canary by hand from the ZIP on its build's prerelease, and it follows Canary from then on
-(decision 2). A stored choice outlasts the app it was made in, so if the owner had chosen Alpha in
-an earlier app, they choose Canary once after installing.
+canary by hand from the ZIP on its build's prerelease and chooses Canary in it once, since every
+app follows Alpha until then (decision 2). The choice is stored, so later canaries keep following
+Canary.
 
 The alpha.1 app keeps the GitHub provider. It finds alpha.2 only while alpha.2 is among the newest
-10 entries of the releases feed, which later canary builds push it out of; an alpha.1 app that
-checks after that reports no update, and gets alpha.2 from its DMG.
+10 entries of the releases feed, which later canary builds push it out of. After that the provider
+finds no release: the daily check shows nothing, **Check for Updates…** says it couldn't check, and
+an alpha.1 app gets alpha.2 from its DMG.
 
 **Considered:** the flag first and the Mac parts after alpha.2; all of it after the first packaged
 release.
 
 ## Requirements
 
-- **FR-001**: The Mac app offers Alpha and Canary under **Your Space › Update Channel**. Until the
-  owner chooses, a canary build follows Canary and any other build Alpha; only a choice is stored,
-  in `updates.json`. Choosing Canary first says that canaries are unsupported.
+- **FR-001**: The Mac app offers Alpha and Canary under **Your Space › Update Channel**. Every
+  build, a canary included, follows Alpha until the owner chooses; only a choice is stored, in
+  `updates.json`. Choosing Canary first says that canaries are unsupported.
 - **FR-002**: Every check, automatic or manual, takes the channel's newest build by the rule in
   decision 5 and reads it with electron-updater's generic provider, with the channel in the feed's
   options and downgrades off. The app is offered only its channel's builds, and says so when
@@ -348,16 +358,23 @@ release.
 - **FR-006**: `your-space upgrade --channel alpha|canary`, with an optional `--version <build>`,
   takes that build, downloads its CLI from its own release, checks it against that release's
   `SHA256SUMS`, and runs its `upgrade`. It changes nothing when the installation is already that
-  build, refuses an older one (FR-008), and stops with nothing changed when a lookup fails. Plain
-  `upgrade` is unchanged.
-- **FR-007**: A required test proves that alpha clients never select a canary. Against a recorded
-  release list and feed with the newest `v` release followed by more than ten canary builds, whose
-  versions contain `-alpha.` and sort after it, the rolling `canary` prerelease, and a `v` tag whose
-  release is still a draft: `upgrade --channel alpha` and the Mac app on Alpha, with the pinned
-  electron-updater, select that `v` release, and Canary selects only `canary-` builds. A failed
-  lookup selects nothing and says so. It also checks that no canary prerelease has
-  `latest-mac.yml`. It runs on every pull request that changes the selection, the updater or the
-  canary workflows.
+  build, refuses an older one (FR-008), refuses a `--version` that isn't a build of the named
+  channel, and stops with nothing changed when a lookup fails. Plain `upgrade` is unchanged.
+- **FR-007**: A required test proves that Alpha clients never select a canary. Its fixture is the
+  recorded GitHub responses the rule reads, with the newest published `v` release followed by more
+  than ten canary builds, whose versions contain `-alpha.` and sort after it: the matching-refs
+  response for `tags/v`, each release by its tag, including the "not found" for a higher `v` tag
+  whose release is still a draft, the rolling `canary` prerelease, the newest `v` release's
+  `latest-mac.yml`, the shortcut's `canary-mac.yml`, and the releases Atom feed. With the pinned electron-updater:
+  - `upgrade --channel alpha` and the Mac app on Alpha select the newest published `v` release, and
+    offer nothing to a client already on it or on a later canary.
+  - Canary selects only `canary-` builds.
+  - A `--version` naming the other channel's build is refused.
+  - The alpha.1 app's GitHub provider, reading that Atom feed, never resolves to a canary's files.
+  - A failed lookup selects nothing and says so.
+
+  A second check confirms that no canary workflow uploads `latest-mac.yml`. Both run on every pull
+  request that changes the selection, the updater or the canary workflows.
 - **FR-008**: Leaving Canary waits for the first newer alpha. An older build is reached only by
   restoring the backup taken when the installation left it, and `upgrade` never moves an
   installation backward.
@@ -392,7 +409,8 @@ release.
   [matching references](https://docs.github.com/en/rest/git/refs#list-matching-references),
   [hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners),
   [Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions),
-  [Actions limits](https://docs.github.com/en/actions/reference/limits). The releases Atom feed's
+  [Actions limits](https://docs.github.com/en/actions/reference/limits),
+  [prerelease notifications](https://github.com/orgs/community/discussions/10776). The releases Atom feed's
   10 entries were counted on 2026-11-25 on a repository with many releases.
 - Apple: [designated requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements),
   [Developer ID certificates](https://developer.apple.com/help/account/create-certificates/create-developer-id-certificates).
