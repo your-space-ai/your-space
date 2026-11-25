@@ -41,6 +41,12 @@ export function GitHub() {
   const status = useQuery(githubQuery);
   const [disconnected, setDisconnected] = useState(false);
   const contents = status.data?.contents;
+  // A connect or disconnect replaces the status. A status request still in flight is cancelled
+  // first, or its older answer would land on top.
+  const replace = async (data: GithubStatus) => {
+    await client.cancelQueries({ queryKey: githubQuery.queryKey });
+    client.setQueryData(githubQuery.queryKey, data);
+  };
 
   return (
     <main className="page" data-state="github">
@@ -66,7 +72,7 @@ export function GitHub() {
           contents={contents}
           onDisconnected={(data) => {
             setDisconnected(true);
-            client.setQueryData(githubQuery.queryKey, data);
+            return replace(data);
           }}
         />
       ) : null}
@@ -75,7 +81,7 @@ export function GitHub() {
           reconnect={contents.set}
           onConnected={(data) => {
             setDisconnected(false);
-            client.setQueryData(githubQuery.queryKey, data);
+            return replace(data);
           }}
         />
       ) : null}
@@ -83,13 +89,13 @@ export function GitHub() {
   );
 }
 
-function Connection({ contents, onDisconnected }: { contents: Extract<TokenStatus, { set: true }>; onDisconnected: (data: GithubStatus) => void }) {
+function Connection({ contents, onDisconnected }: { contents: Extract<TokenStatus, { set: true }>; onDisconnected: (data: GithubStatus) => Promise<void> }) {
   const [confirming, setConfirming] = useState(false);
   const disconnect = useMutation({
     mutationFn: () => api<GithubStatus>("DELETE", "/api/github"),
     onSuccess: (data) => {
       setConfirming(false);
-      onDisconnected({ contents: data.contents });
+      return onDisconnected({ contents: data.contents });
     },
   });
   const worked = <time dateTime={contents.lastWorkedAt}>{when(contents.lastWorkedAt)}</time>;
@@ -142,7 +148,7 @@ function Connection({ contents, onDisconnected }: { contents: Extract<TokenStatu
   );
 }
 
-function Connect({ reconnect, onConnected }: { reconnect: boolean; onConnected: (data: GithubStatus) => void }) {
+function Connect({ reconnect, onConnected }: { reconnect: boolean; onConnected: (data: GithubStatus) => Promise<void> }) {
   const [token, setToken] = useState("");
   // The token waits here only until the request takes it. It isn't the mutation's variables, which
   // TanStack Query keeps in its cache after the request.

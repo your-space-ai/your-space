@@ -101,7 +101,11 @@ describe("moving the GitHub connection onto the data key (journey 015, decision 
   it("leaves a token no key here can read, which shows Reconnect", async () => {
     await createOwnerWithPassword(t.db);
     await connection("a-data-key-that-is-gone-0123456789abcdefgh").connect(TOKEN);
+    const stored = async () => (await t.db.select({ token: sourceCredential.token }).from(sourceCredential))[0]!.token;
+    const before = await stored();
     expect(await moveSettingsToDataKey(t.db, { dataKey: NEXT, previousDataKey: KEY })).toEqual({ moved: 0, current: 0, unreadable: 1 });
+    // Left exactly as it was, so restoring the key it was encrypted with would bring it back.
+    expect(await stored()).toBe(before);
     expect((await connection(NEXT).status()).contents).toMatchObject({ set: true, accepted: false, problem: "unreadable" });
   });
 });
