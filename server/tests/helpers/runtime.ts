@@ -129,6 +129,11 @@ export interface FakeGithubOptions {
   refused?: Set<string>;
   /** Records each request: its URL, Authorization and Accept headers. */
   calls?: { url: string; authorization: string | null; accept: string | null }[];
+  /**
+   * GitHub's own answer to an API request the stand-in would serve, when it gives one: an
+   * organization's 403, a rate limit, a redirect or an empty repository's 409.
+   */
+  answer?: (url: URL, token: string | null) => Response | undefined;
 }
 
 /**
@@ -154,6 +159,8 @@ export function fakeGithub(files: Record<string, string>, options: FakeGithubOpt
       const repo = `${parts[1]}/${parts[2]}`;
       const readers = options.private?.[repo];
       if (readers && !(token && readers.includes(token))) return Response.json({ message: "Not Found" }, { status: 404 });
+      const answer = options.answer?.(url, token);
+      if (answer) return answer;
       const commits = new Set(stored.filter((f) => f.repo === repo).map((f) => f.commit));
       if (parts[3] === "commits") {
         if (parts.length === 4 && url.searchParams.get("per_page") === "1")

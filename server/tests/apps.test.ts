@@ -51,7 +51,17 @@ describe("links, kits and settings", () => {
   it("reads GitHub file links and refuses anything else", () => {
     expect(parseLink(COMPOSE_LINK)).toEqual({ repo: "ys-fixtures/whoami", rest: ["main", "compose.yaml"] });
     expect(parseLink("https://raw.githubusercontent.com/a/b/main/x/compose.yml").rest).toEqual(["main", "x", "compose.yml"]);
-    for (const bad of ["not a link", "http://github.com/a/b/blob/main/c.yml", "https://gitlab.com/a/b/blob/main/c.yml", "https://github.com/a/b", "https://github.com/a/b/tree/main"]) {
+    for (const bad of [
+      "not a link",
+      "http://github.com/a/b/blob/main/c.yml",
+      "https://gitlab.com/a/b/blob/main/c.yml",
+      "https://github.com/a/b",
+      "https://github.com/a/b/tree/main",
+      // A path can't step out of its repository, hide a slash in a part, or fail to decode.
+      "https://github.com/a/b/blob/main/x%2F..%2F..%2Fc.yml",
+      "https://raw.githubusercontent.com/a/b/main/..%2Fc.yml",
+      "https://github.com/a/b/blob/main/%E0%A4%A.yml",
+    ]) {
       expect(() => parseLink(bad), bad).toThrow(SourceError);
     }
   });

@@ -256,8 +256,7 @@ function ReviewPanel(props: {
         <a href={review.source.pinnedLink} target="_blank" rel="noreferrer">
           {review.source.repo}/{review.source.path}
         </a>{" "}
-        at commit <code>{review.source.commit.slice(0, 12)}</code>
-        <PrivateLabel read={review.source.read} file="compose" />, with its kit
+        at commit <code>{review.source.commit.slice(0, 12)}</code>, with its kit
         {review.kit.repo && review.kit.commit ? (
           <>
             {" "}

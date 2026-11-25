@@ -71,7 +71,11 @@ export interface SourceFile {
 const NAME = /^[A-Za-z0-9_.-]+$/;
 export const MAX_FILE_BYTES = 256 * 1024;
 
-/** `https://github.com/<owner>/<repo>/blob/<ref>/<path>`, or the raw form of it. */
+/**
+ * `https://github.com/<owner>/<repo>/blob/<ref>/<path>`, or the raw form of it. Each part is decoded
+ * once, and none may be `.` or `..` or hide a slash, so the ref and the path can't step out of the
+ * repository in the URLs built from them.
+ */
 export function parseLink(link: string): FileLink {
   let url: URL;
   try {
@@ -79,14 +83,14 @@ export function parseLink(link: string): FileLink {
   } catch {
     throw new SourceError("That isn't a link. Paste the GitHub link to the app's kit.");
   }
-  const segments = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
-  if (url.protocol === "https:" && url.hostname === "github.com") {
+  const segments = decodedSegments(url.pathname);
+  if (segments && url.protocol === "https:" && url.hostname === "github.com") {
     const [owner, name, kind, ...rest] = segments;
     if (owner && name && NAME.test(owner) && NAME.test(name) && (kind === "blob" || kind === "raw") && rest.length >= 2) {
       return { repo: `${owner}/${name}`, rest };
     }
   }
-  if (url.protocol === "https:" && url.hostname === "raw.githubusercontent.com") {
+  if (segments && url.protocol === "https:" && url.hostname === "raw.githubusercontent.com") {
     const [owner, name, ...rest] = segments;
     if (owner && name && NAME.test(owner) && NAME.test(name) && rest.length >= 2) return { repo: `${owner}/${name}`, rest };
   }
@@ -95,13 +99,24 @@ export function parseLink(link: string): FileLink {
   );
 }
 
+/** A link's path parts, decoded, or null when one doesn't decode or isn't a single plain part. */
+function decodedSegments(pathname: string): string[] | null {
+  try {
+    const segments = pathname.split("/").filter(Boolean).map(decodeURIComponent);
+    return segments.some((part) => part === "." || part === ".." || part.includes("/")) ? null : segments;
+  } catch {
+    return null;
+  }
+}
+
 type Fetch = typeof fetch;
 
 const UNREACHABLE = "GitHub can't be reached right now. Check this machine's internet connection and try again.";
 
 /**
  * A GET to GitHub, anonymous or with the credential's token. The token goes only to the API, and a
- * redirect isn't followed, so it never reaches another address.
+ * redirect isn't followed with it (refusal says the repository moved), so it never reaches another
+ * address.
  */
 async function get(fetcher: Fetch, url: string, accept: string, credential?: SourceCredential): Promise<Response> {
   const headers: Record<string, string> = { Accept: accept, "User-Agent": "your-space" };
@@ -110,7 +125,7 @@ async function get(fetcher: Fetch, url: string, accept: string, credential?: Sou
     headers["X-GitHub-Api-Version"] = "2022-11-28";
   }
   try {
-    return await fetcher(url, { headers, signal: AbortSignal.timeout(20_000), ...(credential ? { redirect: "error" as const } : {}) });
+    return await fetcher(url, { headers, signal: AbortSignal.timeout(20_000), ...(credential ? { redirect: "manual" as const } : {}) });
   } catch {
     throw new SourceError(UNREACHABLE);
   }
@@ -123,6 +138,10 @@ function rateLimited(res: Response): boolean {
 /** GitHub's answer to a request with the credential, when it isn't one the caller reads. */
 function refusal(res: Response, repo: string, credential: SourceCredential): Error {
   if (res.status === 401) return new TokenRefusedError();
+  // GitHub redirects a renamed or transferred repository's API requests to its new place.
+  if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) {
+    return new SourceError(`GitHub says ${repo} has moved: it was renamed or transferred. Use the link from its new place on GitHub.`);
+  }
   if (rateLimited(res)) return new SourceError("GitHub is limiting requests from this machine. Try again in a few minutes.");
   // An organization can require approving a fine-grained token, block such tokens, or require
   // single sign-on; GitHub then refuses the repository to the token.
@@ -139,7 +158,8 @@ function notVisible(repo: string, credential: SourceCredential): SourceError {
 
 /**
  * The commit a ref names. A branch name can contain slashes, so each split is tried in turn. GitHub
- * answers 422 for a ref a repository doesn't have, and 404 for a repository it doesn't show.
+ * answers 422 for a ref a repository doesn't have, 409 for any ref of an empty repository, and 404
+ * for a repository it doesn't show.
  */
 async function resolveRef(fetcher: Fetch, endpoints: GithubEndpoints, link: FileLink, credential?: SourceCredential): Promise<{ ref: string; path: string; commit: string }> {
   let shown = false;
@@ -152,8 +172,8 @@ async function resolveRef(fetcher: Fetch, endpoints: GithubEndpoints, link: File
       if (/^[0-9a-f]{40}$/.test(commit)) return { ref, path, commit };
       throw new SourceError("GitHub answered with something that isn't a commit.");
     }
-    if (res.status === 422) shown = true;
-    if (res.status === 404 || res.status === 422) continue;
+    if (res.status === 409 || res.status === 422) shown = true;
+    if (res.status === 404 || res.status === 409 || res.status === 422) continue;
     if (credential) throw refusal(res, link.repo, credential);
     if (rateLimited(res)) throw new SourceError("GitHub is limiting requests from this machine. Try again in a few minutes.");
     throw new SourceError(`GitHub answered ${res.status}. Try again later.`);

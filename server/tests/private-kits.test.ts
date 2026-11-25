@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchSourceWith } from "../src/apps/github.ts";
 import { encrypt } from "../src/apps/settings.ts";
 import { app, installJob, sourceCredential } from "../src/db/schema.ts";
 import { runCommand } from "./helpers/commands.ts";
@@ -33,6 +34,7 @@ describe("private kits through the GitHub connection", () => {
   let cookie: string;
   let calls: { url: string; authorization: string | null; accept: string | null }[];
   let refused: Set<string>;
+  let answer: ((url: URL, token: string | null) => Response | undefined) | undefined;
   let files: typeof fetch;
   const lines: string[] = [];
 
@@ -40,6 +42,7 @@ describe("private kits through the GitHub connection", () => {
     t = await createTestDatabase();
     calls = [];
     refused = new Set();
+    answer = undefined;
     files = fakeGithub(
       {
         "ys-fixtures/plain/compose.yaml": COMPOSE,
@@ -49,7 +52,7 @@ describe("private kits through the GitHub connection", () => {
         "ys-fixtures/private-kits/kits/big.yaml": `${privateKit("big")}#${"x".repeat(256 * 1024)}\n`,
         "ys-fixtures/private-other/kit.yaml": privateKit("other"),
       },
-      { private: { "ys-fixtures/private-kits": [TOKEN], "ys-fixtures/private-other": [] }, refused, calls },
+      { private: { "ys-fixtures/private-kits": [TOKEN], "ys-fixtures/private-other": [] }, refused, calls, answer: (url, token) => answer?.(url, token) },
     );
     const accounts = fakeGithubAccounts(new Map([[TOKEN, LOGIN]]));
     // GitHub refuses a refused token on `GET /user` too.
@@ -170,6 +173,65 @@ describe("private kits through the GitHub connection", () => {
     expect(big.json).toEqual({ error: "source", message: "kits/big.yaml is larger than a kit or Compose file should be." });
   });
 
+  it("tells GitHub's other answers to the token apart, and none of them marks it refused", async () => {
+    await connect();
+    const commits = (url: URL) => url.pathname.startsWith("/repos/ys-fixtures/private-kits/commits");
+    const cases: [string, (url: URL, token: string | null) => Response | undefined, number, object][] = [
+      // An organization that requires approving the token, or single sign-on, refuses the repository to it.
+      [
+        "organization",
+        (_url, token) => (token ? Response.json({ message: "Resource protected by organization SAML enforcement." }, { status: 403 }) : undefined),
+        404,
+        { error: "repository_not_visible", message: expect.stringMatching(/^GitHub doesn't show ys-fixtures\/private-kits to your GitHub connection \(@ys-fixture-owner\)/) },
+      ],
+      [
+        "rate limit",
+        (_url, token) => (token ? Response.json({ message: "API rate limit exceeded" }, { status: 403, headers: { "x-ratelimit-remaining": "0" } }) : undefined),
+        400,
+        { error: "source", message: "GitHub is limiting requests from this machine. Try again in a few minutes." },
+      ],
+      // Every ref answers 404, but the repository's latest commit is there: the ref is what's missing.
+      [
+        "missing ref",
+        (url, token) => (token && commits(url) && !url.searchParams.has("per_page") ? new Response("", { status: 404 }) : undefined),
+        404,
+        { error: "not_found", message: "Your Space can't find that branch, tag or commit in ys-fixtures/private-kits." },
+      ],
+      [
+        "empty repository",
+        (url, token) => (token && commits(url) ? Response.json({ message: "Git Repository is empty." }, { status: 409 }) : undefined),
+        404,
+        { error: "not_found", message: "Your Space can't find that branch, tag or commit in ys-fixtures/private-kits." },
+      ],
+      // A renamed or transferred repository: the redirect isn't followed with the token.
+      [
+        "moved",
+        (url, token) => (token && commits(url) ? new Response(null, { status: 301, headers: { location: "https://api.github.test/repositories/1/commits/main" } }) : undefined),
+        400,
+        { error: "source", message: "GitHub says ys-fixtures/private-kits has moved: it was renamed or transferred. Use the link from its new place on GitHub." },
+      ],
+    ];
+    for (const [name, given, status, body] of cases) {
+      answer = given;
+      const { status: got, json } = await review(PRIVATE_LINK);
+      expect([name, got, json]).toEqual([name, status, body]);
+    }
+    expect((await stored()).refusedAt).toBeNull();
+  });
+
+  it("refuses a link whose path steps out of its repository, before asking GitHub", async () => {
+    await connect();
+    for (const link of [
+      "https://github.com/ys-fixtures/private-kits/blob/main/k%2F..%2F..%2F..%2F..%2F..%2Fuser%2Frepos",
+      `https://github.com/ys-fixtures/catalog/blob/main/x%2F..%2F..%2F..%2F..%2Fys-fixtures%2Fplain%2F${COMMIT}%2Fcompose.yaml`,
+      "https://raw.githubusercontent.com/ys-fixtures/private-kits/main/..%2Fkit.yaml",
+    ]) {
+      const { status, json } = await review(link);
+      expect([link, status, json.error]).toEqual([link, 400, "source"]);
+    }
+    expect(calls).toEqual([]);
+  });
+
   it("marks a token GitHub refuses, shows Reconnect, and still installs a public kit", async () => {
     await connect();
     refused.add(TOKEN);
@@ -234,6 +296,26 @@ describe("private kits through the GitHub connection", () => {
       expect((await command()).json).toMatchObject({ error: "token_refused", message: expect.stringMatching(/Reconnect with: docker compose exec server github connect$/) });
     } finally {
       bridge.close();
+    }
+  });
+});
+
+describe("the GitHub connection's token", () => {
+  it("never follows a redirect, and says the repository moved", async () => {
+    const seen: { url: string; authorization: string | undefined }[] = [];
+    const github = createServer((req, res) => {
+      seen.push({ url: req.url!, authorization: req.headers.authorization });
+      res.writeHead(301, { location: "/repositories/1/commits/main" }).end();
+    });
+    await new Promise<void>((resolve) => github.listen(0, "127.0.0.1", resolve));
+    const at = `http://127.0.0.1:${(github.address() as AddressInfo).port}`;
+    try {
+      await expect(fetchSourceWith({ login: LOGIN, token: TOKEN }, PRIVATE_LINK, { api: at, raw: `${at}/raw` })).rejects.toThrow(
+        "GitHub says ys-fixtures/private-kits has moved: it was renamed or transferred. Use the link from its new place on GitHub.",
+      );
+      expect(seen).toEqual([{ url: "/repos/ys-fixtures/private-kits/commits/main", authorization: `Bearer ${TOKEN}` }]);
+    } finally {
+      github.close();
     }
   });
 });

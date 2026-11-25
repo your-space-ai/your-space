@@ -44,7 +44,7 @@ test("the owner installs a kit from a private repository through the GitHub conn
   await evidence(page, testInfo, "015-private-kit-not-connected");
 
   // Connected (the GitHub page's own journey is github.spec.ts), the kit is read through the connection
-  // and labelled Private; its Compose file is public, so it isn't.
+  // and labelled Private.
   const connected = await composeWithInput(["exec", "-T", "server", "github", "connect", "--json"], `${TOKEN}\n`);
   expect(JSON.parse(connected.stdout)).toMatchObject({ ok: true, contents: { set: true, login: LOGIN } });
   await review(page, PRIVATE_KIT);
@@ -54,7 +54,6 @@ test("the owner installs a kit from a private repository through the GitHub conn
     `https://github.com/ys-fixtures/private-kits/blob/${fixtureCommit("ys-fixtures/private-kits")}/whoami.yaml`,
   );
   await expect(page.locator('[data-private="kit"]')).toHaveText(`Private · read with your GitHub connection (@${LOGIN})`);
-  await expect(page.locator('[data-private="compose"]')).toHaveCount(0);
   await evidence(page, testInfo, "015-private-kit-review");
 
   await installReviewed(page);

@@ -134,7 +134,8 @@ the kit **Private · read with your GitHub connection (@login)**, and the instal
 its kit and its Compose file, whether each was read anonymously or through the connection, and with
 which account.
 
-When a private kit can't be read, the review says why, and links to the GitHub page:
+When a private kit can't be read, the review says why and, when the connection is the fix, links
+to the GitHub page:
 
 - **Not connected:** public GitHub doesn't show the kit. Connect GitHub with a token that can read
   its repository.
@@ -142,6 +143,8 @@ When a private kit can't be read, the review says why, and links to the GitHub p
   repositories don't include it, or an organization hasn't approved the token. Edit the token at
   GitHub, or connect another one.
 - **There is no file at that commit:** the repository and branch are there, but not the kit's path.
+- **The repository has moved:** it was renamed or transferred. Paste the kit's link from its new
+  place on GitHub.
 - **GitHub no longer accepts the token:** it expired, or you deleted or revoked it. Your Space marks
   it, and the GitHub page and `github status` show **Reconnect**.
 - **No data key here can read the token:** as when the data key was replaced without the one before
