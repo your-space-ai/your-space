@@ -136,16 +136,25 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
   **Deferred (2026-11-23):** [Creator workflow deferred](architecture/decisions.md#creator-workflow-deferred). Out of the alpha, to get feedback before building more; the delivered work above keeps its history.
 
-  - [ ] Connect GitHub, and install from a kit in a private repository through that connection in the web client. Until then a private kit installs with the server command, `install-app --kit -`.
+  - [ ] Connect GitHub, and install from a kit in a private repository through that connection in the web client. Until then a private kit installs with the server command, `install-app --kit -`. **Moved (2026-11-25):** to [private GitHub sources (015)](#custom-apps-and-sources), read only, below.
   - [ ] Make a dashboard app with `app new`, `app pack` and `app install-local`, choose it as Home, and grant it read roles of other apps.
   - [ ] Create, import and fork GitHub repositories from Your Space, on a Repositories screen.
   - [ ] Grant an agent access to selected repositories, with creation and fork rights, and let it commit files through its key.
   - [ ] Install from a kit in a managed repository, and deploy an installed app from a reviewed repository commit, keeping its installation and volumes.
   - [ ] Rehearse with a disposable live GitHub account: a private repo, an authorized fork and edit, and the owner-confirmed deployment from that commit.
 
+- [ ] **Private GitHub sources (015)** · *Later direction*
+
+  **Agreed (2026-11-25):** [Private GitHub sources](architecture/decisions.md#private-github-sources). The connection returns, read only, for installs. How the owner connects, and when it ships, are open decisions in the [journey 015 spec](https://github.com/your-space-ai/your-space/pull/PRNUM).
+
+  - [ ] Connect GitHub in the dashboard, read only, and install from a kit in a private repository through that connection, in the web client and with the server command. Until then a private kit installs with the server command, `install-app --kit -`.
+  - [ ] Install from a kit whose Compose file is in a private repository.
+  - [ ] Keep the connection through a data-key rotation, and keep public installs working when it is broken.
+  - [ ] Run it against real GitHub with a disposable account.
+
 - [ ] **Additional discovery sources** · *Later direction*
 
-  Journey 011 supports private GitHub sources, direct kit URLs and one optional operator-selected GitHub directory. Later discovery work includes combining multiple directories and preserving update routing when a directory changes. (2026-11-23: private GitHub sources are deferred with the [creator workflow](#custom-apps-and-sources), and the operator-selected directory is gone; an app store chooses its own source when it comes.)
+  Journey 011 supports private GitHub sources, direct kit URLs and one optional operator-selected GitHub directory. Later discovery work includes combining multiple directories and preserving update routing when a directory changes. (2026-11-23: private GitHub sources are deferred with the [creator workflow](#custom-apps-and-sources), and the operator-selected directory is gone; an app store chooses its own source when it comes. 2026-11-25: private GitHub sources return, read only, with [journey 015](#custom-apps-and-sources).)
 
 - [ ] **Kits as app definitions** · *Later direction*
 
