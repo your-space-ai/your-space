@@ -27,16 +27,22 @@ const local = createLocalSetup({
   version: app.getVersion(),
   versionFile: join(app.getPath('userData'), 'local-version.json'),
 });
+// One window per workspace address, each in that address's own session. Closing one hides it, so the
+// Workspace menu and the Dock icon show it again as it was.
+const windows = new Map();
 // Saved workspaces: a name and an address each. connection.json held the one address earlier versions kept.
 const savedWorkspaces = createSavedWorkspaces({
   file: join(app.getPath('userData'), 'workspaces.json'),
   legacyFile: join(app.getPath('userData'), 'connection.json'),
-  onChange: () => buildMenu(),
+  onChange: list => {
+    // A hidden window whose workspace left the list, removed or past the limit, can't be shown again.
+    for (const [origin, win] of windows) {
+      if (!list.some(entry => entry.origin === origin) && !win.isDestroyed() && !win.isVisible()) win.destroy();
+    }
+    buildMenu();
+  },
 });
 let launcher;
-// One window per workspace address, each in that address's own session. Closing one hides it, so the
-// Workspace menu and the Dock icon show it again as it was.
-const windows = new Map();
 // The workspace window used last, which the Dock icon shows when no window is visible.
 let primary;
 // What the launcher shows the next time it asks: the list, the address form, or a saved workspace to open.
@@ -278,14 +284,6 @@ async function openSaved(value) {
   return startLocal({engine: engine.name, expectedSocket: engine.socket});
 }
 
-// Forgets a saved workspace. A hidden window for it closes; one on screen stays until it is closed.
-// This Mac's installation keeps running, and quitting still stops it.
-async function forgetSaved(value) {
-  const origin = workspaceOrigin(value);
-  await savedWorkspaces.remove(origin);
-  const win = windows.get(origin);
-  if (win && !win.isDestroyed() && !win.isVisible()) win.destroy();
-}
 
 // Renaming or removing changes only the list file, so a failure says that, not what local setup says.
 async function changeSaved(change) {
@@ -352,7 +350,9 @@ function installHandlers() {
     workspaces: launcherState,
     open: input => openSaved(input?.origin),
     rename: input => changeSaved(() => savedWorkspaces.rename(input?.origin, input?.name)),
-    remove: input => changeSaved(() => forgetSaved(input?.origin)),
+    // Forgets a saved workspace: a hidden window for it closes, and one on screen stays until it is
+    // closed. This Mac's installation keeps running, and quitting still stops it.
+    remove: input => changeSaved(() => savedWorkspaces.remove(input?.origin)),
     openDockerGuide: () => shell.openExternal('https://docs.docker.com/desktop/setup/install/mac-install/'),
   };
   for (const [name, action] of Object.entries(actions)) {

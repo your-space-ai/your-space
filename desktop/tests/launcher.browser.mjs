@@ -119,6 +119,7 @@ test("a missing engine offers the guide, retry, and a manual socket", async (t) 
   await page.getByRole("button", { name: "Docker Desktop setup guide" }).click();
   await page.getByRole("button", { name: "Check again" }).click();
   await expect(page.locator("#endpoint")).toHaveText(local.socket);
+  await expect(page.getByRole("alert")).toBeEmpty();
   await page.getByText("Choose another engine").click();
   await page.getByLabel("Local Docker context").selectOption({ label: "Enter a Unix socket path" });
   await page.getByLabel("Unix socket path").fill("tcp://elsewhere");
@@ -340,4 +341,23 @@ test("the Workspace menu's requests show the address form or open a saved worksp
   await page.evaluate(() => window.testRefresh());
   await expect(page.getByRole("status")).toBeEmpty();
   assert.deepEqual(calls, [{ method: "open", arg: { origin: office.origin } }]);
+});
+
+test("the dialog stays open while a rename waits for its reply, and a reply only reaches its own dialog", async (t) => {
+  let list = [home, office];
+  let finish;
+  const { page } = await launch(t, {
+    workspaces: () => ({ workspaces: list }),
+    rename: ({ origin, name }) => new Promise(resolve => { finish = () => resolve({ workspaces: list = list.map(entry => entry.origin === origin ? { ...entry, name } : entry) }); }),
+  });
+  await page.getByRole("button", { name: "Rename or remove Home server" }).click();
+  const dialog = page.getByRole("dialog", { name: "Rename or remove" });
+  await dialog.getByLabel("Name").fill("Garage");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  finish();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("button", { name: "Rename or remove Garage" })).toBeFocused();
 });

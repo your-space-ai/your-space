@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { access, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -206,4 +206,26 @@ test('the single address earlier versions saved becomes the first entry, once', 
   await writeFile(third.legacyFile, JSON.stringify({origin: 'http://server.lan', local: false}));
   assert.deepEqual(await createSavedWorkspaces(third).list(), []);
   assert.deepEqual(await createSavedWorkspaces(await folder(t)).list(), []);
+});
+
+test('a list that cannot be read is never taken as empty, so no change replaces it', async t => {
+  const {file, legacyFile} = await folder(t);
+  // A directory in the file's place fails to read with an error other than a missing file.
+  await mkdir(file);
+  const store = createSavedWorkspaces({file, legacyFile});
+  await assert.rejects(store.list(), {code: 'EISDIR'});
+  await assert.rejects(store.opened('https://one.example.com'), {code: 'EISDIR'});
+  assert.deepEqual(store.current(), []);
+  // Once it can be read, the next call loads it and changes apply to it.
+  await rm(file, {recursive: true});
+  await writeFile(file, JSON.stringify({workspaces: [{origin: 'https://kept.example.com', name: 'Kept'}]}));
+  await store.opened('https://one.example.com');
+  assert.deepEqual((await store.list()).map(entry => entry.name), ['Kept', 'one.example.com']);
+
+  // The same holds for the earlier version's file: it is neither lost nor replaced by an empty list.
+  const second = await folder(t);
+  await mkdir(second.legacyFile);
+  const legacy = createSavedWorkspaces(second);
+  await assert.rejects(legacy.list(), {code: 'EISDIR'});
+  await assert.rejects(access(second.file), {code: 'ENOENT'});
 });

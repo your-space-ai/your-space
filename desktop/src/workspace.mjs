@@ -187,28 +187,38 @@ async function writePrivate(file, contents) {
 
 // The saved list in `file`, written whole and atomically, readable only by this user. On first use it
 // takes over the single address earlier versions kept in `legacyFile`, then deletes that file.
-// Changes run one at a time; `onChange` follows each one that was written.
+// Changes run one at a time; `onChange` follows each one that was written. A list that can't be read
+// isn't taken as empty: reading, and every change, fails until it can be, so no write replaces it.
 export function createSavedWorkspaces({file, legacyFile, now = Date.now, onChange = () => {}}) {
   let list = [];
-  let loaded;
+  let loaded = false;
   let queue = Promise.resolve();
 
-  async function load() {
-    let text;
-    try { text = await readFile(file, 'utf8'); } catch (error) {
-      if (error?.code !== 'ENOENT') return [];
-      return migrate();
+  // A file that is missing or holds no list reads as empty; any other failure to read it is an error.
+  async function read(path) {
+    try { return await readFile(path, 'utf8'); } catch (error) {
+      if (error?.code === 'ENOENT') return null;
+      throw error;
     }
+  }
+
+  async function load() {
+    const text = await read(file);
+    if (text === null) return migrate();
     try { return parseSaved(JSON.parse(text)); } catch { return []; }
   }
 
   async function migrate() {
-    if (!legacyFile) return [];
-    let saved;
-    try { saved = JSON.parse(await readFile(legacyFile, 'utf8')); } catch { return []; }
+    const text = legacyFile ? await read(legacyFile) : null;
+    if (text === null) return [];
     let origin;
-    try { origin = workspaceOrigin(saved?.origin); } catch { return []; }
-    const migrated = openedSaved([], {origin, local: saved.local === true}, now());
+    let local;
+    try {
+      const saved = JSON.parse(text);
+      origin = workspaceOrigin(saved?.origin);
+      local = saved.local === true;
+    } catch { return []; }
+    const migrated = openedSaved([], {origin, local}, now());
     await writePrivate(file, JSON.stringify({workspaces: migrated}));
     await rm(legacyFile, {force: true});
     return migrated;
@@ -216,8 +226,10 @@ export function createSavedWorkspaces({file, legacyFile, now = Date.now, onChang
 
   function serial(change) {
     const run = queue.then(async () => {
-      loaded ??= load().catch(() => []).then(value => { list = value; });
-      await loaded;
+      if (!loaded) {
+        list = await load();
+        loaded = true;
+      }
       if (!change) return list;
       const next = change(list);
       await writePrivate(file, JSON.stringify({workspaces: next}));

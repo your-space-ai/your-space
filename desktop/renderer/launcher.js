@@ -22,6 +22,10 @@ let remembered = null;
 // The saved workspace the rename and remove dialog is about, and what gets focus when it closes.
 let managing = null;
 let returnFocus = null;
+// Each opening of the dialog, so a reply to an earlier one changes nothing in it; and whether a
+// rename or remove is waiting for its reply, which keeps the dialog open until it comes.
+let dialogRun = 0;
+let changing = false;
 const firstIntro = byId("welcome-intro").textContent;
 
 // A focused control, described so it can be found again after the list is drawn anew.
@@ -142,7 +146,13 @@ function handle(request) {
   }
   if (!request && !afterOpen) return;
   afterOpen = false;
-  if (byId("manage").open && request) byId("manage").close();
+  if (byId("manage").open && request) {
+    if (changing) {
+      deferred = request;
+      return;
+    }
+    byId("manage").close();
+  }
   if (request?.view === "remote") {
     byId("remote-form").reset();
     show("remote");
@@ -273,7 +283,7 @@ async function checkEngines(note) {
     const result = await api.engines();
     if (request === discovery && successful(result)) {
       fillEngines(result);
-      if (note && !byId("problem").textContent) byId("problem").textContent = note;
+      if (typeof note === "string" && !byId("problem").textContent) byId("problem").textContent = note;
     }
   } catch {
     if (request === discovery) {
@@ -318,6 +328,7 @@ function openSaved(entry) {
 
 function manage(entry) {
   if (busy) return;
+  dialogRun += 1;
   managing = entry;
   returnFocus = { origin: entry.origin, kind: "edit" };
   byId("rename-form").hidden = false;
@@ -345,23 +356,37 @@ function confirmRemove() {
   byId("remove-cancel").focus();
 }
 
-// Rename and remove change only the saved list, and the list is drawn again from the reply.
+// Rename and remove change only the saved list, and the list is drawn again from the reply. A reply
+// for an earlier opening of the dialog only redraws the list.
 async function change(problem, action) {
+  if (changing) return null;
+  const run = dialogRun;
   const buttons = byId("manage").querySelectorAll("button, input");
   buttons.forEach((control) => { control.disabled = true; });
+  changing = true;
+  let result;
   try {
-    const result = await action();
-    if (result?.error) {
-      byId(problem).textContent = result.error.message;
-      return null;
-    }
-    return result;
+    result = await action();
   } catch {
-    byId(problem).textContent = "Your Space couldn’t save this change. Try again.";
-    return null;
+    result = { error: { message: "Your Space couldn’t save this change. Try again." } };
   } finally {
+    changing = false;
     buttons.forEach((control) => { control.disabled = false; });
   }
+  // A request that waited for this reply is handled once the dialog has finished with it.
+  if (deferred && !busy) {
+    const request = deferred;
+    deferred = null;
+    setTimeout(() => handle(request));
+  }
+  const current = run === dialogRun && byId("manage").open;
+  if (!result?.error) {
+    if (current) return result;
+    render(result.workspaces);
+    return null;
+  }
+  if (current) byId(problem).textContent = result.error.message;
+  return null;
 }
 
 byId("rename-form").addEventListener("submit", async (event) => {
@@ -369,7 +394,10 @@ byId("rename-form").addEventListener("submit", async (event) => {
   const entry = managing;
   if (!entry) return;
   const result = await change("manage-problem", () => api.rename({ origin: entry.origin, name: byId("manage-name").value.trim() }));
-  if (!result) return byId("manage-name").focus();
+  if (!result) {
+    if (byId("manage").open) byId("manage-name").focus();
+    return;
+  }
   render(result.workspaces);
   byId("manage").close();
 });
@@ -381,13 +409,20 @@ byId("remove-confirm").addEventListener("click", async () => {
   if (!entry) return;
   const index = saved.findIndex((item) => item.origin === entry.origin);
   const result = await change("remove-problem", () => api.remove({ origin: entry.origin }));
-  if (!result) return byId("remove-cancel").focus();
+  if (!result) {
+    if (byId("manage").open) byId("remove-cancel").focus();
+    return;
+  }
   // Focus moves to the row that took its place, the one before it, or the heading.
   const rest = result.workspaces;
   const next = rest[index] ?? rest[index - 1];
   returnFocus = next ? { origin: next.origin, kind: "open" } : { id: "welcome-title" };
   render(rest);
   byId("manage").close();
+});
+// Escape doesn't close the dialog while its change waits for a reply.
+byId("manage").addEventListener("cancel", (event) => {
+  if (changing) event.preventDefault();
 });
 // The close event comes a moment after the dialog closes, and the dialog may have opened again by then.
 byId("manage").addEventListener("close", () => {
@@ -410,7 +445,7 @@ byId("add-server").addEventListener("click", () => {
   show("remote");
 });
 byId("back").addEventListener("click", () => show(active === "owner" ? "local" : "welcome"));
-byId("retry").addEventListener("click", checkEngines);
+byId("retry").addEventListener("click", () => checkEngines());
 byId("engine").addEventListener("change", updateEngine);
 byId("socket").addEventListener("input", updateEngine);
 byId("guide").addEventListener("click", () => run("Opening the setup guide…", async () => {
