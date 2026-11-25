@@ -187,7 +187,7 @@ lines 18–25), not its GitHub provider:
 The channel goes in the feed's options, whose `channel` defaults to `latest`
 ([publishOptions.ts](https://github.com/electron-userland/electron-builder/blob/electron-updater%406.8.11/packages/builder-util-runtime/src/publishOptions.ts),
 lines 215–231). electron-builder's channels tutorial sets the updater's `channel` property instead,
-but setting that property turns on `allowDowngrade`, and once set it can't be cleared
+but setting that property turns on `allowDowngrade`, and the property can't be unset again
 ([AppUpdater.ts](https://github.com/electron-userland/electron-builder/blob/electron-updater%406.8.11/packages/electron-updater/src/AppUpdater.ts),
 lines 152–163); downgrades stay off. Alpha's file keeps the name `latest-mac.yml`, the one the
 generic provider reads with no channel and every release already carries. A feed the app can't
@@ -211,13 +211,14 @@ another host, such as Cloudflare, which is new infrastructure.
 
 **Decided:** `upgrade --channel <name>` reads the channel's `channel.json` with one request, then
 downloads that build's CLI for this machine (the Linux executable or the npm package, as the running
-one is) from that build's release: the `v` release for Alpha, the `canary` prerelease for Canary.
-It checks it against that release's `SHA256SUMS` and runs its `upgrade`. The 2026-11-24 rule
-holds: an installation moves to the version of the CLI that runs `upgrade`, so each version's own
-upgrade steps run. A canary's CLI reads its files from the `canary` prerelease, as today, so if a
-newer build replaces them during the run, it stops with nothing changed, and running the command
-again takes the newer build. `init` and `setup` keep taking the CLI's own version. The alpha.1 CLI
-has no flag, so the first CLI with it is a canary, then alpha.2.
+one is) from that build's release: the `v` release for Alpha, the `canary` prerelease for Canary. It
+checks it against that release's `SHA256SUMS` and that it is the version `channel.json` names, and
+runs its `upgrade`. The 2026-11-24 rule holds: an installation moves to the version of the CLI that
+runs `upgrade`, so each version's own upgrade steps run. A canary's CLI reads its files from the
+`canary` prerelease, as today, so if a newer build replaces them during the run, it stops with
+nothing changed, and running the command again takes the newer build. `init` and `setup` keep taking
+the CLI's own version. The alpha.1 CLI has no flag, so the first CLI with it is a canary, then
+alpha.2.
 
 A version upgrades any older installation with no code for each older version:
 
@@ -321,7 +322,9 @@ release.
 - **FR-002**: Every check, automatic or manual, reads the stored channel's feed at its fixed
   address with electron-updater's generic provider, with the channel in the feed's options and
   downgrades off. The app is offered only its channel's builds, and says so when nothing is newer.
-  A feed it can't read means it couldn't check, and it offers nothing.
+  A feed it can't read means it couldn't check, and it offers nothing. Changing the channel drops
+  any check in progress and any update found or downloaded from the other channel's feed, which is
+  then neither offered nor installed, not even when the app quits.
 - **FR-003**: Once a published release passes Release publish's check, Release publish writes the
   `alpha` prerelease's `latest-mac.yml`, listing that release's update ZIPs by full link, and its
   `channel.json`, unless they already name a newer version. Nothing else writes to the `alpha`
@@ -335,10 +338,10 @@ release.
   then deletes the older Mac ZIPs, unless `canary-mac.yml` already names a newer build. No canary
   release carries `latest-mac.yml`. It never delays the Linux canary.
 - **FR-006**: `your-space upgrade --channel alpha|canary` reads that channel's `channel.json`,
-  downloads the build's CLI from its release, checks it against that release's `SHA256SUMS`, and
-  runs its `upgrade`. It changes nothing when the installation is already that build, refuses an
-  older one (FR-008), and stops with nothing changed when a file can't be read or no longer
-  matches. Plain `upgrade` is unchanged.
+  downloads the build's CLI from its release, checks it against that release's `SHA256SUMS` and that
+  it is the version `channel.json` names, and runs its `upgrade`. It changes nothing when the
+  installation is already that build, refuses an older one (FR-008), and stops with nothing changed
+  when a file can't be read or no longer matches. Plain `upgrade` is unchanged.
 - **FR-007**: A required test proves that Alpha clients never get a canary. Its fixture is
   recorded files: the `alpha` release's `latest-mac.yml` and `channel.json`; the `canary`
   release's `canary-mac.yml` and `channel.json`, for a canary whose version contains `-alpha.` and
@@ -349,6 +352,8 @@ release.
     an app already on it or on a later canary.
   - `upgrade --channel alpha` takes the version the `alpha` release's `channel.json` names.
   - Canary reads only the `canary` feed.
+  - A Canary check that finishes, or a canary update that was found or downloaded, after the app
+    switched to Alpha is neither offered nor installed.
   - The alpha.1 app's GitHub provider, reading that Atom feed, resolves to the newest `v` release,
     never to a canary's files.
   - A feed that can't be read selects nothing and says so.
