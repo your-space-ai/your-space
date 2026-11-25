@@ -37,10 +37,10 @@ Ways to recover, best first:
    the rest with `docker compose up -d`. A secret set in `.env` is left as it is by `--new`, so these
    steps work whichever secrets you set there.
 
-   Once Your Space is running without the old data key, remove each app, delete its kept data on its
-   page, and install it again: the app starts empty, and deleting its data can't be undone. The
-   GitHub page shows **Reconnect**: connect GitHub with a new token, and add your image token again
-   if you had one.
+   Once Your Space is running without the old data key, the GitHub page shows **Reconnect**: connect
+   GitHub with a new token, and add your image token again if you had one, so apps from private
+   sources can install. Then remove each app, delete its kept data on its page, and install it again:
+   the app starts empty, and deleting its data can't be undone.
 
 ### Give PostgreSQL the Database Password
 
