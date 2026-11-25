@@ -10,7 +10,7 @@ let checking = false;
 let discovery = 0;
 let engines = [];
 let engineProblem = null;
-// The saved workspaces, in the order the main process keeps them.
+// The saved connections, in the order the main process keeps them.
 let saved = [];
 let loaded = false;
 // After a workspace opens, the launcher hides; when it shows again, it shows the list.
@@ -19,7 +19,7 @@ let afterOpen = false;
 let deferred = null;
 // Where the list's focus and scroll were when another section replaced it.
 let remembered = null;
-// The saved workspace the rename and remove dialog is about, and what gets focus when it closes.
+// The saved connection the rename and remove dialog is about, and what gets focus when it closes.
 let managing = null;
 let returnFocus = null;
 // Each opening of the dialog, so a reply to an earlier one changes nothing in it; and whether a
@@ -112,13 +112,13 @@ function row(entry) {
   return item;
 }
 
-// The list replaces the first-run choices once a workspace is saved. Focus and scroll stay put.
+// The list replaces the first-run choices once a connection is saved. Focus and scroll stay put.
 function render(list) {
   const focused = keyOf(document.activeElement);
   const scroll = window.scrollY;
   saved = Array.isArray(list) ? list : [];
   const any = saved.length > 0;
-  byId("welcome-title").textContent = any ? "Open a workspace" : "Open your workspace";
+  byId("welcome-title").textContent = any ? "Open a connection" : "Open your workspace";
   byId("welcome-intro").textContent = any ? "Choose one you use, or add another." : firstIntro;
   byId("saved").hidden = !any;
   byId("first-choices").hidden = any;
@@ -132,13 +132,13 @@ function render(list) {
 
 async function refresh() {
   let state;
-  try { state = await api.workspaces(); } catch { state = null; }
-  if (state && !state.error && Array.isArray(state.workspaces)) render(state.workspaces);
+  try { state = await api.connections(); } catch { state = null; }
+  if (state && !state.error && Array.isArray(state.connections)) render(state.connections);
   else if (!loaded) render([]);
   handle(state?.request);
 }
 
-// The main process asks for the list, the address form or a saved workspace, from its menu or Dock icon.
+// The main process asks for the list, the address form or a saved connection, from its menu or Dock icon.
 function handle(request) {
   if (busy) {
     if (request) deferred = request;
@@ -382,7 +382,7 @@ async function change(problem, action) {
   const current = run === dialogRun && byId("manage").open;
   if (!result?.error) {
     if (current) return result;
-    render(result.workspaces);
+    render(result.connections);
     return null;
   }
   if (current) byId(problem).textContent = result.error.message;
@@ -398,7 +398,7 @@ byId("rename-form").addEventListener("submit", async (event) => {
     if (byId("manage").open) byId("manage-name").focus();
     return;
   }
-  render(result.workspaces);
+  render(result.connections);
   byId("manage").close();
 });
 byId("manage-remove").addEventListener("click", confirmRemove);
@@ -414,7 +414,7 @@ byId("remove-confirm").addEventListener("click", async () => {
     return;
   }
   // Focus moves to the row that took its place, the one before it, or the heading.
-  const rest = result.workspaces;
+  const rest = result.connections;
   const next = rest[index] ?? rest[index - 1];
   returnFocus = next ? { origin: next.origin, kind: "open" } : { id: "welcome-title" };
   render(rest);

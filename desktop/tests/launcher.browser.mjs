@@ -27,14 +27,14 @@ async function launch(t, handlers) {
   await page.exposeFunction("testDispatch", (method, arg) => {
     if (method === "appearance" && !handlers.appearance) return launcherTheme();
     // Reading the saved list isn't recorded; tests that don't set it see none saved.
-    if (method === "workspaces") return handlers.workspaces ? handlers.workspaces() : { workspaces: [] };
+    if (method === "connections") return handlers.connections ? handlers.connections() : { connections: [] };
     calls.push({ method, arg });
     if (!Object.hasOwn(handlers, method)) throw new Error("Unexpected bridge call");
     return handlers[method](arg);
   });
   await page.addInitScript(() => {
     window.yourSpace = Object.fromEntries(["appearance", "engines", "start", "createOwner", "connect", "openDockerGuide",
-      "workspaces", "open", "rename", "remove"].map(method => [method, arg => window.testDispatch(method, arg)]));
+      "connections", "open", "rename", "remove"].map(method => [method, arg => window.testDispatch(method, arg)]));
     // The main process's refresh, which a test sends with window.testRefresh().
     window.yourSpace.onRefresh = callback => { window.testRefresh = callback; };
   });
@@ -185,12 +185,12 @@ function rowButton(page, name) {
   return page.getByRole("listitem").filter({ hasText: name }).locator("button.saved-open");
 }
 
-test("saved workspaces are the launcher's main content, each opened with a click", async (t) => {
+test("saved connections are the launcher's main content, each opened with a click", async (t) => {
   const { page, calls } = await launch(t, {
-    workspaces: () => ({ workspaces: [thisMac, home, office] }),
+    connections: () => ({ connections: [thisMac, home, office] }),
     open: () => ({ state: "ready", origin: home.origin }),
   });
-  await expect(page.getByRole("heading", { name: "Open a workspace" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Open a connection" })).toBeVisible();
   await expect(page.locator("#welcome .intro")).toHaveText("Choose one you use, or add another.");
   await expect(page.getByRole("listitem")).toHaveText([/This Mac.*http:\/\/space\.localhost:8081.*Running/, /Home server.*https:\/\/home\.example\.com.*Today/,
     /office\.example\.com.*https:\/\/office\.example\.com.*2 days ago/]);
@@ -211,7 +211,7 @@ test("saved workspaces are the launcher's main content, each opened with a click
 test("a server is added with an optional name, and Back returns to the same place in the list", async (t) => {
   const many = Array.from({ length: 14 }, (_, i) => ({ ...office, name: `Server ${i + 1}`, origin: `https://s${i + 1}.example.com` }));
   const { page, calls } = await launch(t, {
-    workspaces: () => ({ workspaces: many }),
+    connections: () => ({ connections: many }),
     connect: () => ({ state: "ready" }),
   });
   await page.setViewportSize({ width: 700, height: 600 });
@@ -240,10 +240,10 @@ test("a server is added with an optional name, and Back returns to the same plac
 test("rename and remove happen in the launcher, by keyboard, with an in-app confirmation", async (t) => {
   let list = [thisMac, home, office];
   const { page, calls } = await launch(t, {
-    workspaces: () => ({ workspaces: list }),
+    connections: () => ({ connections: list }),
     rename: ({ origin, name }) => name === "Refused" ? { error: { code: "invalid_name", message: "Enter another name." } }
-      : { workspaces: list = list.map(entry => entry.origin === origin ? { ...entry, name: name || "home.example.com" } : entry) },
-    remove: ({ origin }) => ({ workspaces: list = list.filter(entry => entry.origin !== origin) }),
+      : { connections: list = list.map(entry => entry.origin === origin ? { ...entry, name: name || "home.example.com" } : entry) },
+    remove: ({ origin }) => ({ connections: list = list.filter(entry => entry.origin !== origin) }),
   });
   page.on("dialog", () => assert.fail("No native dialog"));
   const edit = page.getByRole("button", { name: "Rename or remove Home server" });
@@ -305,7 +305,7 @@ test("rename and remove happen in the launcher, by keyboard, with an in-app conf
 
 test("This Mac that can't start leads to the engine check with the reason, and Back returns to its row", async (t) => {
   const { page, calls } = await launch(t, {
-    workspaces: () => ({ workspaces: [{ ...thisMac, running: false }, home] }),
+    connections: () => ({ connections: [{ ...thisMac, running: false }, home] }),
     open: () => ({ error: { code: "start_failed", message: "The local workspace could not start." } }),
     engines: () => ({ engines: [local], saved: { name: local.name, socket: local.socket } }),
   });
@@ -319,11 +319,11 @@ test("This Mac that can't start leads to the engine check with the reason, and B
   assert.deepEqual(calls.map(call => call.method), ["open", "engines"]);
 });
 
-test("the Workspace menu's requests show the address form or open a saved workspace", async (t) => {
+test("the Connections menu's requests show the address form or open a saved connection", async (t) => {
   let request;
   const { page, calls } = await launch(t, {
-    workspaces: () => {
-      const reply = { workspaces: [home, office], ...(request ? { request } : {}) };
+    connections: () => {
+      const reply = { connections: [home, office], ...(request ? { request } : {}) };
       request = undefined;
       return reply;
     },
@@ -336,7 +336,7 @@ test("the Workspace menu's requests show the address form or open a saved worksp
   request = { open: office.origin };
   await page.evaluate(() => window.testRefresh());
   await expect(page.getByRole("status")).toHaveText("Opening your dashboard…");
-  await expect(page.getByRole("heading", { name: "Open a workspace" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Open a connection" })).toBeVisible();
   request = { view: "list" };
   await page.evaluate(() => window.testRefresh());
   await expect(page.getByRole("status")).toBeEmpty();
@@ -347,8 +347,8 @@ test("the dialog stays open while a rename waits for its reply, and a reply only
   let list = [home, office];
   let finish;
   const { page } = await launch(t, {
-    workspaces: () => ({ workspaces: list }),
-    rename: ({ origin, name }) => new Promise(resolve => { finish = () => resolve({ workspaces: list = list.map(entry => entry.origin === origin ? { ...entry, name } : entry) }); }),
+    connections: () => ({ connections: list }),
+    rename: ({ origin, name }) => new Promise(resolve => { finish = () => resolve({ connections: list = list.map(entry => entry.origin === origin ? { ...entry, name } : entry) }); }),
   });
   await page.getByRole("button", { name: "Rename or remove Home server" }).click();
   const dialog = page.getByRole("dialog", { name: "Rename or remove" });

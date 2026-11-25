@@ -93,10 +93,9 @@ export async function checkWorkspace(origin, fetchStatus) {
   }
 }
 
-// Saved workspaces are a name and an address each, and nothing about how the server is reached: a
+// Saved connections are a name and an address each, and nothing about how the server is reached: a
 // tunnel, VPN or proxy is the network's job (decision 2026-11-24). The list keeps the order they
-// were added, so the Workspace menu's ⌘1–⌘9 stay put; "most recent" only picks what opens on launch.
-export const savedLimit = 50;
+// were added, so the Connections menu's ⌘1–⌘9 stay put; "most recent" only picks what opens on launch.
 const localName = 'This Mac';
 
 // The name shown for a saved address. Empty means the default: the address's host, or This Mac.
@@ -113,10 +112,10 @@ function invalidName() {
   return new WorkspaceError('invalid_name', 'Enter a name of up to 100 characters on one line, or leave it empty.');
 }
 
-// Keeps the valid entries of a list read from disk, each address once, up to the limit.
+// Keeps the valid entries of a list read from disk, each address once.
 export function parseSaved(data) {
   const list = [];
-  for (const item of Array.isArray(data?.workspaces) ? data.workspaces : []) {
+  for (const item of Array.isArray(data?.connections) ? data.connections : []) {
     let origin;
     try { origin = workspaceOrigin(item?.origin); } catch { continue; }
     if (list.some(entry => entry.origin === origin)) continue;
@@ -125,14 +124,13 @@ export function parseSaved(data) {
     try { name = savedName(item.name, origin, local); } catch { name = savedName('', origin, local); }
     const lastOpened = Number.isSafeInteger(item.lastOpened) && item.lastOpened > 0 ? item.lastOpened : 0;
     list.push({name, origin, local, lastOpened});
-    if (list.length === savedLimit) break;
   }
   return list;
 }
 
 // Records a successful open: a new address goes to the end of the list, a saved one keeps its place.
 // `local` marks the app's own installation and stays set, so connecting to the same address by hand
-// doesn't make This Mac a plain server. Past the limit, the entry opened longest ago goes, This Mac last.
+// doesn't make This Mac a plain server.
 export function openedSaved(list, {origin, name, local = false}, time) {
   origin = workspaceOrigin(origin);
   time = latest(list, time);
@@ -144,12 +142,7 @@ export function openedSaved(list, {origin, name, local = false}, time) {
     const given = typeof name === 'string' ? name.trim() : name;
     return list.with(index, {...entry, local: marked, lastOpened: time, name: given ? savedName(given, origin, marked) : entry.name});
   }
-  const next = [...list, {name: savedName(name, origin, local), origin, local, lastOpened: time}];
-  if (next.length <= savedLimit) return next;
-  const candidates = next.slice(0, -1);
-  const pool = candidates.some(entry => !entry.local) ? candidates.filter(entry => !entry.local) : candidates;
-  const oldest = pool.reduce((a, b) => b.lastOpened < a.lastOpened ? b : a);
-  return next.filter(entry => entry !== oldest);
+  return [...list, {name: savedName(name, origin, local), origin, local, lastOpened: time}];
 }
 
 export function renamedSaved(list, origin, name) {
@@ -167,15 +160,15 @@ export function removedSaved(list, origin) {
 }
 
 function notSaved() {
-  return new WorkspaceError('not_saved', 'This workspace is no longer in your list.');
+  return new WorkspaceError('not_saved', 'This connection is no longer in your list.');
 }
 
-// The workspace to open on launch: the one opened last, or the first saved when none has a time.
+// The connection to open on launch: the one opened last, or the first saved when none has a time.
 export function mostRecent(list) {
   return list.reduce((best, entry) => !best || entry.lastOpened > best.lastOpened ? entry : best, null);
 }
 
-// Records that a saved workspace was used, as when its window comes to the front, so launch opens it.
+// Records that a saved connection was used, as when its window comes to the front, so launch opens it.
 // An address that isn't saved stays off the list, and the list is unchanged when it is already the most recent.
 export function usedSaved(list, origin, time) {
   origin = workspaceOrigin(origin);
@@ -184,7 +177,7 @@ export function usedSaved(list, origin, time) {
   return list.with(index, {...list[index], lastOpened: latest(list, time)});
 }
 
-// A time after every saved one, so the workspace just opened or used is the most recent even when the
+// A time after every saved one, so the connection just opened or used is the most recent even when the
 // clock has gone back or two times are equal.
 function latest(list, time) {
   return Math.max(time, (mostRecent(list)?.lastOpened ?? 0) + 1);
@@ -204,14 +197,16 @@ async function writePrivate(file, contents) {
 // The saved list in `file`, written whole and atomically, readable only by this user. On first use it
 // takes over the single address earlier versions kept in `legacyFile`, then deletes that file.
 // Changes run one at a time, and one that changes nothing isn't written; `onChange` follows each one
-// that is. A list that can't be read isn't taken as empty: reading, and every change, fails until it
-// can be, so no write replaces it.
-export function createSavedWorkspaces({file, legacyFile, now = Date.now, onChange = () => {}}) {
+// that is. No write replaces a list it couldn't read. A file that fails to read fails reading, and
+// every change, until it can be read. A file that reads but doesn't hold a list, because it isn't
+// JSON or has no `connections` array, is renamed aside to `<file>.corrupt-<time>` and the list
+// starts empty.
+export function createSavedConnections({file, legacyFile, now = Date.now, onChange = () => {}}) {
   let list = [];
   let loaded = false;
   let queue = Promise.resolve();
 
-  // A file that is missing or holds no list reads as empty; any other failure to read it is an error.
+  // A missing file reads as null; any other failure to read it is an error.
   async function read(path) {
     try { return await readFile(path, 'utf8'); } catch (error) {
       if (error?.code === 'ENOENT') return null;
@@ -222,7 +217,12 @@ export function createSavedWorkspaces({file, legacyFile, now = Date.now, onChang
   async function load() {
     const text = await read(file);
     if (text === null) return migrate();
-    try { return parseSaved(JSON.parse(text)); } catch { return []; }
+    let data;
+    try { data = JSON.parse(text); } catch { /* handled below */ }
+    if (Array.isArray(data?.connections)) return parseSaved(data);
+    // Kept for the owner to recover; if it can't be moved, loading fails rather than replacing it.
+    await rename(file, file + '.corrupt-' + now());
+    return [];
   }
 
   async function migrate() {
@@ -236,7 +236,7 @@ export function createSavedWorkspaces({file, legacyFile, now = Date.now, onChang
       local = saved.local === true;
     } catch { return []; }
     const migrated = openedSaved([], {origin, local}, now());
-    await writePrivate(file, JSON.stringify({workspaces: migrated}));
+    await writePrivate(file, JSON.stringify({connections: migrated}));
     await rm(legacyFile, {force: true});
     return migrated;
   }
@@ -250,7 +250,7 @@ export function createSavedWorkspaces({file, legacyFile, now = Date.now, onChang
       if (!change) return list;
       const next = change(list);
       if (next === list) return list;
-      await writePrivate(file, JSON.stringify({workspaces: next}));
+      await writePrivate(file, JSON.stringify({connections: next}));
       list = next;
       try { onChange(list); } catch { /* A listener's failure doesn't undo the change. */ }
       return list;

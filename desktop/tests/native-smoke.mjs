@@ -49,9 +49,9 @@ test('native launcher opens a workspace, isolates its app, saves it and reopens 
     await expect(child).toHaveURL(origin + '/app');
     assert.equal(await child.evaluate(() => typeof window.yourSpace), 'undefined');
     // The address is saved with its host as its name.
-    const saved = JSON.parse(await readFile(join(userData, 'workspaces.json'), 'utf8'));
-    assert.deepEqual(saved.workspaces.map(({name, origin, local}) => ({name, origin, local})), [{name: new URL(origin).host, origin, local:false}]);
-    assert.ok(Number.isSafeInteger(saved.workspaces[0].lastOpened));
+    const saved = JSON.parse(await readFile(join(userData, 'connections.json'), 'utf8'));
+    assert.deepEqual(saved.connections.map(({name, origin, local}) => ({name, origin, local})), [{name: new URL(origin).host, origin, local:false}]);
+    assert.ok(Number.isSafeInteger(saved.connections[0].lastOpened));
     // From source, Playwright also reaches the main process: closing the workspace window keeps the app
     // running with the window hidden, the Dock icon shows it again, and the app menu offers updates.
     if (typeof client.evaluate === 'function') {
@@ -69,12 +69,12 @@ test('native launcher opens a workspace, isolates its app, saves it and reopens 
         {label:'Check for Updates…', type:'normal', checked:false},
         {label:'Check for Updates Automatically', type:'checkbox', checked:false},
       ]);
-      // The Workspace menu lists the saved workspace on ⌘1, then adding a server and the launcher's list.
-      const workspaceMenu = await client.evaluate(({Menu}) => Menu.getApplicationMenu().items
-        .find(item => item.label === 'Workspace').submenu.items.map(({label, type, accelerator}) => ({label, type, accelerator})));
-      assert.deepEqual(workspaceMenu.filter(item => item.type !== 'separator').map(item => item.label).slice(0, 3),
-        [new URL(origin).host, 'Add a server…', 'Manage workspaces…']);
-      assert.equal(workspaceMenu[0].accelerator, 'CmdOrCtrl+1');
+      // The Connections menu lists the saved connection on ⌘1, then adding a server and the launcher's list.
+      const connectionMenu = await client.evaluate(({Menu}) => Menu.getApplicationMenu().items
+        .find(item => item.label === 'Connections').submenu.items.map(({label, type, accelerator}) => ({label, type, accelerator})));
+      assert.deepEqual(connectionMenu.filter(item => item.type !== 'separator').map(item => item.label).slice(0, 3),
+        [new URL(origin).host, 'Add a server…', 'Manage connections…']);
+      assert.equal(connectionMenu[0].accelerator, 'CmdOrCtrl+1');
     }
     await client.close();
     client = await launch();
@@ -89,27 +89,27 @@ test('native launcher opens a workspace, isolates its app, saves it and reopens 
   }
 });
 
-test('an address saved by an earlier version reopens, and saved workspaces open side by side', {timeout: 150_000}, async () => {
+test('an address saved by an earlier version reopens, and saved connections open side by side', {timeout: 150_000}, async () => {
   const userData = await mkdtemp(join(tmpdir(), 'your-space-saved-'));
   const first = await fixture();
   const second = await fixture();
   let client;
   try {
-    // Earlier versions kept one address in connection.json; it becomes the first saved workspace.
+    // Earlier versions kept one address in connection.json; it becomes the first saved connection.
     await writeFile(join(userData, 'connection.json'), JSON.stringify({origin: first.origin, local: false}));
     client = await launchDesktop(desktop, userData);
     const reopened = await client.firstWindow();
     await expect(reopened.getByRole('heading', {name:'Test workspace'})).toBeVisible();
     await expect(reopened).toHaveURL(first.origin + '/');
-    const saved = async () => JSON.parse(await readFile(join(userData, 'workspaces.json'), 'utf8')).workspaces
+    const saved = async () => JSON.parse(await readFile(join(userData, 'connections.json'), 'utf8')).connections
       .map(({name, origin, local}) => ({name, origin, local}));
     assert.deepEqual(await saved(), [{name: new URL(first.origin).host, origin: first.origin, local: false}]);
     await assert.rejects(access(join(userData, 'connection.json')), {code: 'ENOENT'});
-    // The rest drives the Workspace menu, which only a run from source can reach.
+    // The rest drives the Connections menu, which only a run from source can reach.
     if (typeof client.evaluate !== 'function') return;
 
     const menu = label => client.evaluate(({Menu}, label) => Menu.getApplicationMenu().items
-      .find(item => item.label === 'Workspace').submenu.items.find(item => item.label === label).click(), label);
+      .find(item => item.label === 'Connections').submenu.items.find(item => item.label === label).click(), label);
     const windows = () => client.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()
       .map(win => ({url: win.webContents.getURL(), visible: win.isVisible()})).filter(win => win.url.startsWith('http'))
       .sort((a, b) => a.url.localeCompare(b.url)));
@@ -126,11 +126,11 @@ test('an address saved by an earlier version reopens, and saved workspaces open 
       {name: new URL(first.origin).host, origin: first.origin, local: false},
       {name: 'Second', origin: second.origin, local: false},
     ]);
-    const labels = await client.evaluate(({Menu}) => Menu.getApplicationMenu().items.find(item => item.label === 'Workspace')
+    const labels = await client.evaluate(({Menu}) => Menu.getApplicationMenu().items.find(item => item.label === 'Connections')
       .submenu.items.slice(0, 2).map(({label, accelerator}) => ({label, accelerator})));
     assert.deepEqual(labels, [{label: new URL(first.origin).host, accelerator: 'CmdOrCtrl+1'}, {label: 'Second', accelerator: 'CmdOrCtrl+2'}]);
 
-    // Each workspace keeps one window: choosing one in the menu shows it again rather than opening another.
+    // Each connection keeps one window: choosing one in the menu shows it again rather than opening another.
     await client.evaluate(({BrowserWindow}, address) => BrowserWindow.getAllWindows()
       .find(win => win.webContents.getURL() === address + '/').close(), first.origin);
     await expect.poll(windows).toEqual([first, second].map(({origin}) => ({url: origin + '/', visible: origin === second.origin}))
@@ -139,9 +139,9 @@ test('an address saved by an earlier version reopens, and saved workspaces open 
     await expect.poll(windows).toEqual([first, second].map(({origin}) => ({url: origin + '/', visible: true}))
       .sort((a, b) => a.url.localeCompare(b.url)));
 
-    // Manage workspaces… shows the list, where a workspace is renamed or forgotten.
-    await menu('Manage workspaces…');
-    await expect(launcher.getByRole('heading', {name: 'Open a workspace'})).toBeVisible();
+    // Manage connections… shows the list, where a connection is renamed or forgotten.
+    await menu('Manage connections…');
+    await expect(launcher.getByRole('heading', {name: 'Open a connection'})).toBeVisible();
     await launcher.getByRole('button', {name: 'Rename or remove Second'}).click();
     await launcher.getByLabel('Name', {exact: true}).fill('Studio');
     await launcher.getByRole('button', {name: 'Save'}).click();
@@ -153,7 +153,7 @@ test('an address saved by an earlier version reopens, and saved workspaces open 
     await launcher.getByRole('button', {name: 'Remove…'}).click();
     await launcher.getByRole('button', {name: 'Remove', exact: true}).click();
     await expect(launcher.getByRole('listitem')).toHaveCount(1);
-    // Forgetting a workspace closes its hidden window and leaves the other open.
+    // Forgetting a connection closes its hidden window and leaves the other open.
     await expect.poll(windows).toEqual([{url: first.origin + '/', visible: true}]);
     assert.deepEqual((await saved()).map(entry => entry.origin), [first.origin]);
   } finally {

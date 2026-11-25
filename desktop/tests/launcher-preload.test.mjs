@@ -24,13 +24,13 @@ test("the launcher bridge exposes fixed operations and projects their arguments"
     },
   });
   assert.ok(Object.isFrozen(bridge));
-  assert.deepEqual(Object.keys(bridge).sort(), ["appearance", "connect", "createOwner", "engines", "onRefresh", "open", "openDockerGuide", "remove", "rename", "start", "workspaces"]);
+  assert.deepEqual(Object.keys(bridge).sort(), ["appearance", "connect", "connections", "createOwner", "engines", "onRefresh", "open", "openDockerGuide", "remove", "rename", "start"]);
   bridge.appearance("ignored");
   assert.equal(bridge.engines(), "reply");
   bridge.start({ engine: "local", expectedSocket: "/run/test.sock", extra: "ignored" });
   bridge.createOwner({ name: "Fixture", username: "fixture", extra: "ignored" });
   bridge.connect({ url: "https://workspace.example", name: "Home server", extra: "ignored" });
-  bridge.workspaces("ignored");
+  bridge.connections("ignored");
   bridge.open({ origin: "https://workspace.example", extra: "ignored" });
   bridge.rename({ origin: "https://workspace.example", name: "Office", extra: "ignored" });
   bridge.remove({ origin: "https://workspace.example", extra: "ignored" });
@@ -42,7 +42,7 @@ test("the launcher bridge exposes fixed operations and projects their arguments"
     ["launcher:start", { engine: "local", expectedSocket: "/run/test.sock" }],
     ["launcher:createOwner", { name: "Fixture", username: "fixture" }],
     ["launcher:connect", { url: "https://workspace.example", name: "Home server" }],
-    ["launcher:workspaces"],
+    ["launcher:connections"],
     ["launcher:open", { origin: "https://workspace.example" }],
     ["launcher:rename", { origin: "https://workspace.example", name: "Office" }],
     ["launcher:remove", { origin: "https://workspace.example" }],

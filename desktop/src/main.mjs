@@ -6,8 +6,8 @@ import { launcherTheme } from './appearance.mjs';
 import { createLocalSetup, localSetupError } from './local-setup.mjs';
 import { createQuitControl, stopTimeouts } from './quit.mjs';
 import { createUpdates } from './updates.mjs';
-import { checkWorkspace, createSavedWorkspaces, linkTarget, mostRecent, ownerDestination, savedName, webDestination, WorkspaceError, workspaceOrigin, workspacePartition } from './workspace.mjs';
-import { workspaceMenu } from './workspace-menu.mjs';
+import { checkWorkspace, createSavedConnections, linkTarget, mostRecent, ownerDestination, savedName, webDestination, WorkspaceError, workspaceOrigin, workspacePartition } from './workspace.mjs';
+import { connectionMenu } from './connection-menu.mjs';
 
 const desktop = fileURLToPath(new URL('..', import.meta.url));
 const launcherURL = pathToFileURL(join(desktop, 'renderer/index.html')).href;
@@ -28,14 +28,14 @@ const local = createLocalSetup({
   versionFile: join(app.getPath('userData'), 'local-version.json'),
 });
 // One window per workspace address, each in that address's own session. Closing one hides it, so the
-// Workspace menu and the Dock icon show it again as it was.
+// Connections menu and the Dock icon show it again as it was.
 const windows = new Map();
-// Saved workspaces: a name and an address each. connection.json held the one address earlier versions kept.
-const savedWorkspaces = createSavedWorkspaces({
-  file: join(app.getPath('userData'), 'workspaces.json'),
+// Saved connections: a name and an address each. connection.json held the one address earlier versions kept.
+const savedConnections = createSavedConnections({
+  file: join(app.getPath('userData'), 'connections.json'),
   legacyFile: join(app.getPath('userData'), 'connection.json'),
   onChange: list => {
-    // A hidden window whose workspace left the list, removed or past the limit, can't be shown again.
+    // A hidden window whose connection was removed from the list can't be shown again.
     for (const [origin, win] of windows) {
       if (!list.some(entry => entry.origin === origin) && !win.isDestroyed() && !win.isVisible()) win.destroy();
     }
@@ -45,7 +45,7 @@ const savedWorkspaces = createSavedWorkspaces({
 let launcher;
 // The workspace window used last, which the Dock icon shows when no window is visible.
 let primary;
-// What the launcher shows the next time it asks: the list, the address form, or a saved workspace to open.
+// What the launcher shows the next time it asks: the list, the address form, or a saved connection to open.
 let launcherRequest;
 let busy = false;
 
@@ -206,12 +206,12 @@ function focusWorkspace(origin) {
   return true;
 }
 
-// The Workspace menu's choice of a saved workspace: its open window, or the launcher opening it, which
-// shows its progress and any problem.
-function switchWorkspace(origin) {
+// The Connections menu's choice of a saved connection: its open window, or the launcher opening it,
+// which shows its progress and any problem.
+function switchConnection(origin) {
   if (quitControl.stopping) return;
   if (focusWorkspace(origin)) {
-    void savedWorkspaces.opened(origin).catch(() => {});
+    void savedConnections.opened(origin).catch(() => {});
     return;
   }
   showLauncher(launcherURL, {open: origin});
@@ -222,7 +222,7 @@ async function openWorkspace(value, {ownerLink, localInstall = false, name} = {}
   const origin = workspaceOrigin(value);
   savedName(name, origin, localInstall);
   if (!ownerLink && focusWorkspace(origin)) {
-    await savedWorkspaces.opened(origin, {name, local: localInstall});
+    await savedConnections.opened(origin, {name, local: localInstall});
     launcher?.hide();
     return {state: 'ready', origin};
   }
@@ -233,7 +233,7 @@ async function openWorkspace(value, {ownerLink, localInstall = false, name} = {}
   try {
     await win.loadURL(url);
     if (new URL(win.webContents.getURL()).origin !== origin) throw new Error();
-    await savedWorkspaces.opened(origin, {name, local: localInstall});
+    await savedConnections.opened(origin, {name, local: localInstall});
   } catch {
     win.destroy();
     throw new WorkspaceError('open_failed', 'Could not open this workspace. Check the connection and try again.');
@@ -248,8 +248,8 @@ async function openWorkspace(value, {ownerLink, localInstall = false, name} = {}
   if (previous && !previous.isDestroyed()) previous.destroy();
   primary = win;
   win.on('close', event => {
-    // A workspace that is no longer saved can't be shown again, so its window closes for good.
-    if (quitControl.quitting || windows.get(origin) !== win || !savedWorkspaces.current().some(entry => entry.origin === origin)) return;
+    // A connection that is no longer saved can't be shown again, so its window closes for good.
+    if (quitControl.quitting || windows.get(origin) !== win || !savedConnections.current().some(entry => entry.origin === origin)) return;
     // Closing the window keeps the app, and any local workspace, running, as on any Mac.
     event.preventDefault();
     win.hide();
@@ -273,12 +273,12 @@ async function startLocal(input) {
   return {state: 'owner-needed', origin};
 }
 
-// A saved workspace chosen in the launcher. This Mac starts the local workspace with its saved engine,
+// A saved connection chosen in the launcher. This Mac starts the local workspace with its saved engine,
 // as on launch; a server is opened at its address.
 async function openSaved(value) {
   const origin = workspaceOrigin(value);
-  const entry = (await savedWorkspaces.list()).find(item => item.origin === origin);
-  if (!entry) throw new WorkspaceError('not_saved', 'This workspace is no longer in your list.');
+  const entry = (await savedConnections.list()).find(item => item.origin === origin);
+  if (!entry) throw new WorkspaceError('not_saved', 'This connection is no longer in your list.');
   if (!entry.local || windows.has(origin)) return openWorkspace(origin);
   const {saved: engine} = await local.engines();
   if (!engine) throw localSetupError('engine_missing');
@@ -289,22 +289,22 @@ async function openSaved(value) {
 // Renaming or removing changes only the list file, so a failure says that, not what local setup says.
 async function changeSaved(change) {
   try { await change(); } catch (error) {
-    throw error instanceof WorkspaceError ? error : new WorkspaceError('save_failed', 'Your Space could not save your workspaces. Try again.');
+    throw error instanceof WorkspaceError ? error : new WorkspaceError('save_failed', 'Your Space could not save your connections. Try again.');
   }
-  return {workspaces: await savedState()};
+  return {connections: await savedState()};
 }
 
 async function savedState() {
   const running = local.mayBeRunning();
-  return (await savedWorkspaces.list()).map(entry => ({...entry, running: entry.local && running}));
+  return (await savedConnections.list()).map(entry => ({...entry, running: entry.local && running}));
 }
 
 // The list for the launcher, with what it was asked to show, once.
 async function launcherState() {
   const request = launcherRequest;
   launcherRequest = undefined;
-  const workspaces = await savedState();
-  return request ? {workspaces, request} : {workspaces};
+  const connections = await savedState();
+  return request ? {connections, request} : {connections};
 }
 
 async function reopen() {
@@ -314,8 +314,8 @@ async function reopen() {
   busy = true;
   let openingLocal = false;
   try {
-    // The workspace used last opens on launch.
-    const last = mostRecent(await savedWorkspaces.list());
+    // The connection used last opens on launch.
+    const last = mostRecent(await savedConnections.list());
     if (!last) return showLauncher();
     if (!last.local) return await openWorkspace(last.origin);
     // Local Docker startup can take minutes. Show progress while reconnecting on launch.
@@ -348,12 +348,12 @@ function installHandlers() {
       return openWorkspace(result.origin, {ownerLink: result.url === result.origin ? undefined : result.url, localInstall: true});
     },
     connect: input => openWorkspace(input?.url, {name: input?.name}),
-    workspaces: launcherState,
+    connections: launcherState,
     open: input => openSaved(input?.origin),
-    rename: input => changeSaved(() => savedWorkspaces.rename(input?.origin, input?.name)),
-    // Forgets a saved workspace: a hidden window for it closes, and one on screen stays until it is
+    rename: input => changeSaved(() => savedConnections.rename(input?.origin, input?.name)),
+    // Forgets a saved connection: a hidden window for it closes, and one on screen stays until it is
     // closed. This Mac's installation keeps running, and quitting still stops it.
-    remove: input => changeSaved(() => savedWorkspaces.remove(input?.origin)),
+    remove: input => changeSaved(() => savedConnections.remove(input?.origin)),
     openDockerGuide: () => shell.openExternal('https://docs.docker.com/desktop/setup/install/mac-install/'),
   };
   for (const [name, action] of Object.entries(actions)) {
@@ -386,10 +386,10 @@ function buildMenu() {
       {type: 'separator'}, {role: 'hide'}, {role: 'hideOthers'}, {role: 'unhide'},
       {type: 'separator'}, {role: 'quit'},
     ]},
-    {label: 'Workspace', submenu: workspaceMenu({
-      saved: savedWorkspaces.current(),
+    {label: 'Connections', submenu: connectionMenu({
+      saved: savedConnections.current(),
       frontmost: workspaceOf(BrowserWindow.getFocusedWindow()),
-      open: switchWorkspace,
+      open: switchConnection,
       addServer: () => showLauncher(launcherURL, {view: 'remote'}),
       manage: () => showLauncher(launcherURL, {view: 'list'}),
     })},
@@ -401,14 +401,14 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => { if (app.isReady() && !quitControl.stopping) showLauncher(); });
-  // The menu's check follows the frontmost workspace, and goes when its window hides. The workspace
+  // The menu's check follows the frontmost workspace, and goes when its window hides. The connection
   // used last is the one whose window came to the front last: the Dock icon shows it, and launch opens it.
   // While the app quits, windows hide or close one by one and bring others to the front; that isn't use.
   app.on('browser-window-focus', (event, win) => {
     const origin = workspaceOf(win);
     if (origin) {
       primary = win;
-      if (!quitControl.stopping && !quitControl.quitting) void savedWorkspaces.used(origin).catch(() => {});
+      if (!quitControl.stopping && !quitControl.quitting) void savedConnections.used(origin).catch(() => {});
     }
     buildMenu();
   });
@@ -426,7 +426,7 @@ if (!app.requestSingleInstanceLock()) {
     // Logout, restart and shutdown stop the local workspace with a short bound and no dialog.
     powerMonitor.on('shutdown', () => quitControl.systemEnding());
     await updates.start().catch(() => {});
-    await savedWorkspaces.list().catch(() => {});
+    await savedConnections.list().catch(() => {});
     buildMenu();
     void reopen();
   });

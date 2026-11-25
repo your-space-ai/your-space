@@ -97,7 +97,7 @@ button:disabled { opacity: .56; cursor: default; }
 #problem:not(:empty) { border-inline-start: 3px solid currentColor; padding-inline-start: .7rem; }
 #status:empty, #problem:empty { margin: 0; }
 
-/* Saved workspaces: one row each, opened by its main button, renamed or removed from its ⋯ button. */
+/* Saved connections: one row each, opened by its main button, renamed or removed from its ⋯ button. */
 #welcome.loading { visibility: hidden; }
 .saved-list {
   list-style: none; margin: 0; padding: 0;
