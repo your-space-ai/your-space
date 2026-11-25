@@ -542,10 +542,26 @@ describe("a run", () => {
       return answer(method, path, body);
     });
     const started = Date.now();
-    const result = await syncKnowledge("notes", { remote, mode: "sync" }, 200);
+    // Time enough to reach the step however slow the machine, and no more.
+    const result = await syncKnowledge("notes", { remote, mode: "sync" }, 2_000);
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(result).toMatchObject({ result: "failed", message: expect.stringContaining("took longer than 2 hours") });
     expect(result.listed).toBeUndefined();
+    expect(steps().map((s) => s.body.Cmd[0])).toEqual(["bisync"]);
+    expect(removed).toContain("step-0");
+  });
+
+  it("starts no step whose container the engine made after the run's time was up, and removes it", async () => {
+    const answer = vi.mocked(engineModule.engine).getMockImplementation()!;
+    vi.mocked(engineModule.engine).mockImplementation(async (method, path, body) => {
+      if (method === "POST" && path.startsWith("/containers/create?name=")) await new Promise((r) => setTimeout(r, 2_500));
+      return answer(method, path, body);
+    });
+    const starts = () => vi.mocked(engineModule.engineJson).mock.calls.filter(([, path]) => path.startsWith("/containers/step-") && path.endsWith("/start")).length;
+    const before = starts();
+    const result = await syncKnowledge("notes", { remote, mode: "sync" }, 2_000);
+    expect(result).toMatchObject({ result: "failed", message: expect.stringContaining("took longer than 2 hours") });
+    expect(starts()).toBe(before);
     expect(steps().map((s) => s.body.Cmd[0])).toEqual(["bisync"]);
     expect(removed).toContain("step-0");
   });

@@ -495,16 +495,19 @@ const notStarted = (msg: string): StepResult => ({ code: 10, lines: [{ level: "e
  * starts once Your Space is stopping, or once the run's time is up, which also ends a step under way.
  */
 async function step(name: string, args: string[], options: { env?: Record<string, string>; network?: string; mounts: Mount[]; secrets: Record<string, string>; deadline: number }): Promise<StepResult | "busy"> {
-  if (isStopping()) return notStarted(STOPPING);
-  const left = options.deadline - Date.now();
-  if (left <= 0) return notStarted(RUN_OVER);
+  const refused = () => (isStopping() ? notStarted(STOPPING) : options.deadline <= Date.now() ? notStarted(RUN_OVER) : undefined);
+  const early = refused();
+  if (early) return early;
   const id = await create(name, syncContainer(name, args, options));
   if (!id) return "busy";
   try {
+    // Checked again once the container is made, which the engine can take long over.
+    const late = refused();
+    if (late) return late;
     await engineJson("POST", `/containers/${id}/start`);
-    // A stop that began while the container was made: /stop-all's own pass may have missed it.
+    // A stop that began while the container was started: /stop-all's own pass may have missed it.
     if (isStopping()) void interrupt(id);
-    const limit = Math.min(STEP_TIMEOUT_MS, left);
+    const limit = Math.min(STEP_TIMEOUT_MS, options.deadline - Date.now());
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<"timeout">((resolve) => (timer = setTimeout(() => resolve("timeout"), limit)));
     const waited = await Promise.race([engineJson<{ StatusCode: number }>("POST", `/containers/${id}/wait`), timeout]).finally(() => clearTimeout(timer));
@@ -560,8 +563,6 @@ let proxyStarting: Promise<void> = Promise.resolve();
  */
 function ensureProxy(): Promise<void> {
   const next = proxyStarting.catch(() => undefined).then(async () => {
-    // Checked when its turn comes: a stop may have begun while it waited.
-    if (isStopping()) throw new EngineError(STOPPING, 409);
     if (!squid) {
       const info = await engineInfo();
       if (!info.reachable) throw new EngineError("The engine can't be reached.", 503);
@@ -570,6 +571,8 @@ function ensureProxy(): Promise<void> {
       squid = pinnedImage(EGRESS_IMAGE, image.digest);
     }
     await ensureImage(squid);
+    // Checked when its turn comes and its image is here: a stop may have begun while it waited.
+    if (isStopping()) throw new EngineError(STOPPING, 409);
     const dir = mkdtempSync("/tmp/ys-sync-");
     try {
       writeFileSync(join(dir, "compose.json"), JSON.stringify(syncProxyFile(squid)), { mode: 0o600 });

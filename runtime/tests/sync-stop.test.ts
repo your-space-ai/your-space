@@ -20,7 +20,8 @@ const remote: DriveRemote = { type: "drive", clientId: "1234-abc.apps.googleuser
 
 /** A fresh runtime manager on a fake engine, with what each test can hold and what it saw. */
 async function load(options: { holdAt?: (method: string, path: string) => boolean; holdStepUntilStopped?: boolean } = {}) {
-  // Reached at the first request holdAt matches, or else once a step's container waits.
+  // Reached at the first request holdAt matches, to the engine's API or its JSON, or else once a
+  // step's container waits.
   vi.resetModules();
   const engineModule = await import("../src/engine.ts");
   const apps = await import("../src/apps.ts");
@@ -31,7 +32,7 @@ async function load(options: { holdAt?: (method: string, path: string) => boolea
     [knowledgeVolume(apps.INSTALLATION, "notes"), labels("knowledge")],
     [knowledgeStateVolume(apps.INSTALLATION, "notes"), labels("knowledge-sync")],
   ]);
-  const seen = { created: [] as string[][], composed: [] as string[][], stopped: [] as string[] };
+  const seen = { created: [] as string[][], composed: [] as string[][], stopped: [] as string[], started: [] as string[], removed: [] as string[] };
   const running = new Set<string>();
   let reach: () => void = () => {};
   const reached = new Promise<void>((resolve) => (reach = resolve));
@@ -71,14 +72,22 @@ async function load(options: { holdAt?: (method: string, path: string) => boolea
       return { status: 204, body: "" };
     }
     if (method === "DELETE" && path.startsWith("/containers/")) {
-      running.delete(path.split("/")[2]!.split("?")[0]!);
+      const id = path.split("/")[2]!.split("?")[0]!;
+      seen.removed.push(id);
+      running.delete(id);
       return { status: 204, body: "" };
     }
     throw new Error(`unexpected ${method} ${path}`);
   });
   vi.mocked(engineModule.engineJson).mockImplementation(async (method, path) => {
+    if (options.holdAt?.(method, path)) {
+      options.holdAt = undefined;
+      reach();
+      await held;
+    }
     if (method === "POST" && path.endsWith("/start")) {
       running.add(path.split("/")[2]!);
+      seen.started.push(path.split("/")[2]!);
       return {} as never;
     }
     if (method === "POST" && path.endsWith("/wait")) {
@@ -129,9 +138,37 @@ describe("stopping Your Space's apps", () => {
     expect(() => sync.syncKnowledge("notes", { remote, mode: "sync" })).toThrow(expect.objectContaining({ status: 409 }));
   });
 
-  it("stops a step whose container the stop began while it was made, as Ctrl+C stops it", async () => {
-    // Made before the stop, started after it, when the stop's own pass has found nothing running.
+  it("starts no proxy whose image was still being readied when the stop began", async () => {
+    const { apps, sync, seen, reached, release } = await load({ holdAt: (method, path) => method === "GET" && path.startsWith("/images/") && path.includes("squid") });
+    const run = sync.syncKnowledge("notes", { remote, mode: "sync" });
+    void run.catch(() => {});
+    await reached;
+    await apps.stopAll();
+    const stopping = sync.stopSyncs();
+    release();
+    await expect(run).rejects.toMatchObject({ status: 409 });
+    await stopping;
+    expect(seen.composed.some((args) => args.includes("up"))).toBe(false);
+    expect(seen.created).toEqual([]);
+  });
+
+  it("doesn't start a step whose container the stop began while it was made, and removes it", async () => {
     const { apps, sync, seen, reached, release } = await load({ holdAt: (method, path) => method === "POST" && path.startsWith("/containers/create?name="), holdStepUntilStopped: true });
+    const run = sync.syncKnowledge("notes", { remote, mode: "sync" });
+    await reached;
+    await apps.stopAll();
+    const stopping = sync.stopSyncs();
+    release();
+    expect(await run).toMatchObject({ result: "failed", message: expect.stringContaining("stopping") });
+    await stopping;
+    expect(seen.started).toEqual([]);
+    expect(seen.removed).toEqual(["step-0"]);
+    expect(seen.created.map((cmd) => cmd[0])).toEqual(["bisync"]);
+  });
+
+  it("stops a step whose container the stop began while it was started, as Ctrl+C stops it", async () => {
+    // Started after the stop's own pass found nothing running.
+    const { apps, sync, seen, reached, release } = await load({ holdAt: (method, path) => method === "POST" && path.endsWith("/start"), holdStepUntilStopped: true });
     const run = sync.syncKnowledge("notes", { remote, mode: "sync" });
     await reached;
     await apps.stopAll();
