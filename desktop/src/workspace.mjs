@@ -93,16 +93,97 @@ export async function checkWorkspace(origin, fetchStatus) {
   }
 }
 
-export async function lastWorkspace(file) {
-  try {
-    const saved = JSON.parse(await readFile(file, 'utf8'));
-    return { origin: workspaceOrigin(saved.origin), local: saved.local === true };
-  }
-  catch { return null; }
+// Saved connections are a name and an address each, and nothing about how the server is reached: a
+// tunnel, VPN or proxy is the network's job (decision 2026-11-24). The list keeps the order they
+// were added, so the Connections menu's ⌘1–⌘9 stay put; "most recent" only picks what opens on launch.
+const localName = 'This Mac';
+
+// The name shown for a saved address. Empty means the default: the address's host, or This Mac.
+export function savedName(value, origin, local = false) {
+  const address = workspaceOrigin(origin);
+  if (value !== undefined && value !== null && typeof value !== 'string') throw invalidName();
+  const name = (value ?? '').trim();
+  if (!name) return local ? localName : new URL(address).host;
+  if (name.length > 100 || /[\p{Cc}\u2028\u2029\u202a-\u202e\u2066-\u2069]/u.test(name)) throw invalidName();
+  return name;
 }
 
-export async function rememberWorkspace(file, origin, local = false) {
-  const contents = JSON.stringify({origin: workspaceOrigin(origin), local});
+function invalidName() {
+  return new WorkspaceError('invalid_name', 'Enter a name of up to 100 characters on one line, or leave it empty.');
+}
+
+// Keeps the valid entries of a list read from disk, each address once.
+export function parseSaved(data) {
+  const list = [];
+  for (const item of Array.isArray(data?.connections) ? data.connections : []) {
+    let origin;
+    try { origin = workspaceOrigin(item?.origin); } catch { continue; }
+    if (list.some(entry => entry.origin === origin)) continue;
+    const local = item.local === true;
+    let name;
+    try { name = savedName(item.name, origin, local); } catch { name = savedName('', origin, local); }
+    const lastOpened = Number.isSafeInteger(item.lastOpened) && item.lastOpened > 0 ? item.lastOpened : 0;
+    list.push({name, origin, local, lastOpened});
+  }
+  return list;
+}
+
+// Records a successful open: a new address goes to the end of the list, a saved one keeps its place.
+// `local` marks the app's own installation and stays set, so connecting to the same address by hand
+// doesn't make This Mac a plain server.
+export function openedSaved(list, {origin, name, local = false}, time) {
+  origin = workspaceOrigin(origin);
+  time = latest(list, time);
+  const index = list.findIndex(entry => entry.origin === origin);
+  if (index >= 0) {
+    const entry = list[index];
+    const marked = entry.local || local;
+    // An empty name keeps the one already saved.
+    const given = typeof name === 'string' ? name.trim() : name;
+    return list.with(index, {...entry, local: marked, lastOpened: time, name: given ? savedName(given, origin, marked) : entry.name});
+  }
+  return [...list, {name: savedName(name, origin, local), origin, local, lastOpened: time}];
+}
+
+export function renamedSaved(list, origin, name) {
+  origin = workspaceOrigin(origin);
+  const index = list.findIndex(entry => entry.origin === origin);
+  if (index < 0) throw notSaved();
+  return list.with(index, {...list[index], name: savedName(name, origin, list[index].local)});
+}
+
+// Forgets an address. Nothing on its server, or in the installation on this Mac, changes.
+export function removedSaved(list, origin) {
+  origin = workspaceOrigin(origin);
+  if (!list.some(entry => entry.origin === origin)) throw notSaved();
+  return list.filter(entry => entry.origin !== origin);
+}
+
+function notSaved() {
+  return new WorkspaceError('not_saved', 'This connection is no longer in your list.');
+}
+
+// The connection to open on launch: the one opened last, or the first saved when none has a time.
+export function mostRecent(list) {
+  return list.reduce((best, entry) => !best || entry.lastOpened > best.lastOpened ? entry : best, null);
+}
+
+// Records that a saved connection was used, as when its window comes to the front, so launch opens it.
+// An address that isn't saved stays off the list, and the list is unchanged when it is already the most recent.
+export function usedSaved(list, origin, time) {
+  origin = workspaceOrigin(origin);
+  const index = list.findIndex(entry => entry.origin === origin);
+  if (index < 0 || mostRecent(list) === list[index]) return list;
+  return list.with(index, {...list[index], lastOpened: latest(list, time)});
+}
+
+// A time after every saved one, so the connection just opened or used is the most recent even when the
+// clock has gone back or two times are equal.
+function latest(list, time) {
+  return Math.max(time, (mostRecent(list)?.lastOpened ?? 0) + 1);
+}
+
+async function writePrivate(file, contents) {
   await mkdir(dirname(file), {recursive: true, mode: 0o700});
   const temporary = file + '.' + randomUUID();
   try {
@@ -111,4 +192,81 @@ export async function rememberWorkspace(file, origin, local = false) {
   } finally {
     await rm(temporary, {force: true});
   }
+}
+
+// The saved list in `file`, written whole and atomically, readable only by this user. On first use it
+// takes over the single address earlier versions kept in `legacyFile`, then deletes that file.
+// Changes run one at a time, and one that changes nothing isn't written; `onChange` follows each one
+// that is. No write replaces a list it couldn't read. A file that fails to read fails reading, and
+// every change, until it can be read. A file that reads but doesn't hold a list, because it isn't
+// JSON or has no `connections` array, is renamed aside to `<file>.corrupt-<time>` and the list
+// starts empty.
+export function createSavedConnections({file, legacyFile, now = Date.now, onChange = () => {}}) {
+  let list = [];
+  let loaded = false;
+  let queue = Promise.resolve();
+
+  // A missing file reads as null; any other failure to read it is an error.
+  async function read(path) {
+    try { return await readFile(path, 'utf8'); } catch (error) {
+      if (error?.code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+
+  async function load() {
+    const text = await read(file);
+    if (text === null) return migrate();
+    let data;
+    try { data = JSON.parse(text); } catch { /* handled below */ }
+    if (Array.isArray(data?.connections)) return parseSaved(data);
+    // Kept for the owner to recover; if it can't be moved, loading fails rather than replacing it.
+    await rename(file, file + '.corrupt-' + now());
+    return [];
+  }
+
+  async function migrate() {
+    const text = legacyFile ? await read(legacyFile) : null;
+    if (text === null) return [];
+    let origin;
+    let local;
+    try {
+      const saved = JSON.parse(text);
+      origin = workspaceOrigin(saved?.origin);
+      local = saved.local === true;
+    } catch { return []; }
+    const migrated = openedSaved([], {origin, local}, now());
+    await writePrivate(file, JSON.stringify({connections: migrated}));
+    await rm(legacyFile, {force: true});
+    return migrated;
+  }
+
+  function serial(change) {
+    const run = queue.then(async () => {
+      if (!loaded) {
+        list = await load();
+        loaded = true;
+      }
+      if (!change) return list;
+      const next = change(list);
+      if (next === list) return list;
+      await writePrivate(file, JSON.stringify({connections: next}));
+      list = next;
+      try { onChange(list); } catch { /* A listener's failure doesn't undo the change. */ }
+      return list;
+    });
+    queue = run.catch(() => {});
+    return run;
+  }
+
+  return {
+    /** The saved list, loading it the first time. */
+    list: () => serial(),
+    /** The list as last loaded or written, for code that can't wait, such as building a menu. */
+    current: () => list,
+    opened: (origin, {name, local} = {}) => serial(value => openedSaved(value, {origin, name, local}, now())),
+    used: origin => serial(value => usedSaved(value, origin, now())),
+    rename: (origin, name) => serial(value => renamedSaved(value, origin, name)),
+    remove: origin => serial(value => removedSaved(value, origin)),
+  };
 }

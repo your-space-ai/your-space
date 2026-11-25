@@ -26,15 +26,27 @@ env -u DOCKER_CONTEXT DOCKER_HOST="unix://<socket>" \
   --workdir "$HOME/Library/Application Support/ai.your-space.desktop/local"
 ```
 
-From a source checkout, run `node cli/dist/your-space.cjs` in the repository root in place of the app's CLI. Then open the new address with **Connect to a server**.
+From a source checkout, run `node cli/dist/your-space.cjs` in the repository root in place of the app's CLI. Then open the new address with **Add a server**, as [Saved connections](#saved-connections) describes.
 
-Choose **Connect to a server** to use an existing workspace without installing Docker on this Mac. Enter the HTTPS address supplied by its operator and sign in as usual. In either workspace, review and confirm an app's installation kit in the dashboard. The selected server runs the app. The [CLI and headless installation guide](index.md) covers server setup, owner recovery and proxies.
+Choose **Connect to a server**, or **Add a server** once the launcher lists your connections, to use an existing workspace without installing Docker on this Mac. Enter the HTTPS address supplied by its operator and sign in as usual. In either workspace, review and confirm an app's installation kit in the dashboard. The selected server runs the app. The [CLI and headless installation guide](index.md) covers server setup, owner recovery and proxies.
 
-Closing the window keeps Your Space in the Dock and the local workspace running; click the Dock icon to show it again. Quitting the app with **Your Space › Quit Your Space** (⌘Q) stops the local workspace and its apps, keeping their data, and opening the app starts them again. If it can't stop them within 2 minutes, the app quits anyway and tells you they may still be running. A workspace you open with **Connect to a server** keeps running when you quit.
+Closing a workspace's window keeps Your Space in the Dock and the local workspace running; click the Dock icon to show the window you used last again. Quitting the app with **Your Space › Quit Your Space** (⌘Q) stops the local workspace and its apps, keeping their data. Opening **This Mac** starts them again, which the app does as it opens when This Mac is the workspace you used last. If it can't stop them within 2 minutes, the app quits anyway and tells you they may still be running. A workspace on a server keeps running when you quit.
 
-The app updates itself from [Your Space Releases](https://github.com/your-space-ai/your-space/releases). Choose **Your Space › Check for Updates…** at any time. It also checks shortly after it opens and then once a day; **Your Space › Check for Updates Automatically** turns that off, and then the app makes no request you didn't ask for. A newer version downloads and installs only when you agree, and restarting stops the local workspace, updates the app, then starts the workspace again on the new version. An alpha is also offered later alphas and betas, and a beta later betas. The first time the workspace starts after an update, the app brings the local workspace to the app's version with its CLI's `upgrade` command.
+The app updates itself from [Your Space Releases](https://github.com/your-space-ai/your-space/releases). Choose **Your Space › Check for Updates…** at any time. It also checks shortly after it opens and then once a day; **Your Space › Check for Updates Automatically** turns that off, and then the app makes no request you didn't ask for. A newer version downloads and installs only when you agree, and restarting stops the local workspace, updates the app, then opens the workspace you used last; if that is This Mac, the local workspace starts again on the new version. An alpha is also offered later alphas and betas, and a beta later betas. The first time the workspace starts after an update, the app brings the local workspace to the app's version with its CLI's `upgrade` command.
 
 The CLI inside each app is the one the app uses for local setup; for a standalone CLI on a Mac, use the npm package. See the [distribution notices](https://github.com/your-space-ai/your-space/blob/main/desktop/THIRD-PARTY.md) for pinned upstream artifacts and source.
+
+## Saved connections
+
+Each workspace you open is saved as a connection, a name and an address, and the app opens the connection you used last when it starts. With at least one saved, the launcher shows the list as **Open a connection**: choose a row to open that workspace. **Add a server** opens the address form, which also takes an optional name; without one, the list shows the server's host name. **This Mac** is the connection to the workspace the app runs on this Mac, and its row says **Running** while it runs. **Run on this Mac** stays below the list until This Mac is in it.
+
+Each connection opens in its own window, and several can be open at once. The **Connections** menu lists the saved connections in order, the first nine with ⌘1 to ⌘9, with a check next to the one in front. Choosing one shows its window, or opens it. **Connections › Add a server…** opens the address form, and **Connections › Manage connections…** (⇧⌘O) shows the list.
+
+To rename a connection or remove it, use the **⋯** button on its row in the list. Removing only takes it off the list: its server, apps and data stay as they are, and removing This Mac doesn't stop or uninstall the workspace on this Mac. **Run on this Mac** or **Add a server** brings it back.
+
+The list is kept in `connections.json` in `~/Library/Application Support/ai.your-space.desktop`. If the app finds that file damaged, it renames it to `connections.json.corrupt-` followed by the time, and starts a new list.
+
+A saved connection is a name and an address, nothing more. The app doesn't open SSH sessions, VPNs or tunnels; reaching a server is up to your network. If you can reach a computer only over SSH and Your Space there answers at `http://space.localhost:<port>`, forward that same port on this Mac to it yourself with `ssh -N -L <port>:localhost:<port> <computer>`, keep it running, and add `http://space.localhost:<port>`. The port on this Mac has to match: Your Space there accepts only requests that name its own address, and its apps' addresses carry the same port, so the one forward reaches them too. Pick a port that is free on this Mac; This Mac's own workspace uses 8081. If Your Space on that computer has no port in its address, give it one first by running `your-space configure --workdir <folder> --this-machine --port <port>` there.
 
 ## Logs and recovery
 
@@ -61,8 +73,8 @@ There is no uninstall yet. If you only use **Connect to a server**, removing the
 
 To also remove the workspace this Mac runs, with its apps and their data:
 
-1. Open the app and its local workspace, which starts the workspace again if you quit the app. In that local workspace, select **Remove app**, then **Delete data**, for each app in **Apps**. Do this only in the workspace this Mac runs, at `http://space.localhost:8081` or the address you gave it with `configure`: in a workspace on a server, it would delete that server's apps.
-2. Quit the app, which stops the local workspace. Opening the app again would start it.
+1. Open **This Mac** in the app, which starts the local workspace again if you quit the app. In that local workspace, select **Remove app**, then **Delete data**, for each app in **Apps**. Do this only in the workspace this Mac runs, at `http://space.localhost:8081` or the address you gave it with `configure`: in a workspace on a server, it would delete that server's apps.
+2. Quit the app, which stops the local workspace. Opening the app again would start it if This Mac was the workspace you used last.
 3. In Terminal, run `unset DOCKER_CONTEXT` and `export DOCKER_HOST="unix://<socket>"`, then follow the rest of [Remove Your Space](../operate/index.md#remove-your-space) in the installation folder above, in the same window.
 4. Move the app to the Trash, and delete `~/Library/Application Support/ai.your-space.desktop` and the folders whose names start with `ai.your-space.desktop` in `~/Library/Caches`.
 

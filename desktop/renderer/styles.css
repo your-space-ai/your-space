@@ -8,6 +8,7 @@
   --accent-ink: HighlightText;
   --border: ButtonBorder;
   --danger: CanvasText;
+  --success: CanvasText;
   --font-body: system-ui, sans-serif;
   --font-heading: Georgia, serif;
   font: 15px/1.5 var(--font-body);
@@ -95,5 +96,37 @@ button:disabled { opacity: .56; cursor: default; }
 #problem { color: var(--danger); }
 #problem:not(:empty) { border-inline-start: 3px solid currentColor; padding-inline-start: .7rem; }
 #status:empty, #problem:empty { margin: 0; }
+
+/* Saved connections: one row each, opened by its main button, renamed or removed from its ⋯ button. */
+#welcome.loading { visibility: hidden; }
+.saved-list {
+  list-style: none; margin: 0; padding: 0;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--panel); overflow: hidden;
+}
+.saved-row { display: flex; align-items: stretch; }
+.saved-row + .saved-row { border-top: 1px solid var(--border); }
+.saved-open, .saved-edit { border: none; background: none; }
+.saved-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 1rem; padding: .85rem 0 .85rem 1rem; text-align: left; }
+.saved-open:hover, .saved-edit:hover { background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+.saved-open:focus-visible, .saved-edit:focus-visible { outline-offset: -3px; }
+.saved-text { flex: 1; min-width: 0; }
+.saved-text strong, .saved-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-state { flex: none; display: flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .87rem; }
+.running-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--success); }
+.saved-edit { flex: none; width: 2.9rem; color: var(--muted); font-size: 1.15rem; }
+.optional { color: var(--muted); font-weight: 400; }
+.spacer { flex: 1; }
+
+dialog {
+  width: min(100% - 2rem, 27rem); padding: 1.4rem;
+  color: var(--fg); background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+}
+dialog::backdrop { background: color-mix(in srgb, var(--bg) 55%, transparent); }
+dialog h2 { margin: 0; font-size: 1.35rem; line-height: 1.25; overflow-wrap: anywhere; }
+dialog p { margin: .5rem 0 1rem; }
+.dialog-address { color: var(--muted); overflow-wrap: anywhere; }
+.dialog-problem { color: var(--danger); overflow-wrap: anywhere; }
+.dialog-problem:not(:empty) { border-inline-start: 3px solid currentColor; padding-inline-start: .7rem; }
+.dialog-problem:empty { display: none; }
 
 h1, h2 { font-family: var(--font-heading); font-weight: 600; }

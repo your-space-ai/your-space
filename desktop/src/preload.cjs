@@ -7,6 +7,14 @@ contextBridge.exposeInMainWorld("yourSpace", Object.freeze({
   engines: () => ipcRenderer.invoke("launcher:engines"),
   start: ({ engine, expectedSocket }) => ipcRenderer.invoke("launcher:start", { engine, expectedSocket }),
   createOwner: ({ name, username }) => ipcRenderer.invoke("launcher:createOwner", { name, username }),
-  connect: ({ url }) => ipcRenderer.invoke("launcher:connect", { url }),
+  connect: ({ url, name }) => ipcRenderer.invoke("launcher:connect", { url, name }),
+  connections: () => ipcRenderer.invoke("launcher:connections"),
+  open: ({ origin }) => ipcRenderer.invoke("launcher:open", { origin }),
+  rename: ({ origin, name }) => ipcRenderer.invoke("launcher:rename", { origin, name }),
+  remove: ({ origin }) => ipcRenderer.invoke("launcher:remove", { origin }),
+  // The main process asks the launcher to read its list again; the page gets no event details.
+  onRefresh: (callback) => {
+    if (typeof callback === "function") ipcRenderer.on("launcher:refresh", () => callback());
+  },
   openDockerGuide: () => ipcRenderer.invoke("launcher:openDockerGuide"),
 }));

@@ -1,6 +1,6 @@
 // Runs the actual Electron windows, either from source or from an extracted Mac candidate.
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { builtInThemes, defaultThemeId } from "../../shared/appearance/theme.mjs";
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -26,7 +26,7 @@ async function fixture() {
   return {server, origin: 'http://127.0.0.1:' + server.address().port};
 }
 
-test('native launcher opens a workspace, isolates its app and reopens the saved address', {timeout: 150_000}, async () => {
+test('native launcher opens a workspace, isolates its app, saves it and reopens it', {timeout: 150_000}, async () => {
   const userData = await mkdtemp(join(tmpdir(), 'your-space-native-'));
   const {server, origin} = await fixture();
   const launch = () => launchDesktop(desktop,userData);
@@ -48,7 +48,10 @@ test('native launcher opens a workspace, isolates its app and reopens the saved 
     const child = await newTab;
     await expect(child).toHaveURL(origin + '/app');
     assert.equal(await child.evaluate(() => typeof window.yourSpace), 'undefined');
-    assert.deepEqual(JSON.parse(await readFile(join(userData, 'connection.json'), 'utf8')), {origin, local:false});
+    // The address is saved with its host as its name.
+    const saved = JSON.parse(await readFile(join(userData, 'connections.json'), 'utf8'));
+    assert.deepEqual(saved.connections.map(({name, origin, local}) => ({name, origin, local})), [{name: new URL(origin).host, origin, local:false}]);
+    assert.ok(Number.isSafeInteger(saved.connections[0].lastOpened));
     // From source, Playwright also reaches the main process: closing the workspace window keeps the app
     // running with the window hidden, the Dock icon shows it again, and the app menu offers updates.
     if (typeof client.evaluate === 'function') {
@@ -66,6 +69,12 @@ test('native launcher opens a workspace, isolates its app and reopens the saved 
         {label:'Check for Updates…', type:'normal', checked:false},
         {label:'Check for Updates Automatically', type:'checkbox', checked:false},
       ]);
+      // The Connections menu lists the saved connection on ⌘1, then adding a server and the launcher's list.
+      const connectionMenu = await client.evaluate(({Menu}) => Menu.getApplicationMenu().items
+        .find(item => item.label === 'Connections').submenu.items.map(({label, type, accelerator}) => ({label, type, accelerator})));
+      assert.deepEqual(connectionMenu.filter(item => item.type !== 'separator').map(item => item.label).slice(0, 3),
+        [new URL(origin).host, 'Add a server…', 'Manage connections…']);
+      assert.equal(connectionMenu[0].accelerator, 'CmdOrCtrl+1');
     }
     await client.close();
     client = await launch();
@@ -76,6 +85,83 @@ test('native launcher opens a workspace, isolates its app and reopens the saved 
     if (client) await client.close().catch(() => {});
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
+    await rm(userData, {recursive:true, force:true});
+  }
+});
+
+test('an address saved by an earlier version reopens, and saved connections open side by side', {timeout: 150_000}, async () => {
+  const userData = await mkdtemp(join(tmpdir(), 'your-space-saved-'));
+  const first = await fixture();
+  const second = await fixture();
+  let client;
+  try {
+    // Earlier versions kept one address in connection.json; it becomes the first saved connection.
+    await writeFile(join(userData, 'connection.json'), JSON.stringify({origin: first.origin, local: false}));
+    client = await launchDesktop(desktop, userData);
+    const reopened = await client.firstWindow();
+    await expect(reopened.getByRole('heading', {name:'Test workspace'})).toBeVisible();
+    await expect(reopened).toHaveURL(first.origin + '/');
+    const saved = async () => JSON.parse(await readFile(join(userData, 'connections.json'), 'utf8')).connections
+      .map(({name, origin, local}) => ({name, origin, local}));
+    assert.deepEqual(await saved(), [{name: new URL(first.origin).host, origin: first.origin, local: false}]);
+    await assert.rejects(access(join(userData, 'connection.json')), {code: 'ENOENT'});
+    // The rest drives the Connections menu, which only a run from source can reach.
+    if (typeof client.evaluate !== 'function') return;
+
+    const menu = label => client.evaluate(({Menu}, label) => Menu.getApplicationMenu().items
+      .find(item => item.label === 'Connections').submenu.items.find(item => item.label === label).click(), label);
+    const windows = () => client.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()
+      .map(win => ({url: win.webContents.getURL(), visible: win.isVisible()})).filter(win => win.url.startsWith('http'))
+      .sort((a, b) => a.url.localeCompare(b.url)));
+    const shown = client.waitForEvent('window');
+    await menu('Add a server…');
+    const launcher = await shown;
+    await expect(launcher.getByRole('heading', {name: 'Connect to a server'})).toBeFocused();
+    await launcher.getByLabel('Server address').fill(second.origin);
+    await launcher.getByLabel('Name (optional)').fill('Second');
+    const opened = client.waitForEvent('window');
+    await launcher.getByRole('button', {name: 'Connect', exact: true}).click();
+    await expect((await opened).getByRole('heading', {name: 'Test workspace'})).toBeVisible();
+    assert.deepEqual(await saved(), [
+      {name: new URL(first.origin).host, origin: first.origin, local: false},
+      {name: 'Second', origin: second.origin, local: false},
+    ]);
+    const labels = await client.evaluate(({Menu}) => Menu.getApplicationMenu().items.find(item => item.label === 'Connections')
+      .submenu.items.slice(0, 2).map(({label, accelerator}) => ({label, accelerator})));
+    assert.deepEqual(labels, [{label: new URL(first.origin).host, accelerator: 'CmdOrCtrl+1'}, {label: 'Second', accelerator: 'CmdOrCtrl+2'}]);
+
+    // Each connection keeps one window: choosing one in the menu shows it again rather than opening another.
+    await client.evaluate(({BrowserWindow}, address) => BrowserWindow.getAllWindows()
+      .find(win => win.webContents.getURL() === address + '/').close(), first.origin);
+    await expect.poll(windows).toEqual([first, second].map(({origin}) => ({url: origin + '/', visible: origin === second.origin}))
+      .sort((a, b) => a.url.localeCompare(b.url)));
+    await menu(new URL(first.origin).host);
+    await expect.poll(windows).toEqual([first, second].map(({origin}) => ({url: origin + '/', visible: true}))
+      .sort((a, b) => a.url.localeCompare(b.url)));
+
+    // Manage connections… shows the list, where a connection is renamed or forgotten.
+    await menu('Manage connections…');
+    await expect(launcher.getByRole('heading', {name: 'Open a connection'})).toBeVisible();
+    await launcher.getByRole('button', {name: 'Rename or remove Second'}).click();
+    await launcher.getByLabel('Name', {exact: true}).fill('Studio');
+    await launcher.getByRole('button', {name: 'Save'}).click();
+    await expect(launcher.getByRole('button', {name: 'Rename or remove Studio'})).toBeFocused();
+    assert.equal((await saved())[1].name, 'Studio');
+    await client.evaluate(({BrowserWindow}, address) => BrowserWindow.getAllWindows()
+      .find(win => win.webContents.getURL() === address + '/').close(), second.origin);
+    await launcher.getByRole('button', {name: 'Rename or remove Studio'}).click();
+    await launcher.getByRole('button', {name: 'Remove…'}).click();
+    await launcher.getByRole('button', {name: 'Remove', exact: true}).click();
+    await expect(launcher.getByRole('listitem')).toHaveCount(1);
+    // Forgetting a connection closes its hidden window and leaves the other open.
+    await expect.poll(windows).toEqual([{url: first.origin + '/', visible: true}]);
+    assert.deepEqual((await saved()).map(entry => entry.origin), [first.origin]);
+  } finally {
+    if (client) await client.close().catch(() => {});
+    for (const {server} of [first, second]) {
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    }
     await rm(userData, {recursive:true, force:true});
   }
 });
