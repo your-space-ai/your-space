@@ -295,6 +295,39 @@ export interface SyncDeletion {
 export type SyncResult = "synced" | "stopped" | "unauthorized" | "failed";
 
 /**
+ * The part of a sync run that rclone's remote control runs now, as a job in the background, which a
+ * server that restarts meanwhile reads again by its ID: a run's result outlives the server.
+ */
+export interface SyncJob {
+  /** rclone's job, which its `executeId` names: a restarted rclone has forgotten it. */
+  id: number;
+  executeId: string;
+  /** A bisync; a resync's tie copy and its second pass; the dry run before applying deletions, and the run that applies them. */
+  step: "sync" | "resync" | "ties" | "resync_again" | "preview" | "force";
+  mode: "sync" | "resync" | "force";
+  /** When the run began: its last run time once recorded. */
+  startedAt: string;
+  /** The run's backup folder. */
+  run: string;
+  /** The Google connection's sign-in the run's remote had: Google's refusal disconnects only that one. */
+  connectedAt: string | null;
+  /** Who asked for a Resync or for deletions to be applied. */
+  by?: string;
+  /** A resync's tie files still to copy, and those copied. */
+  ties?: { pending: string[]; replaced: string[] };
+}
+
+/** A run the owner asked for, waiting for the run under way to end. */
+export interface SyncRequested {
+  mode: "sync" | "resync" | "force";
+  by: string;
+  at: string;
+  /** For deletions: the stopped run they were confirmed by, and how many. */
+  run?: string;
+  count?: number;
+}
+
+/**
  * A knowledge base kept in two-way sync with a Google Drive folder, and how its last run went.
  * Disconnecting deletes the row and the sync's state; both sides keep their files.
  */
@@ -323,6 +356,10 @@ export const knowledgeSync = pgTable(
     backups: jsonb("backups").$type<{ run: string; path: string; size: number }[]>().notNull().default([]),
     /** Files whose local copy replaced Drive's in the last resync, both having the same time. */
     ties: jsonb("ties").$type<string[]>().notNull().default([]),
+    /** The run under way in rclone, if any. */
+    job: jsonb("job").$type<SyncJob>(),
+    /** A run the owner asked for, until it starts. */
+    requested: jsonb("requested").$type<SyncRequested>(),
   },
   (t) => [
     check("knowledge_sync_result_valid", sql`${t.result} is null or ${t.result} in ('synced', 'stopped', 'unauthorized', 'failed')`),

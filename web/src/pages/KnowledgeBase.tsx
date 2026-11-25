@@ -154,7 +154,7 @@ function Synced({ base, sync }: { base: Base; sync: KnowledgeSync }) {
           <a href={sync.folderUrl} target="_blank" rel="noopener noreferrer">
             its Drive folder
           </a>{" "}
-          every five minutes, and when you choose Sync now.
+          about once a minute, and when you choose Sync now.
         </p>
         <p data-sync-status aria-live="polite">
           {sync.running ? (

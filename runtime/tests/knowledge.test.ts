@@ -16,8 +16,8 @@ import {
   INSTALLATION,
   isKnowledge,
   knowledgeInit,
+  holdKnowledgeBases,
   knowledgeUsers,
-  removeLeftoverSteps,
   SpecError,
   validateKnowledgeName,
   validateSpec,
@@ -388,71 +388,54 @@ describe("a knowledge base's volume", () => {
     expect(volumes.has(NOTES)).toBe(true);
   });
 
-  it("isn't deleted while it syncs", async () => {
-    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
-    containers.push({ Id: "sync-id", Names: [`/${INSTALLATION}.knowledge-sync.notes`], State: "running", Status: "Up", Labels: knowledgeSyncLabels(INSTALLATION, "notes"), volumes: [NOTES] });
-    await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("is syncing") });
-    expect(volumes.has(NOTES)).toBe(true);
-  });
-
-  /** A sync step's container, as runtime/src/sync.ts makes it. */
-  const step = (Id: string, State: string, name = "notes") => ({
-    Id,
-    Names: [`/${INSTALLATION}.knowledge-sync.${name}`],
+  /** The sync's container, as runtime/src/sync.ts runs it, mounting the knowledge base and its state. */
+  const service = (State: string) => ({
+    Id: "rclone",
+    Names: [`/${INSTALLATION}_knowledge-sync-rclone-1`],
     State,
     Status: "",
-    Labels: knowledgeSyncLabels(INSTALLATION, name),
-    volumes: [knowledgeVolume(INSTALLATION, name), knowledgeStateVolume(INSTALLATION, name)],
+    Labels: { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "knowledge-sync", "ai.your-space.knowledge-bases": "notes" },
+    volumes: [NOTES, knowledgeStateVolume(INSTALLATION, "notes")],
   });
 
-  it("removes a sync step left behind before it is deleted, and waits for one that still runs", async () => {
+  it("isn't deleted, nor its sync state, while the sync's container mounts it, even a stopped one", async () => {
     const state = knowledgeStateVolume(INSTALLATION, "notes");
     volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
     volumes.set(state, knowledgeSyncLabels(INSTALLATION, "notes"));
-    containers.push(step("running-step", "running"));
-    expect(await knowledgeUsers("notes")).toEqual({ apps: [], syncing: true });
-    await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("is syncing") });
-    await expect(deleteKnowledgeState("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("is syncing") });
-    expect(containers.map((c) => c.Id)).toContain("running-step");
-
-    // A step that ended and wasn't removed, with the remote's secrets in its environment, is no sync.
-    containers = containers.filter((c) => c.Id !== "running-step");
-    containers.push(step("left-step", "exited"));
+    for (const State of ["running", "exited"]) {
+      containers = containers.filter((c) => c.Id !== "rclone");
+      containers.push(service(State));
+      expect(await knowledgeUsers("notes")).toEqual({ apps: [], syncing: true });
+      await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("is still synced") });
+      expect(volumes.has(NOTES)).toBe(true);
+      expect(volumes.has(state)).toBe(true);
+    }
+    // Once the server took it out of the sync, it goes, with its state.
+    containers = containers.filter((c) => c.Id !== "rclone");
     expect(await knowledgeUsers("notes")).toEqual({ apps: [], syncing: false });
     await deleteKnowledge("notes");
-    expect(containers.map((c) => c.Id)).toEqual(["runtime-id"]);
     expect(volumes.size).toBe(0);
+  });
 
-    // Removing a sync's state does the same.
+  it("is held while the sync's container is made to mount it, so neither it nor its state is deleted meanwhile", async () => {
+    const state = knowledgeStateVolume(INSTALLATION, "notes");
     volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
     volumes.set(state, knowledgeSyncLabels(INSTALLATION, "notes"));
-    containers.push(step("left-again", "created"));
-    await deleteKnowledgeState("notes");
-    expect(containers.map((c) => c.Id)).toEqual(["runtime-id"]);
-    expect([...volumes.keys()]).toEqual([NOTES]);
-  });
-
-  it("removes every step an earlier runtime manager left, running or not, when it starts, and nothing else", async () => {
-    containers.push(
-      step("a", "running"),
-      step("b", "exited", "recipes"),
-      // The sync's proxy, an app's container, and another installation's step stay.
-      { Id: "proxy", Names: [], State: "running", Status: "Up", Labels: { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "egress" } },
-      { Id: "app", Names: [], State: "running", Status: "Up", Labels: { "ai.your-space.installation": INSTALLATION, "ai.your-space.app": "notes" } },
-      { ...step("other", "exited"), Labels: { ...knowledgeSyncLabels(INSTALLATION, "notes"), "ai.your-space.installation": "someone-else" } },
-    );
-    expect(await removeLeftoverSteps()).toBe(2);
-    expect(containers.map((c) => c.Id)).toEqual(["runtime-id", "proxy", "app", "other"]);
-  });
-
-  it("leaves the steps of a knowledge base this process holds, when it removes them late", async () => {
-    containers.push(step("left", "exited", "recipes"), step("ours", "running"));
-    let release: () => void = () => {};
-    const held = holdingKnowledge("notes", "sync", () => new Promise<void>((resolve) => (release = resolve)));
-    expect(await removeLeftoverSteps()).toBe(1);
-    expect(containers.map((c) => c.Id)).toEqual(["runtime-id", "ours"]);
+    const release = holdKnowledgeBases(["notes", "recipes"]);
+    expect(await knowledgeUsers("notes")).toEqual({ apps: [], syncing: true });
+    await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409 });
+    await expect(deleteKnowledgeState("notes")).rejects.toMatchObject({ status: 409 });
+    // Nor held twice: a second start of the sync with one of them waits its turn.
+    expect(() => holdKnowledgeBases(["recipes"])).toThrow(/being synced/);
     release();
-    await held;
+    await deleteKnowledgeState("notes");
+    expect([...volumes.keys()]).toEqual([NOTES]);
+    // A deletion holds it in turn.
+    let finish: () => void = () => {};
+    const deleting = holdingKnowledge("notes", "delete", () => new Promise<void>((resolve) => (finish = resolve)));
+    expect(() => holdKnowledgeBases(["notes"])).toThrow(/being deleted/);
+    finish();
+    await deleting;
   });
 
   it("is never deleted with an app's data", async () => {

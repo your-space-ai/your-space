@@ -1,6 +1,6 @@
 // A runtime that records what it is asked and reports what a test sets, in place of the runtime
 // manager. The check follows the real adapter's shape for a fixture file.
-import { RuntimeError, type ApplyEvent, type AppSpec, type CheckAnswer, type Runtime, type ServiceState, type SyncRequest, type SyncRunResult } from "../../src/apps/runtime-client.ts";
+import { RuntimeError, type ApplyEvent, type AppSpec, type CheckAnswer, type Runtime, type ServiceState, type SyncService } from "../../src/apps/runtime-client.ts";
 
 export class FakeRuntime implements Runtime {
   calls: { method: string; spec?: AppSpec; project?: string; publish?: { port: number; bind: string } }[] = [];
@@ -117,11 +117,11 @@ export class FakeRuntime implements Runtime {
   /** Held until released, so a test can act while the server is deleting a knowledge base. */
   holdKnowledgeUsers: Promise<void> | undefined;
 
-  /** The apps whose containers mount it, from the spec each last ran, and whether a run of it is under way. */
+  /** The apps whose containers mount it, from the spec each last ran, and whether the sync's container mounts it. */
   async knowledgeUsers(name: string) {
     this.calls.push({ method: "knowledgeUsers", project: name });
     await this.holdKnowledgeUsers;
-    return { apps: this.mounting(name), syncing: this.syncingNow.has(name) };
+    return { apps: this.mounting(name), syncing: this.syncBases.includes(name) };
   }
 
   private mounting(name: string): string[] {
@@ -133,45 +133,52 @@ export class FakeRuntime implements Runtime {
 
   async deleteKnowledge(name: string) {
     this.calls.push({ method: "deleteKnowledge", project: name });
-    // Like the runtime manager, refused while it syncs, or while an app's containers mount it.
-    if (this.syncingNow.has(name)) throw new RuntimeError(`The knowledge base ${name} is syncing. Try again when the sync finishes.`, 409, "engine_error");
+    // Like the runtime manager, refused while the sync's container, or an app's, mounts it.
+    if (this.syncBases.includes(name)) throw new RuntimeError(`The knowledge base ${name} is still synced, so it can't be deleted until its sync is stopped.`, 409, "engine_error");
     const users = this.mounting(name);
     if (users.length > 0) throw new RuntimeError(`The knowledge base ${name} is still mounted by ${users.join(", ")}, so it can't be deleted yet.`, 409, "engine_error");
     this.knowledge.delete(name);
   }
 
-  /** Each sync run asked for, by knowledge base, with the request it was given. */
-  syncs: { name: string; request: SyncRequest }[] = [];
-  /** What the next sync runs answer: the first is used up, the last stays. */
-  syncAnswers: Partial<SyncRunResult>[] = [];
-  /** Holds each sync run until released, so a test can catch one under way. */
-  holdSync = false;
-  releaseSync: () => void = () => {};
+  /** The knowledge bases the sync's container mounts, as the runtime manager last started it. */
+  syncBases: string[] = [];
+  /** Whether the runtime manager runs the browser tests' remote. */
+  syncFixture = false;
+  /** Each start of the sync's service, with its knowledge bases. */
+  syncStarts: string[][] = [];
+  syncRestarts = 0;
+  /** Called when the sync's container is started again with other mounts, or restarted: rclone forgets its remotes and jobs. */
+  onSyncRecreated: (() => void) | undefined;
+  /** Refuses the next starts of the sync's service, as an engine that can't start it. */
+  failSyncService: RuntimeError | undefined;
   removedSyncs: string[] = [];
-  /** The knowledge bases a run is under way for, as the runtime manager holds them. */
-  syncingNow = new Set<string>();
-  /** Holds a run of the knowledge base it is given until what it answers settles, as one that takes long. */
-  syncGate: ((name: string) => Promise<void> | undefined) | undefined;
   /** Held until released, so a test can act while the server connects a knowledge base. */
   holdRemoveSync: Promise<void> | undefined;
 
-  async syncKnowledge(name: string, request: SyncRequest): Promise<SyncRunResult> {
-    this.syncs.push({ name, request });
-    this.syncingNow.add(name);
-    try {
-      if (this.holdSync) await new Promise<void>((resolve) => (this.releaseSync = resolve));
-      await this.syncGate?.(name);
-    } finally {
-      this.syncingNow.delete(name);
-    }
-    const answer = (this.syncAnswers.length > 1 ? this.syncAnswers.shift() : this.syncAnswers[0]) ?? {};
-    return { result: "synced", deletions: [], ties: [], conflicts: [], backups: [], changed: false, listed: true, ...answer };
+  async syncService(): Promise<SyncService> {
+    return { running: this.syncBases.length > 0, knowledgeBases: [...this.syncBases], fixture: this.syncFixture, socket: "/run/ys-sync/rc.sock" };
+  }
+
+  async ensureSyncService(knowledgeBases: string[]): Promise<SyncService> {
+    this.calls.push({ method: "ensureSyncService", project: knowledgeBases.join(",") });
+    if (this.failSyncService) throw this.failSyncService;
+    const changed = knowledgeBases.join(",") !== this.syncBases.join(",");
+    this.syncStarts.push([...knowledgeBases]);
+    this.syncBases = [...knowledgeBases];
+    if (changed) this.onSyncRecreated?.();
+    return this.syncService();
+  }
+
+  async restartSyncService(): Promise<SyncService> {
+    this.syncRestarts++;
+    this.onSyncRecreated?.();
+    return this.syncService();
   }
 
   async removeSync(name: string): Promise<void> {
     this.calls.push({ method: "removeSync", project: name });
     await this.holdRemoveSync;
-    if (this.syncingNow.has(name)) throw new RuntimeError(`The knowledge base ${name} is syncing. Try again when the sync finishes.`, 409, "engine_error");
+    if (this.syncBases.includes(name)) throw new RuntimeError(`The knowledge base ${name} is still synced, so its sync can't be removed yet.`, 409, "engine_error");
     this.removedSyncs.push(name);
   }
 

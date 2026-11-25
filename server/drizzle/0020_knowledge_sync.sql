@@ -27,6 +27,8 @@ CREATE TABLE "knowledge_sync" (
 	"conflicts" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"backups" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"ties" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"job" jsonb,
+	"requested" jsonb,
 	CONSTRAINT "knowledge_sync_result_valid" CHECK ("knowledge_sync"."result" is null or "knowledge_sync"."result" in ('synced', 'stopped', 'unauthorized', 'failed')),
 	CONSTRAINT "knowledge_sync_side_valid" CHECK ("knowledge_sync"."side" is null or "knowledge_sync"."side" in ('local', 'remote'))
 );

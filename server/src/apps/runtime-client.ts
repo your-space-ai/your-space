@@ -6,12 +6,6 @@ export const RUNTIME_SOCKET = process.env.YS_RUNTIME_SOCKET ?? "/run/ys-runtime/
 
 /** How long a request waits for the runtime manager to say anything, an app's whole apply included. */
 export const CALL_TIMEOUT_MS = 30 * 60_000;
-/**
- * How long a sync run's request waits, which answers only when the run ends: past the runtime
- * manager's limit on a run (two hours, RUN_TIMEOUT_MS in runtime/src/sync.ts), which stops a step
- * still under way then and starts no other, so its answer comes before this.
- */
-export const SYNC_TIMEOUT_MS = 2.5 * 60 * 60_000;
 
 export class RuntimeError extends Error {
   readonly status: number;
@@ -129,34 +123,14 @@ export interface ApplyEvent {
   code?: string;
 }
 
-/** A file a sync run deletes, or would: deleted on this side, so deleted on the other. */
-export interface SyncDeletion {
-  side: "local" | "remote";
-  path: string;
-}
-
-/** A sync run of a knowledge base with its Google Drive folder (journey 014). */
-export interface SyncRequest {
-  /** The remote's configuration, which reaches only rclone's container, for this run. */
-  remote: { type: "drive"; clientId: string; clientSecret: string; token: string; folderId: string };
-  /** A run; a resync, which copies both ways and deletes nothing; or the owner's confirmed deletions. */
-  mode: "sync" | "resync" | "force";
-  confirm?: SyncDeletion[];
-}
-
-export interface SyncRunResult {
-  result: "synced" | "stopped" | "unauthorized" | "failed" | "busy";
-  reason?: "max_delete" | "empty" | "marker" | "resync" | "changed";
-  side?: "local" | "remote";
-  message?: string;
-  /** Every deletion a stopped run listed, however many. */
-  deletions: SyncDeletion[];
-  ties: string[];
-  conflicts: string[];
-  backups: { run: string; path: string; size: number }[];
-  changed: boolean;
-  /** Whether the conflict copies and backups were listed after the run. */
-  listed?: boolean;
+/** The knowledge bases' sync service (journey 014): stock rclone's remote control, which the server reaches itself. */
+export interface SyncService {
+  running: boolean;
+  /** The knowledge bases it mounts. */
+  knowledgeBases: string[];
+  /** The browser tests' stand-in for Drive, which only the runtime manager's own environment selects. */
+  fixture: boolean;
+  socket: string;
 }
 
 /** What the server needs from a runtime; tests give a fake. */
@@ -181,9 +155,13 @@ export interface Runtime {
   knowledgeUsers(name: string): Promise<{ apps: string[]; syncing: boolean }>;
   /** Deletes a knowledge base's storage and its files; refused while an app still mounts it, or while it syncs. */
   deleteKnowledge(name: string): Promise<void>;
-  /** Runs a sync of a knowledge base with its Drive folder; another run of it answers busy. */
-  syncKnowledge(name: string, request: SyncRequest): Promise<SyncRunResult>;
-  /** Removes a knowledge base's sync state; it and the Drive folder keep their files. */
+  /** The knowledge bases' sync service as it is now. */
+  syncService(): Promise<SyncService>;
+  /** Runs the sync service with exactly these knowledge bases mounted, and answers once rclone answers. */
+  ensureSyncService(knowledgeBases: string[]): Promise<SyncService>;
+  /** Stops rclone as Ctrl+C stops it, so a run under way saves its state, and starts it again. */
+  restartSyncService(): Promise<SyncService>;
+  /** Removes a knowledge base's sync state; it and the Drive folder keep their files. Refused while the service mounts it. */
   removeSync(name: string): Promise<void>;
 }
 
@@ -248,10 +226,10 @@ function oneFile(spec: AppSpec): AppSpec {
   return spec;
 }
 
-/** `timeouts` are for tests: how long a request, and a sync run's, waits for the runtime manager. */
-export function socketRuntime(socketPath = RUNTIME_SOCKET, timeouts: { callMs: number; syncMs: number } = { callMs: CALL_TIMEOUT_MS, syncMs: SYNC_TIMEOUT_MS }): Runtime {
+/** `callMs` is for tests: how long a request waits for the runtime manager. */
+export function socketRuntime(socketPath = RUNTIME_SOCKET, callMs = CALL_TIMEOUT_MS): Runtime {
   const p = (project: string) => `/apps/${encodeURIComponent(project)}`;
-  const json = <T>(method: string, path: string, body?: unknown, sock?: string, deadlineMs?: number, idleMs = timeouts.callMs) => answer<T>(method, path, body, sock, deadlineMs, idleMs);
+  const json = <T>(method: string, path: string, body?: unknown, sock?: string, deadlineMs?: number, idleMs = callMs) => answer<T>(method, path, body, sock, deadlineMs, idleMs);
   return {
     engine: () => json("GET", "/engine", undefined, socketPath),
     check: async (spec) => json("POST", "/check", oneFile(spec), socketPath),
@@ -273,7 +251,7 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET, timeouts: { callMs: n
         },
         socketPath,
         undefined,
-        timeouts.callMs,
+        callMs,
       );
       if (status >= 400) throw new RuntimeError(failure ?? "The runtime manager refused the app.", status, "runtime_error");
       if (failure) throw new RuntimeError(failure, 502, code ?? "apply_failed");
@@ -290,8 +268,9 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET, timeouts: { callMs: n
     createKnowledge: (name) => json("POST", "/knowledge", { name }, socketPath),
     knowledgeUsers: (name) => json("GET", `/knowledge/${encodeURIComponent(name)}`, undefined, socketPath),
     deleteKnowledge: async (name) => void (await json("DELETE", `/knowledge/${encodeURIComponent(name)}`, undefined, socketPath)),
-    // No answer until the run ends, which can take longer than any other request.
-    syncKnowledge: (name, run) => json("POST", `/knowledge/${encodeURIComponent(name)}/sync`, run, socketPath, undefined, timeouts.syncMs),
+    syncService: () => json("GET", "/knowledge-sync", undefined, socketPath),
+    ensureSyncService: (knowledgeBases) => json("PUT", "/knowledge-sync", { knowledgeBases }, socketPath),
+    restartSyncService: () => json("POST", "/knowledge-sync/restart", {}, socketPath),
     removeSync: async (name) => void (await json("DELETE", `/knowledge/${encodeURIComponent(name)}/sync`, undefined, socketPath)),
   };
 }

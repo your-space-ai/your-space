@@ -1,158 +1,81 @@
-// Synced knowledge bases (journey 014, decision 2026-11-25 "Knowledge bases"): a two-way sync between
-// a knowledge base's volume and a remote folder with rclone bisync. The runtime manager runs rclone in
-// a container of its own for each step and removes it after the step: the official image pinned to
-// its digest, as user 1000, without capabilities, with a read-only root, no engine socket and no FUSE,
-// on a network whose only way out is a Squid of its own that lets through only Google's token and
-// Drive hosts. The remote's configuration, its client secret and token included, reaches rclone only
-// as that container's environment (RCLONE_CONFIG=/dev/null keeps rclone's configuration in memory):
-// Your Space never writes it to a file, logs it or gives it to an app. The engine keeps a container's
-// environment in that container's configuration for as long as the container exists, so each step's
-// container is removed when the step ends, and any a runtime manager left behind is removed when the
-// next one starts (removeLeftoverSteps). bisync's state, and the files a sync replaced, are in a volume
-// of Your Space's for each knowledge base, outside the knowledge base. A run holds its knowledge base
-// from before its first step to after its last, so neither it nor its sync is deleted in between.
-// Once Your Space is stopping (/stop-all), no run, step or proxy starts; a step under way is stopped
-// as Ctrl+C stops bisync, which saves its state for the next run, and the stop waits for every run.
+// Synced knowledge bases (journey 014, decision 2026-11-25 "Knowledge bases"): one long-running
+// container of stock rclone's remote control (`rclone rcd`) syncs every synced knowledge base with its
+// Google Drive folder. The runtime manager only runs that container: the official image pinned to its
+// digest, as user 1000, without capabilities, with a read-only root, no engine socket and no FUSE, on a
+// network whose only way out is a Squid of its own that lets through only Google's token and Drive
+// hosts. rclone's configuration is in memory only (`--config ""`), and its remote control listens only
+// on a Unix socket in a volume that only it and the server mount (ys-sync), owned by user 1000 with
+// mode 0700. The server creates each knowledge base's remote there, with its client and token, and
+// starts each bisync there (server/src/apps/knowledge-sync.ts): nothing secret passes through the
+// runtime manager, and none is in the container's environment, command or files.
+//
+// The container mounts each synced knowledge base at /knowledge/<name> and its sync state, bisync's
+// listings and the files syncs replaced, at /state/<name>, from a volume of Your Space's outside the
+// knowledge base. Connecting or disconnecting a knowledge base changes the mounts, so Compose
+// recreates the container. It stops with SIGINT, bisync's graceful shutdown, so a run under way saves
+// its state for the next one. Once Your Space is stopping (/stop-all), nothing here starts.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  EGRESS_IMAGE,
-  EGRESS_PORT,
-  EGRESS_SERVICE,
-  egressConfig,
-  egressService,
-  escapeDollars,
-  knowledgeStateVolume,
-  knowledgeSyncLabels,
-  knowledgeVolume,
-  pinnedImage,
-} from "./adapter.ts";
-import { deleteKnowledgeState, holdingKnowledge, imagePresent, initKnowledge, INSTALLATION, isStopping, knowledgeHold, knowledgeOf, SpecError } from "./apps.ts";
-import { docker, engine, engineInfo, engineJson, EngineError, inspectImage, listContainers, pullImage, scrub } from "./engine.ts";
+import { EGRESS_IMAGE, EGRESS_PORT, EGRESS_SERVICE, egressConfig, egressService, escapeDollars, knowledgeStateVolume, knowledgeSyncLabels, knowledgeVolume, pinnedImage } from "./adapter.ts";
+import { deleteKnowledgeState, holdKnowledgeBases, imagePresent, initKnowledge, INSTALLATION, isStopping, knowledgeOf, SpecError, validateKnowledgeName } from "./apps.ts";
+import { docker, engine, engineInfo, engineJson, EngineError, inspectImage, listContainers, pullImage } from "./engine.ts";
 
 /** rclone 1.75.2's official image, for every processor it is published for, by its index digest. */
 export const RCLONE_IMAGE = "rclone/rclone@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5";
-/** The file at both roots that bisync's access check looks for (`--check-access`). */
-export const SYNC_MARKER = ".your-space-sync";
-/** bisync's limit on the deletions a run makes, in percent of a side's files (`--max-delete`). */
-export const MAX_DELETE = 50;
+const PINNED_RCLONE = /^rclone\/rclone(:[A-Za-z0-9._-]{1,64})?@sha256:[0-9a-f]{64}$/;
+
+/**
+ * The rclone image the sync runs: YS_SYNC_IMAGE, which the release's Compose file sets for the runtime
+ * manager (deploy/stack.yaml) and no .env can change, or RCLONE_IMAGE without it, as in tests. Only the
+ * stock image, pinned to a digest.
+ */
+export function rcloneImage(env: NodeJS.ProcessEnv = process.env): string {
+  const image = env.YS_SYNC_IMAGE?.trim() || RCLONE_IMAGE;
+  if (!PINNED_RCLONE.test(image)) throw new EngineError(`The sync's image must be rclone's own, pinned to its digest: ${image} isn't.`, 500);
+  return image;
+}
+
 /**
  * The hosts the sync's proxy lets through: Google's token endpoint, where rclone refreshes the access
  * token, and the Drive API's, for its files, uploads and downloads. Your Space's server, not rclone,
  * signs in with Google.
  */
 export const SYNC_HOSTS = ["oauth2.googleapis.com", "www.googleapis.com"];
-/** How long the files syncs replaced or deleted in a knowledge base are kept in its sync state. */
-export const BACKUP_DAYS = 30;
-/** A step that runs longer is stopped. */
-const STEP_TIMEOUT_MS = 25 * 60_000;
-/**
- * A run's whole time: a step still under way then is stopped, and no other starts, so the run answers
- * soon after. The server waits longer for the answer (SYNC_TIMEOUT_MS in server/src/apps/runtime-client.ts).
- */
-export const RUN_TIMEOUT_MS = 2 * 60 * 60_000;
-/** How long a step stopped by Your Space's stop has before it is killed: bisync's graceful shutdown takes 90 seconds at most. */
-const STOP_GRACE_S = 100;
+/** Where the socket's volume is mounted, in the sync's container and in the server's (deploy/stack.yaml). */
+export const SOCKET_DIR = "/run/ys-sync";
+export const RC_SOCKET = `${SOCKET_DIR}/rc.sock`;
+/** The socket volume's name in Your Space's own Compose file. */
+export const SOCKET_VOLUME_KEY = "ys-sync";
+/** The sync's service in its Compose project. */
+export const RCLONE_SERVICE = "rclone";
+/** How long rclone keeps a finished run's result, so a server that restarts meanwhile can read it. */
+export const JOB_EXPIRY = "1h";
+/** How long a stop gives bisync's graceful shutdown: it wraps up in 30 seconds, then cancels and waits up to 60. */
+export const STOP_GRACE_S = 100;
+/** The most knowledge bases one container mounts: two volumes each. */
+export const MAX_SYNCED = 100;
 const STOPPING = "Your Space is stopping, so nothing syncs until it starts again.";
-/** The markers' modification time, the same on both sides, so creating them again changes nothing. */
-const MARKER_TIME = "2000-01-01T00:00:00";
-const SYNC_MEMORY = 512 * 1024 * 1024;
+const SYNC_MEMORY = "1g";
 
-export type SyncMode = "sync" | "resync" | "force";
-
-export interface DriveRemote {
-  type: "drive";
-  clientId: string;
-  clientSecret: string;
-  /** rclone's token: the JSON of an OAuth token, with its refresh token and expiry. */
-  token: string;
-  /** The Drive folder to sync, which is the remote's root: never the whole Drive. */
-  folderId: string;
-}
-
-/** A file a run deletes: on this side it was deleted, so the run deletes it on the other. */
-export interface Deletion {
-  side: "local" | "remote";
-  path: string;
-}
-
-export interface SyncRequest {
-  remote: DriveRemote;
-  /**
-   * `sync` is a run; `resync` copies both ways and deletes nothing, as the first run does; `force`
-   * makes the deletions the owner confirmed, past the limit, once.
-   */
-  mode: SyncMode;
-  /** For `force`: the deletions the owner confirmed. */
-  confirm?: Deletion[];
-}
-
-export interface SyncResult {
-  result: "synced" | "stopped" | "unauthorized" | "failed" | "busy";
-  /** Why a run stopped: over the deletion limit, an empty side, a missing marker, a resync needed, or deletions that changed since the owner confirmed them. */
-  reason?: "max_delete" | "empty" | "marker" | "resync" | "changed";
-  /** The side the stop is about, when rclone says. */
-  side?: "local" | "remote";
-  /** What rclone said about a run that didn't sync, without any secret. */
-  message?: string;
-  /** The deletions a run stopped over, or would make. */
-  deletions: Deletion[];
-  /** Files whose local copy replaced the remote's in a resync, because both had the same modification time. */
-  ties: string[];
-  /** The knowledge base's conflict copies: a remote file renamed because both sides changed it. */
-  conflicts: string[];
-  /** The files syncs replaced or deleted in the knowledge base, by run, newest first. */
-  backups: { run: string; path: string; size: number }[];
-  /** Whether the run copied, renamed or deleted anything. */
-  changed: boolean;
-  /** Whether `conflicts` and `backups` were listed after the run. */
-  listed?: boolean;
-}
-
-const FOLDER_ID = /^[A-Za-z0-9_-]{10,200}$/;
-const TEXT = /^[\x21-\x7e]{1,512}$/;
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function validateSyncRequest(body: unknown): SyncRequest {
-  if (!isObject(body)) throw new SpecError("The request needs a remote and a mode.");
-  const { remote, mode, confirm } = body;
-  // Google Drive is the only remote (decision 2026-11-25): the request can't name another type.
-  if (!isObject(remote) || remote.type !== "drive") throw new SpecError("A knowledge base syncs with a Google Drive folder only.");
-  const { clientId, clientSecret, token, folderId } = remote;
-  if (typeof clientId !== "string" || !TEXT.test(clientId)) throw new SpecError("The Google client ID isn't valid.");
-  if (typeof clientSecret !== "string" || !TEXT.test(clientSecret)) throw new SpecError("The Google client secret isn't valid.");
-  if (typeof token !== "string" || token.length > 8192 || !validToken(token)) throw new SpecError("The Google token isn't valid.");
-  if (typeof folderId !== "string" || !FOLDER_ID.test(folderId)) throw new SpecError("The Drive folder ID isn't valid.");
-  if (mode !== "sync" && mode !== "resync" && mode !== "force") throw new SpecError("The sync's mode must be sync, resync or force.");
-  const request: SyncRequest = { remote: { type: "drive", clientId, clientSecret, token, folderId }, mode };
-  if (mode === "force") {
-    if (!Array.isArray(confirm) || confirm.length > 10_000 || !confirm.every(isDeletion)) throw new SpecError("Applying deletions needs the list the owner confirmed.");
-    request.confirm = confirm;
-  }
-  return request;
-}
-
-function validToken(token: string): boolean {
-  try {
-    const parsed = JSON.parse(token) as unknown;
-    return isObject(parsed) && typeof parsed.refresh_token === "string" && parsed.refresh_token.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-function isDeletion(value: unknown): value is Deletion {
-  return isObject(value) && (value.side === "local" || value.side === "remote") && typeof value.path === "string" && value.path.length > 0 && value.path.length <= 4096;
+/**
+ * rclone's remote control, and only that. A socket an earlier container left behind is removed first:
+ * rclone doesn't replace one, and wouldn't start. `--rc-no-auth` because rclone refuses to create a
+ * remote over a remote control without authentication, and the socket's file permissions are its
+ * authentication. `-v`, JSON and no colour: the server reads each bisync's log from its result.
+ */
+export function rcloneCommand(): string {
+  return [
+    `rm -f ${RC_SOCKET}`,
+    `exec rclone rcd --config '' --rc-addr unix://${RC_SOCKET} --rc-no-auth --rc-job-expire-duration ${JOB_EXPIRY} -v --use-json-log --color NEVER`,
+  ].join(" && ");
 }
 
 /**
  * The browser tests' remote (YS_E2E_SYNC_FIXTURE=1 in the runtime manager's environment, which only
  * e2e/compose.e2e.yaml sets; the runtime's environment comes from Compose files alone, never from the
- * owner's .env): the Drive folder is a folder of a test volume instead, so the tests run real bisync
- * without Google. Nothing the server or the owner sends selects it.
+ * owner's .env): a test volume mounted at /remote, whose folders stand in for Drive folders. Only then
+ * does the container mount it, and only then does the runtime manager tell the server to use it, so
+ * nothing the server or the owner sends selects it.
  */
 export function fixtureEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.YS_E2E_SYNC_FIXTURE === "1";
@@ -163,371 +86,130 @@ export function fixtureVolume(): string {
   return `ys-sync-fixture.${INSTALLATION}`;
 }
 
-/** The remote's configuration, as rclone reads it from its environment: the remote is named `remote`. */
-export function remoteEnv(remote: DriveRemote, fixture = fixtureEnabled()): Record<string, string> {
-  if (fixture) return { RCLONE_CONFIG_REMOTE_TYPE: "alias", RCLONE_CONFIG_REMOTE_REMOTE: `/remote/${remote.folderId}` };
-  return {
-    RCLONE_CONFIG_REMOTE_TYPE: "drive",
-    RCLONE_CONFIG_REMOTE_CLIENT_ID: remote.clientId,
-    RCLONE_CONFIG_REMOTE_CLIENT_SECRET: remote.clientSecret,
-    RCLONE_CONFIG_REMOTE_TOKEN: remote.token,
-    RCLONE_CONFIG_REMOTE_SCOPE: "drive",
-    RCLONE_CONFIG_REMOTE_ROOT_FOLDER_ID: remote.folderId,
-  };
-}
-
-/** Every secret in the remote's configuration, which any text rclone writes is cleaned of. */
-export function secretValues(remote: DriveRemote): Record<string, string> {
-  const values: Record<string, string> = { clientId: remote.clientId, clientSecret: remote.clientSecret, token: remote.token };
-  try {
-    const token = JSON.parse(remote.token) as Record<string, unknown>;
-    for (const key of ["access_token", "refresh_token", "id_token"]) if (typeof token[key] === "string") values[key] = token[key];
-  } catch {
-    // validateSyncRequest parsed it already.
-  }
-  return values;
-}
-
-/** The sync's own Compose project, its outbound proxy: never an app's, whose projects are `ys-<app>`. */
+/** The sync's own Compose project, its rclone and its outbound proxy: never an app's, whose projects are `ys-<app>`. */
 export function syncProject(): string {
   return `${INSTALLATION}_knowledge-sync`;
 }
 
-/** The sealed network the sync's containers join, whose only way out is the proxy. */
+/** The sealed network rclone joins, whose only way out is the proxy. */
 export function syncNetwork(): string {
   return `${syncProject()}_sync`;
 }
 
-/** The sync's outbound proxy: the same Squid as an app's, on a sealed network of its own, for Google's hosts only. */
-export function syncProxyFile(squidImage: string): Record<string, unknown> {
-  const labels = { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "knowledge-sync" };
+/** The labels of the sync's containers and networks. */
+function syncLabels(): Record<string, string> {
+  return { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "knowledge-sync" };
+}
+
+export interface SyncServiceSpec {
+  squid: string;
+  rclone: string;
+  /** The ys-sync volume, which the server mounts too. */
+  socketVolume: string;
+  /** The synced knowledge bases, by name. */
+  knowledgeBases: string[];
+  fixture: boolean;
+}
+
+/** The sync's Compose file: rclone's remote control, and the proxy it reaches Google through. */
+export function syncServiceFile(spec: SyncServiceSpec): Record<string, unknown> {
+  const labels = syncLabels();
   const config = egressConfig(SYNC_HOSTS);
+  const proxy = `http://${EGRESS_SERVICE}:${EGRESS_PORT}`;
+  const volumes: Record<string, unknown> = { socket: { external: true, name: spec.socketVolume } };
+  const mounts: Record<string, unknown>[] = [{ type: "volume", source: "socket", target: SOCKET_DIR, volume: { nocopy: true } }];
+  for (const name of spec.knowledgeBases) {
+    volumes[`kb-${name}`] = { external: true, name: knowledgeVolume(INSTALLATION, name) };
+    volumes[`state-${name}`] = { external: true, name: knowledgeStateVolume(INSTALLATION, name) };
+    mounts.push({ type: "volume", source: `kb-${name}`, target: `/knowledge/${name}`, volume: { nocopy: true } });
+    mounts.push({ type: "volume", source: `state-${name}`, target: `/state/${name}`, volume: { nocopy: true } });
+  }
+  if (spec.fixture) {
+    volumes.fixture = { external: true, name: fixtureVolume() };
+    mounts.push({ type: "volume", source: "fixture", target: "/remote", volume: { nocopy: true } });
+  }
+  const rclone = {
+    image: spec.rclone,
+    entrypoint: ["/bin/sh", "-c"],
+    command: [rcloneCommand()],
+    user: "1000:1000",
+    read_only: true,
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"],
+    cap_drop: ["ALL"],
+    security_opt: ["no-new-privileges:true"],
+    // No secret: the server creates the remotes over the socket.
+    environment: { HOME: "/tmp", HTTPS_PROXY: proxy, HTTP_PROXY: proxy },
+    networks: { sync: {} },
+    volumes: mounts,
+    restart: "unless-stopped",
+    // bisync's graceful shutdown: a run under way saves its state.
+    stop_signal: "SIGINT",
+    stop_grace_period: `${STOP_GRACE_S}s`,
+    healthcheck: {
+      test: ["CMD", "rclone", "rc", "--unix-socket", RC_SOCKET, "rc/noop"],
+      interval: "30s",
+      timeout: "5s",
+      retries: 3,
+      start_period: "30s",
+      start_interval: "1s",
+    },
+    // A run's log is written once more to the container's: rotated, as a run a minute adds up.
+    logging: { driver: "json-file", options: { "max-size": "10m", "max-file": "3" } },
+    mem_limit: SYNC_MEMORY,
+    cpus: 1,
+    pids_limit: 256,
+    labels: { ...labels, "ai.your-space.knowledge-bases": spec.knowledgeBases.join(",") },
+  };
   return {
     name: syncProject(),
-    services: escapeDollars({ [EGRESS_SERVICE]: egressService(squidImage, labels, config, ["sync", "egress"]) }),
+    services: escapeDollars({ [EGRESS_SERVICE]: egressService(spec.squid, labels, config, ["sync", "egress"]), [RCLONE_SERVICE]: rclone }),
     networks: {
       sync: { internal: true, driver: "bridge", driver_opts: { "com.docker.network.bridge.gateway_mode_ipv4": "isolated" }, labels },
       egress: { driver: "bridge", labels },
     },
+    volumes,
     configs: { egress: { content: escapeDollars(config) } },
   };
 }
 
-interface Mount {
-  source: string;
-  target: string;
-  readOnly?: boolean;
+export interface SyncService {
+  /** Whether rclone's container runs now. */
+  running: boolean;
+  /** The knowledge bases it mounts. */
+  knowledgeBases: string[];
+  /** The browser tests' remote: the server creates each remote on a folder of /remote instead of Drive. */
+  fixture: boolean;
+  /** Where the server reaches its remote control, in the ys-sync volume. */
+  socket: string;
 }
 
-/** One step's container: rclone with the arguments, hardened, mounting only the knowledge base's volumes. */
-export function syncContainer(name: string, args: string[], options: { env?: Record<string, string>; network?: string; mounts: Mount[] }): Record<string, unknown> {
-  const proxy = `http://${EGRESS_SERVICE}:${EGRESS_PORT}`;
-  const env: Record<string, string> = {
-    // rclone keeps its configuration in memory and never saves it, a refreshed token included.
-    RCLONE_CONFIG: "/dev/null",
-    HOME: "/tmp",
-    ...(options.network ? { HTTPS_PROXY: proxy, HTTP_PROXY: proxy } : {}),
-    ...options.env,
-  };
-  return {
-    Image: RCLONE_IMAGE,
-    Cmd: args,
-    User: "1000:1000",
-    Env: Object.entries(env).map(([key, value]) => `${key}=${value}`),
-    Labels: knowledgeSyncLabels(INSTALLATION, name),
-    ...(options.network ? {} : { NetworkDisabled: true }),
-    HostConfig: {
-      NetworkMode: options.network ?? "none",
-      Mounts: options.mounts.map((m) => ({ Type: "volume", Source: m.source, Target: m.target, ReadOnly: m.readOnly === true, VolumeOptions: { NoCopy: true } })),
-      ReadonlyRootfs: true,
-      Tmpfs: { "/tmp": "rw,noexec,nosuid,size=64m" },
-      CapDrop: ["ALL"],
-      SecurityOpt: ["no-new-privileges:true"],
-      Memory: SYNC_MEMORY,
-      NanoCpus: 1_000_000_000,
-      PidsLimit: 256,
-    },
-  };
+async function rcloneContainer() {
+  const found = await listContainers([`com.docker.compose.project=${syncProject()}`, `com.docker.compose.service=${RCLONE_SERVICE}`]);
+  return found.find((c) => c.State === "running") ?? found[0];
 }
 
-/** The arguments of a bisync run between the remote's folder (Path1) and the knowledge base (Path2). */
-export function bisyncArgs(backup: string): string[] {
-  return [
-    "bisync",
-    "remote:",
-    "/knowledge",
-    "--workdir",
-    "/state/bisync",
-    "--check-access",
-    "--check-filename",
-    SYNC_MARKER,
-    "--max-delete",
-    String(MAX_DELETE),
-    "--resilient",
-    "--recover",
-    "--max-lock",
-    "2m",
-    "--compare",
-    "size,modtime,checksum",
-    // The knowledge base's copy keeps the file's name; the remote's is renamed `<name>.conflict<n>`.
-    "--conflict-resolve",
-    "path2",
-    // A file a run replaces or deletes in the knowledge base is kept in that run's folder.
-    "--backup-dir2",
-    `/state/backups/${backup}`,
-    ...DRIVE_SCOPE,
-    "--create-empty-src-dirs",
-    ...LOGGING,
-  ];
+/** The sync's container as it is now. */
+export async function syncService(): Promise<SyncService> {
+  const container = await rcloneContainer();
+  const mounted = container?.Labels["ai.your-space.knowledge-bases"] ?? "";
+  return { running: container?.State === "running", knowledgeBases: mounted ? mounted.split(",") : [], fixture: fixtureEnabled(), socket: RC_SOCKET };
 }
 
-/**
- * What of the Drive folder a sync sees: never Google Docs, Sheets or Slides, which have no file, and
- * never a shortcut, which rclone would otherwise follow into a folder or file outside the chosen one,
- * uploading and deleting there.
- */
-const DRIVE_SCOPE = ["--drive-skip-gdocs", "--drive-skip-shortcuts"];
-
-/** rclone's filter pattern for exactly this path from the root, its special characters escaped. */
-export function exactPattern(path: string): string {
-  return `/${path.replace(/[\\*?[{}]/g, "\\$&")}`;
+/** Validates the server's request: the knowledge bases to sync, by name, and nothing else. */
+export function validateSyncService(body: unknown): string[] {
+  const { knowledgeBases, ...rest } = (typeof body === "object" && body !== null && !Array.isArray(body) ? body : {}) as { knowledgeBases?: unknown };
+  if (Object.keys(rest).length > 0) throw new SpecError(`The sync service takes knowledge bases only: ${Object.keys(rest).join(", ")} isn't a field.`);
+  if (!Array.isArray(knowledgeBases)) throw new SpecError("Name the knowledge bases to sync.");
+  if (knowledgeBases.length > MAX_SYNCED) throw new SpecError(`At most ${MAX_SYNCED} knowledge bases sync at once.`);
+  return [...new Set(knowledgeBases.map((name) => validateKnowledgeName(String(name))))].sort();
 }
 
-/** The most ties one step copies, so its arguments stay well under the kernel's limit. */
-const TIES_PER_STEP = 100;
-
-/**
- * Copies the knowledge base's copy of each file over the remote's: the files a resync found with the
- * same size and time on both sides but different content. `--checksum` copies such a file, which the
- * same size and time would otherwise skip; `--update` leaves one whose remote copy is newer than the
- * knowledge base's, as after an edit on Drive since the resync compared them, so that edit is kept.
- */
-export function tieCopyArgs(ties: string[]): string[] {
-  return ["copy", "/knowledge", "remote:", "--update", "--checksum", ...DRIVE_SCOPE, ...ties.flatMap((path) => ["--include", exactPattern(path)]), ...LOGGING];
-}
-
-/** The files a copy step copied, by name. */
-export function copiedOf(lines: LogLine[]): string[] {
-  return lines.filter((l) => typeof l.object === "string" && /^Copied\b/.test(l.msg)).map((l) => l.object!);
-}
-
-const LOGGING = ["-v", "--use-json-log", "--color", "NEVER"];
-
-export interface LogLine {
-  level: string;
-  msg: string;
-  /** The file a line is about, as rclone's JSON log names it. */
-  object?: string;
-  stats?: { transfers?: number; deletes?: number; renames?: number; serverSideMoves?: number };
-}
-
-/** rclone's JSON log, one object per line; any other line is kept as a notice. */
-export function logLines(text: string): LogLine[] {
-  return text
-    .split("\n")
-    .filter((line) => line.trim())
-    .map((line) => {
-      try {
-        const parsed = JSON.parse(line) as LogLine;
-        if (typeof parsed.msg === "string" && typeof parsed.level === "string") return parsed;
-      } catch {
-        // not JSON
-      }
-      return { level: "notice", msg: line };
-    });
-}
-
-/** The side bisync calls Path1 is the remote, Path2 the knowledge base. */
-const side = (path: string): "local" | "remote" => (path === "Path1" ? "remote" : "local");
-
-const DELETED = /^- (Path1|Path2)\s+File was deleted\s+- (.+)$/;
-
-/** The deletions a run found: files deleted on one side, which it deletes, or would, on the other. */
-export function deletionsOf(lines: LogLine[]): Deletion[] {
-  const found = new Map<string, Deletion>();
-  for (const { msg } of lines) {
-    const match = DELETED.exec(msg.trim());
-    if (match) found.set(`${match[1]}\u0000${match[2]}`, { side: side(match[1]!), path: match[2]! });
-  }
-  return [...found.values()];
-}
-
-export function sameDeletions(a: Deletion[], b: Deletion[]): boolean {
-  const key = (d: Deletion) => `${d.side}\u0000${d.path}`;
-  const left = new Set(a.map(key));
-  const right = new Set(b.map(key));
-  return left.size === right.size && [...left].every((k) => right.has(k));
-}
-
-/** bisync's line about a tie: its hashes, then the file's name, which may itself hold " - ". */
-const TIE = /Checksum not equal in listing\. Path1: \S*, Path2: \S* - (.+)$/;
-
-/**
- * The files a resync left different on the two sides because both have the same size and modification
- * time, which `--resync-mode newer` can't tell apart, when nothing else stopped it.
- */
-export function tiesOf(lines: LogLine[]): string[] {
-  const errors = lines.filter((l) => l.level === "error" || l.level === "critical");
-  const ties = errors.map((l) => TIE.exec(l.msg.trim())?.[1]).filter((path): path is string => path !== undefined);
-  const onlyTies = errors.every((l) => TIE.test(l.msg) || /path1 and path2 are out of sync|Bisync aborted/.test(l.msg));
-  return onlyTies ? [...new Set(ties)] : [];
-}
-
-/** Google refused the client or the token: the connection needs the owner to sign in again. */
-const UNAUTHORIZED = /invalid_grant|invalid_client|unauthorized_client|deleted_client|Token has been expired or revoked|Invalid Credentials/i;
-
-/** bisync's lines about one file, `- Path1   File is new   - <file>` or `-   Checksum not equal … - <file>`. */
-const FILE_LINE = /^-\s/;
-
-/**
- * The lines that say why a step failed: errors, and rclone's fatal notices. Never one of bisync's lines
- * about a file, which end with the file's name, so a file's name can't read as a refusal or a stop.
- * (rclone's JSON log keeps the name of a file an error is about in a field of its own, not in `msg`.)
- */
-function failureLines(lines: LogLine[]): string[] {
-  return lines
-    .filter((l) => l.level === "error" || l.level === "critical" || (l.level === "notice" && /^(Fatal error|Failed to)/.test(l.msg.trim())))
-    .map((l) => l.msg.trim())
-    .filter((msg) => !FILE_LINE.test(msg));
-}
-
-/** The side whose marker is missing, from bisync's line about it: its start is bisync's, its end the marker's name. */
-const MARKER_MISSING = /^-\s+Access test failed: (Path1|Path2) file not found in (Path1|Path2) - /;
-
-/** What a step's exit code and log say about it. */
-export function outcome(code: number, lines: LogLine[]): Pick<SyncResult, "result" | "reason" | "side" | "message"> {
-  if (code === 0) return { result: "synced" };
-  const failures = failureLines(lines);
-  const text = failures.join("\n");
-  const message = (lines.filter((l) => l.level === "error" || l.level === "critical").at(-1)?.msg.trim() ?? failures.at(-1) ?? `rclone stopped with exit code ${code}.`).slice(0, 600);
-  if (UNAUTHORIZED.test(text)) return { result: "unauthorized", message };
-  const tooMany = /too many deletes.* on (Path1|Path2)/.exec(text);
-  if (tooMany || /too many deletes/.test(text)) return { result: "stopped", reason: "max_delete", ...(tooMany ? { side: side(tooMany[1]!) } : {}), message };
-  const empty = /Empty current (Path1|Path2) listing/.exec(text);
-  if (empty) return { result: "stopped", reason: "empty", side: side(empty[1]!), message };
-  if (/check file check failed|Access test failed/.test(text)) {
-    const missing = lines.map((l) => MARKER_MISSING.exec(l.msg.trim())).find((m) => m !== null);
-    return { result: "stopped", reason: "marker", ...(missing ? { side: side(missing[2]!) } : {}), message };
-  }
-  if (/prior lock file found|lock file found/i.test(text)) return { result: "busy", message };
-  if (/run --resync to recover|Must run --resync/i.test(text)) return { result: "stopped", reason: "resync", message };
-  return { result: "failed", message };
-}
-
-function changedBy(lines: LogLine[]): boolean {
-  return lines.some((l) => l.stats !== undefined && ((l.stats.transfers ?? 0) > 0 || (l.stats.deletes ?? 0) > 0 || (l.stats.renames ?? 0) > 0 || (l.stats.serverSideMoves ?? 0) > 0));
-}
-
-/** A run's backup folder's name, which sorts by time: 2026-11-25T17-05-00-123Z. */
-export function runFolder(at: Date): string {
-  return at.toISOString().replace(/[:.]/g, "-");
-}
-
-/** When a backup folder's run was, or undefined for a folder Your Space didn't name. */
-export function runTime(folder: string): Date | undefined {
-  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/.exec(folder);
-  if (!match) return undefined;
-  const time = new Date(`${match[1]}T${match[2]}:${match[3]}:${match[4]}.${match[5]}Z`);
-  return Number.isNaN(time.getTime()) ? undefined : time;
-}
-
-interface Listed {
-  Path: string;
-  Size: number;
-}
-
-/** The conflict copies and backups a listing of the knowledge base and its state found. */
-export function listingOf(stdout: string, now: Date): { conflicts: string[]; backups: SyncResult["backups"]; expired: string[] } {
-  let entries: Listed[] = [];
-  try {
-    entries = JSON.parse(stdout) as Listed[];
-  } catch {
-    entries = [];
-  }
-  const conflicts: string[] = [];
-  const backups: SyncResult["backups"] = [];
-  const expired = new Set<string>();
-  const oldest = now.getTime() - BACKUP_DAYS * 24 * 60 * 60 * 1000;
-  for (const entry of entries) {
-    if (entry.Path.startsWith("knowledge/")) conflicts.push(entry.Path.slice("knowledge/".length));
-    else if (entry.Path.startsWith("state/backups/")) {
-      const [run, ...rest] = entry.Path.slice("state/backups/".length).split("/");
-      const time = runTime(run!);
-      if (!time || rest.length === 0) continue;
-      if (time.getTime() < oldest) expired.add(run!);
-      else backups.push({ run: run!, path: rest.join("/"), size: entry.Size });
-    }
-  }
-  backups.sort((a, b) => (a.run === b.run ? a.path.localeCompare(b.path) : b.run.localeCompare(a.run)));
-  return { conflicts: conflicts.sort().slice(0, 500), backups: backups.slice(0, 500), expired: [...expired] };
-}
-
-/** The one container name a knowledge base's steps run under, so the engine runs one at a time. */
-function containerName(name: string): string {
-  return `${INSTALLATION}.knowledge-sync.${name}`;
-}
-
-interface StepResult {
-  code: number;
-  lines: LogLine[];
-  stdout: string;
-}
-
-/** Creates the step's container, or says another run of the knowledge base still has one. */
-async function create(name: string, body: Record<string, unknown>): Promise<string | undefined> {
-  const path = `/containers/create?name=${encodeURIComponent(containerName(name))}`;
-  for (let attempt = 0; ; attempt++) {
-    const answer = await engine("POST", path, body);
-    if (answer.status < 400) return (JSON.parse(answer.body) as { Id: string }).Id;
-    if (answer.status !== 409 || attempt > 0) throw new EngineError(`Starting the sync failed: ${answer.body.trim().slice(0, 300)}`);
-    // A container left by a runtime manager that stopped mid-run is removed; a running one is a run.
-    const left = await engineJson<{ State: { Running: boolean } }>("GET", `/containers/${encodeURIComponent(containerName(name))}/json`).catch(() => undefined);
-    if (left?.State.Running) return undefined;
-    await engine("DELETE", `/containers/${encodeURIComponent(containerName(name))}?force=1`);
-  }
-}
-
-/** A step that didn't start, and why. */
-const notStarted = (msg: string): StepResult => ({ code: 10, lines: [{ level: "error", msg }], stdout: "" });
-
-/**
- * Runs one step to its end and removes its container; its output is cleaned of the secrets. None
- * starts once Your Space is stopping, or once the run's time is up, which also ends a step under way.
- */
-async function step(name: string, args: string[], options: { env?: Record<string, string>; network?: string; mounts: Mount[]; secrets: Record<string, string>; deadline: number }): Promise<StepResult | "busy"> {
-  const refused = () => (isStopping() ? notStarted(STOPPING) : options.deadline <= Date.now() ? notStarted(RUN_OVER) : undefined);
-  const early = refused();
-  if (early) return early;
-  const id = await create(name, syncContainer(name, args, options));
-  if (!id) return "busy";
-  try {
-    // Checked again once the container is made, which the engine can take long over.
-    const late = refused();
-    if (late) return late;
-    await engineJson("POST", `/containers/${id}/start`);
-    // A stop that began while the container was started: /stop-all's own pass may have missed it.
-    if (isStopping()) void interrupt(id);
-    const limit = Math.min(STEP_TIMEOUT_MS, options.deadline - Date.now());
-    let timer: NodeJS.Timeout | undefined;
-    const timeout = new Promise<"timeout">((resolve) => (timer = setTimeout(() => resolve("timeout"), limit)));
-    const waited = await Promise.race([engineJson<{ StatusCode: number }>("POST", `/containers/${id}/wait`), timeout]).finally(() => clearTimeout(timer));
-    const logs = await docker(["logs", id]);
-    const lines = logLines(scrub(logs.stderr, options.secrets));
-    if (waited === "timeout") {
-      const msg = limit < STEP_TIMEOUT_MS ? RUN_OVER : `The sync step took longer than ${STEP_TIMEOUT_MS / 60_000} minutes and was stopped.`;
-      return { code: 10, lines: [...lines, { level: "error", msg }], stdout: "" };
-    }
-    return { code: waited.StatusCode, lines, stdout: scrub(logs.stdout, options.secrets) };
-  } finally {
-    await engine("DELETE", `/containers/${id}?force=1`).catch(() => {});
-  }
-}
-
-const RUN_OVER = `The sync took longer than ${RUN_TIMEOUT_MS / 3_600_000} hours, so it was stopped. The next sync continues from there.`;
-
-/** Stops a step as Ctrl+C stops rclone: bisync finishes or cancels its transfers and saves its state. */
-async function interrupt(id: string): Promise<void> {
-  await engine("POST", `/containers/${encodeURIComponent(id)}/stop?signal=SIGINT&t=${STOP_GRACE_S}`).catch(() => {});
+/** One change to the sync's container at a time. */
+let changing: Promise<unknown> = Promise.resolve();
+function queued<T>(work: () => Promise<T>): Promise<T> {
+  const next = changing.catch(() => undefined).then(work);
+  changing = next;
+  return next;
 }
 
 async function ensureImage(image: string): Promise<void> {
@@ -554,153 +236,119 @@ async function ensureVolume(volume: string, labels: Record<string, string>, mode
   }
 }
 
-let squid: string | undefined;
-let proxyStarting: Promise<void> = Promise.resolve();
-
-/**
- * Starts the sync's proxy, or leaves it running. Its image is Squid's that apps' proxies use, pinned
- * to the digest its registry gives when the runtime manager first needs it. One start at a time.
- */
-function ensureProxy(): Promise<void> {
-  const next = proxyStarting.catch(() => undefined).then(async () => {
-    if (!squid) {
-      const info = await engineInfo();
-      if (!info.reachable) throw new EngineError("The engine can't be reached.", 503);
-      const image = await inspectImage(`${EGRESS_IMAGE}:latest`, info.arch ?? "amd64");
-      if (!image.digest) throw new EngineError(`The sync's proxy image ${EGRESS_IMAGE} can't be found: ${image.error ?? "no digest"}`);
-      squid = pinnedImage(EGRESS_IMAGE, image.digest);
-    }
-    await ensureImage(squid);
-    // Checked when its turn comes and its image is here: a stop may have begun while it waited.
-    if (isStopping()) throw new EngineError(STOPPING, 409);
-    const dir = mkdtempSync("/tmp/ys-sync-");
-    try {
-      writeFileSync(join(dir, "compose.json"), JSON.stringify(syncProxyFile(squid)), { mode: 0o600 });
-      const up = await docker(["compose", "-p", syncProject(), "--project-directory", dir, "-f", join(dir, "compose.json"), "up", "-d", "--wait", "--remove-orphans", "--pull", "never"], {}, dir);
-      if (up.code !== 0) throw new EngineError(`Starting the sync's proxy failed: ${up.stderr.split("\n").filter((l) => l.trim()).slice(-3).join(" ").slice(0, 600)}`);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-  proxyStarting = next;
-  return next;
+/** The ys-sync volume of Your Space's own Compose project, which the server mounts too. */
+export async function socketVolume(): Promise<string> {
+  const filters = encodeURIComponent(JSON.stringify({ label: [`com.docker.compose.project=${INSTALLATION}`, `com.docker.compose.volume=${SOCKET_VOLUME_KEY}`] }));
+  const { Volumes } = await engineJson<{ Volumes: { Name: string }[] | null }>("GET", `/volumes?filters=${filters}`);
+  const volume = Volumes?.[0]?.Name;
+  if (!volume) throw new EngineError(`Your Space's Compose files have no ${SOCKET_VOLUME_KEY} volume, so knowledge bases can't sync. Update Your Space's files.`, 503);
+  return volume;
 }
 
-/** The runs under way, which a stop waits for. */
-const underway = new Set<Promise<unknown>>();
+let squid: string | undefined;
+
+/** Squid's image that apps' proxies use, pinned to the digest its registry gives when it is first needed. */
+async function squidImage(): Promise<string> {
+  if (!squid) {
+    const info = await engineInfo();
+    if (!info.reachable) throw new EngineError("The engine can't be reached.", 503);
+    const image = await inspectImage(`${EGRESS_IMAGE}:latest`, info.arch ?? "amd64");
+    if (!image.digest) throw new EngineError(`The sync's proxy image ${EGRESS_IMAGE} can't be found: ${image.error ?? "no digest"}`);
+    squid = pinnedImage(EGRESS_IMAGE, image.digest);
+  }
+  return squid;
+}
+
+async function compose(file: Record<string, unknown>, args: string[]): Promise<void> {
+  const dir = mkdtempSync("/tmp/ys-sync-");
+  try {
+    writeFileSync(join(dir, "compose.json"), JSON.stringify(file), { mode: 0o600 });
+    const ran = await docker(["compose", "-p", syncProject(), "--project-directory", dir, "-f", join(dir, "compose.json"), ...args], {}, dir);
+    if (ran.code !== 0) throw new EngineError(`Starting the sync failed: ${ran.stderr.split("\n").filter((l) => l.trim()).slice(-3).join(" ").slice(0, 600)}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+async function projectExists(): Promise<boolean> {
+  return (await listContainers([`com.docker.compose.project=${syncProject()}`])).length > 0;
+}
 
 /**
- * Stops the syncs as Your Space's apps are stopped (`stop-apps`), once Your Space is stopping: every
- * step under way is stopped as Ctrl+C stops it, then this waits for every run to end and for a proxy
- * start under way, and stops the sync's proxy.
+ * Runs the sync's container with exactly these knowledge bases mounted, and its proxy, and answers once
+ * its remote control answers. Compose recreates the container when the mounts change, which stops it
+ * with SIGINT first; the server stops nothing it runs. With none, both are removed. The knowledge
+ * bases are held meanwhile, so none of them, or its sync state, is deleted under it.
+ */
+export function ensureSyncService(knowledgeBases: string[]): Promise<SyncService> {
+  return queued(async () => {
+    if (isStopping()) throw new EngineError(STOPPING, 409);
+    const names = [...new Set(knowledgeBases)].sort();
+    if (names.length === 0) {
+      if (await projectExists()) {
+        const down = await docker(["compose", "-p", syncProject(), "down", "--remove-orphans"]);
+        if (down.code !== 0) throw new EngineError(`Stopping the sync failed: ${down.stderr.trim().slice(-600)}`);
+      }
+      return syncService();
+    }
+    const release = holdKnowledgeBases(names);
+    try {
+      for (const name of names) if (!(await knowledgeOf(name))) throw new EngineError(`The knowledge base ${name} isn't on this machine's engine.`, 404);
+      const rclone = rcloneImage();
+      const proxy = await squidImage();
+      await ensureImage(rclone);
+      await ensureImage(proxy);
+      for (const name of names) await ensureVolume(knowledgeStateVolume(INSTALLATION, name), knowledgeSyncLabels(INSTALLATION, name), "0700");
+      const socket = await socketVolume();
+      // Only user 1000, rclone's and the server's, reaches the socket.
+      await initKnowledge(socket, "0700");
+      const fixture = fixtureEnabled();
+      if (fixture) await ensureVolume(fixtureVolume(), { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "sync-fixture" }, "2777");
+      // Checked again once the images and volumes are ready, which can take long: a stop may have begun.
+      if (isStopping()) throw new EngineError(STOPPING, 409);
+      await compose(syncServiceFile({ squid: proxy, rclone, socketVolume: socket, knowledgeBases: names, fixture }), ["up", "-d", "--wait", "--remove-orphans", "--pull", "never"]);
+    } finally {
+      release();
+    }
+    return syncService();
+  });
+}
+
+/**
+ * Stops rclone as Ctrl+C stops it, so a bisync under way shuts down gracefully and saves its state,
+ * and starts it again: the server's limit on one run's time. The server creates its remotes again.
+ */
+export function restartSyncService(): Promise<SyncService> {
+  return queued(async () => {
+    if (isStopping()) throw new EngineError(STOPPING, 409);
+    const restarted = await docker(["compose", "-p", syncProject(), "restart", RCLONE_SERVICE]);
+    if (restarted.code !== 0) throw new EngineError(`Restarting the sync failed: ${restarted.stderr.trim().slice(-600)}`);
+    return syncService();
+  });
+}
+
+/**
+ * Stops the sync as Your Space's apps are stopped (`stop-apps`), once Your Space is stopping: rclone
+ * stops with SIGINT, so a bisync under way shuts down gracefully, saving its state for the next run,
+ * which resumes with `--recover`; then its proxy. A change of the container under way finishes first.
  */
 export async function stopSyncs(): Promise<void> {
   if (!isStopping()) throw new Error("The syncs stop only once Your Space is stopping.");
-  const steps = await listContainers([`ai.your-space.installation=${INSTALLATION}`, "ai.your-space.role=knowledge-sync", "ai.your-space.knowledge"]);
-  await Promise.all(steps.filter((c) => c.State === "running").map((c) => interrupt(c.Id)));
-  await Promise.allSettled([...underway]);
-  await proxyStarting.catch(() => undefined);
-  await docker(["compose", "-p", syncProject(), "stop"]);
+  await queued(async () => {
+    if (!(await projectExists())) return;
+    await docker(["compose", "-p", syncProject(), "stop", "-t", String(STOP_GRACE_S)]);
+  });
 }
-
-const BUSY: SyncResult = { result: "busy", message: "Another sync of this knowledge base is running.", deletions: [], ties: [], conflicts: [], backups: [], changed: false };
 
 /**
- * Runs a sync of the knowledge base, holding it until the run ends; another run of it answers busy,
- * and its deletion, or its sync's, refuses the run with 409.
+ * Removes a knowledge base's sync state, bisync's listings and the files syncs replaced; it and the
+ * remote folder keep their files, and its next connection starts with a first run that deletes
+ * nothing. Refused while the sync's container mounts it: the server takes it out of the sync first.
  */
-export function syncKnowledge(name: string, request: SyncRequest, runMs = RUN_TIMEOUT_MS): Promise<SyncResult> {
-  if (isStopping()) throw new EngineError(STOPPING, 409);
-  if (knowledgeHold(name) === "sync") return Promise.resolve(BUSY);
-  const run = holdingKnowledge(name, "sync", () => runSync(name, request, Date.now() + runMs));
-  underway.add(run);
-  void run.then(
-    () => underway.delete(run),
-    () => underway.delete(run),
-  );
-  return run;
-}
-
-/** Removes a knowledge base's sync state; its files and the remote's stay. Refused while it syncs. */
 export function removeSync(name: string): Promise<void> {
-  return deleteKnowledgeState(name);
-}
-
-async function runSync(name: string, request: SyncRequest, deadline: number): Promise<SyncResult> {
-  if (!(await knowledgeOf(name))) throw new EngineError(`The knowledge base ${name} isn't on this machine's engine.`, 404);
-  if (isStopping()) throw new EngineError(STOPPING, 409);
-  const fixture = fixtureEnabled();
-  const state = knowledgeStateVolume(INSTALLATION, name);
-  await ensureImage(RCLONE_IMAGE);
-  await ensureVolume(state, knowledgeSyncLabels(INSTALLATION, name), "0700");
-  if (fixture) await ensureVolume(fixtureVolume(), { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "sync-fixture" }, "2777");
-  await ensureProxy();
-
-  const secrets = secretValues(request.remote);
-  const local: Mount = { source: knowledgeVolume(INSTALLATION, name), target: "/knowledge" };
-  const mounts: Mount[] = [local, { source: state, target: "/state" }, ...(fixture ? [{ source: fixtureVolume(), target: "/remote" }] : [])];
-  const env = remoteEnv(request.remote, fixture);
-  const remote = (args: string[]) => step(name, args, { env, network: syncNetwork(), mounts, secrets, deadline });
-  const offline = (args: string[], only: Mount[]) => step(name, args, { mounts: only, secrets, deadline });
-  const backup = runFolder(new Date());
-  const empty: SyncResult = { result: "synced", deletions: [], ties: [], conflicts: [], backups: [], changed: false };
-  const finish = (ran: StepResult | "busy", more: Partial<SyncResult> = {}): SyncResult =>
-    ran === "busy" ? BUSY : { ...empty, ...outcome(ran.code, ran.lines), deletions: deletionsOf(ran.lines), changed: changedBy(ran.lines), ...more };
-
-  const steps = async (): Promise<SyncResult> => {
-    if (request.mode === "resync") {
-      // The owner chose to connect or to resync: both sides get the marker, then bisync copies both
-      // ways and deletes nothing. A scheduled run never creates a marker, so a missing one stops it.
-      const touchedHere = await offline(["touch", "--timestamp", MARKER_TIME, `/knowledge/${SYNC_MARKER}`, ...LOGGING], [local]);
-      const touchedThere = touchedHere === "busy" || touchedHere.code !== 0 ? touchedHere : await remote(["touch", "--timestamp", MARKER_TIME, `remote:${SYNC_MARKER}`, ...LOGGING]);
-      if (touchedThere === "busy" || touchedThere.code !== 0) return finish(touchedThere);
-      const resync = [...bisyncArgs(backup), "--resync", "--resync-mode", "newer"];
-      const first = await remote(resync);
-      const ties = first === "busy" ? [] : tiesOf(first.lines);
-      if (first === "busy" || first.code === 0 || ties.length === 0) return finish(first);
-      // The newer copy won everywhere else. Where both copies have the same size and modification
-      // time but different content, the knowledge base's copy replaces the remote's (journey 014),
-      // and Drive keeps the replaced one in its version history. Only those files are copied, and a
-      // remote copy changed since the first pass, so newer now, is left; then the same resync runs
-      // again, so the newer copy still wins every other file, one changed on either side included.
-      const replaced: string[] = [];
-      for (let i = 0; i < ties.length; i += TIES_PER_STEP) {
-        const copied = await remote(tieCopyArgs(ties.slice(i, i + TIES_PER_STEP)));
-        if (copied === "busy" || copied.code !== 0) return { ...finish(copied), changed: true };
-        replaced.push(...copiedOf(copied.lines));
-      }
-      return { ...finish(await remote(resync), { ties: replaced }), changed: true };
-    }
-    if (request.mode === "force") {
-      // Only the deletions the owner confirmed: a dry run lists them again first.
-      const previewed = finish(await remote([...bisyncArgs(backup), "--force", "--dry-run"]));
-      if (previewed.result !== "synced") return previewed;
-      if (!sameDeletions(previewed.deletions, request.confirm ?? [])) {
-        return { ...previewed, result: "stopped", reason: "changed", message: "The files to delete changed since the owner confirmed them.", changed: false };
-      }
-      return finish(await remote([...bisyncArgs(backup), "--force"]));
-    }
-    return finish(await remote(bisyncArgs(backup)));
-  };
-  const result = await steps();
-  if (result.result === "busy") return result;
-
-  // The knowledge base's conflict copies, and the files recent runs replaced; older backups are removed.
-  const listed = await offline(
-    ["lsjson", "-R", "--files-only", "--no-mimetype", "--no-modtime", "/scan", "--include", "/knowledge/**.conflict[0-9]*", "--include", "/state/backups/**", "--color", "NEVER"],
-    [
-      { source: local.source, target: "/scan/knowledge", readOnly: true },
-      { source: state, target: "/scan/state", readOnly: true },
-    ],
-  );
-  if (listed !== "busy" && listed.code === 0) {
-    const { conflicts, backups, expired } = listingOf(listed.stdout, new Date());
-    result.conflicts = conflicts;
-    result.backups = backups;
-    result.listed = true;
-    if (expired.length > 0) {
-      await offline(["delete", "/state/backups", "--rmdirs", ...expired.flatMap((run) => ["--include", `/${run}/**`]), "--color", "NEVER"], [{ source: state, target: "/state" }]);
-    }
-  }
-  return result;
+  return queued(async () => {
+    const { knowledgeBases } = await syncService();
+    if (knowledgeBases.includes(name)) throw new EngineError(`The knowledge base ${name} is still synced, so its sync can't be removed yet.`, 409);
+    await deleteKnowledgeState(name);
+  });
 }

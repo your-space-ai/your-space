@@ -17,7 +17,6 @@ import {
   isStopping,
   knowledgeUsers,
   listApps,
-  removeLeftoverSteps,
   resolveInterface,
   logs,
   SpecError,
@@ -28,7 +27,7 @@ import {
   validateSpec,
 } from "./apps.ts";
 import { engineInfo, EngineError } from "./engine.ts";
-import { removeSync, stopSyncs, syncKnowledge, validateSyncRequest } from "./sync.ts";
+import { ensureSyncService, removeSync, restartSyncService, stopSyncs, syncService, validateSyncService } from "./sync.ts";
 
 import { SOCKET_PATH as SOCKET } from "./socket.ts";
 /** The server runs as node (1000), which must be able to use the socket. */
@@ -40,12 +39,12 @@ function log(level: string, event: string, fields: Record<string, unknown> = {})
   else console.log(line);
 }
 
-async function readBody(req: IncomingMessage, limit = 2 * 1024 * 1024): Promise<unknown> {
+async function readBody(req: IncomingMessage): Promise<unknown> {
   let size = 0;
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > limit) throw new SpecError("The request is too large.");
+    if (size > 2 * 1024 * 1024) throw new SpecError("The request is too large.");
     chunks.push(chunk as Buffer);
   }
   if (chunks.length === 0) return undefined;
@@ -83,7 +82,7 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (method === "POST" && pathname === "/check") return send(res, 200, await check(validateSpec(await readBody(req))));
   if (method === "POST" && pathname === "/stop-all") {
     const stopped = await stopAll();
-    // The syncs too: a step under way stops as Ctrl+C stops it, and this answers once every run has ended.
+    // The sync too: rclone stops as Ctrl+C stops it, so a run under way saves its state.
     await stopSyncs();
     return send(res, 200, { stopped });
   }
@@ -93,18 +92,13 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     log("info", "knowledge.created", { name, created: created.created });
     return send(res, 200, created);
   }
+  // The knowledge bases' sync (journey 014): the server names the ones to sync, and reaches rclone itself.
+  if (method === "GET" && pathname === "/knowledge-sync") return send(res, 200, await syncService());
+  if (method === "PUT" && pathname === "/knowledge-sync") return send(res, 200, await ensureSyncService(validateSyncService(await readBody(req))));
+  if (method === "POST" && pathname === "/knowledge-sync/restart") return send(res, 200, await restartSyncService());
   const knowledge = KNOWLEDGE_PATH.exec(pathname);
   if (knowledge && !knowledge[2] && method === "GET") return send(res, 200, await knowledgeUsers(validateKnowledgeName(knowledge[1]!)));
   if (knowledge && !knowledge[2] && method === "DELETE") return (await deleteKnowledge(validateKnowledgeName(knowledge[1]!)), send(res, 200, { ok: true }));
-  if (knowledge?.[2] && method === "POST") {
-    const name = validateKnowledgeName(knowledge[1]!);
-    // Room for the most deletions an owner can confirm (10,000), each with a path of up to 4,096 characters.
-    const request = validateSyncRequest(await readBody(req, 48 * 1024 * 1024));
-    const result = await syncKnowledge(name, request);
-    // Never the remote's configuration: only what happened.
-    log(result.result === "synced" ? "info" : "warn", "knowledge.synced", { name, mode: request.mode, result: result.result, reason: result.reason, changed: result.changed });
-    return send(res, 200, result);
-  }
   if (knowledge?.[2] && method === "DELETE") return (await removeSync(validateKnowledgeName(knowledge[1]!)), send(res, 200, { ok: true }));
   if (method === "POST" && pathname === "/apply") {
     const spec = validateSpec(await readBody(req));
@@ -152,15 +146,6 @@ const server = createServer((req, res) => {
     else failure(res, error);
   });
 });
-
-// Before anything can ask for a sync: a step container an earlier runtime manager left behind, running
-// or not, is removed, with the remote's configuration in its environment. bisync recovers the next run.
-// An engine that doesn't answer delays this by 30 seconds at most; the removal then goes on, and
-// leaves any knowledge base a run holds by then.
-const leftover = removeLeftoverSteps()
-  .then((removed) => removed > 0 && log("warn", "knowledge.steps_removed", { removed }))
-  .catch((error) => log("warn", "knowledge.steps_remove_failed", { errorName: (error as Error)?.name }));
-await Promise.race([leftover, new Promise((resolve) => setTimeout(resolve, 30_000).unref())]);
 
 mkdirSync(dirname(SOCKET), { recursive: true });
 rmSync(SOCKET, { force: true });

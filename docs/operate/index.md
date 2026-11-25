@@ -195,8 +195,8 @@ Once Your Space works, delete the copy you kept:
 
 ## Restarts and Your Data
 
-Everything Your Space itself keeps is in three Docker volumes (two more, `ys-runtime` and
-`ys-agent-edge`, hold only sockets and nothing durable):
+Everything Your Space itself keeps is in three Docker volumes (three more, `ys-runtime`,
+`ys-agent-edge` and `ys-sync`, hold only sockets and nothing durable):
 
 | Volume | What it holds |
 | --- | --- |

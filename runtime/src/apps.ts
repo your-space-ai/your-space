@@ -719,10 +719,10 @@ async function mountedBy(volume: string): Promise<ContainerSummary[]> {
 }
 
 /**
- * What holds each knowledge base in this process now: a sync run, from before its first step to after
- * its last, or the deletion of the knowledge base or of its sync. One at a time, so nothing is deleted
- * between a run's steps, whose next container would make the deleted volumes again, empty and without
- * Your Space's labels. A hold is checked and taken with no wait between the two.
+ * What holds each knowledge base in this process now: the sync's container being started with it
+ * mounted (sync.ts), or the deletion of the knowledge base or of its sync. One at a time, so neither is
+ * deleted while the container is made to mount it, which would make the deleted volumes again, empty
+ * and without Your Space's labels. A hold is checked and taken with no wait between the two.
  */
 const knowledgeHolds = new Map<string, "sync" | "delete">();
 
@@ -730,11 +730,15 @@ export function knowledgeHold(name: string): "sync" | "delete" | undefined {
   return knowledgeHolds.get(name);
 }
 
+function refuseHeld(name: string): void {
+  const held = knowledgeHolds.get(name);
+  if (held === "sync") throw new EngineError(`The knowledge base ${name} is being synced. Try again in a moment.`, 409);
+  if (held === "delete") throw new EngineError(`The knowledge base ${name}, or its sync, is being deleted.`, 409);
+}
+
 /** Runs `work` holding the knowledge base, or refuses with 409 when something else holds it. */
 export async function holdingKnowledge<T>(name: string, hold: "sync" | "delete", work: () => Promise<T>): Promise<T> {
-  const held = knowledgeHolds.get(name);
-  if (held === "sync") throw new EngineError(`The knowledge base ${name} is syncing. Try again when the sync finishes.`, 409);
-  if (held === "delete") throw new EngineError(`The knowledge base ${name}, or its sync, is being deleted.`, 409);
+  refuseHeld(name);
   knowledgeHolds.set(name, hold);
   try {
     return await work();
@@ -743,55 +747,45 @@ export async function holdingKnowledge<T>(name: string, hold: "sync" | "delete",
   }
 }
 
-/**
- * Removes the sync's step containers that a runtime manager left behind: one that stopped mid-step,
- * or a step whose removal failed. Their environment holds the remote's client secret and token. With
- * a name, only that knowledge base's, and only those that don't run; without one, all of this
- * installation's, running or not, as when the runtime manager starts, except a knowledge base's that
- * this process holds, whose steps are its own.
- */
-export async function removeLeftoverSteps(name?: string): Promise<number> {
-  const labels = [`ai.your-space.installation=${INSTALLATION}`, "ai.your-space.role=knowledge-sync", name ? `ai.your-space.knowledge=${name}` : "ai.your-space.knowledge"];
-  const left = (await listContainers(labels)).filter((c) =>
-    name ? c.State !== "running" : !knowledgeHolds.has(c.Labels["ai.your-space.knowledge"] ?? ""),
-  );
-  for (const c of left) {
-    const answer = await engine("DELETE", `/containers/${encodeURIComponent(c.Id)}?force=1`);
-    if (answer.status >= 400 && answer.status !== 404) throw new EngineError(`Removing a sync step left behind failed: ${answer.body.trim().slice(0, 300)}`);
-  }
-  return left.length;
+/** Holds every one of the knowledge bases for the sync, or none when one is held; answers the release. */
+export function holdKnowledgeBases(names: string[]): () => void {
+  for (const name of names) refuseHeld(name);
+  for (const name of names) knowledgeHolds.set(name, "sync");
+  return () => {
+    for (const name of names) if (knowledgeHolds.get(name) === "sync") knowledgeHolds.delete(name);
+  };
 }
 
 /**
  * The apps of this installation whose containers mount a knowledge base, running or not, and whether
- * it syncs now. The server asks before deleting one, so it applies each of them again without it, even
- * one it has no grant for, as after a change that couldn't be applied, and waits for a run under way,
- * even one it started before it restarted.
+ * the sync's container mounts it. The server asks before deleting one, so it applies each of them again
+ * without it, even one it has no grant for, as after a change that couldn't be applied, and takes it
+ * out of the sync first.
  */
 export async function knowledgeUsers(name: string): Promise<{ apps: string[]; syncing: boolean }> {
   if (!(await knowledgeOf(name))) return { apps: [], syncing: false };
   const users = await mountedBy(knowledgeVolume(INSTALLATION, name));
   const apps = users.filter((c) => c.Labels["ai.your-space.installation"] === INSTALLATION).map((c) => c.Labels["ai.your-space.app"]);
-  const syncing = knowledgeHolds.get(name) === "sync" || users.some((c) => c.Labels["ai.your-space.role"] === "knowledge-sync" && c.State === "running");
+  const syncing = knowledgeHolds.get(name) === "sync" || users.some((c) => c.Labels["ai.your-space.role"] === "knowledge-sync");
   return { apps: [...new Set(apps.filter((app): app is string => !!app))].sort(), syncing };
 }
 
 /**
- * Deletes a knowledge base's volume and its files. Refused while any container mounts it, and while it
- * syncs: the server first takes it away from every app it was given to and applies them again.
+ * Deletes a knowledge base's volume and its files, and its sync state. Refused while any container
+ * mounts it, the sync's included: the server first takes it out of the sync and away from every app
+ * it was given to, and applies them again.
  */
 export function deleteKnowledge(name: string): Promise<void> {
   return holdingKnowledge(name, "delete", async () => {
     // A sync state volume Your Space didn't make stops the deletion before anything is deleted.
     const state = await knowledgeStateOf(name);
     const found = await knowledgeOf(name);
-    await removeLeftoverSteps(name);
     if (!found) return state ? removeKnowledgeState(name) : undefined;
     const volume = knowledgeVolume(INSTALLATION, name);
     await removeLeftInits(volume);
     const users = await mountedBy(volume);
     if (users.some((c) => c.Labels["ai.your-space.role"] === "knowledge-sync")) {
-      throw new EngineError(`The knowledge base ${name} is syncing, so it can't be deleted until the sync finishes.`, 409);
+      throw new EngineError(`The knowledge base ${name} is still synced, so it can't be deleted until its sync is stopped.`, 409);
     }
     const names = () => [...new Set(users.map((c) => c.Labels["ai.your-space.app"] ?? c.Names[0]?.replace(/^\//, "") ?? c.Id.slice(0, 12)))].join(", ");
     if (users.length > 0) throw new EngineError(`The knowledge base ${name} is still mounted by ${names()}, so it can't be deleted yet.`, 409);
@@ -818,13 +812,10 @@ async function knowledgeStateOf(name: string): Promise<boolean> {
 /**
  * Deletes a knowledge base's sync state, when it has one: bisync's listings and the files syncs
  * replaced. The knowledge base and the remote folder keep their files; the next connection starts
- * with a first run that deletes nothing. Refused while it syncs.
+ * with a first run that deletes nothing. Refused while the sync's container mounts it.
  */
 export function deleteKnowledgeState(name: string): Promise<void> {
-  return holdingKnowledge(name, "delete", async () => {
-    await removeLeftoverSteps(name);
-    await removeKnowledgeState(name);
-  });
+  return holdingKnowledge(name, "delete", () => removeKnowledgeState(name));
 }
 
 /** Deletes the sync state volume; the caller holds the knowledge base. */
@@ -832,7 +823,7 @@ async function removeKnowledgeState(name: string): Promise<void> {
   if (!(await knowledgeStateOf(name))) return;
   const volume = knowledgeStateVolume(INSTALLATION, name);
   const answer = await engine("DELETE", `/volumes/${encodeURIComponent(volume)}`);
-  if (answer.status === 409) throw new EngineError(`The knowledge base ${name} is syncing, so its sync can't be removed until the run finishes.`, 409);
+  if (answer.status === 409) throw new EngineError(`The knowledge base ${name} is still synced, so its sync can't be removed yet.`, 409);
   if (answer.status >= 400 && answer.status !== 404) throw new EngineError(`Removing the sync of ${name} failed: ${answer.body.trim().slice(0, 300)}`);
 }
 

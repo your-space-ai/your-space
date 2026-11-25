@@ -1,25 +1,31 @@
-// The runtime manager's client: a request that hears nothing for its timeout fails, but a sync run,
-// which the runtime manager answers only when the run ends, waits for its own, longer timeout.
+// The runtime manager's client: a request that hears nothing for its timeout fails as one the runtime
+// manager stopped answering, not as one it isn't running for; and the knowledge bases' sync service
+// (journey 014) is asked for by its knowledge bases' names alone.
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { CALL_TIMEOUT_MS, RuntimeError, socketRuntime, SYNC_TIMEOUT_MS } from "../src/apps/runtime-client.ts";
+import { RuntimeError, socketRuntime } from "../src/apps/runtime-client.ts";
 
 const ANSWER_MS = 300;
 const dir = mkdtempSync(join(tmpdir(), "ys-runtime-client-"));
 const socket = join(dir, "runtime.sock");
 let server: Server;
+const asked: { method: string; url: string; body: string }[] = [];
 
 beforeAll(async () => {
   // A runtime manager that answers every request once ANSWER_MS have passed, saying nothing before.
   server = createServer((req, res) => {
-    req.resume();
-    setTimeout(() => {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(req.url?.endsWith("/sync") ? JSON.stringify({ result: "synced", deletions: [], ties: [], conflicts: [], backups: [], changed: false }) : JSON.stringify({ reachable: true, connection: "test" }));
-    }, ANSWER_MS);
+    let body = "";
+    req.on("data", (chunk: Buffer) => (body += chunk.toString()));
+    req.on("end", () => {
+      asked.push({ method: req.method ?? "", url: req.url ?? "", body });
+      setTimeout(() => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(req.url?.startsWith("/knowledge-sync") ? JSON.stringify({ running: true, knowledgeBases: ["notes"], fixture: false, socket: "/run/ys-sync/rc.sock" }) : JSON.stringify({ reachable: true, connection: "test" }));
+      }, ANSWER_MS);
+    });
   });
   await new Promise<void>((resolve) => server.listen(socket, resolve));
 });
@@ -30,18 +36,22 @@ afterAll(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe("the runtime client's timeouts", () => {
-  it("waits for a sync run past the time any other request waits", async () => {
-    const runtime = socketRuntime(socket, { callMs: 100, syncMs: 2_000 });
-    const engine = await runtime.engine().catch((error: unknown) => error);
+describe("the runtime client", () => {
+  it("says the runtime manager stopped answering when a request hears nothing for its timeout", async () => {
+    const engine = await socketRuntime(socket, 100)
+      .engine()
+      .catch((error: unknown) => error);
     expect(engine).toBeInstanceOf(RuntimeError);
     expect(engine).toMatchObject({ status: 504, code: "runtime_timeout" });
-    const remote = { type: "drive" as const, clientId: "id", clientSecret: "secret", token: "{}", folderId: "folder" };
-    expect(await runtime.syncKnowledge("notes", { remote, mode: "sync" })).toMatchObject({ result: "synced" });
   });
 
-  it("gives a sync run longer than the runtime manager's two hours for a run", () => {
-    expect(SYNC_TIMEOUT_MS).toBeGreaterThan(2 * 60 * 60_000);
-    expect(SYNC_TIMEOUT_MS).toBeGreaterThan(CALL_TIMEOUT_MS);
+  it("asks for the sync's service by the knowledge bases' names, and nothing else", async () => {
+    const runtime = socketRuntime(socket, 2_000);
+    expect(await runtime.ensureSyncService(["notes"])).toMatchObject({ running: true, knowledgeBases: ["notes"] });
+    expect(asked.at(-1)).toEqual({ method: "PUT", url: "/knowledge-sync", body: JSON.stringify({ knowledgeBases: ["notes"] }) });
+    await runtime.restartSyncService();
+    expect(asked.at(-1)).toMatchObject({ method: "POST", url: "/knowledge-sync/restart" });
+    await runtime.syncService();
+    expect(asked.at(-1)).toMatchObject({ method: "GET", url: "/knowledge-sync" });
   });
 });

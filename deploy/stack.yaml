@@ -64,6 +64,9 @@ services:
       - ys-agent-edge:/run/ys-agent:ro
       # The runtime manager's socket: the only way the server reaches apps' containers.
       - ys-runtime:/run/ys-runtime
+      # The socket of the knowledge bases' sync, rclone's remote control (journey 014), which only
+      # the server and that container mount.
+      - ys-sync:/run/ys-sync
     depends_on:
       secrets:
         condition: service_completed_successfully
@@ -99,6 +102,9 @@ services:
     environment:
       # Labels every app with this installation, so two installations on one engine never mix.
       YS_INSTALLATION: ${COMPOSE_PROJECT_NAME}
+      # The image of the knowledge bases' sync (journey 014): stock rclone 1.75.2, pinned to its
+      # digest for every processor it is published for. The runtime manager runs it; no .env changes it.
+      YS_SYNC_IMAGE: rclone/rclone@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5
     volumes:
       - ${YS_ENGINE_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
       - ys-runtime:/run/ys-runtime
@@ -144,5 +150,7 @@ volumes:
   ys-agent-edge:
   # The runtime manager's socket. Holds nothing durable.
   ys-runtime:
+  # The knowledge bases' sync socket (journey 014). Holds nothing durable.
+  ys-sync:
   # The generated auth secret and database password. Keep it with ys-postgres.
   ys-secrets:

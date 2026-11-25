@@ -1,5 +1,5 @@
 {
-  "id": "2a236375-f814-4a82-a1a8-a2d5a25712d5",
+  "id": "cd4f4b34-2af6-4261-8f78-98f3d55154c1",
   "prevId": "bac2aa49-7907-4c5b-b3d1-87149c27ab59",
   "version": "7",
   "dialect": "postgresql",
@@ -2372,6 +2372,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'[]'::jsonb"
+        },
+        "job": {
+          "name": "job",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested": {
+          "name": "requested",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},

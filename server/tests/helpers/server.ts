@@ -4,11 +4,13 @@ import type { AddressInfo } from "node:net";
 import { createApp } from "../../src/app.ts";
 import { createAuth, type Auth } from "../../src/auth.ts";
 import { Handoffs } from "../../src/apps/gate.ts";
+import type { Rc } from "../../src/apps/rclone.ts";
 import type { Runtime } from "../../src/apps/runtime-client.ts";
 import { AppsService } from "../../src/apps/service.ts";
 import type { Db } from "../../src/db/client.ts";
 import { GithubConnection } from "../../src/github-connection.ts";
 import { TEST_DATA_KEY, TEST_SECRET } from "./env.ts";
+import { FakeRc } from "./rclone.ts";
 
 export interface TestServer {
   /** e.g. http://localhost:51234 */
@@ -28,6 +30,8 @@ export interface AppsOptions {
   runtime: Runtime;
   /** Stands in for GitHub. */
   fetch: typeof fetch;
+  /** Stands in for the knowledge bases' rclone; without one, nothing answers on its socket. */
+  rclone?: Rc;
 }
 
 /** A fetch for tests that don't stand in for GitHub: nothing reaches the real one. */
@@ -60,6 +64,7 @@ export async function startServer(
         registries: github,
         // Never Google's: a test that signs in answers these addresses in its fetch.
         google: { auth: "https://accounts.google.test/o/oauth2/v2/auth", token: "https://oauth2.google.test/token" },
+        rclone: options.apps.rclone ?? new FakeRc(),
       })
     : undefined;
   server.on("request", createApp({ auth, db, dataKey: TEST_DATA_KEY, apps: apps ? { service: apps, handoffs } : undefined, github }));
