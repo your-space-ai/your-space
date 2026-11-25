@@ -40,8 +40,8 @@ others, as noted.
 | 5 | Where does a Mac canary app find its updates? | `canary-mac.yml` on the rolling `canary` prerelease, read with electron-updater's generic provider |
 | 6 | What does `upgrade --channel` run? | It hands over to the newest build's own CLI, so an installation still moves to the version of the CLI that runs it |
 | 7 | How does an installation leave Canary for a release? | Forward only: it moves at the first release newer than its build; going back now stays a manual restore |
-| 8 | Which backups does `upgrade` keep when it runs often? | The newest 5, plus the newest backup taken from a release |
-| 9 | How do the app and its local workspace stay on one build? | The app's channel drives both, as today: the app updates, then its next start upgrades the workspace |
+| 8 | Do migrations on `main` stay as they were merged? | Yes: a check refuses a change to a merged migration and a new one stamped before `main`'s newest |
+| 9 | Which backups does `upgrade` keep when it runs often? | The newest 5, plus the newest backup taken from a release |
 | 10 | Which release carries this? | alpha.2, with the owner installing the first Mac canary by hand |
 
 ## What Exists Today
@@ -52,7 +52,8 @@ others, as noted.
   shortly after launch and then daily, sends no installation ID, and asks before downloading.
   Settings live in `updates.json` in the app's data folder. After the app changes version, its next
   start of the local workspace runs the bundled CLI's `upgrade` with the release files inside the
-  app; a workspace newer than the app isn't started.
+  app; a workspace newer than the app isn't started. This stays as it is on every channel, so the
+  app's channel also decides its local workspace's build (FR-006).
 - **Canary.** Every push to `main` publishes Linux images, CLI downloads and the Compose bundle,
   versioned like `0.1.0-alpha.1.canary.20261125.42`, on one rolling `canary` prerelease that holds
   only the newest build. No Mac app, nothing on npm (2026-11-25).
@@ -86,7 +87,8 @@ remember between runs, and one source of truth stays: the version `stack.yaml` p
 **Recommendation: A.**
 
 - **Default:** the channel of the installed version: an alpha app is on Alpha, a stable app on
-  Stable, a canary app on Canary. Nobody's updates change until they choose.
+  Stable, a canary app on Canary. Nothing is stored until the owner chooses, so nobody's updates
+  change: an alpha app that updates to `0.1.0` then follows Stable, as today.
 - **What a Stable user sees:** only `x.y.z` releases, as today. Choosing a channel that has nothing
   newer, such as Stable during the alpha, says so ("No Stable release yet") rather than failing.
 - **Where:** a **Your Space › Update Channel** submenu with the four as radio items, beside
@@ -144,7 +146,7 @@ A team can have five Developer ID Application certificates, and only the Account
 
 | Option | How | Trade-offs |
 | --- | --- | --- |
-| **A. A second certificate, in a `macos-canary` environment** | Main only, no required reviewer, its own certificate and the same API key | Unattended. A leaked canary certificate is revoked alone; revoking the release one would stop installed releases from opening ([release guide](../../docs/maintainers/releasing.md#sign-the-mac-app)). Anything merged to `main` gets signed without a click |
+| **A. A second certificate, in a `macos-canary` environment** | Main only, no required reviewer, its own certificate and its own App Store Connect API key | Unattended. A leak is revoked without touching the release's secrets; revoking the release certificate would stop installed releases from opening ([release guide](../../docs/maintainers/releasing.md#sign-the-mac-app)). Anything merged to `main` gets signed without a click |
 | B. The `macos-release` environment, approved each time | One click a day | No new secret, a person sees every signing. A missed click means no canary that day |
 | C. The release certificate, in an environment without approval | Copy the secrets | Simplest. A leak during unattended signing means revoking the release certificate |
 
@@ -157,8 +159,8 @@ electron-updater 6.8.11's GitHub provider can't serve Canary
 ([source](https://github.com/electron-userland/electron-builder/blob/electron-updater%406.8.11/packages/electron-updater/src/providers/GitHubProvider.ts)):
 
 - For an app on Alpha or Beta it reads the releases feed and takes the first release whose tag is a
-  semantic version with no prerelease name or `alpha` or `beta`, so the `canary` tag, which isn't a
-  version, is skipped (line 92).
+  semantic version that is stable, an alpha or a beta (Beta skips alphas), so the `canary` tag,
+  which isn't a version, is skipped (lines 81–108).
 - A canary's version is an alpha to it: the channel is the first prerelease identifier, and
   `0.1.0-alpha.1.canary.20261125.42` starts with `alpha`. After a stable release, a canary such as
   `0.1.1-0.canary.20261125.42` starts with the number 0, so the provider takes the first release in
@@ -175,14 +177,15 @@ electron-updater 6.8.11's GitHub provider can't serve Canary
 
 **Recommendation: A.** With it:
 
-- The app sets the feed from the stored channel and never infers it from its version: Canary uses
-  the generic feed; Alpha and Beta use the GitHub provider with that `channel` and prereleases
-  allowed; Stable uses it with prereleases off and the default `latest` channel, so it reads
+- The app sets the feed from its channel (decision 2) and never leaves electron-updater to infer
+  one from the version: Canary uses the generic feed; Alpha and Beta use the GitHub provider with
+  that `channel` and prereleases allowed; Stable uses it with prereleases off and the channel `latest`, the default, so it reads
   `latest-mac.yml` from GitHub's latest release, "the most recent non-prerelease, non-draft
-  release" ([GitHub](https://docs.github.com/en/rest/releases/releases)). Stable is never sent as a
-  channel name: that asks for `stable-mac.yml`, which no release has, and with prereleases off the
-  provider doesn't fall back to `latest-mac.yml` (lines 158–166). After setting `channel`, the app
-  sets `allowDowngrade` back to `false`.
+  release" ([GitHub](https://docs.github.com/en/rest/releases/releases)). Stable is never sent as
+  `stable`: that asks for `stable-mac.yml`, which no release has, and with prereleases off the
+  provider doesn't fall back to `latest-mac.yml` (lines 157–170). The app sets `latest` rather than
+  clearing the channel, which the updater refuses once one is set (AppUpdater.ts, lines 152–160).
+  After setting `channel`, the app sets `allowDowngrade` back to `false`.
 - When the newest published release, of any kind, is newer than the newest canary, the daily job
   writes `canary-mac.yml` for that release instead, listing its ZIPs by their full download links,
   so a Canary app gets it through the one feed.
@@ -193,9 +196,10 @@ electron-updater 6.8.11's GitHub provider can't serve Canary
 - The Mac canary workflow uploads the new ZIPs, then `canary-mac.yml`, and deletes the old ZIPs last.
   The generic provider adds a `noCache` query to the feed's address; a GitHub download link with
   one still redirects to the file (checked on alpha.1's `latest-mac.yml`, 2026-11-25).
-- electron-builder's main branch has unreleased changes to how the GitHub provider picks a release,
-  such as taking the highest eligible version rather than the first in the feed. Implementation
-  pins electron-updater and tests each channel's choice against a recorded feed.
+- electron-updater 7's prereleases change how the GitHub provider picks a release: it takes the
+  highest eligible version rather than the first in the feed
+  ([7.0.0-alpha.14](https://github.com/electron-userland/electron-builder/blob/electron-updater%407.0.0-alpha.14/packages/electron-updater/src/providers/GitHubProvider.ts)).
+  Implementation pins electron-updater and tests each channel's choice against a recorded feed.
 
 ## 6. What `upgrade --channel` Runs
 
@@ -222,7 +226,7 @@ so that release is older.
 
 | Option | How | Trade-offs |
 | --- | --- | --- |
-| **A. Forward only** | Choosing a release channel moves at the first release newer than the build, usually the next one. Until then the app says "You'll move to Alpha with the next alpha", and `upgrade --channel alpha` says nothing is newer and changes nothing | Safe for the data, no new code. A canary user waits for the next release |
+| **A. Forward only** | Choosing a release channel moves at the first release newer than the build, usually the next one. Until then the app says "You'll move to Alpha with the next alpha", and `upgrade --channel alpha` says nothing is newer and changes nothing | No new code, and safe for the data once migrations stay as merged (decision 8). A canary user waits for the next release |
 | B. Go back now | Install the release the canary followed and restore the backup taken before the first canary, discarding everything since | Immediate. Needs restore into an installation, which is 006's open work, and loses data by design |
 | C. Lock Canary until a newer release exists | The other channels are greyed out | Nothing to explain later. Confusing, and a choice that can't be undone until then |
 
@@ -231,7 +235,26 @@ so that release is older.
 `allowDowngrade` off (decision 5); otherwise Canary to Stable would offer an older app whose CLI
 refuses the newer workspace.
 
-## 8. Backups When Following Canary
+## 8. Migrations on `main`
+
+A database that follows Canary applies `main`'s migrations one merge at a time, where a release
+applies them together. The server's Drizzle 0.45.4 runs only migrations stamped later than the
+newest the database records, and never reads one again once applied
+([migrator](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/dialect.ts),
+lines 73–111). So a migration changed after a canary applied it, or merged after one stamped later,
+is skipped there without an error, and the next release runs on a schema it doesn't expect; one
+removed can make that release refuse the database. Nothing checks this today. It already applies
+to CLI canaries (2026-11-25); the app's setting puts it one click away.
+
+| Option | How | Trade-offs |
+| --- | --- | --- |
+| **A. Merged migrations stay as merged** | A pull request check refuses a change to a migration already on `main`, and a new one stamped before `main`'s newest | Leaving Canary stays safe for the data. Also protects upgrades between releases from an out-of-order stamp. A mistake is fixed with a new migration |
+| B. Accept it | The Canary warning and the canary page say the next release may not upgrade a canary's database | Nothing to build. A skipped migration shows only when something breaks |
+| C. Detect at start | The server compares the recorded migrations' hashes with its own and refuses a database that differs | Catches it. The installation is then stuck until a manual restore |
+
+**Recommendation: A.** A small check, and the only option that keeps decision 7 safe.
+
+## 9. Backups When Following Canary
 
 Each `upgrade` writes a full `pg_dump` to `backups/`, and nothing deletes them. A Mac on Canary that
 installs each day's build adds one a day.
@@ -243,22 +266,6 @@ installs each day's build adds one a day.
 | C. Those taken from releases, plus the newest | The ways back from each release | Fewer files. A bad canary migration noticed two builds later has no backup from just before it |
 
 **Recommendation: B**, after a successful upgrade only.
-
-## 9. App and Local Workspace on One Build
-
-| Option | How | Trade-offs |
-| --- | --- | --- |
-| **A. The app's channel drives both** | The app updates itself; its next start of the local workspace runs its bundled CLI's `upgrade` with its bundled files, as today | No new mechanism. The workspace is briefly older than the app, between the restart and its upgrade |
-| B. A channel each | The app on Stable, its workspace on Canary, say | More choice. The app's CLI refuses a newer workspace, so the app would need the workspace's CLI too |
-| C. Workspace first | Before restarting into a downloaded update, upgrade the workspace with the new app's CLI | Never a newer app with an older workspace. The new app is only reachable once Squirrel.Mac has staged it, and every restart waits for an upgrade |
-
-**Recommendation: A.**
-
-- `upgrade --channel` is for CLI installations; the app's workspace follows the app.
-- **When they diverge:** a workspace newer than the app (someone ran a newer CLI in the app's folder)
-  isn't started, as today, and the app names a channel with a build at least that new. A workspace
-  upgrade that fails puts the previous version back, as `upgrade` does; the app says so and tries
-  again at its next start. On Canary the fix is the next build.
 
 ## 10. Which Release Carries It
 
@@ -278,8 +285,9 @@ the first release that has it.
 Written for the recommendations; each changes with its decision.
 
 - **FR-001**: The Mac app offers Stable, Beta, Alpha and Canary under **Your Space › Update
-  Channel**, stores the choice in `updates.json`, and defaults to the installed version's channel.
-- **FR-002**: Every check, automatic or manual, uses the stored channel's feed, with downgrades off.
+  Channel**. Until the owner chooses, it follows the installed version's channel; only a choice is
+  stored, in `updates.json`.
+- **FR-002**: Every check, automatic or manual, uses the channel's feed, with downgrades off.
   A channel with nothing newer says so.
 - **FR-003**: Choosing Canary first says that canaries are unsupported. Leaving it waits for a newer
   release and says which.
@@ -292,9 +300,15 @@ Written for the recommendations; each changes with its decision.
   channel (for Canary, the newer of the newest canary and the newest release), checks and runs its
   CLI's `upgrade`, and changes nothing when the installation is already
   that new or newer. Plain `upgrade` is unchanged.
-- **FR-006**: After a successful upgrade, `upgrade` keeps the newest five backups and the newest
+- **FR-006**: The app's local workspace follows the app on every channel, as today; `upgrade
+  --channel` is for CLI installations. A workspace newer than the app isn't started, and the app
+  names a channel with a build at least that new. A workspace upgrade that fails puts the previous
+  version back; the app says so and tries again at its next start.
+- **FR-007**: A pull request check refuses a change to a migration already on `main`, and a new
+  migration stamped before `main`'s newest.
+- **FR-008**: After a successful upgrade, `upgrade` keeps the newest five backups and the newest
   taken from a release, and lists what it deleted.
-- **FR-007**: The canary page, the Mac guide, the release guide and the decision record describe
+- **FR-009**: The canary page, the Mac guide, the release guide and the decision record describe
   the channels when they ship.
 
 ## Sources
@@ -305,6 +319,8 @@ Written for the recommendations; each changes with its decision.
   [GenericProvider.ts](https://github.com/electron-userland/electron-builder/blob/electron-updater%406.8.11/packages/electron-updater/src/providers/GenericProvider.ts),
   [Provider.ts](https://github.com/electron-userland/electron-builder/blob/electron-updater%406.8.11/packages/electron-updater/src/providers/Provider.ts),
   [release channels](https://github.com/electron-userland/electron-builder/blob/electron-updater%406.8.11/website/docs/tutorials/release-using-channels.md).
+- Drizzle ORM 0.45.4, the server's:
+  [migrator](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/dialect.ts).
 - GitHub: [hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners),
   [Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions),
   [Actions limits](https://docs.github.com/en/actions/reference/limits),
@@ -314,4 +330,4 @@ Written for the recommendations; each changes with its decision.
   [Developer ID certificates](https://developer.apple.com/help/account/create-certificates/create-developer-id-certificates).
 - This repository: the alpha.1 Release draft run's job times and billing (2026-11-24) and release
   assets, `desktop/src/updates.mjs`, `desktop/src/local-setup.mjs`, `cli/src/commands/upgrade.ts`,
-  `cli/src/release.ts` and `.github/workflows/canary.yml`.
+  `cli/src/release.ts`, `server/src/migrate.ts` and `.github/workflows/canary.yml`.
