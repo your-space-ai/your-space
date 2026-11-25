@@ -195,6 +195,13 @@ export function agentCredentialHeader(access: AgentAccess, secret: string): Reco
 }
 const JSON_ESCAPE = /\\(?:u([\da-fA-F]{4})|(["\\/bfnrt]))/g;
 const ESCAPED: Record<string, string> = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+/**
+ * A JSON writer doubles the backslashes of each escape it nests, so undoing the escapes of a result
+ * within AGENT_RESULT_LIMIT takes at most log2(AGENT_RESULT_LIMIT) = 18 passes. A result that still
+ * changes after this many was escaped some other way, such as \ for each backslash, and is
+ * refused, so a crafted one can't make the check run a pass per character.
+ */
+const ESCAPE_PASSES = 32;
 /** Undoes one level of JSON string escaping wherever it appears in the text. */
 function unescapeJson(text: string): string {
   return text.replace(JSON_ESCAPE, (_, hex: string | undefined, char: string) =>
@@ -216,14 +223,13 @@ export function passAgentResult(data: unknown, secrets: readonly string[]): unkn
   check(Buffer.byteLength(text) <= AGENT_RESULT_LIMIT, "App result is too large.");
   // Upstreams can echo a token anywhere: in a value or a key, in a diagnostic string, or in JSON
   // encoded as text, with any of JSON's escapes. Each pass undoes one level of escaping, so a secret
-  // escaped as text inside text shows once the passes reach its level. Each level at least doubles
-  // the backslashes of the escapes inside it, so in a result within the limit no escape needs more
-  // than log2(AGENT_RESULT_LIMIT) passes.
+  // escaped as text inside text shows once the passes reach its level.
   let view = text;
-  for (let level = 0; level <= Math.log2(AGENT_RESULT_LIMIT); level++) {
+  for (let pass = 0; ; pass++) {
     check(!secrets.some((secret) => secret && view.includes(secret)), "Unsafe app result.");
     const next = unescapeJson(view);
     if (next === view) break;
+    check(pass < ESCAPE_PASSES, "Unsafe app result.");
     view = next;
   }
   // What the agent gets is exactly the JSON that was checked.

@@ -140,6 +140,19 @@ describe("a pinned agent-access kit", () => {
     }
   });
 
+  it("refuses a result escaped deeper than a JSON writer nests, and passes an honest one", () => {
+    // Writing each backslash as \u005c and each quote as \u0022 doesn't double the backslashes, so
+    // the secret hides deeper than nested JSON within the limit can.
+    let hidden = '{"token":"\\u0073ynthetic-secret"}';
+    for (let depth = 1; depth <= 40; depth++) {
+      hidden = `{"inner":"${hidden}"}`.replace(/\\/g, "\\u005c").replace(/"/g, "\\u0022");
+      expect(() => passAgentResult({ debug: hidden }, ["synthetic-secret"])).toThrow("Unsafe app result");
+    }
+    // The deepest escaping a JSON writer leaves within the limit: 18 passes.
+    const path = { path: "\\".repeat(2 ** 16) + "n" };
+    expect(passAgentResult(path, ["synthetic-secret"])).toEqual(path);
+  });
+
   it("refuses a response that is too large or isn't JSON", () => {
     expect(() => passAgentResult({ text: "x".repeat(AGENT_RESULT_LIMIT) }, [])).toThrow("App result is too large");
     expect(passAgentResult({ text: "x".repeat(AGENT_RESULT_LIMIT - 20) }, [])).toBeTruthy();
