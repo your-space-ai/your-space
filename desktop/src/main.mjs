@@ -403,11 +403,12 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => { if (app.isReady() && !quitControl.stopping) showLauncher(); });
   // The menu's check follows the frontmost workspace, and goes when its window hides. The workspace
   // used last is the one whose window came to the front last: the Dock icon shows it, and launch opens it.
+  // While the app quits, windows hide or close one by one and bring others to the front; that isn't use.
   app.on('browser-window-focus', (event, win) => {
     const origin = workspaceOf(win);
     if (origin) {
       primary = win;
-      void savedWorkspaces.used(origin).catch(() => {});
+      if (!quitControl.stopping && !quitControl.quitting) void savedWorkspaces.used(origin).catch(() => {});
     }
     buildMenu();
   });
