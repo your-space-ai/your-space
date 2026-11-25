@@ -83,6 +83,10 @@ describe("which requests a registry credential signs in", () => {
     expect(engine.wantsSignIn(500, 'Head "http://127.0.0.1:5591/v2/owner/app/manifests/1": no basic auth credentials')).toBe(true);
     expect(engine.wantsSignIn(500, "toomanyrequests: You have reached your pull rate limit")).toBe(false);
     expect(engine.wantsSignIn(404, "manifest unknown: manifest unknown")).toBe(false);
+    // The engine's own refusals, which a sign-in doesn't fix: a layer it can't write, and an
+    // authorization plugin's.
+    expect(engine.wantsSignIn(500, "failed to register layer: mkdir /var/lib/docker/overlay2/abc/diff: permission denied")).toBe(false);
+    expect(engine.wantsSignIn(403, "authorization denied by plugin ys-authz: pulls are off")).toBe(false);
   });
 });
 
@@ -140,6 +144,16 @@ describe("looking an image up in its registry", () => {
       runsHere: true,
     });
   });
+
+  it("treats an authorization plugin's refusal as the engine's, not the registry's", async () => {
+    answer = (req, res) =>
+      req.url!.startsWith("/distribution/")
+        ? json(res, 403, { message: "authorization denied by plugin ys-authz: lookups are off" })
+        : json(res, 200, { RepoDigests: [`traefik/whoami@${DIGEST}`], Os: "linux", Architecture: "amd64" });
+    const image = await engine.inspectImage("traefik/whoami:latest", "amd64");
+    expect(image.signIn).toBeUndefined();
+    expect(image.digest).toBe(DIGEST);
+  });
 });
 
 describe("pulling an image", () => {
@@ -165,6 +179,18 @@ describe("pulling an image", () => {
     const refused = await engine.pullImage(pinned, () => {}, [CREDENTIAL]).catch((error: unknown) => error);
     expect((refused as Error).message).toContain("and refused the sign-in Your Space gave");
     expect((refused as Error).message).not.toContain(CREDENTIAL.secret);
+  });
+
+  it("passes on the engine's own failures as they are, not as a sign-in", async () => {
+    const stream = '{"error":"failed to register layer: mkdir /var/lib/docker/overlay2/abc/diff: permission denied"}\n';
+    answer = (_req, res) => res.writeHead(200, { "Content-Type": "application/json" }).end(stream);
+    const layer = await engine.pullImage(pinned, () => {}, [CREDENTIAL]).catch((error: unknown) => error);
+    expect(layer).toMatchObject({ message: `Downloading ${pinned} failed: failed to register layer: mkdir /var/lib/docker/overlay2/abc/diff: permission denied` });
+    expect((layer as { code?: string }).code).toBeUndefined();
+    answer = (_req, res) => json(res, 403, { message: "authorization denied by plugin ys-authz: pulls are off" });
+    const plugin = await engine.pullImage(pinned, () => {}).catch((error: unknown) => error);
+    expect((plugin as { code?: string }).code).toBeUndefined();
+    expect((plugin as Error).message).toContain("authorization denied by plugin");
   });
 });
 

@@ -302,7 +302,16 @@ function Images({ images, onChanged }: { images: TokenStatus; onChanged: (data: 
           <button type="submit" disabled={form.changing}>
             {form.send.isPending ? "Saving…" : images.set ? "Replace image token" : "Add image token"}
           </button>
-          <button type="button" className="secondary" onClick={() => setAdding(false)}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              // A token the owner chose not to send isn't kept, and neither is an earlier refusal.
+              form.setToken("");
+              form.send.reset();
+              setAdding(false);
+            }}
+          >
             Cancel
           </button>
         </div>

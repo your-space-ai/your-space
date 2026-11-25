@@ -194,12 +194,19 @@ export function signInFor(ref: string, credentials: RegistryCredential[] = []): 
 }
 
 /**
- * Whether a registry, through the engine, wants a sign-in for an image or refused the one given. The
- * engine passes the registry's answer on in its own words and status: GHCR's and Docker Hub's 403
- * `denied`, Quay's 401 `unauthorized`, and a registry with a password's `no basic auth credentials`.
+ * A registry's own words for a sign-in, as the engine passes them on: GHCR's `…: denied`, Docker Hub's
+ * `denied: requested access to the resource is denied`, Quay's `unauthorized: …`, and a registry with a
+ * password's `no basic auth credentials`. Not the engine's own `permission denied` or an authorization
+ * plugin's `authorization denied by plugin`, which a sign-in doesn't fix.
+ */
+const SIGN_IN = /(^|: )(denied|unauthorized)(:|$)|requested access to the resource is denied|authentication required|no basic auth credentials/im;
+
+/**
+ * Whether a registry, through the engine, wants a sign-in for an image or refused the one given: the
+ * engine's 401, which only a registry's answer gives, or a registry's words for it with any status.
  */
 export function wantsSignIn(status: number, message: string): boolean {
-  return status === 401 || status === 403 || /\b(denied|unauthorized|authentication required|no basic auth credentials)\b/i.test(message);
+  return status === 401 || SIGN_IN.test(message);
 }
 
 /**

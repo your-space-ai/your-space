@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { fixtureCommit } from "../github/commits.mjs";
 import { evidence } from "./helpers/evidence.ts";
-import { pushPrivateImage } from "./helpers/registry.ts";
+import { blobsServed, pushPrivateImage } from "./helpers/registry.ts";
 import { compose, composeWithInput, createOwner, docker, logs, resetStack, serverCommand, sql } from "./helpers/stack.ts";
 import { installReviewed, reviewKit as review, setPassword, signIn } from "./helpers/ui.ts";
 
@@ -17,6 +18,15 @@ const OTHER_LOGIN = "ys-fixture-other";
 const IMAGE = "127.0.0.1:5591/ys-fixtures/private-image:1";
 const KIT = "https://github.com/ys-fixtures/public-kits/blob/main/private-image.yaml";
 const OTHER_KIT = "https://github.com/ys-fixtures/public-kits/blob/main/other-registry.yaml";
+/** A kit file on this machine, for `install-app --kit -`, that names the same private image. */
+const KIT_FILE = `kit: 1
+source: { repo: ys-fixtures/private-image, path: compose.yaml, commit: ${fixtureCommit("ys-fixtures/private-image")} }
+name: private-image-local
+title: Private Image Local
+interface: { service: web, port: 80 }
+limits:
+  web: { memory: 64M, cpus: 0.5 }
+`;
 
 test("the owner adds an image token and installs a kit whose image is private", async ({ page, browserName }, testInfo) => {
   test.setTimeout(480_000);
@@ -40,6 +50,11 @@ test("the owner adds an image token and installs a kit whose image is private", 
   await page.getByRole("link", { name: "GitHub", exact: true }).click();
   const images = page.getByRole("region", { name: "Images" });
   await images.getByRole("button", { name: "Add an image token" }).click();
+  // Cancel forgets a token the owner didn't send.
+  await images.getByLabel("Token").fill(WIDE_TOKEN);
+  await images.getByRole("button", { name: "Cancel" }).click();
+  await images.getByRole("button", { name: "Add an image token" }).click();
+  await expect(images.getByLabel("Token")).toHaveValue("");
   const create = new URL((await images.getByRole("link", { name: "Create an image token on GitHub" }).getAttribute("href"))!);
   expect(`${create.origin}${create.pathname}`).toBe("https://github.com/settings/tokens/new");
   expect(create.searchParams.get("scopes")).toBe("read:packages");
@@ -52,6 +67,10 @@ test("the owner adds an image token and installs a kit whose image is private", 
   await images.getByRole("button", { name: "Add image token" }).click();
   await expect(images.getByRole("alert")).toContainText("This token has the scopes read:packages, write:packages, repo. The image token must have only read:packages");
   await expect(images.getByLabel("Token")).toHaveValue("");
+  // Cancel clears the refusal too, so it isn't there when the owner comes back.
+  await images.getByRole("button", { name: "Cancel" }).click();
+  await expect(images.getByRole("alert")).toHaveCount(0);
+  await images.getByRole("button", { name: "Add an image token" }).click();
 
   // A token GitHub accepts, whose account the registry doesn't let read the image: the review says so.
   await images.getByLabel("Token").fill(OTHER_IMAGE_TOKEN);
@@ -80,7 +99,15 @@ test("the owner adds an image token and installs a kit whose image is private", 
   await expect(page.locator('[data-private="image"]')).toHaveText("Private image");
   await expect(page.locator(`code[title="${digest}"]`)).toBeVisible();
   await evidence(page, testInfo, "015-private-image-review");
+  const looked = await blobsServed();
   await installReviewed(page);
+  // The install downloaded the image, which isn't on the engine, signed in with the image token: its job
+  // shows the download, and the registry, which asks for a password, served the image's layers to the
+  // token's account. A lookup reads only the manifest and config the review already read.
+  expect(
+    (await sql("select steps from install_job j join app a on a.id = j.app_id where a.name = 'private-image' and j.kind = 'install'")).join("\n"),
+  ).toContain("Downloading 127.0.0.1:5591/ys-fixtures/private-image: ");
+  expect([...(await blobsServed())].filter((blob) => !looked.has(blob)).length).toBeGreaterThan(0);
   await page.getByRole("region", { name: "Install an app" }).getByRole("link", { name: "Open Private Image" }).click();
   const pane = page.frameLocator('[data-testid="app-pane"]');
   if (browserName === "webkit") {
@@ -98,6 +125,16 @@ test("the owner adds an image token and installs a kit whose image is private", 
   expect(running.stdout).toContain(`127.0.0.1:5591/ys-fixtures/private-image@${digest}`);
   // The app never gets the token.
   expect(running.stdout).not.toContain(IMAGE_TOKEN);
+
+  // The server command installs a kit file naming the private image with the same image token, and its
+  // review says so.
+  const local = await composeWithInput(["exec", "-T", "server", "install-app", "--kit", "-"], KIT_FILE);
+  expect(local.stderr).toContain(`web: ${IMAGE} (interface) (private image, pulled with your image token)`);
+  expect(local.stdout).toContain("Installed Private Image Local");
+  expect(local.stdout + local.stderr).not.toContain(IMAGE_TOKEN);
+  expect(await sql("select images->'127.0.0.1:5591/ys-fixtures/private-image:1' from app where name = 'private-image-local'")).toEqual([
+    `{"digest": "${digest}", "private": true}`,
+  ]);
 
   // A private image on another registry is refused, image token or not: Your Space pulls public images only there.
   await review(page, OTHER_KIT);
