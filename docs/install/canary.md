@@ -39,6 +39,12 @@ awk -v name="$asset" '$2 == name { print }' SHA256SUMS | sha256sum -c - &&
 your-space --version
 ```
 
+Proceed only when it prints `OK` and `your-space --version` prints a canary version, such as
+`0.1.0-alpha.1.canary.20261125.42`. If it prints a release's version, another `your-space`, such
+as one installed with npm, comes first on your `PATH`, and its `upgrade` would leave the
+installation on that release: run `~/.local/bin/your-space` by its full path, or put
+`~/.local/bin` first on your `PATH`.
+
 With Node 22.12 or newer, install the prerelease's npm package instead: download the
 `your-space-ai-cli-<version>.tgz` file that `SHA256SUMS` lists, check it the same way (`shasum -a 256 -c -`
 on a Mac) and run `npm install -g ./your-space-ai-cli-<version>.tgz`.

@@ -18,9 +18,10 @@ permissions:
 
 # One build at a time, which always finishes, so the canary is never left half replaced. A push
 # while one runs waits, and a newer push replaces a build still waiting, so the next one is
-# always of the newest commit.
+# always of the newest commit. The group is per branch, so a run started by hand from another
+# branch, which builds nothing, never replaces a build of main that is waiting.
 concurrency:
-  group: canary
+  group: canary-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
