@@ -271,6 +271,22 @@ describe("your-space upgrade", () => {
     expect(stackOf(down.folder)).toContain("99.0.0");
   });
 
+  it("moves a canary build on to a later release, and refuses a canary built after this CLI's release", () => {
+    const script = fileURLToPath(new URL("../../deploy/canary-version.sh", import.meta.url));
+    const canary = (tag: string) => execFileSync(script, [tag, "20261125", "42"], { encoding: "utf8" }).trim();
+    // Back to releases: the next release's CLI upgrades a canary of the release before it.
+    const before = canary("v0.0.0-alpha.1");
+    const up = upgrading({}, { installed: before });
+    expect(up.ran.status, up.ran.stdout + up.ran.stderr).toBe(0);
+    expect(up.json).toMatchObject({ ok: true, from: before, to: VERSION });
+    expect(stackOf(up.folder)).toContain(`:${VERSION}\n`);
+    // A canary of this CLI's own release has code the release doesn't, so nothing goes back to it.
+    const after = canary(`v${VERSION}`);
+    const down = upgrading({}, { installed: after });
+    expect(down.json).toMatchObject({ ok: false, error: "downgrade_refused", from: after, to: VERSION });
+    expect(down.compose).toEqual([]);
+  });
+
   it("backs up the database with Your Space stopped, then replaces the release files and starts the new version", () => {
     const up = upgrading({ migrates: true });
     expect(up.ran.status, up.ran.stdout + up.ran.stderr).toBe(0);

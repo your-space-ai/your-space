@@ -19,6 +19,14 @@ export function isVersion(version: string): boolean {
 }
 
 /**
+ * True for a canary build of main, such as 0.1.0-alpha.1.canary.20261125.42, which no release is
+ * (deploy/canary-version.sh). It sorts after the release it follows and before the next one.
+ */
+export function isCanary(version: string): boolean {
+  return SEMVER.exec(version)?.[4]?.split(".").includes("canary") ?? false;
+}
+
+/**
  * Orders two release versions by Semantic Versioning's precedence: negative when `a` comes first,
  * 0 when they are the same release, positive when `a` is later. A prerelease comes before its
  * release (0.1.0-alpha.2 < 0.1.0), and its identifiers compare one by one, numbers as numbers

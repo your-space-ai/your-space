@@ -371,7 +371,8 @@ that settled each question.
   - Playwright for browser journeys, run against the full Compose stack, including restart and
     `down`/`up` recreation.
   - Docker Buildx with QEMU publishes `linux/amd64` and `linux/arm64` images to GitHub Container
-    Registry.
+    Registry. (2026-11-25: each architecture's image is now built natively on a GitHub-hosted runner
+    of that architecture; see the canary builds entry in the decision record.)
 - **Rationale:**
   - Vitest pairs with Vite.
   - Playwright is the standard for multi-browser end-to-end tests; it covers Chromium, Firefox, and

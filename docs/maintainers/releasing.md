@@ -22,12 +22,13 @@ Each piece has its own workflow:
 | Workflow | What it does |
 | --- | --- |
 | [Release draft](https://github.com/your-space-ai/your-space/blob/main/.github/workflows/release-draft.yml) | Checks the tag, runs the workflows below and creates the draft release with `SHA256SUMS` |
-| [Release images](https://github.com/your-space-ai/your-space/blob/main/.github/workflows/release-images.yml) | Builds and pushes the versioned images to GHCR |
+| [Release images](https://github.com/your-space-ai/your-space/blob/main/.github/workflows/release-images.yml) | Builds and pushes the versioned images to GHCR, each processor's on a GitHub-hosted runner of that architecture |
 | [Release CLI](https://github.com/your-space-ai/your-space/blob/main/.github/workflows/release-cli.yml) | Builds the npm package, the Linux executables and the Compose bundle |
 | [Release macOS app](https://github.com/your-space-ai/your-space/blob/main/.github/workflows/release-macos-app.yml) | Calls Build macOS app, then signs and notarizes both DMGs on a GitHub-hosted runner in the protected `macos-release` environment, and makes the update ZIPs and `latest-mac.yml` |
 | [Build macOS app](https://github.com/your-space-ai/your-space/blob/main/.github/workflows/macos-app-build.yml) | Builds and install-tests both DMGs without signing, and checks an update ZIP and feed made from each app; also runs on pull requests that touch the desktop app |
 | [Release install test](https://github.com/your-space-ai/your-space/blob/main/.github/workflows/release-install-test.yml) | Installs from the built files on fresh Linux x64 and ARM64 runners and installs the npm package |
 | [Release publish](https://github.com/your-space-ai/your-space/blob/main/.github/workflows/release-publish.yml) | When the draft is published, installs from the public release without credentials, then publishes the npm package and moves the images' `latest` tag |
+| [Canary](https://github.com/your-space-ai/your-space/blob/main/.github/workflows/canary.yml) | On every push to main, publishes a canary build with Release images, Release CLI and Release install test; see [Canary builds](#canary-builds) |
 
 ## Release steps
 
@@ -39,6 +40,17 @@ Each piece has its own workflow:
 6. **Check the result from a clean machine:** install with `npx @your-space-ai/cli@<version>`, with a Linux executable and with a DMG, and confirm each reports the version. On a Mac with an earlier release installed that is offered this one (an earlier alpha for an alpha, an earlier alpha or beta for a beta, any earlier release for a stable release) and a local workspace running, choose **Your Space › Check for Updates…**, install the update and confirm the app and its workspace report the new version. When no earlier release that carries the updater is offered this one, as for the first release that carries it, its DMG install is the check.
 
 When you review the draft at step 4, start its body with the version's hand-written notes from `docs/maintainers/release-notes/` (for example [0.1.0-alpha.1](release-notes/v0.1.0-alpha.1.md)), with the tested platforms filled in, above the generated list of changes.
+
+## Canary builds
+
+The Canary workflow publishes every push to main, so main can run before a release ([Run the canary build](../install/canary.md)). Its version comes from [`deploy/canary-version.sh`](https://github.com/your-space-ai/your-space/blob/main/deploy/canary-version.sh): the nearest version tag in the commit's history, then `canary`, the build's UTC date and the workflow's run number, such as `0.1.0-alpha.1.canary.20261125.42`; after a stable release such as `0.1.0`, the next patch's `0.1.1-0.canary.20261125.42`. It sorts after that release and before the next, so `upgrade` moves installations onto a canary and on to the next release. It builds and pushes the images under that version and makes the CLI files and Compose bundle with Release images and Release CLI, then installs from them with Release install test. Only when that passes does it point the images' `canary` tag at the build and replace the files of the one `canary` prerelease in place, with `SHA256SUMS` uploaded last. It moves the `canary` git tag to the build's commit when GitHub lets the workflow's token do so, and otherwise leaves it with a warning in the run: installs read only the files, and the notes name the commit. One build runs at a time and always finishes; pushes in the meantime wait, and only the newest waiting one runs. A build that would replace a newer one, such as a re-run, leaves the prerelease alone.
+
+A canary is never a release, and none of this is a step of one:
+
+- It never moves `latest`, publishes nothing to npm and builds no Mac app, so it needs none of the release secrets or the `macos-release` environment.
+- The `canary` tag isn't a version, so the Mac app's updater skips its prerelease, and GitHub never counts a prerelease as the latest release. Release publish runs only for `v` tags, and Canary's GitHub token starts no workflow anyway.
+- Release draft leaves Canary's check runs out of its gate, as it does its own, and starts the generated notes at the previous version tag.
+- The rolling prerelease needs its files and tag replaced, so it works only while the repository's immutable releases setting stays off.
 
 ## The unscoped your-space and your-space-ai packages
 

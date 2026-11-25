@@ -156,7 +156,7 @@
     },
     {
       "title": "CI, Release and Packaging",
-      "purpose": "The CI workflows and the release workflows (Release draft, images, CLI, install test, macOS build and signing, publish). Point to docs/maintainers/releasing.md for what a release ships and the release steps.",
+      "purpose": "The CI workflows, the release workflows (Release draft, images, CLI, install test, macOS build and signing, publish) and Canary, which publishes every push to main through them as a canary build. Point to docs/maintainers/releasing.md for what a release ships, the release steps and canary builds.",
       "parent": "Testing and Quality"
     }
   ]

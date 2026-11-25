@@ -5,8 +5,11 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CliError } from "./errors.ts";
 import { run } from "./process.ts";
+import { isCanary } from "./version.ts";
 
 const RELEASES = "https://github.com/your-space-ai/your-space/releases/download";
+/** The one prerelease that holds the newest canary build's files, replaced by each build. */
+export const CANARY_TAG = "canary";
 export const TARBALL = "your-space.tar.gz";
 /**
  * A Your Space image in stack.yaml and the release it runs. No variable can change it (decision
@@ -19,10 +22,26 @@ export function releasePins(stack: string): string[] {
   return Array.from(stack.matchAll(RELEASE_IMAGE), (match) => (match[1] ?? match[2])!);
 }
 
-/** Where a release's files are. YS_E2E_RELEASES points the browser tests at a local release. */
+/**
+ * Where a release's files are: its own GitHub release, or for a canary build the rolling `canary`
+ * prerelease. YS_E2E_RELEASES points the browser tests at a local release.
+ */
 export function releaseUrl(version: string, file: string): string {
   const base = (process.env.YS_E2E_RELEASES ?? RELEASES).replace(/\/$/, "");
-  return `${base}/v${version}/${file}`;
+  return `${base}/${isCanary(version) ? CANARY_TAG : `v${version}`}/${file}`;
+}
+
+/**
+ * Why the files' stack.yaml doesn't run `version`, or null when it does. The canary prerelease
+ * only ever holds the newest build, so a CLI from an earlier one finds a later one there.
+ */
+export function pinProblem(pins: string[], version: string, bundled: boolean): string | null {
+  if (pins.length && pins.every((pin) => pin === version)) return null;
+  if (bundled) return "The bundled installation files belong to a different CLI version.";
+  if (isCanary(version) && pins.length && pins.every((pin) => pin === pins[0] && isCanary(pin))) {
+    return `The canary release now holds Your Space ${pins[0]}, not this CLI's ${version}: another canary build was published since. Get the newest canary's your-space command, as "Run the canary build" says (docs/install/canary.md), then run this again. Nothing was unpacked.`;
+  }
+  return `${TARBALL} doesn't run Your Space ${version}, the CLI's version. Nothing was unpacked.`;
 }
 
 async function download(url: string): Promise<Buffer> {
@@ -84,13 +103,11 @@ export async function fetchRelease(version: string, folder: string, releaseDir?:
     if (listed.code !== 0 || !safeEntries(listed.stdout)) {
       throw new CliError("checksum_mismatch", `${TARBALL} isn't a Your Space release. Nothing was unpacked.`, {}, listed.stderr);
     }
-    if (releaseDir) {
-      const stack = await run("tar", ["-xzOf", path, "stack.yaml"]);
-      const pins = releasePins(stack.stdout);
-      if (stack.code !== 0 || !pins.length || pins.some((pin) => pin !== version)) {
-        throw new CliError("checksum_mismatch", "The bundled installation files belong to a different CLI version.");
-      }
-    }
+    // The files must run this version: a bundle from elsewhere, or a canary build that has moved on,
+    // would pair this CLI with other images.
+    const stack = await run("tar", ["-xzOf", path, "stack.yaml"]);
+    const problem = pinProblem(stack.code === 0 ? releasePins(stack.stdout) : [], version, releaseDir !== undefined);
+    if (problem) throw new CliError("checksum_mismatch", problem);
     // The files belong to whoever unpacks them, never to the build machine's user, even as root.
     const unpacked = await run("tar", ["--no-same-owner", "-xzf", path, "-C", folder]);
     if (unpacked.code !== 0) throw new CliError("unexpected", `Couldn't unpack ${TARBALL}.`, {}, unpacked.stderr);

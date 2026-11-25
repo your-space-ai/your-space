@@ -20,9 +20,11 @@ concurrency:
 jobs:
   # What someone without access gets: the release's public download links and anonymous image pulls
   # on a fresh runner, with no GHCR sign-in and no token. No checkout either, as it would use one.
+  # The rolling `canary` prerelease isn't a release: Canary replaces its files with the GitHub token,
+  # which starts no workflow, and nothing here runs for it if it is ever published by hand.
   stranger:
     name: Install from the public release (${{ matrix.arch }})
-    if: github.repository == 'your-space-ai/your-space'
+    if: github.repository == 'your-space-ai/your-space' && startsWith(github.event.release.tag_name, 'v')
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     permissions: {}

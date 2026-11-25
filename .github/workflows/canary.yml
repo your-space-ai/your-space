@@ -1,0 +1,158 @@
+name: Canary
+
+# Publishes every push to main as a canary build, so it can run before a release (decision
+# 2026-11-25, canary builds; docs/install/canary.md). It is not a release and replaces nothing a
+# release uses: its version, from deploy/canary-version.sh, sorts after the release it follows
+# and before the next one, such as 0.1.0-alpha.1.canary.20261125.42. It pushes the server, web and
+# runtime images under that version, makes the CLI downloads and the Compose bundle as Release
+# draft does, and installs from them on fresh Linux x64 and ARM64 runners. Only then does it point
+# the images' `canary` tag at them and replace the files of the one rolling `canary` prerelease,
+# with their SHA256SUMS. It never moves `latest`, publishes nothing to npm, and builds no Mac app.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One build at a time, which always finishes, so the canary is never left half replaced. A push
+# while one runs waits, and a newer push replaces a build still waiting, so the next one is
+# always of the newest commit.
+concurrency:
+  group: canary
+  cancel-in-progress: false
+
+jobs:
+  version:
+    if: github.repository == 'your-space-ai/your-space' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: version
+        env:
+          BUILD: ${{ github.run_number }}
+        run: |
+          set -o pipefail
+          # The release this commit follows: the nearest version tag in its history.
+          tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)
+          version=$(deploy/canary-version.sh "$tag" "$(date -u +%Y%m%d)" "$BUILD")
+          echo "Canary build $version of $GITHUB_SHA, after $tag." >> "$GITHUB_STEP_SUMMARY"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  images:
+    needs: version
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/release-images.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  cli:
+    needs: version
+    uses: ./.github/workflows/release-cli.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  install-test:
+    needs: [version, images, cli]
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/release-install-test.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  publish:
+    needs: [version, install-test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      packages: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-cli
+          path: release
+      - name: Check the download set and write its SHA256SUMS
+        working-directory: release
+        run: |
+          files=(your-space.tar.gz "your-space-ai-cli-$VERSION.tgz" your-space-linux-x64 your-space-linux-arm64 your-space-linux-licenses.txt)
+          test "$(find . -type f | wc -l)" -eq "${#files[@]}"
+          sha256sum -- "${files[@]}" > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      # A build that started earlier but finished later, such as a re-run, never replaces a newer one.
+      - id: newest
+        run: |
+          set -o pipefail
+          if gh release view canary --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' > "$RUNNER_TEMP/assets"; then
+            published=$(sed -n 's/^your-space-ai-cli-\(.*\)\.tgz$/\1/p' "$RUNNER_TEMP/assets")
+            if [[ -n $published && ${published##*.} -gt ${VERSION##*.} ]]; then
+              echo "The canary prerelease already holds $published, a later build than $VERSION: nothing is replaced." >> "$GITHUB_STEP_SUMMARY"
+              echo "replace=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "replace=true" >> "$GITHUB_OUTPUT"
+      - if: steps.newest.outputs.replace == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - if: steps.newest.outputs.replace == 'true'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Point the images' canary tag at this build
+        if: steps.newest.outputs.replace == 'true'
+        run: |
+          for name in your-space-server your-space-web your-space-runtime; do
+            image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/$name"
+            docker buildx imagetools create --tag "$image:canary" "$image:$VERSION"
+          done
+      - name: Replace the canary prerelease's files with this build's
+        if: steps.newest.outputs.replace == 'true'
+        working-directory: release
+        env:
+          EXISTS: ${{ steps.newest.outputs.exists }}
+        run: |
+          set -o pipefail
+          repo=(--repo "$GITHUB_REPOSITORY")
+          files=(your-space.tar.gz "your-space-ai-cli-$VERSION.tgz" your-space-linux-x64 your-space-linux-arm64 your-space-linux-licenses.txt)
+          title="Canary $VERSION (not a release)"
+          notes="An unreleased build of main ($GITHUB_SHA), replaced by the next push to main. It isn't supported and may not upgrade cleanly. To install Your Space, use a numbered release as the installation guide says. To try this build on a test installation, see Run the canary build: https://github.com/$GITHUB_REPOSITORY/blob/main/docs/install/canary.md"
+          # The tag follows the build, so the prerelease's source code is this commit. GitHub may refuse
+          # to move a tag for a workflow's token; the files are what installs read, so that only warns.
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/canary" > /dev/null 2>&1; then
+            if ! gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/canary" -f sha="$GITHUB_SHA" -F force=true > /dev/null; then
+              echo "::warning::The canary tag stays where it was; the prerelease's files and notes are this build's, of $GITHUB_SHA."
+            fi
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref=refs/tags/canary -f sha="$GITHUB_SHA" > /dev/null
+          fi
+          if [[ $EXISTS != true ]]; then
+            gh release create canary "${repo[@]}" --verify-tag --prerelease --latest=false --title "$title" --notes "$notes" "${files[@]}" SHA256SUMS
+            exit 0
+          fi
+          # Updated in place, which notifies no one. SHA256SUMS goes first and comes back last, so a
+          # download in between finds no checksums and stops, rather than mixing two builds.
+          gh release delete-asset canary SHA256SUMS "${repo[@]}" --yes 2> /dev/null || true
+          while read -r asset; do
+            if [[ $asset != SHA256SUMS && " ${files[*]} " != *" $asset "* ]]; then
+              gh release delete-asset canary "$asset" "${repo[@]}" --yes
+            fi
+          done < "$RUNNER_TEMP/assets"
+          gh release upload canary "${files[@]}" "${repo[@]}" --clobber
+          gh release upload canary SHA256SUMS "${repo[@]}" --clobber
+          gh release edit canary "${repo[@]}" --prerelease --latest=false --title "$title" --notes "$notes"
