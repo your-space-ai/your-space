@@ -223,13 +223,27 @@ function Create() {
             placeholder="course-notes"
             // Not while one is being created, whose name and title are cleared when it is.
             disabled={create.isPending}
-            onChange={(event) => setName(folderName(event.target.value))}
+            onChange={(event) => {
+              // An error is about what was sent: it goes once the form changes.
+              if (create.isError) create.reset();
+              setName(folderName(event.target.value));
+            }}
           />
         </label>
         <label>
           Title
           <small>Optional, and you can change it later.</small>
-          <input value={title} maxLength={80} autoComplete="off" placeholder="Course notes" disabled={create.isPending} onChange={(event) => setTitle(event.target.value)} />
+          <input
+            value={title}
+            maxLength={80}
+            autoComplete="off"
+            placeholder="Course notes"
+            disabled={create.isPending}
+            onChange={(event) => {
+              if (create.isError) create.reset();
+              setTitle(event.target.value);
+            }}
+          />
         </label>
         {create.isError ? (
           <p className="notice error" role="alert">

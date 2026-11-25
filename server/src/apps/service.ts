@@ -163,6 +163,9 @@ interface Preview {
   knowledge: { path: string } | null;
 }
 
+/** The most knowledge bases an app can be given: the runtime manager's limit too. */
+const MAX_KNOWLEDGE_BASES = 100;
+
 export type AppRow = typeof app.$inferSelect;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -373,6 +376,8 @@ export class AppsService {
   /** Knowledge bases being deleted, and how many saves of their grants are under way, by ID (journey 014). */
   private readonly knowledgeDeleting = new Set<string>();
   private readonly knowledgeGranting = new Map<string, number>();
+  /** The names of knowledge bases being created, retitled or deleted now. */
+  private readonly knowledgeNames = new Set<string>();
   /** Apps whose outdated Caddy this server process has renewed, or tried to: once each. */
   private readonly renewed = new Set<string>();
 
@@ -799,6 +804,7 @@ export class AppsService {
         await tx.insert(appOutbound).values(p.outbound.map((host) => ({ appId: id, host, source: "kit" as const, approvedBy: actorId })));
       }
       await recordEvent(tx, "app.installed", actorId, null, id);
+      await this.stillExist(tx, bases);
       if (bases.length) {
         await tx.insert(appKnowledgeBase).values(bases.map((base) => ({ appId: id, knowledgeBaseId: base.id, grantedBy: actorId })));
         for (const base of bases) await recordEvent(tx, "knowledge.granted", actorId, null, id, base);
@@ -886,6 +892,10 @@ export class AppsService {
     }
     const names = [...new Set(given as string[])];
     if (names.length === 0) return [];
+    // The runtime manager mounts at most this many in an app.
+    if (names.length > MAX_KNOWLEDGE_BASES) {
+      throw new AppError(400, "too_many_knowledge_bases", `An app can be given at most ${MAX_KNOWLEDGE_BASES} knowledge bases.`);
+    }
     if (!kit?.knowledge) throw new AppError(400, "no_knowledge", `${title}'s kit doesn't ask for knowledge, so it can't be given knowledge bases.`);
     const rows = await this.db.select({ id: knowledgeBase.id, name: knowledgeBase.name }).from(knowledgeBase).where(inArray(knowledgeBase.name, names));
     const missing = names.filter((name) => !rows.some((row) => row.name === name));
@@ -923,6 +933,29 @@ export class AppsService {
     return () => {
       this.knowledgeDeleting.delete(id);
     };
+  }
+
+  /**
+   * Holds a knowledge base's name while it is created, retitled or deleted, so none of those runs on
+   * it at once. Refused with 409 busy while another holds it. Returns what lets it go.
+   */
+  holdKnowledgeName(name: string): () => void {
+    if (this.knowledgeNames.has(name)) throw new AppError(409, "busy", `The knowledge base ${name} is being created, renamed or deleted right now. Try again when that finishes.`);
+    this.knowledgeNames.add(name);
+    return () => {
+      this.knowledgeNames.delete(name);
+    };
+  }
+
+  /**
+   * Checks, in the transaction that saves their grants, that these knowledge bases still exist: one
+   * deleted since the request named it isn't given, nor one created since with its name.
+   */
+  private async stillExist(tx: Tx, bases: { id: string; name: string }[]): Promise<void> {
+    if (bases.length === 0) return;
+    const rows = await tx.select({ id: knowledgeBase.id }).from(knowledgeBase).where(inArray(knowledgeBase.id, bases.map((base) => base.id)));
+    const gone = bases.filter((base) => !rows.some((row) => row.id === base.id));
+    if (gone.length) throw new AppError(400, "unknown_knowledge_base", `There is no knowledge base called ${gone.map((base) => base.name).join(", ")}.`);
   }
 
   /**
@@ -1439,6 +1472,10 @@ export class AppsService {
     // that mounts it, or takes it away, would leave the app's containers and its grants disagreeing,
     // and grants read before then may be another change's, from before it was saved.
     return this.granting(next, () => this.queue(row.id, "apply", async (tx) => {
+      // As the app is now: one installed again since from a kit that doesn't ask for knowledge gets none.
+      const [now] = await tx.select({ kit: app.kit }).from(app).where(eq(app.id, row.id));
+      if (!now?.kit?.knowledge) throw new AppError(400, "no_knowledge", `${row.title}'s kit doesn't ask for knowledge, so it can't be given knowledge bases.`);
+      await this.stillExist(tx, next);
       const current = await this.grants(row.id, tx);
       const added = next.filter((base) => !current.some((c) => c.id === base.id));
       const removed = current.filter((base) => !next.some((n) => n.id === base.id));

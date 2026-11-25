@@ -657,7 +657,12 @@ describe("giving and deleting a knowledge base at once", () => {
     let giving: Promise<Response> | undefined;
     try {
       giving = send("/api/apps/vault/knowledge", { bases: ["arriving"] }, "PUT");
-      await atGrants;
+      // A change that answers before it reads the grants fails the test now, rather than at its timeout.
+      const early = giving.then(async (answer) => {
+        throw new Error(`The change answered ${answer.status} before reading vault's grants: ${await answer.clone().text()}`);
+      });
+      await Promise.race([atGrants, early]);
+      early.catch(() => {});
       const refused = await api("/api/knowledge/arriving", { method: "DELETE" });
       expect([refused.status, ((await refused.json()) as { error: string }).error]).toEqual([409, "busy"]);
       expect(runtime.knowledge.has("arriving")).toBe(true);
@@ -734,5 +739,76 @@ describe("giving and deleting a knowledge base at once", () => {
     expect(runtime.running.has("ys-atlas")).toBe(false);
     expect((await t.db.select({ state: app.state }).from(app).where(eq(app.name, "atlas")))[0]!.state).toBe("removed");
     expect(await grantsOf("atlas")).toEqual([]);
+  });
+});
+
+describe("knowledge bases changed while a request is checked", () => {
+  const jobOf = async (response: Response) => ((await response.json()) as { jobId: string }).jobId;
+  const errorOf = async (response: Response) => [response.status, ((await response.json()) as { error: string }).error];
+
+  /** Runs `meanwhile` once a request has checked the knowledge bases it names, before its job holds the app. */
+  async function afterTheCheck<T>(meanwhile: () => Promise<void>, request: () => Promise<T>): Promise<T> {
+    const apps = server.apps! as unknown as { knowledgeBases: (...args: unknown[]) => Promise<unknown> };
+    const knowledgeBases = apps.knowledgeBases.bind(apps);
+    apps.knowledgeBases = async (...args) => {
+      apps.knowledgeBases = knowledgeBases;
+      const found = await knowledgeBases(...args);
+      await meanwhile();
+      return found;
+    };
+    try {
+      return await request();
+    } finally {
+      apps.knowledgeBases = knowledgeBases;
+    }
+  }
+
+  it("refuses renaming it, or creating its name again, while it is being deleted", async () => {
+    let deleting: Promise<Response> | undefined;
+    await holdingApplies(async () => {
+      // notes has second, so deleting it waits on notes' apply.
+      deleting = api("/api/knowledge/second", { method: "DELETE" });
+      await runtime.untilHeld();
+      expect(await errorOf(await send("/api/knowledge/second", { title: "Second" }, "PATCH"))).toEqual([409, "busy"]);
+      expect(await errorOf(await send("/api/knowledge", { name: "second" }))).toEqual([409, "busy"]);
+    });
+    expect((await deleting!).status).toBe(204);
+    expect(await events("knowledge.retitled")).not.toContainEqual(expect.objectContaining({ knowledgeBase: "second" }));
+    expect(runtime.knowledge.has("second")).toBe(false);
+  });
+
+  it("gives no knowledge base deleted after the request named it", async () => {
+    expect((await send("/api/knowledge", { name: "fleeting" })).status).toBe(201);
+    const change = await afterTheCheck(
+      async () => expect((await api("/api/knowledge/fleeting", { method: "DELETE" })).status).toBe(204),
+      () => send("/api/apps/vault/knowledge", { bases: ["fleeting"] }, "PUT"),
+    );
+    expect(await errorOf(change)).toEqual([400, "unknown_knowledge_base"]);
+    expect(await grantsOf("vault")).toEqual([]);
+  });
+
+  it("gives none to an app installed again, since the request read it, from a kit that doesn't ask for knowledge", async () => {
+    expect((await send("/api/knowledge", { name: "steady" })).status).toBe(201);
+    const kit = (await t.db.select({ kit: app.kit }).from(app).where(eq(app.name, "vault")))[0]!.kit!;
+    const { knowledge: _knowledge, ...without } = kit;
+    let change: Response;
+    try {
+      change = await afterTheCheck(
+        async () => void (await t.db.update(app).set({ kit: without }).where(eq(app.name, "vault"))),
+        () => send("/api/apps/vault/knowledge", { bases: ["steady"] }, "PUT"),
+      );
+    } finally {
+      await t.db.update(app).set({ kit }).where(eq(app.name, "vault"));
+    }
+    expect(await errorOf(change)).toEqual([400, "no_knowledge"]);
+    expect(await grantsOf("vault")).toEqual([]);
+    expect((await api("/api/knowledge/steady", { method: "DELETE" })).status).toBe(204);
+  });
+
+  it("refuses more knowledge bases than the runtime manager mounts, before saving anything", async () => {
+    const names = Array.from({ length: 101 }, (_, i) => `kb-${i}`);
+    expect(await errorOf(await send("/api/apps/vault/knowledge", { bases: names }, "PUT"))).toEqual([400, "too_many_knowledge_bases"]);
+    expect(await grantsOf("vault")).toEqual([]);
+    expect((await waitForJob(await jobOf(await send("/api/apps/vault/knowledge", { bases: [] }, "PUT")))).state).toBe("succeeded");
   });
 });

@@ -72,27 +72,39 @@ export class KnowledgeBases {
       throw new AppError(400, "bad_name", "A knowledge base's name is 1 to 40 lower-case letters, digits and dashes, starting and ending with a letter or digit, like course-notes.");
     }
     const title = titleOf(input.title, name);
-    if ((await this.db.select({ id: knowledgeBase.id }).from(knowledgeBase).where(eq(knowledgeBase.name, name)))[0]) {
-      throw new AppError(409, "already_exists", `A knowledge base called ${name} already exists.`);
+    // Its name is held until its record is saved, so a deletion of that name can't run in between.
+    const release = this.apps.holdKnowledgeName(name);
+    try {
+      if ((await this.db.select({ id: knowledgeBase.id }).from(knowledgeBase).where(eq(knowledgeBase.name, name)))[0]) {
+        throw new AppError(409, "already_exists", `A knowledge base called ${name} already exists.`);
+      }
+      await this.apps.runtime.createKnowledge(name).catch(refused);
+      await this.db.transaction(async (tx) => {
+        const inserted = await tx.insert(knowledgeBase).values({ name, title, createdBy: actorId }).onConflictDoNothing().returning({ id: knowledgeBase.id });
+        if (!inserted[0]) throw new AppError(409, "already_exists", `A knowledge base called ${name} already exists.`);
+        await recordEvent(tx, "knowledge.created", actorId, null, null, { id: inserted[0].id, name });
+      });
+    } finally {
+      release();
     }
-    await this.apps.runtime.createKnowledge(name).catch(refused);
-    await this.db.transaction(async (tx) => {
-      const inserted = await tx.insert(knowledgeBase).values({ name, title, createdBy: actorId }).onConflictDoNothing().returning({ id: knowledgeBase.id });
-      if (!inserted[0]) throw new AppError(409, "already_exists", `A knowledge base called ${name} already exists.`);
-      await recordEvent(tx, "knowledge.created", actorId, null, null, { id: inserted[0].id, name });
-    });
     log("info", "knowledge.created", { name });
     return { name, title };
   }
 
   /** Changes a knowledge base's title; its name, the apps' folder, stays. */
   async retitle(name: string, input: unknown, actorId: string) {
-    const row = await this.rowByName(name);
     const title = titleOf(input);
-    await this.db.transaction(async (tx) => {
-      await tx.update(knowledgeBase).set({ title, updatedAt: new Date() }).where(eq(knowledgeBase.id, row.id));
-      await recordEvent(tx, "knowledge.retitled", actorId, null, null, { id: row.id, name: row.name });
-    });
+    // Not while it is being deleted.
+    const release = this.apps.holdKnowledgeName(name);
+    try {
+      const row = await this.rowByName(name);
+      await this.db.transaction(async (tx) => {
+        await tx.update(knowledgeBase).set({ title, updatedAt: new Date() }).where(eq(knowledgeBase.id, row.id));
+        await recordEvent(tx, "knowledge.retitled", actorId, null, null, { id: row.id, name: row.name });
+      });
+    } finally {
+      release();
+    }
     return { name, title };
   }
 
@@ -107,12 +119,19 @@ export class KnowledgeBases {
    * and so is the knowledge base, so no app is given it meanwhile.
    */
   async delete(name: string, actorId: string): Promise<void> {
-    const row = await this.rowByName(name);
-    const releaseBase = this.apps.holdKnowledge(row.id);
+    // Its name is held first, so the row read is the one whose storage the name-based calls change:
+    // no other create or delete of that name runs until it ends.
+    const releaseName = this.apps.holdKnowledgeName(name);
     try {
-      await this.deleteHeld(row, actorId);
+      const row = await this.rowByName(name);
+      const releaseBase = this.apps.holdKnowledge(row.id);
+      try {
+        await this.deleteHeld(row, actorId);
+      } finally {
+        releaseBase();
+      }
     } finally {
-      releaseBase();
+      releaseName();
     }
   }
 

@@ -60,6 +60,14 @@ async function holdRequests(page: Page, path: string, method: string): Promise<(
   return release;
 }
 
+/** Waits for a job, through the API, and checks it succeeded. */
+async function jobDone(page: Page, jobId: string): Promise<void> {
+  await expect
+    .poll(async () => ((await (await page.request.get(`/api/jobs/${jobId}`)).json()) as { state: string }).state, { timeout: 120_000 })
+    .not.toBe("running");
+  expect(((await (await page.request.get(`/api/jobs/${jobId}`)).json()) as { state: string }).state).toBe("succeeded");
+}
+
 async function install(page: Page, app: string, pick: string[]): Promise<void> {
   await page.goto("/apps");
   await page.getByLabel(LINK_LABEL).fill(kit(app));
@@ -96,6 +104,13 @@ test("the owner creates knowledge bases, and the apps given them share their fil
   await expect(page.locator('li[data-knowledge="recipes"]')).toBeVisible();
   await expect(create.getByLabel("Name")).toBeEnabled();
   await expect(create.getByLabel("Name")).toHaveValue("");
+  // An error is about what was sent, so it goes once the form changes.
+  await create.getByLabel("Name").fill("recipes");
+  await create.getByRole("button", { name: "Create" }).click();
+  await expect(create.getByRole("alert")).toContainText("already exists");
+  await create.getByLabel("Name").fill("soups");
+  await expect(create.getByRole("alert")).toHaveCount(0);
+  await create.getByLabel("Name").fill("");
 
   // Each is a volume of Your Space's, labelled as knowledge and never as an app's Compose project.
   const notes = await knowledgeVolume("course-notes");
@@ -178,6 +193,23 @@ test("the app's page changes its knowledge bases, which recreates its interface 
   await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange")));
   await expect(knowledge.getByLabel("scratch")).toHaveCount(0);
   await expect(knowledge.getByRole("button", { name: "Save knowledge bases" })).toBeDisabled();
+
+  // One the app is given after the list was read stays given when the picks change.
+  await page.reload();
+  await expect(knowledge.getByLabel("Family recipes")).toBeChecked();
+  expect((await page.request.post("/api/knowledge", { data: { name: "late" }, headers: { origin } })).status()).toBe(201);
+  const given = await page.request.put("/api/apps/notes-one/knowledge", { data: { bases: ["course-notes", "late", "recipes"] }, headers: { origin } });
+  expect(given.status()).toBe(202);
+  await jobDone(page, ((await given.json()) as { jobId: string }).jobId);
+  // The app's details show it from their next refresh; the list, read before it was created, doesn't.
+  await page.waitForResponse(async (r) => r.url().endsWith("/api/apps/notes-one") && r.request().method() === "GET" && (await r.text()).includes('"late"'), { timeout: 15_000 });
+  await expect(knowledge.getByLabel("late")).toHaveCount(0);
+  await knowledge.getByLabel("Family recipes").uncheck();
+  await knowledge.getByRole("button", { name: "Save knowledge bases" }).click();
+  await waitForJob(page);
+  const detail = (await (await page.request.get("/api/apps/notes-one")).json()) as { knowledge: { bases: { name: string }[] } };
+  expect(detail.knowledge.bases.map((base) => base.name)).toEqual(["course-notes", "late"]);
+  expect((await page.request.delete("/api/knowledge/late", { headers: { origin } })).status()).toBe(204);
 });
 
 test("removing an app and deleting its data keeps its knowledge bases' files", async ({ page }) => {

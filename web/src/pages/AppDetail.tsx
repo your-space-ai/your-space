@@ -242,11 +242,13 @@ function Settings({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { j
 function Knowledge({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { jobId: string }) => void }) {
   const queryClient = useQueryClient();
   const catalog = useQuery(knowledgeQuery);
-  // A pick of a knowledge base deleted since, as in another tab, is dropped once the list shows it gone.
-  const existing = (names: string[]) => (catalog.data ? names.filter((name) => catalog.data.knowledgeBases.some((base) => base.name === name)) : names);
-  const given = existing(d.knowledge!.bases.map((base) => base.name));
+  const given = d.knowledge!.bases.map((base) => base.name);
+  // A pick of a knowledge base deleted since, as in another tab, is dropped once the list shows it
+  // gone. One the app has is kept until its details drop it, so a list read before it was created
+  // never takes it away.
+  const kept = (name: string) => given.includes(name) || !catalog.data || catalog.data.knowledgeBases.some((base) => base.name === name);
   const [selected, setSelected] = useState<string[] | null>(null);
-  const picked = selected ? existing(selected) : given;
+  const picked = selected ? selected.filter(kept) : given;
   const changed = picked.join(",") !== given.join(",");
   const save = useMutation({
     mutationFn: () => api<{ jobId: string }>("PUT", `/api/apps/${d.name}/knowledge`, { bases: picked }),
