@@ -622,6 +622,9 @@ export class AppsService {
       if (token.state === "ready") {
         check = await this.check({ ...spec, registryCredentials: [{ ...token.credential, images: denied }] });
         if (check.images.some((i) => i.private)) await token.worked();
+        // An image GHCR didn't show anonymously stays private when the engine answered the signed-in
+        // lookup with its own copy, as when GHCR couldn't answer, so the install still signs in for it.
+        check = { ...check, images: check.images.map((i) => (denied.includes(i.ref) && i.digest ? { ...i, private: true as const } : i)) };
       }
     }
     const refusals = check.images.filter((i) => i.signIn).map((i) => ({ service: "", setting: "image", reason: signInReason(i, registry, token) }));
@@ -896,7 +899,7 @@ export class AppsService {
       if (error instanceof RuntimeError && error.code === "sign_in") {
         message +=
           kind === "install"
-            ? ` Check your image token ${ADD_IMAGE_TOKEN}, then install the app again.`
+            ? ` Check your image token ${ADD_IMAGE_TOKEN}, then remove the app and install it again.`
             : " Your Space signs in to download a private image only while installing the app: remove it, then install it again, reusing its data, with your image token in place.";
       }
       await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));

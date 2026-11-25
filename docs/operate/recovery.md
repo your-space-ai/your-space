@@ -20,9 +20,7 @@ Ways to recover, best first:
    data key was lost too (it is in the same volume, unless you set `YS_DATA_KEY` in `.env`),
    installed apps' settings can't be read, and an app can't be installed again over its kept data,
    because that data depends on the settings, such as the app's own database password. Restore the
-   old data key if you can. Otherwise remove the app, delete its kept data on its page, and install it
-   again: the app starts empty, and deleting its data can't be undone. The GitHub page then shows
-   **Reconnect**: connect GitHub again with a new token, and add an image token again if you had one. Run:
+   old data key if you can. Run:
 
    ```sh
    your-space start --new-secrets
@@ -38,6 +36,11 @@ Ways to recover, best first:
    Then [give PostgreSQL the database password](#give-postgresql-the-database-password), and start
    the rest with `docker compose up -d`. A secret set in `.env` is left as it is by `--new`, so these
    steps work whichever secrets you set there.
+
+   Once Your Space is running without the old data key, remove each app, delete its kept data on its
+   page, and install it again: the app starts empty, and deleting its data can't be undone. The
+   GitHub page shows **Reconnect**: connect GitHub with a new token, and add your image token again
+   if you had one.
 
 ### Give PostgreSQL the Database Password
 

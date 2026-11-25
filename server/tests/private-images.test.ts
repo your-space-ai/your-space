@@ -11,7 +11,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { RuntimeError, type AppSpec, type CheckAnswer } from "../src/apps/runtime-client.ts";
 import { decrypt, encrypt } from "../src/apps/settings.ts";
 import { app, installJob, registryCredential, sourceCredential } from "../src/db/schema.ts";
-import { GITHUB_CLASSIC_TOKENS_URL } from "../src/github-connection.ts";
+import { GITHUB_CLASSIC_TOKENS_URL, GithubConnection } from "../src/github-connection.ts";
 import { runCommand } from "./helpers/commands.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY } from "./helpers/env.ts";
@@ -166,6 +166,31 @@ describe("the image token on the GitHub page", () => {
     expect((await read("DELETE", "/api/github/image-token", undefined, { cookie, origin: "https://other.example" })).status).toBe(403);
     expect((await read("PUT", "/api/github/image-token", { token: IMAGE_TOKEN }, {})).status).toBe(401);
     expect(await stored()).toBeDefined();
+  });
+
+  it("keeps a refusal GitHub gave while an earlier check of the same token was still waiting for GitHub", async () => {
+    await read("PUT", "/api/github/image-token", { token: IMAGE_TOKEN });
+    // The first check's answer arrives last: GitHub accepting the token from before it was deleted, or
+    // no answer at all. The second check, in between, got GitHub's refusal.
+    for (const late of ["accepted", "unreachable"] as const) {
+      await t.db.update(registryCredential).set({ refusedAt: null });
+      let release!: () => void;
+      const waiting = new Promise<void>((resolve) => (release = resolve));
+      let calls = 0;
+      const gated: typeof fetch = async (input, init) => {
+        if (++calls > 1) return Response.json({ message: "Bad credentials" }, { status: 401 });
+        await waiting;
+        if (late === "unreachable") throw new TypeError("fetch failed");
+        return github.fetch(input, init);
+      };
+      const connection = new GithubConnection(t.db, TEST_DATA_KEY, { endpoints: { api: "https://api.github.test", raw: "https://raw.github.test" }, fetch: gated });
+      const first = connection.status();
+      await vi.waitFor(() => expect(calls).toBe(1));
+      expect((await connection.status()).images).toMatchObject({ accepted: false, problem: "refused" });
+      release();
+      expect((await first).images).toMatchObject({ accepted: false, problem: "refused" });
+      expect((await stored())!.refusedAt).not.toBeNull();
+    }
   });
 });
 
@@ -375,6 +400,22 @@ describe("a kit with a private image on GHCR", () => {
     expect(lines.join("\n")).not.toContain(IMAGE_TOKEN);
   });
 
+  it("keeps an image private when the engine answers the signed-in lookup with its own copy", async () => {
+    await addImageToken(IMAGE_TOKEN);
+    // GHCR can't answer the lookup with the token, a rate limit say, and the engine has the image.
+    runtime.images = (spec) => images(spec).map(({ private: _signedIn, ...image }) => image);
+    const [before] = await t.db.select({ workedAt: registryCredential.workedAt }).from(registryCredential);
+    const reviewed = await review("private-image");
+    expect(reviewed.json.images[0]).toEqual({ ref: PRIVATE_IMAGE, digest: DIGEST, runsHere: true, private: true });
+    // GHCR didn't say the token works.
+    const [after] = await t.db.select({ workedAt: registryCredential.workedAt }).from(registryCredential);
+    expect(after!.workedAt).toEqual(before!.workedAt);
+    const name = await install(reviewed.json.previewId);
+    const [row] = await t.db.select().from(app).where(eq(app.name, name));
+    expect(row!.images[PRIVATE_IMAGE]).toEqual({ digest: DIGEST, private: true });
+    expect(applies()).toEqual([[{ registry: "ghcr.io", username: LOGIN, secret: IMAGE_TOKEN, images: [PRIVATE_IMAGE] }]]);
+  });
+
   it("never reads the image token for public images, so one no key can read doesn't stop them", async () => {
     await addImageToken(IMAGE_TOKEN);
     await t.db.update(registryCredential).set({ token: encrypt("a-data-key-that-is-gone-0123456789abcdef", IMAGE_TOKEN) });
@@ -420,7 +461,7 @@ describe("a kit with a private image on GHCR", () => {
     const name = await install(reviewed.json.previewId);
     const [job] = await t.db.select().from(installJob).orderBy(installJob.createdAt);
     expect(job!.error).toBe(
-      `Downloading ${PRIVATE_IMAGE} failed: its registry asks for a sign-in, as for a private image, and refused the sign-in Your Space gave. Check your image token on Your Space's GitHub page, or with docker compose exec server github image-token, then install the app again.`,
+      `Downloading ${PRIVATE_IMAGE} failed: its registry asks for a sign-in, as for a private image, and refused the sign-in Your Space gave. Check your image token on Your Space's GitHub page, or with docker compose exec server github image-token, then remove the app and install it again.`,
     );
     expect((await api(`/api/apps/${name}/start`, { method: "POST" })).status).toBe(202);
     await settled();

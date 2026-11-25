@@ -4,16 +4,17 @@
 import { request } from "node:http";
 import { compose, docker } from "./stack.ts";
 
-/** The engine's socket on this machine, as the Docker CLI finds it by default. */
-function engineSocket(): string {
-  const host = process.env.DOCKER_HOST;
-  return host?.startsWith("unix://") ? host.slice("unix://".length) : "/var/run/docker.sock";
+/** The engine's socket, the one the Docker CLI uses: DOCKER_HOST's, or else its current context's. */
+async function engineSocket(): Promise<string> {
+  const host = (await docker(["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], false)).stdout.trim();
+  if (!host.startsWith("unix://")) throw new Error(`Pushing to the test registry needs the engine's Unix socket; the Docker CLI uses ${host}.`);
+  return host.slice("unix://".length);
 }
 
-function push(name: string, tag: string, auth: string): Promise<string> {
+function push(socketPath: string, name: string, tag: string, auth: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const req = request(
-      { socketPath: engineSocket(), method: "POST", path: `/images/${encodeURIComponent(name)}/push?tag=${encodeURIComponent(tag)}`, headers: { "X-Registry-Auth": auth } },
+      { socketPath, method: "POST", path: `/images/${encodeURIComponent(name)}/push?tag=${encodeURIComponent(tag)}`, headers: { "X-Registry-Auth": auth } },
       (res) => {
         let body = "";
         res.setEncoding("utf8");
@@ -42,13 +43,14 @@ export async function pushPrivateImage(source: string, image: string, username: 
   const [name, tag] = [image.slice(0, colon), image.slice(colon + 1)];
   const registry = name.slice(0, name.indexOf("/"));
   const auth = Buffer.from(JSON.stringify({ username, password, serveraddress: registry })).toString("base64").replaceAll("+", "-").replaceAll("/", "_");
+  const socketPath = await engineSocket();
   await docker(["pull", source], false);
   await docker(["tag", source, image], false);
   // The registry starts with the stack; give it a moment to listen.
   let digest = "";
   for (let attempt = 0; ; attempt++) {
     try {
-      digest = await push(name, tag, auth);
+      digest = await push(socketPath, name, tag, auth);
       break;
     } catch (error) {
       if (attempt >= 10) throw error;

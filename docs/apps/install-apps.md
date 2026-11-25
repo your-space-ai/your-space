@@ -166,7 +166,8 @@ then **Create an image token on GitHub**. On GitHub's new classic token page:
 The page then shows **Images: @login**, the account the token belongs to, with **Replace** and
 **Remove**. Your Space asks GitHub which account it is, and GitHub's answer lists the token's
 scopes: a token with any scope besides `read:packages`, or with none, is refused before it is stored.
-The image token doesn't need a contents token, and either can be replaced or removed on its own.
+The image token doesn't need a contents token. Either token can be replaced on its own, and the image
+token can be removed on its own; **Disconnect** removes both.
 
 **Add it with the server command.** `github image-token` adds the image token, or replaces it, from
 a hidden prompt or standard input, never from the command line:

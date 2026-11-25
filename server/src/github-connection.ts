@@ -118,12 +118,19 @@ export class GithubConnection implements SourceCredentials, RegistryCredentials 
    * Marks that the token worked in a use that began at `started`. A refusal GitHub gave since then,
    * to a use that finished first, stands.
    */
-  private async worked(slot: Slot, row: Row, started: Date): Promise<void> {
+  private async worked(slot: Slot, row: Row, started: Date, change: Partial<Pick<Row, "account">> = {}): Promise<void> {
     const table = TABLES[slot];
     await this.db
       .update(table)
-      .set({ workedAt: new Date(), refusedAt: sql`case when ${table.refusedAt} >= ${started.toISOString()}::timestamptz then ${table.refusedAt} end` })
+      .set({ ...change, workedAt: new Date(), refusedAt: sql`case when ${table.refusedAt} >= ${started.toISOString()}::timestamptz then ${table.refusedAt} end` })
       .where(and(eq(table.id, row.id), eq(table.token, row.token)));
+  }
+
+  /** The refusal stored now for the token asked about: null for none, undefined once it was replaced or removed. */
+  private async refusal(slot: Slot, row: Row): Promise<Date | null | undefined> {
+    const table = TABLES[slot];
+    const [now] = await this.db.select({ refusedAt: table.refusedAt }).from(table).where(and(eq(table.id, row.id), eq(table.token, row.token)));
+    return now?.refusedAt;
   }
 
   /** Marks what GitHub said, only if the token is still the one asked about. */
@@ -140,6 +147,7 @@ export class GithubConnection implements SourceCredentials, RegistryCredentials 
   }
 
   private async tokenStatus(slot: Slot, workspaceId: string): Promise<TokenStatus> {
+    const started = new Date();
     const row = await this.row(slot, workspaceId);
     if (!row) return { set: false };
     const known = { set: true as const, login: row.account, lastWorkedAt: row.workedAt.toISOString() };
@@ -152,17 +160,20 @@ export class GithubConnection implements SourceCredentials, RegistryCredentials 
     }
     try {
       const { login } = await githubAccount(token, this.endpoints, this.fetcher);
-      const now = new Date();
-      await this.mark(slot, row, { account: login, workedAt: now, refusedAt: null });
-      return { set: true, login, lastWorkedAt: now.toISOString(), accepted: true };
+      await this.worked(slot, row, started, { account: login });
+      // A refusal another check or a read recorded for this token while GitHub answered this one stands.
+      if (await this.refusal(slot, row)) return { ...known, login, accepted: false, problem: "refused" };
+      return { set: true, login, lastWorkedAt: new Date().toISOString(), accepted: true };
     } catch (error) {
       if (error instanceof TokenRefusedError) {
         await this.mark(slot, row, { refusedAt: new Date() });
         return { ...known, accepted: false, problem: "refused" };
       }
       if (error instanceof SourceError) {
-        // GitHub couldn't be asked; a refusal it gave before still stands.
-        return row.refusedAt ? { ...known, accepted: false, problem: "refused" } : { ...known, accepted: null, problem: "unreachable" };
+        // GitHub couldn't be asked; a refusal it gave this token, before this check or during it, stands.
+        const stored = await this.refusal(slot, row);
+        const refused = stored === undefined ? row.refusedAt : stored;
+        return refused ? { ...known, accepted: false, problem: "refused" } : { ...known, accepted: null, problem: "unreachable" };
       }
       throw error;
     }
