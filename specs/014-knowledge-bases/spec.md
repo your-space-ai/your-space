@@ -82,12 +82,21 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   bisync's own checks and stops for the owner rather than guess:
   - A marker file at both roots (`--check-access`), so an empty or replaced volume, or an unreachable
     folder, never reads as "everything was deleted".
-  - The default limit on deletions per run (`--max-delete 50%`). A run over it stops and says so.
+  - The default limit on deletions per run (`--max-delete 50`, half the files). A run over it stops
+    and lists the deletions it would make.
   - bisync's refusal to sync with an empty side outside the first run.
   - Only one run per knowledge base at a time, with a lock that expires if a run dies
     (`--resilient --recover --max-lock 2m`).
-  - The first run copies both ways and deletes nothing (`--resync`). After a stopped run, the owner
-    can choose **Resync**, which also deletes nothing.
+  - The first run copies both ways and deletes nothing (`--resync --resync-mode newer`): a file on
+    only one side is copied to the other, and where both sides have a file, the newer copy wins.
+  - After a stopped run the owner chooses one of two actions. **Resync** runs the same way as the
+    first run, so files deleted on one side come back from the other. **Apply these deletions**
+    shows the listed deletions and, once the owner confirms, runs that one sync past the limit
+    (`--force`); the next scheduled run has the limit again.
+  - Nothing an overwrite replaces is lost. A local file replaced by a sync is moved to a backup
+    folder in Your Space's sync state, outside the knowledge base (`--backup-dir1`). A Drive file
+    replaced by a sync keeps its earlier version in Drive's version history. The knowledge base's
+    page links the backup folder's files for the last runs.
 - **Conflicts.** When a file changed on both sides since the last run, bisync keeps both: the remote's
   copy is renamed with a conflict suffix. Your Space lists conflict copies on the knowledge base's
   page. Two apps writing the same file locally is not detected: the last write wins, and Drive's
@@ -120,7 +129,12 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   or deleted on either side reaches the other; a file changed on both sides leaves a conflict copy
   that the page lists.
 - Sync refuses to delete: empty the volume, or remove the marker, or delete over half the files, and
-  the run stops with a message and the remote is unchanged. Resync then deletes nothing.
+  the run stops with a message and the remote is unchanged.
+- After a run stopped by deleting over half the files: **Resync** brings the deleted files back from
+  the other side and deletes nothing; **Apply these deletions**, confirmed, deletes them on the other
+  side, and the next run stops again over the limit.
+- A resync where both sides changed a file keeps the newer copy, and the replaced local copy is in
+  the backup folder.
 - Rotate the data key: the connection still syncs.
 - With the operator's own client against real Google Drive, on a throwaway folder: connect, sync both
   ways, restart Your Space and sync again after the access token expires, then revoke access in Google
@@ -159,5 +173,6 @@ These are recorded, not scheduled. Each is opt-in, so a v1 kit never breaks.
 - Which of Google's redirect addresses work for each way Your Space is reached (`localhost`, an HTTPS
   domain, a private address), and what the guide says for the ones Google refuses.
 - Per-knowledge-base size limits, and how a first sync of a large folder shows progress.
-- Whether the Obsidian kit's Compose file goes in a public repository of its own: a kit pins a public
-  Compose file, and the image's maintainers publish none.
+- The Obsidian kit's Compose file: a kit pins a public Compose file, and the image's maintainers
+  publish none. A GitHub connection that reads private repositories is being specified separately;
+  until it lands, the Obsidian demo waits.
