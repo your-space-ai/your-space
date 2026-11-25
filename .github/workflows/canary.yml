@@ -131,12 +131,11 @@ jobs:
           }
 
           # A build that started earlier but finished later, such as a re-run, never replaces a newer
-          # one: the newest the published prerelease names, by its title, which a build sets when it
-          # creates the prerelease and once its files are all there, or by an npm package, which a
-          # later build deletes only once its own files are there. Only the published prerelease
-          # counts: a draft is what an attempt left. Only the build number, the version's last part,
-          # is read, as digits: a title is free text, and bash would run anything else in it as
-          # arithmetic.
+          # one: the newest the published prerelease names, by its title, which a build sets before it
+          # changes any file, so it names the newest build that has started replacing them, or by an
+          # npm package. Only the published prerelease counts: a draft is what an attempt left. Only
+          # the build number, the version's last part, is read, as digits: a title is free text, and
+          # bash would run anything else in it as arithmetic.
           retry gh api --paginate "$api/releases?per_page=100" \
             --jq '.[] | select(.tag_name == "canary" and (.draft | not)) | .name, .assets[].name' > "$RUNNER_TEMP/held"
           newest=0
@@ -166,6 +165,9 @@ jobs:
             esac
           }
           id=$(retry canary_release)
+          # The title and notes name this build before any file changes, so if a step below fails, an
+          # older build still finds this one recorded, even once --clobber has deleted its package.
+          retry gh api --method PATCH "$api/releases/$id" -F prerelease=true -f name="$title" -f body="$notes" --silent
 
           # Updated in place, which notifies no one. SHA256SUMS goes before any upload and comes back
           # last, so a download in between finds no checksums and stops, rather than mixing two builds.
@@ -190,7 +192,6 @@ jobs:
           }
           retry upload keep "${files[@]}"
           retry upload stale SHA256SUMS
-          retry gh api --method PATCH "$api/releases/$id" -F prerelease=true -f name="$title" -f body="$notes" --silent
 
           # What installs read: the published prerelease holds exactly this build's files, and its
           # SHA256SUMS is this build's. Only then do the tag and the images follow.
