@@ -140,6 +140,7 @@ export interface SyncRunResult {
   reason?: "max_delete" | "empty" | "marker" | "resync" | "changed";
   side?: "local" | "remote";
   message?: string;
+  /** Every deletion a stopped run listed, however many. */
   deletions: SyncDeletion[];
   ties: string[];
   conflicts: string[];
@@ -164,9 +165,12 @@ export interface Runtime {
   checkPort(project: string, publish: { port: number; bind: string }): Promise<{ inUse: boolean; by?: string }>;
   /** Creates a knowledge base's storage, or keeps this installation's own that has its name. */
   createKnowledge(name: string): Promise<{ created: boolean }>;
-  /** The apps whose containers mount a knowledge base, running or not, with or without a grant. */
-  knowledgeUsers(name: string): Promise<{ apps: string[] }>;
-  /** Deletes a knowledge base's storage and its files; refused while an app still mounts it. */
+  /**
+   * The apps whose containers mount a knowledge base, running or not, with or without a grant, and
+   * whether the runtime manager runs a sync of it now, one a server before a restart started included.
+   */
+  knowledgeUsers(name: string): Promise<{ apps: string[]; syncing: boolean }>;
+  /** Deletes a knowledge base's storage and its files; refused while an app still mounts it, or while it syncs. */
   deleteKnowledge(name: string): Promise<void>;
   /** Runs a sync of a knowledge base with its Drive folder; another run of it answers busy. */
   syncKnowledge(name: string, request: SyncRequest): Promise<SyncRunResult>;

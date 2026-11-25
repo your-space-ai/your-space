@@ -80,7 +80,8 @@ Google connection once, with an OAuth client of their own: see
 the **Knowledge** page, paste the link of a Drive folder under **Google Drive**, and choose
 **Connect**. The first sync copies both ways and deletes nothing; after it, Your Space syncs every
 five minutes and when you choose **Sync now**. Apps keep reading and writing the local copy, so they
-work offline too, and can't tell a synced knowledge base from a local one.
+work offline too, and can't tell a synced knowledge base from a local one. A sync covers only the
+chosen folder: shortcuts in it, and Google Docs, Sheets and Slides, stay in Drive only.
 
 The knowledge base's page shows:
 
@@ -91,7 +92,8 @@ The knowledge base's page shows:
 - **Replaced files:** files a sync replaced or deleted here, kept for 30 days outside the knowledge
   base.
 - Why a sync stopped, when it did, with **Resync**, which copies both ways and deletes nothing, and,
-  after more than half of the files were deleted on one side, **Apply these deletions**.
+  after more than half of the files were deleted on one side, the deletions (the first 500 by name,
+  and how many more) and **Apply these deletions**.
 - **Reconnect**, when Google refused Your Space's access.
 - **Disconnect**, which stops the sync. The knowledge base and the Drive folder both keep their
   files.

@@ -387,6 +387,51 @@ test("a first sync keeps the newer copy, backs up a replaced local file, and the
   await expect(page.getByLabel("Drive folder link")).toBeVisible();
 });
 
+test("a run that stops over more than 500 deletions shows the first 500, and applies every one once confirmed", async ({ page }, testInfo) => {
+  await asOwner(page);
+  const name = "bulk";
+  const folder = "1E2eTestFolder0000000000000000ef";
+  const local = (script: string) => shell(`ys-knowledge.${PROJECT}.${name}`, `cd /v && ${script}`);
+  const remote = (script: string) => shell(DRIVE_VOLUME, `mkdir -p /v/${folder} && cd /v/${folder} && ${script}`);
+  const count = (side: (script: string) => Promise<string>) => side("ls | grep -c '^file-' || true");
+  await page.goto("/knowledge");
+  const create = page.getByRole("region", { name: "New knowledge base" });
+  await create.getByLabel("Name").fill(name);
+  await create.getByRole("button", { name: "Create" }).click();
+  await expect(page.locator(`li[data-knowledge="${name}"]`)).toBeVisible();
+  await local("for i in $(seq 1 1100); do echo $i > file-$i.md; done");
+  await page.goto(`/knowledge/${name}`);
+  await page.getByLabel("Drive folder link").fill(`https://drive.google.com/drive/folders/${folder}`);
+  await page.getByRole("button", { name: "Connect" }).click();
+  const main = page.locator('main[data-state="knowledge-base"]');
+  await expect(main).toHaveAttribute("data-sync-result", "synced", { timeout: 120_000 });
+  expect(await count(remote)).toBe("1100");
+
+  // 600 of 1,100 files deleted here: over the limit, so the run stops, and the page has all 600.
+  await local("for i in $(seq 1 600); do rm file-$i.md; done");
+  await run(page);
+  await expect(main).toHaveAttribute("data-sync-result", "stopped");
+  const listed = page.locator("[data-deletions]");
+  await expect(listed).toContainText("600 files to delete");
+  await expect(listed.locator("li code")).toHaveCount(500);
+  await expect(listed.locator("[data-more-deletions]")).toHaveText("and 100 more files");
+  expect(await count(remote)).toBe("1100");
+
+  await page.getByRole("button", { name: "Apply these deletions" }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Apply these deletions?" });
+  await expect(dialog).toContainText("600 files are deleted in Drive");
+  await expect(dialog.locator("[data-more-deletions]")).toHaveText("and 100 more files");
+  await evidence(page, testInfo, "014-2-apply-many-deletions");
+  await dialog.getByRole("button", { name: "Delete 600 files" }).click();
+  await expect(main).toHaveAttribute("data-sync-result", "synced", { timeout: 120_000 });
+  expect(await count(remote)).toBe("500");
+  expect(await remote("ls file-1.md file-600.md 2>&1 || true")).toContain("No such file");
+  expect(await remote("cat file-601.md file-1100.md")).toBe("601\n1100");
+  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Disconnect" }).click();
+  await expect(page.getByLabel("Drive folder link")).toBeVisible();
+});
+
 test("disconnecting leaves both sides' files, and no secret reached a log or a container left behind", async ({ page }, testInfo) => {
   await asOwner(page);
   await page.goto(`/knowledge/${KB}`);

@@ -114,10 +114,14 @@ export class FakeRuntime implements Runtime {
     return { created };
   }
 
-  /** The apps whose containers mount it, from the spec each last ran. */
+  /** Held until released, so a test can act while the server is deleting a knowledge base. */
+  holdKnowledgeUsers: Promise<void> | undefined;
+
+  /** The apps whose containers mount it, from the spec each last ran, and whether a run of it is under way. */
   async knowledgeUsers(name: string) {
     this.calls.push({ method: "knowledgeUsers", project: name });
-    return { apps: this.mounting(name) };
+    await this.holdKnowledgeUsers;
+    return { apps: this.mounting(name), syncing: this.syncingNow.has(name) };
   }
 
   private mounting(name: string): string[] {
@@ -129,7 +133,8 @@ export class FakeRuntime implements Runtime {
 
   async deleteKnowledge(name: string) {
     this.calls.push({ method: "deleteKnowledge", project: name });
-    // Like the runtime manager, refused while an app's containers mount it.
+    // Like the runtime manager, refused while it syncs, or while an app's containers mount it.
+    if (this.syncingNow.has(name)) throw new RuntimeError(`The knowledge base ${name} is syncing. Try again when the sync finishes.`, 409, "engine_error");
     const users = this.mounting(name);
     if (users.length > 0) throw new RuntimeError(`The knowledge base ${name} is still mounted by ${users.join(", ")}, so it can't be deleted yet.`, 409, "engine_error");
     this.knowledge.delete(name);
@@ -143,15 +148,23 @@ export class FakeRuntime implements Runtime {
   holdSync = false;
   releaseSync: () => void = () => {};
   removedSyncs: string[] = [];
+  /** The knowledge bases a run is under way for, as the runtime manager holds them. */
+  syncingNow = new Set<string>();
 
   async syncKnowledge(name: string, request: SyncRequest): Promise<SyncRunResult> {
     this.syncs.push({ name, request });
-    if (this.holdSync) await new Promise<void>((resolve) => (this.releaseSync = resolve));
+    this.syncingNow.add(name);
+    try {
+      if (this.holdSync) await new Promise<void>((resolve) => (this.releaseSync = resolve));
+    } finally {
+      this.syncingNow.delete(name);
+    }
     const answer = (this.syncAnswers.length > 1 ? this.syncAnswers.shift() : this.syncAnswers[0]) ?? {};
     return { result: "synced", deletions: [], ties: [], conflicts: [], backups: [], changed: false, listed: true, ...answer };
   }
 
   async removeSync(name: string): Promise<void> {
+    if (this.syncingNow.has(name)) throw new RuntimeError(`The knowledge base ${name} is syncing. Try again when the sync finishes.`, 409, "engine_error");
     this.removedSyncs.push(name);
   }
 

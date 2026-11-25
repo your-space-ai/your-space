@@ -4,9 +4,13 @@
 // its digest, as user 1000, without capabilities, with a read-only root, no engine socket and no FUSE,
 // on a network whose only way out is a Squid of its own that lets through only Google's token and
 // Drive hosts. The remote's configuration, its client secret and token included, reaches rclone only
-// as that container's environment (RCLONE_CONFIG=/dev/null keeps rclone's configuration in memory): it
-// is never written to a file, logged or given to an app. bisync's state, and the files a sync replaced,
-// are in a volume of Your Space's for each knowledge base, outside the knowledge base.
+// as that container's environment (RCLONE_CONFIG=/dev/null keeps rclone's configuration in memory):
+// Your Space never writes it to a file, logs it or gives it to an app. The engine keeps a container's
+// environment in that container's configuration for as long as the container exists, so each step's
+// container is removed when the step ends, and any a runtime manager left behind is removed when the
+// next one starts (removeLeftoverSteps). bisync's state, and the files a sync replaced, are in a volume
+// of Your Space's for each knowledge base, outside the knowledge base. A run holds its knowledge base
+// from before its first step to after its last, so neither it nor its sync is deleted in between.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -21,7 +25,7 @@ import {
   knowledgeVolume,
   pinnedImage,
 } from "./adapter.ts";
-import { deleteKnowledgeState, imagePresent, initKnowledge, INSTALLATION, isStopping, knowledgeOf, SpecError } from "./apps.ts";
+import { deleteKnowledgeState, holdingKnowledge, imagePresent, initKnowledge, INSTALLATION, isStopping, knowledgeHold, knowledgeOf, SpecError } from "./apps.ts";
 import { docker, engine, engineInfo, engineJson, EngineError, inspectImage, pullImage, scrub } from "./engine.ts";
 
 /** rclone 1.75.2's official image, for every processor it is published for, by its index digest. */
@@ -261,10 +265,33 @@ export function bisyncArgs(backup: string): string[] {
     // A file a run replaces or deletes in the knowledge base is kept in that run's folder.
     "--backup-dir2",
     `/state/backups/${backup}`,
-    "--drive-skip-gdocs",
+    ...DRIVE_SCOPE,
     "--create-empty-src-dirs",
     ...LOGGING,
   ];
+}
+
+/**
+ * What of the Drive folder a sync sees: never Google Docs, Sheets or Slides, which have no file, and
+ * never a shortcut, which rclone would otherwise follow into a folder or file outside the chosen one,
+ * uploading and deleting there.
+ */
+const DRIVE_SCOPE = ["--drive-skip-gdocs", "--drive-skip-shortcuts"];
+
+/** rclone's filter pattern for exactly this path from the root, its special characters escaped. */
+export function exactPattern(path: string): string {
+  return `/${path.replace(/[\\*?[{}]/g, "\\$&")}`;
+}
+
+/** The most ties one step copies, so its arguments stay well under the kernel's limit. */
+const TIES_PER_STEP = 100;
+
+/**
+ * Copies the knowledge base's copy of each file over the remote's, whatever their sizes and times:
+ * the files a resync found with the same size and time on both sides but different content.
+ */
+export function tieCopyArgs(ties: string[]): string[] {
+  return ["copy", "/knowledge", "remote:", "--ignore-times", ...DRIVE_SCOPE, ...ties.flatMap((path) => ["--include", exactPattern(path)]), ...LOGGING];
 }
 
 const LOGGING = ["-v", "--use-json-log", "--color", "NEVER"];
@@ -313,7 +340,8 @@ export function sameDeletions(a: Deletion[], b: Deletion[]): boolean {
   return left.size === right.size && [...left].every((k) => right.has(k));
 }
 
-const TIE = /Checksum not equal in listing\..* - (.+)$/;
+/** bisync's line about a tie: its hashes, then the file's name, which may itself hold " - ". */
+const TIE = /Checksum not equal in listing\. Path1: \S*, Path2: \S* - (.+)$/;
 
 /**
  * The files a resync left different on the two sides because both have the same size and modification
@@ -329,16 +357,23 @@ export function tiesOf(lines: LogLine[]): string[] {
 /** Google refused the client or the token: the connection needs the owner to sign in again. */
 const UNAUTHORIZED = /invalid_grant|invalid_client|unauthorized_client|deleted_client|Token has been expired or revoked|Invalid Credentials/i;
 
+/** bisync's lines about one file, `- Path1   File is new   - <file>` or `-   Checksum not equal … - <file>`. */
+const FILE_LINE = /^-\s/;
+
 /**
- * The lines that say why a step failed: errors, and rclone's fatal notices. Never a line of bisync's
- * that names a file, so a file's name can't read as a refusal or a stop.
+ * The lines that say why a step failed: errors, and rclone's fatal notices. Never one of bisync's lines
+ * about a file, which end with the file's name, so a file's name can't read as a refusal or a stop.
+ * (rclone's JSON log keeps the name of a file an error is about in a field of its own, not in `msg`.)
  */
 function failureLines(lines: LogLine[]): string[] {
   return lines
     .filter((l) => l.level === "error" || l.level === "critical" || (l.level === "notice" && /^(Fatal error|Failed to)/.test(l.msg.trim())))
     .map((l) => l.msg.trim())
-    .filter((msg) => !/^- (Path1|Path2|WARNING)\s/.test(msg));
+    .filter((msg) => !FILE_LINE.test(msg));
 }
+
+/** The side whose marker is missing, from bisync's line about it: its start is bisync's, its end the marker's name. */
+const MARKER_MISSING = /^-\s+Access test failed: (Path1|Path2) file not found in (Path1|Path2) - /;
 
 /** What a step's exit code and log say about it. */
 export function outcome(code: number, lines: LogLine[]): Pick<SyncResult, "result" | "reason" | "side" | "message"> {
@@ -352,7 +387,7 @@ export function outcome(code: number, lines: LogLine[]): Pick<SyncResult, "resul
   const empty = /Empty current (Path1|Path2) listing/.exec(text);
   if (empty) return { result: "stopped", reason: "empty", side: side(empty[1]!), message };
   if (/check file check failed|Access test failed/.test(text)) {
-    const missing = /Access test failed: (Path1|Path2) file not found in (Path1|Path2)/.exec(text);
+    const missing = lines.map((l) => MARKER_MISSING.exec(l.msg.trim())).find((m) => m !== null);
     return { result: "stopped", reason: "marker", ...(missing ? { side: side(missing[2]!) } : {}), message };
   }
   if (/prior lock file found|lock file found/i.test(text)) return { result: "busy", message };
@@ -510,28 +545,21 @@ export async function stopSyncProxy(): Promise<void> {
   await docker(["compose", "-p", syncProject(), "stop"]);
 }
 
-const running = new Map<string, Promise<SyncResult>>();
-
-/** Whether a knowledge base is syncing now. */
-export function isSyncing(name: string): boolean {
-  return running.has(name);
-}
-
 const BUSY: SyncResult = { result: "busy", message: "Another sync of this knowledge base is running.", deletions: [], ties: [], conflicts: [], backups: [], changed: false };
 
-/** Runs a sync of the knowledge base, unless one runs already. */
+/**
+ * Runs a sync of the knowledge base, holding it until the run ends; another run of it answers busy,
+ * and its deletion, or its sync's, refuses the run with 409.
+ */
 export function syncKnowledge(name: string, request: SyncRequest): Promise<SyncResult> {
   if (isStopping()) throw new EngineError("Your Space is stopping, so nothing syncs until it starts again.", 409);
-  if (running.has(name)) return Promise.resolve(BUSY);
-  const run = runSync(name, request).finally(() => running.delete(name));
-  running.set(name, run);
-  return run;
+  if (knowledgeHold(name) === "sync") return Promise.resolve(BUSY);
+  return holdingKnowledge(name, "sync", () => runSync(name, request));
 }
 
 /** Removes a knowledge base's sync state; its files and the remote's stay. Refused while it syncs. */
-export async function removeSync(name: string): Promise<void> {
-  if (running.has(name)) throw new EngineError(`The knowledge base ${name} is syncing, so its sync can't be removed until the run finishes.`, 409);
-  await deleteKnowledgeState(name);
+export function removeSync(name: string): Promise<void> {
+  return deleteKnowledgeState(name);
 }
 
 async function runSync(name: string, request: SyncRequest): Promise<SyncResult> {
@@ -561,13 +589,20 @@ async function runSync(name: string, request: SyncRequest): Promise<SyncResult> 
       const touchedHere = await offline(["touch", "--timestamp", MARKER_TIME, `/knowledge/${SYNC_MARKER}`, ...LOGGING], [local]);
       const touchedThere = touchedHere === "busy" || touchedHere.code !== 0 ? touchedHere : await remote(["touch", "--timestamp", MARKER_TIME, `remote:${SYNC_MARKER}`, ...LOGGING]);
       if (touchedThere === "busy" || touchedThere.code !== 0) return finish(touchedThere);
-      const first = await remote([...bisyncArgs(backup), "--resync", "--resync-mode", "newer"]);
+      const resync = [...bisyncArgs(backup), "--resync", "--resync-mode", "newer"];
+      const first = await remote(resync);
       const ties = first === "busy" ? [] : tiesOf(first.lines);
       if (first === "busy" || first.code === 0 || ties.length === 0) return finish(first);
       // The newer copy won everywhere else. Where both copies have the same size and modification
       // time but different content, the knowledge base's copy replaces the remote's (journey 014),
-      // and Drive keeps the replaced one in its version history.
-      return { ...finish(await remote([...bisyncArgs(backup), "--resync", "--resync-mode", "path2"]), { ties }), changed: true };
+      // and Drive keeps the replaced one in its version history. Only those files are copied; then
+      // the same resync runs again, so the newer copy still wins every other file, one changed on
+      // either side since the first pass included.
+      for (let i = 0; i < ties.length; i += TIES_PER_STEP) {
+        const copied = await remote(tieCopyArgs(ties.slice(i, i + TIES_PER_STEP)));
+        if (copied === "busy" || copied.code !== 0) return { ...finish(copied), changed: true };
+      }
+      return { ...finish(await remote(resync), { ties }), changed: true };
     }
     if (request.mode === "force") {
       // Only the deletions the owner confirmed: a dry run lists them again first.

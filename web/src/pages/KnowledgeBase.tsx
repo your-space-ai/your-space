@@ -107,19 +107,40 @@ function Connect({ base }: { base: Base }) {
 }
 
 const there = (side: SyncDeletion["side"]) => (side === "local" ? "Deleted here, so deleted in Drive" : "Deleted in Drive, so deleted here");
+const files = (count: number) => `${count.toLocaleString()} file${count === 1 ? "" : "s"}`;
+
+/** The deletions a stopped run listed: the first ones, and how many more there are. */
+function DeletionList({ sync }: { sync: KnowledgeSync }) {
+  const more = sync.deletionCounts.local + sync.deletionCounts.remote - sync.deletions.length;
+  return (
+    <ul className="rows small">
+      {sync.deletions.map((d) => (
+        <li key={`${d.side}:${d.path}`}>
+          <code>{d.path}</code> <span className="muted">{there(d.side)}</span>
+        </li>
+      ))}
+      {more > 0 ? (
+        <li className="muted" data-more-deletions>
+          and {more.toLocaleString()} more file{more === 1 ? "" : "s"}
+        </li>
+      ) : null}
+    </ul>
+  );
+}
 
 function Synced({ base, sync }: { base: Base; sync: KnowledgeSync }) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const run = useMutation({
-    mutationFn: (body: { action: "sync" | "resync" | "apply_deletions"; deletions?: SyncDeletion[] }) => api("POST", `/api/knowledge/${base.name}/sync`, body),
+    mutationFn: (body: { action: "sync" | "resync" | "apply_deletions"; run?: string; count?: number }) => api("POST", `/api/knowledge/${base.name}/sync`, body),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["knowledge"] }),
   });
   const reconnect = useMutation({ mutationFn: signInWithGoogle });
   const disconnected = sync.disconnected || sync.result === "unauthorized";
   const stopped = sync.result === "stopped";
-  const waitingDeletions = stopped && (sync.reason === "max_delete" || sync.reason === "changed") && sync.deletions.length > 0;
+  const deletionCount = sync.deletionCounts.local + sync.deletionCounts.remote;
+  const waitingDeletions = stopped && (sync.reason === "max_delete" || sync.reason === "changed") && deletionCount > 0 && sync.lastRunAt !== null;
 
   return (
     <>
@@ -165,16 +186,8 @@ function Synced({ base, sync }: { base: Base; sync: KnowledgeSync }) {
         ) : null}
         {waitingDeletions && !sync.running ? (
           <details open data-deletions>
-            <summary>
-              {sync.deletions.length} file{sync.deletions.length === 1 ? "" : "s"} to delete
-            </summary>
-            <ul className="rows small">
-              {sync.deletions.map((d) => (
-                <li key={`${d.side}:${d.path}`}>
-                  <code>{d.path}</code> <span className="muted">{there(d.side)}</span>
-                </li>
-              ))}
-            </ul>
+            <summary>{files(deletionCount)} to delete</summary>
+            <DeletionList sync={sync} />
           </details>
         ) : null}
         {run.isError ? (
@@ -223,9 +236,10 @@ function Synced({ base, sync }: { base: Base; sync: KnowledgeSync }) {
       {confirming ? (
         <ApplyDeletions
           base={base}
-          deletions={sync.deletions}
+          sync={sync}
           onConfirm={() => {
-            run.mutate({ action: "apply_deletions", deletions: sync.deletions });
+            // The deletions of the run the owner sees, all of them: the server checks it is still that run's list.
+            run.mutate({ action: "apply_deletions", run: sync.lastRunAt ?? "", count: deletionCount });
             setConfirming(false);
           }}
           onClose={() => setConfirming(false)}
@@ -318,32 +332,26 @@ function useModal(onClose: () => void) {
   };
 }
 
-function ApplyDeletions({ base, deletions, onConfirm, onClose }: { base: Base; deletions: SyncDeletion[]; onConfirm: () => void; onClose: () => void }) {
+function ApplyDeletions({ base, sync, onConfirm, onClose }: { base: Base; sync: KnowledgeSync; onConfirm: () => void; onClose: () => void }) {
   const modal = useModal(onClose);
-  const here = deletions.filter((d) => d.side === "remote").length;
-  const drive = deletions.length - here;
+  // A file deleted in Drive is deleted here, and one deleted here is deleted in Drive.
+  const here = sync.deletionCounts.remote;
+  const drive = sync.deletionCounts.local;
+  const are = (count: number) => `${files(count)} ${count === 1 ? "is" : "are"}`;
   return (
     <dialog {...modal} aria-labelledby="apply-heading" aria-describedby="apply-detail">
       <h2 id="apply-heading">Apply these deletions?</h2>
       <div id="apply-detail">
         <p>
-          {[drive ? `${drive} file${drive === 1 ? " is" : "s are"} deleted in Drive` : "", here ? `${here} file${here === 1 ? " is" : "s are"} deleted in ${base.title}` : ""]
-            .filter(Boolean)
-            .join(", and ")}
-          , for this one sync. The next sync has the limit again.
+          {[drive ? `${are(drive)} deleted in Drive` : "", here ? `${are(here)} deleted in ${base.title}` : ""].filter(Boolean).join(", and ")}, for this one sync.
+          The next sync has the limit again.
         </p>
         <p className="muted small">Your Space checks the list again just before: if more files were deleted since, it deletes nothing and shows you the new list.</p>
-        <ul className="rows small">
-          {deletions.map((d) => (
-            <li key={`${d.side}:${d.path}`}>
-              <code>{d.path}</code> <span className="muted">{there(d.side)}</span>
-            </li>
-          ))}
-        </ul>
+        <DeletionList sync={sync} />
       </div>
       <div className="actions">
         <button type="button" className="danger" onClick={onConfirm}>
-          Delete {deletions.length} file{deletions.length === 1 ? "" : "s"}
+          Delete {files(drive + here)}
         </button>
         <button type="button" className="secondary" onClick={onClose}>
           Cancel

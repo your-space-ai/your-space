@@ -93,11 +93,11 @@ sends it to `/check` or `/apply` (2026-11-24).
 | `GET /apps/{project}/denials` | | `{ hosts: [{ host, attempts, lastSeen }] }` from the egress proxy's log |
 | `POST /apps/{project}/port` | `{ publish: { port, bind } }` | `{ inUse, by? }`: whether the app can be published on `bind:port`. `by` names a running container that publishes it (the app's own Caddy doesn't count); otherwise a short-lived container of Your Space's Caddy's image tries to publish it, and `inUse` without `by` means another program uses it. 502 when the check itself fails, 503 when Your Space's Caddy isn't running |
 | `POST /stop-all` | | Stops every managed app and refuses `/apply` until the runtime manager restarts |
-| `POST /knowledge` | `{ name }` | `{ created }`: creates the knowledge base's volume, labelled `ai.your-space.installation`, `ai.your-space.role=knowledge` and `ai.your-space.knowledge=<name>`, never with a Compose project's labels, and gives its folder to user and group 1000 with mode 2777 in a short-lived container of the runtime manager's own image (no network, only the CHOWN, FOWNER and FSETID capabilities). `created: false` keeps this installation's own volume of that name, with its files, and sets up its folder's owner and mode again, so a volume an earlier try made but didn't set up is set up now; a volume of that name Your Space didn't make is refused with 409. A new volume whose folder can't be set up is deleted. A `name` that isn't a knowledge base's name, or isn't a string, is refused with 400 |
-| `GET /knowledge/{name}` | | `{ apps }`: the apps of this installation whose containers mount the knowledge base's volume, running or stopped, by their `ai.your-space.app` label; `[]` when there is no such volume. The server asks before deleting a knowledge base, so it applies each again without it, even one it has no grant for. 409 when the volume isn't Your Space's |
-| `DELETE /knowledge/{name}` | | Deletes the knowledge base's volume and its files, and its sync state volume when it has one. 409 while any container mounts it, running or stopped, while it syncs, or when either volume isn't Your Space's, before anything is deleted; a volume already gone is deleted. Removing an app (`/down`) or deleting its volumes (`DELETE /apps/{project}/volumes`) never deletes a knowledge base's, or its sync state |
+| `POST /knowledge` | `{ name }` | `{ created }`: creates the knowledge base's volume, labelled `ai.your-space.installation`, `ai.your-space.role=knowledge` and `ai.your-space.knowledge=<name>`, never with a Compose project's labels, and gives its folder to user and group 1000 with mode 2777 in a short-lived container of the runtime manager's own image (no network, only the CHOWN, FOWNER and FSETID capabilities). `created: false` keeps this installation's own volume of that name, with its files, and sets up its folder's owner and mode again, so a volume an earlier try made but didn't set up is set up now; a volume of that name Your Space didn't make is refused with 409. A new volume whose folder can't be set up is deleted |
+| `GET /knowledge/{name}` | | `{ apps, syncing }`: the apps of this installation whose containers mount the knowledge base's volume, running or stopped, by their `ai.your-space.app` label, `[]` when there is no such volume; and whether a run of its sync is under way, by this process or a step's container that still runs. The server asks before deleting a knowledge base, so it applies each again without it, even one it has no grant for, and waits for a run, even one it started before it restarted. 409 when the volume isn't Your Space's |
+| `DELETE /knowledge/{name}` | | Deletes the knowledge base's volume and its files, and its sync state volume when it has one, after removing any of its sync's step containers left behind that don't run. 409 while any other container mounts it, running or stopped, while it syncs (from before a run's first step to after its last), or when either volume isn't Your Space's, before anything is deleted; a volume already gone is deleted. No run of it starts until the deletion ends. Removing an app (`/down`) or deleting its volumes (`DELETE /apps/{project}/volumes`) never deletes a knowledge base's, or its sync state |
 | `POST /knowledge/{name}/sync` | `{ remote: { type: "drive", clientId, clientSecret, token, folderId }, mode: "sync" \| "resync" \| "force", confirm? }` | One run of the knowledge base's two-way sync with its Drive folder (journey 014), when it has finished: `{ result: "synced" \| "stopped" \| "unauthorized" \| "failed" \| "busy", reason?, side?, message?, deletions, ties, conflicts, backups, changed, listed? }`. See below |
-| `DELETE /knowledge/{name}/sync` | | Deletes the knowledge base's sync state volume; the knowledge base and the Drive folder keep their files. 409 while it syncs |
+| `DELETE /knowledge/{name}/sync` | | Deletes the knowledge base's sync state volume, after removing any of its step containers left behind that don't run; the knowledge base and the Drive folder keep their files. 409 while it syncs; no run starts until it ends |
 
 Errors: `{ "error": "<code>", "message": "…" }` with status 400 (the spec is refused), 404, 409
 (stopping), 502 (the engine answered with an error) or 503 (the engine can't be reached). Messages
@@ -118,21 +118,33 @@ mode 0700), at `/state`. A step that talks to Drive joins the sealed network
 steps, as `RCLONE_CONFIG_REMOTE_TYPE=drive`, `_CLIENT_ID`, `_CLIENT_SECRET`, `_TOKEN`, `_SCOPE=drive`
 and `_ROOT_FOLDER_ID` in their environment, with `RCLONE_CONFIG=/dev/null`; it is never written to a
 file, logged or answered, and every line rclone writes is cleaned of it. `remote.type` can only be
-`drive`, and `token` is rclone's token JSON with a refresh token.
+`drive`, and `token` is rclone's token JSON with a refresh token. The runtime manager never writes
+it to a file; the engine keeps a container's environment in that container's configuration while
+the container exists, so each step's container is removed when the step ends, and when the runtime
+manager starts, before it listens, it removes every step container of this installation an earlier
+process left behind, running or not.
 
 Every run uses `--check-access --check-filename .your-space-sync --max-delete 50 --resilient
 --recover --max-lock 2m --compare size,modtime,checksum --conflict-resolve path2 --drive-skip-gdocs
---create-empty-src-dirs`, with `--workdir /state/bisync` and `--backup-dir2` set to a folder of the
+--drive-skip-shortcuts --create-empty-src-dirs`, with `--workdir /state/bisync` and `--backup-dir2` set to a folder of the
 run in `/state/backups`. The modes:
 
 - `sync`: a run. It never creates the marker file.
 - `resync`: puts the marker at both roots (`rclone touch` with a fixed time), then
   `--resync --resync-mode newer`, which copies both ways and deletes nothing. When that leaves only
-  files whose two copies have the same size and modification time but different content, a second
-  pass with `--resync-mode path2` makes the knowledge base's copy win them, and `ties` lists them.
-- `force`: the owner's confirmed deletions. A `--force --dry-run` lists the deletions first; unless
-  they are exactly `confirm`, nothing is deleted and the answer is `stopped` with reason `changed`
-  and the new list. Otherwise one `--force` run.
+  files whose two copies have the same size and modification time but different content, `rclone
+  copy --ignore-times` with an anchored, escaped `--include` for each of them (at most 100 a step)
+  copies the knowledge base's copy over the remote's, then the same `--resync-mode newer` pass runs
+  again, and `ties` lists those files. No other file goes to the knowledge base's copy: one changed
+  on either side between the passes is still the newer copy's.
+- `force`: the owner's confirmed deletions, up to 10,000 (the request body may be up to 48 MB). A
+  `--force --dry-run` lists the deletions first; unless they are exactly `confirm`, nothing is
+  deleted and the answer is `stopped` with reason `changed` and the new list. Otherwise one
+  `--force` run.
+
+A run holds its knowledge base from before its first step to after its last: `DELETE
+/knowledge/{name}` and `DELETE /knowledge/{name}/sync` answer 409 meanwhile, and a run asked for
+while either of those is under way answers 409.
 
 `result` is `stopped` with `reason` `max_delete` (over the limit; `deletions` lists them, each with
 the `side` it was deleted on), `empty` (one side is empty), `marker` (a marker is missing) or

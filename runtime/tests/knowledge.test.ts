@@ -10,11 +10,14 @@ import {
   apply,
   createKnowledge,
   deleteKnowledge,
+  deleteKnowledgeState,
   deleteVolumes,
+  holdingKnowledge,
   INSTALLATION,
   isKnowledge,
   knowledgeInit,
   knowledgeUsers,
+  removeLeftoverSteps,
   SpecError,
   validateKnowledgeName,
   validateSpec,
@@ -237,9 +240,10 @@ beforeEach(() => {
     }
     if (method === "DELETE" && path.startsWith("/containers/init-id")) return initDeleteFails ? { status: 500, body: "the engine failed" } : { status: 204, body: "" };
     if (method === "DELETE" && path.startsWith("/containers/")) {
-      const id = path.slice("/containers/".length).split("?")[0];
+      const id = decodeURIComponent(path.slice("/containers/".length).split("?")[0]!);
+      const before = containers.length;
       containers = containers.filter((c) => c.Id !== id);
-      return { status: 204, body: "" };
+      return before > containers.length ? { status: 204, body: "" } : { status: 404, body: "" };
     }
     // Every image is on the engine already, so an apply pulls nothing.
     if (method === "GET" && path.startsWith("/images/")) return { status: 200, body: "{}" };
@@ -391,6 +395,66 @@ describe("a knowledge base's volume", () => {
     expect(volumes.has(NOTES)).toBe(true);
   });
 
+  /** A sync step's container, as runtime/src/sync.ts makes it. */
+  const step = (Id: string, State: string, name = "notes") => ({
+    Id,
+    Names: [`/${INSTALLATION}.knowledge-sync.${name}`],
+    State,
+    Status: "",
+    Labels: knowledgeSyncLabels(INSTALLATION, name),
+    volumes: [knowledgeVolume(INSTALLATION, name), knowledgeStateVolume(INSTALLATION, name)],
+  });
+
+  it("removes a sync step left behind before it is deleted, and waits for one that still runs", async () => {
+    const state = knowledgeStateVolume(INSTALLATION, "notes");
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    volumes.set(state, knowledgeSyncLabels(INSTALLATION, "notes"));
+    containers.push(step("running-step", "running"));
+    expect(await knowledgeUsers("notes")).toEqual({ apps: [], syncing: true });
+    await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("is syncing") });
+    await expect(deleteKnowledgeState("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("is syncing") });
+    expect(containers.map((c) => c.Id)).toContain("running-step");
+
+    // A step that ended and wasn't removed, with the remote's secrets in its environment, is no sync.
+    containers = containers.filter((c) => c.Id !== "running-step");
+    containers.push(step("left-step", "exited"));
+    expect(await knowledgeUsers("notes")).toEqual({ apps: [], syncing: false });
+    await deleteKnowledge("notes");
+    expect(containers.map((c) => c.Id)).toEqual(["runtime-id"]);
+    expect(volumes.size).toBe(0);
+
+    // Removing a sync's state does the same.
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    volumes.set(state, knowledgeSyncLabels(INSTALLATION, "notes"));
+    containers.push(step("left-again", "created"));
+    await deleteKnowledgeState("notes");
+    expect(containers.map((c) => c.Id)).toEqual(["runtime-id"]);
+    expect([...volumes.keys()]).toEqual([NOTES]);
+  });
+
+  it("removes every step an earlier runtime manager left, running or not, when it starts, and nothing else", async () => {
+    containers.push(
+      step("a", "running"),
+      step("b", "exited", "recipes"),
+      // The sync's proxy, an app's container, and another installation's step stay.
+      { Id: "proxy", Names: [], State: "running", Status: "Up", Labels: { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "egress" } },
+      { Id: "app", Names: [], State: "running", Status: "Up", Labels: { "ai.your-space.installation": INSTALLATION, "ai.your-space.app": "notes" } },
+      { ...step("other", "exited"), Labels: { ...knowledgeSyncLabels(INSTALLATION, "notes"), "ai.your-space.installation": "someone-else" } },
+    );
+    expect(await removeLeftoverSteps()).toBe(2);
+    expect(containers.map((c) => c.Id)).toEqual(["runtime-id", "proxy", "app", "other"]);
+  });
+
+  it("leaves the steps of a knowledge base this process holds, when it removes them late", async () => {
+    containers.push(step("left", "exited", "recipes"), step("ours", "running"));
+    let release: () => void = () => {};
+    const held = holdingKnowledge("notes", "sync", () => new Promise<void>((resolve) => (release = resolve)));
+    expect(await removeLeftoverSteps()).toBe(1);
+    expect(containers.map((c) => c.Id)).toEqual(["runtime-id", "ours"]);
+    release();
+    await held;
+  });
+
   it("is never deleted with an app's data", async () => {
     const own = { "ai.your-space.installation": INSTALLATION, "com.docker.compose.project": "ys-notes", "com.docker.compose.volume": "data" };
     volumes.set("ys-notes_data", own);
@@ -408,7 +472,7 @@ describe("a knowledge base's volume", () => {
   });
 
   it("names the apps of this installation whose containers mount it, running or stopped", async () => {
-    expect(await knowledgeUsers("notes")).toEqual({ apps: [] });
+    expect(await knowledgeUsers("notes")).toEqual({ apps: [], syncing: false });
     volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
     const own = (app: string, state: string) => ({ "ai.your-space.installation": INSTALLATION, "ai.your-space.app": app, state });
     containers.push(
@@ -420,7 +484,7 @@ describe("a knowledge base's volume", () => {
       { Id: "x", Names: ["/shell"], State: "running", Status: "Up", Labels: {}, volumes: [NOTES] },
       { Id: "p", Names: ["/ys-plain-web-1"], State: "running", Status: "Up", Labels: own("plain", "running") },
     );
-    expect(await knowledgeUsers("notes")).toEqual({ apps: ["notes", "vault"] });
+    expect(await knowledgeUsers("notes")).toEqual({ apps: ["notes", "vault"], syncing: false });
     volumes.set(NOTES, { "ai.your-space.installation": "someone-else" });
     await expect(knowledgeUsers("notes")).rejects.toMatchObject({ status: 409 });
   });

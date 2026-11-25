@@ -127,6 +127,10 @@ export class KnowledgeBases {
    * applied or removed, nothing is deleted: that app keeps its grant, so the owner can fix it and try
    * again. The apps are held from the start to the end, so no other change of theirs runs meanwhile,
    * and so is the knowledge base, so no app is given it meanwhile.
+   *
+   * Its sync goes with it, and the Drive folder keeps its files. A run under way finishes first, one
+   * the runtime manager began before the server restarted included, and no run starts until the
+   * deletion ends, so none runs while the apps are applied again or the storage is deleted.
    */
   async delete(name: string, actorId: string): Promise<void> {
     // Its name is held first, so the row read is the one whose storage the name-based calls change:
@@ -136,7 +140,14 @@ export class KnowledgeBases {
       const row = await this.rowByName(name);
       const releaseBase = this.apps.holdKnowledge(row.id);
       try {
-        await this.deleteHeld(row, actorId);
+        const sync = KnowledgeSync.for(this.apps);
+        if (sync.isRunning(row.id)) throw new AppError(409, "busy", "The knowledge base is syncing. Delete it when the sync finishes.");
+        if (!sync.hold(row.id)) throw new AppError(409, "busy", "The knowledge base is being deleted, connected or disconnected already.");
+        try {
+          await this.deleteHeld(row, actorId);
+        } finally {
+          sync.release(row.id);
+        }
       } finally {
         releaseBase();
       }
@@ -153,9 +164,8 @@ export class KnowledgeBases {
   private async deleteHeld(row: typeof knowledgeBase.$inferSelect, actorId: string): Promise<void> {
     const { name } = row;
     const subject = { id: row.id, name: row.name };
-    // Its sync goes with it, and the Drive folder keeps its files; a run under way finishes first.
-    if (KnowledgeSync.for(this.apps).isRunning(row.id)) throw new AppError(409, "busy", "The knowledge base is syncing. Delete it when the sync finishes.");
-    const { apps: mounting } = await this.apps.runtime.knowledgeUsers(name).catch(refused);
+    const { apps: mounting, syncing } = await this.apps.runtime.knowledgeUsers(name).catch(refused);
+    if (syncing) throw new AppError(409, "busy", "The knowledge base is syncing. Delete it when the sync finishes.");
     const granted = (await this.db.select({ appId: appKnowledgeBase.appId }).from(appKnowledgeBase).where(eq(appKnowledgeBase.knowledgeBaseId, row.id))).map((g) => g.appId);
     const which = [...(granted.length ? [inArray(app.id, granted)] : []), ...(mounting.length ? [inArray(app.name, mounting)] : [])];
     // A removed app has no containers to apply.

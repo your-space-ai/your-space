@@ -9,9 +9,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { authorizationUrl, challengeOf, DRIVE_SCOPE, folderIdOf, GoogleError, rcloneToken, SignIns } from "../src/apps/google.ts";
 import { moveSettingsToDataKey } from "../src/apps/keys.ts";
-import { KnowledgeSync } from "../src/apps/knowledge-sync.ts";
+import { KnowledgeSync, MAX_DELETIONS } from "../src/apps/knowledge-sync.ts";
 import { decrypt, encrypt } from "../src/apps/settings.ts";
-import { actor, event, eventKnowledgeBase, googleConnection, knowledgeSync } from "../src/db/schema.ts";
+import { actor, event, eventKnowledgeBase, googleConnection, knowledgeSync, type SyncDeletion } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
@@ -293,7 +293,7 @@ describe("a knowledge base's sync", () => {
     runtime.syncAnswers = [{ result: "stopped", reason: "max_delete", side: "local", message: "too many deletes (>50%, 2 of 3) on Path2", deletions: [...deletions], conflicts: ["plan.md.conflict1"] }];
     await sync().scheduled();
     const stopped = (await status())!;
-    expect(stopped).toMatchObject({ result: "stopped", reason: "max_delete", side: "local", deletions, conflicts: ["plan.md.conflict1"], detail: "too many deletes (>50%, 2 of 3) on Path2" });
+    expect(stopped).toMatchObject({ result: "stopped", reason: "max_delete", side: "local", deletions, deletionCounts: { local: 2, remote: 0 }, conflicts: ["plan.md.conflict1"], detail: "too many deletes (>50%, 2 of 3) on Path2" });
     expect(stopped.summary).toContain("More than half of the files were deleted in the knowledge base");
     expect((await events("knowledge.sync_stopped")).at(-1)).toEqual({ actorId: operator, knowledgeBase: "notes" });
 
@@ -302,15 +302,56 @@ describe("a knowledge base's sync", () => {
     await sync().scheduled();
     expect(runtime.syncs).toEqual([]);
 
+    // The owner confirms the run they saw and how many it listed; the server sends the runtime its own list.
+    const confirm = { action: "apply_deletions", run: stopped.lastRunAt, count: 2 };
     expect((await send("/api/knowledge/notes/sync", { action: "apply_deletions", deletions: "all" })).status).toBe(400);
+    expect((await send("/api/knowledge/notes/sync", { ...confirm, count: "2" })).status).toBe(400);
+    for (const changed of [{ ...confirm, count: 1 }, { ...confirm, run: new Date(0).toISOString() }]) {
+      const refused = await send("/api/knowledge/notes/sync", changed);
+      expect(refused.status, JSON.stringify(changed)).toBe(409);
+      expect(((await refused.json()) as { error: string }).error).toBe("deletions_changed");
+    }
+    expect(runtime.syncs).toEqual([]);
     runtime.syncAnswers = [{ result: "synced", changed: true }];
-    expect((await send("/api/knowledge/notes/sync", { action: "apply_deletions", deletions })).status).toBe(202);
+    expect((await send("/api/knowledge/notes/sync", confirm)).status).toBe(202);
     await settled();
     expect(runtime.syncs.at(-1)!.request).toMatchObject({ mode: "force", confirm: deletions });
-    expect(await status()).toMatchObject({ result: "synced", deletions: [] });
+    expect(await status()).toMatchObject({ result: "synced", deletions: [], deletionCounts: { local: 0, remote: 0 } });
     expect((await events("knowledge.deletions_applied")).map((e) => e.actorId)).toEqual([owner]);
     // Nothing left to apply.
-    expect((await send("/api/knowledge/notes/sync", { action: "apply_deletions", deletions })).status).toBe(409);
+    expect((await send("/api/knowledge/notes/sync", confirm)).status).toBe(409);
+  });
+
+  it("keeps every deletion a stopped run listed, shows the first 500, and applies them all once confirmed", async () => {
+    const many: SyncDeletion[] = Array.from({ length: 700 }, (_, i) => ({ side: i < 600 ? "local" : "remote", path: `course/week ${i}.md` }));
+    runtime.syncAnswers = [{ result: "stopped", reason: "max_delete", side: "local", deletions: many }];
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    const stopped = (await status())!;
+    expect(stopped.deletions).toEqual(many.slice(0, 500));
+    expect(stopped.deletionCounts).toEqual({ local: 600, remote: 100 });
+    // Confirming the 500 shown isn't confirming the 700 listed.
+    expect((await send("/api/knowledge/notes/sync", { action: "apply_deletions", run: stopped.lastRunAt, count: 500 })).status).toBe(409);
+    runtime.syncAnswers = [{ result: "synced", changed: true }];
+    expect((await send("/api/knowledge/notes/sync", { action: "apply_deletions", run: stopped.lastRunAt, count: 700 })).status).toBe(202);
+    await settled();
+    expect(runtime.syncs.at(-1)!.request).toMatchObject({ mode: "force", confirm: many });
+    expect(await status()).toMatchObject({ result: "synced", deletionCounts: { local: 0, remote: 0 } });
+  });
+
+  it("stops with more deletions than the owner can confirm, which can't be applied", async () => {
+    const tooMany: SyncDeletion[] = Array.from({ length: MAX_DELETIONS + 1 }, (_, i) => ({ side: "local", path: `f-${i}.md` }));
+    runtime.syncAnswers = [{ result: "stopped", reason: "max_delete", side: "local", deletions: tooMany }];
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    const stopped = (await status())!;
+    expect(stopped).toMatchObject({ result: "stopped", reason: "too_many", side: "local", deletions: [], deletionCounts: { local: 0, remote: 0 } });
+    expect(stopped.summary).toContain("more than Your Space can list for you to confirm");
+    expect((await send("/api/knowledge/notes/sync", { action: "apply_deletions", run: stopped.lastRunAt, count: MAX_DELETIONS + 1 })).status).toBe(409);
+    runtime.syncAnswers = [{ result: "synced" }];
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    expect(await status()).toMatchObject({ result: "synced" });
   });
 
   it("resyncs when the owner asks, which deletes nothing", async () => {
@@ -376,6 +417,37 @@ describe("a knowledge base's sync", () => {
     expect(runtime.syncs).toEqual([]);
     expect(await status()).toMatchObject({ result: "failed", detail: expect.stringContaining("data key") });
     await t.db.update(googleConnection).set({ token: row.token });
+  });
+
+  it("starts no run while a knowledge base is deleted, and waits for one the runtime manager still runs", async () => {
+    expect((await send("/api/knowledge", { name: "drafts" })).status).toBe(201);
+    expect((await send("/api/knowledge/drafts/sync", { folder: FOLDER }, "PUT")).status).toBe(202);
+    await settled("drafts");
+    const deletes = () => runtime.calls.filter((c) => c.method === "deleteKnowledge" && c.project === "drafts").length;
+
+    // A run the runtime manager began before the server restarted, which the server doesn't know of.
+    runtime.syncingNow.add("drafts");
+    expect((await api("/api/knowledge/drafts", { method: "DELETE" })).status).toBe(409);
+    expect((await api("/api/knowledge/drafts/sync", { method: "DELETE" })).status).toBe(409);
+    expect(deletes()).toBe(0);
+    expect(await status("drafts")).not.toBeNull();
+    runtime.syncingNow.delete("drafts");
+
+    // While the delete applies apps again, neither the schedule nor the owner starts a run of it.
+    let release: () => void = () => {};
+    runtime.holdKnowledgeUsers = new Promise<void>((resolve) => (release = resolve));
+    const asked = runtime.calls.filter((c) => c.method === "knowledgeUsers").length;
+    runtime.syncs = [];
+    const deleting = api("/api/knowledge/drafts", { method: "DELETE" });
+    for (let i = 0; i < 200 && runtime.calls.filter((c) => c.method === "knowledgeUsers").length === asked; i++) await new Promise((r) => setTimeout(r, 5));
+    await sync().scheduled();
+    for (const action of ["sync", "resync"]) expect((await send("/api/knowledge/drafts/sync", { action })).status, action).toBe(409);
+    expect((await api("/api/knowledge/drafts/sync", { method: "DELETE" })).status).toBe(409);
+    release();
+    runtime.holdKnowledgeUsers = undefined;
+    expect((await deleting).status).toBe(204);
+    expect(runtime.syncs.filter((s) => s.name === "drafts")).toEqual([]);
+    expect(deletes()).toBe(1);
   });
 
   it("refuses to forget the connection while a knowledge base syncs through it", async () => {

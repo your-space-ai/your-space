@@ -17,6 +17,7 @@ import {
   isStopping,
   knowledgeUsers,
   listApps,
+  removeLeftoverSteps,
   resolveInterface,
   logs,
   SpecError,
@@ -39,12 +40,12 @@ function log(level: string, event: string, fields: Record<string, unknown> = {})
   else console.log(line);
 }
 
-async function readBody(req: IncomingMessage): Promise<unknown> {
+async function readBody(req: IncomingMessage, limit = 2 * 1024 * 1024): Promise<unknown> {
   let size = 0;
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > 2 * 1024 * 1024) throw new SpecError("The request is too large.");
+    if (size > limit) throw new SpecError("The request is too large.");
     chunks.push(chunk as Buffer);
   }
   if (chunks.length === 0) return undefined;
@@ -96,7 +97,8 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (knowledge && !knowledge[2] && method === "DELETE") return (await deleteKnowledge(validateKnowledgeName(knowledge[1]!)), send(res, 200, { ok: true }));
   if (knowledge?.[2] && method === "POST") {
     const name = validateKnowledgeName(knowledge[1]!);
-    const request = validateSyncRequest(await readBody(req));
+    // Room for the most deletions an owner can confirm (10,000), each with a path of up to 4,096 characters.
+    const request = validateSyncRequest(await readBody(req, 48 * 1024 * 1024));
     const result = await syncKnowledge(name, request);
     // Never the remote's configuration: only what happened.
     log(result.result === "synced" ? "info" : "warn", "knowledge.synced", { name, mode: request.mode, result: result.result, reason: result.reason, changed: result.changed });
@@ -149,6 +151,15 @@ const server = createServer((req, res) => {
     else failure(res, error);
   });
 });
+
+// Before anything can ask for a sync: a step container an earlier runtime manager left behind, running
+// or not, is removed, with the remote's configuration in its environment. bisync recovers the next run.
+// An engine that doesn't answer delays this by 30 seconds at most; the removal then goes on, and
+// leaves any knowledge base a run holds by then.
+const leftover = removeLeftoverSteps()
+  .then((removed) => removed > 0 && log("warn", "knowledge.steps_removed", { removed }))
+  .catch((error) => log("warn", "knowledge.steps_remove_failed", { errorName: (error as Error)?.name }));
+await Promise.race([leftover, new Promise((resolve) => setTimeout(resolve, 30_000).unref())]);
 
 mkdirSync(dirname(SOCKET), { recursive: true });
 rmSync(SOCKET, { force: true });

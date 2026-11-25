@@ -16,6 +16,14 @@ import { decrypt, encrypt } from "./settings.ts";
 
 /** Your Space syncs every connected knowledge base this often while it runs. */
 export const SYNC_INTERVAL_MS = 5 * 60_000;
+/**
+ * The most deletions a stopped run keeps for the owner to confirm, all of them, as the runtime manager
+ * compares them with its dry run. A run that lists more stops with reason `too_many`, and can't be
+ * applied from the page.
+ */
+export const MAX_DELETIONS = 10_000;
+/** The deletions a sync's status shows; the owner confirms them all by the run that listed them. */
+export const SHOWN_DELETIONS = 500;
 
 const CLIENT_ID = /^[A-Za-z0-9._-]{8,300}$/;
 const CLIENT_SECRET = /^[\x21-\x7e]{8,300}$/;
@@ -42,7 +50,10 @@ export interface SyncStatus {
   summary: string | null;
   /** What rclone said, for a run that didn't sync. */
   detail: string | null;
+  /** The first of the deletions a stopped run listed, up to SHOWN_DELETIONS. */
   deletions: SyncDeletion[];
+  /** How many deletions it listed, by the side each file was deleted on; Apply these deletions makes them all. */
+  deletionCounts: { local: number; remote: number };
   conflicts: string[];
   backups: SyncRow["backups"];
   ties: string[];
@@ -67,6 +78,8 @@ export function summaryOf(row: Pick<SyncRow, "result" | "reason" | "side">): str
           return `More than half of the files were deleted ${where(row.side, "in the knowledge base", "in the Drive folder")} since the last sync, so it stopped and deleted nothing ${where(row.side, "in Drive", "here")}. Resync brings them back from the other side; Apply these deletions deletes them there too.`;
         case "changed":
           return "The files to delete changed since you confirmed them, so nothing was deleted. Check the new list.";
+        case "too_many":
+          return `More than half of the files were deleted ${where(row.side, "in the knowledge base", "in the Drive folder")} since the last sync, over ${MAX_DELETIONS.toLocaleString("en-US")} of them, so it stopped and deleted nothing ${where(row.side, "in Drive", "here")}. That is more than Your Space can list for you to confirm. Resync brings them back from the other side; to delete them, delete them ${where(row.side, "in the Drive folder", "here")} too.`;
         case "empty":
           return `The ${where(row.side, "knowledge base", "Drive folder")} is empty, so the sync stopped rather than delete everything on the other side. Resync copies the files back and deletes nothing.`;
         case "marker":
@@ -86,6 +99,8 @@ export class KnowledgeSync {
   /** Runs under way, by knowledge base; a Sync now during one runs once more after it. */
   private readonly runs = new Map<string, Promise<void>>();
   private readonly again = new Map<string, Promise<void>>();
+  /** Knowledge bases being deleted, connected or disconnected: no run starts for them meanwhile. */
+  private readonly held = new Set<string>();
 
   /** The one sync service of the apps service, which the routes and the schedule share. */
   static for(apps: AppsService): KnowledgeSync {
@@ -113,6 +128,26 @@ export class KnowledgeSync {
   /** Whether a knowledge base syncs now, or has a run waiting for the one under way. */
   isRunning(knowledgeBaseId: string): boolean {
     return this.runs.has(knowledgeBaseId) || this.again.has(knowledgeBaseId);
+  }
+
+  /**
+   * Holds a knowledge base off the schedule and the owner's runs while it is deleted, connected or
+   * disconnected; false while it syncs or something else holds it. The caller checks and holds with
+   * no wait between the two, and releases it when done.
+   */
+  hold(knowledgeBaseId: string): boolean {
+    if (this.isRunning(knowledgeBaseId) || this.held.has(knowledgeBaseId)) return false;
+    this.held.add(knowledgeBaseId);
+    return true;
+  }
+
+  release(knowledgeBaseId: string): void {
+    this.held.delete(knowledgeBaseId);
+  }
+
+  /** Whether a knowledge base is held, as `hold` holds it. */
+  isHeld(knowledgeBaseId: string): boolean {
+    return this.held.has(knowledgeBaseId);
   }
 
   // The Google connection.
@@ -234,7 +269,8 @@ export class KnowledgeSync {
       side: row.side,
       summary: summaryOf(row),
       detail: row.result === "synced" ? null : row.message,
-      deletions: row.deletions,
+      deletions: row.deletions.slice(0, SHOWN_DELETIONS),
+      deletionCounts: { local: row.deletions.filter((d) => d.side === "local").length, remote: row.deletions.filter((d) => d.side === "remote").length },
       conflicts: row.conflicts,
       backups: row.backups,
       ties: row.ties,
@@ -272,15 +308,20 @@ export class KnowledgeSync {
     const folderId = typeof input.folder === "string" ? folderIdOf(input.folder) : undefined;
     if (!folderId) throw new AppError(400, "bad_folder", "Paste the link of a Google Drive folder, like https://drive.google.com/drive/folders/1AbC…, as Drive shows it in the address bar or under Share.");
     await this.usableConnection();
-    if (await this.syncRow(base.id)) throw new AppError(409, "already_connected", "This knowledge base is connected already. Disconnect it first to sync another folder.");
-    // No earlier connection's state can read as deletions against this folder.
-    await this.apps.runtime.removeSync(name).catch((error: unknown) => {
-      throw new AppError(409, error instanceof RuntimeError ? error.code : "busy", error instanceof Error ? error.message : "The knowledge base's earlier sync can't be removed.");
-    });
-    await this.db.transaction(async (tx) => {
-      await tx.insert(knowledgeSync).values({ knowledgeBaseId: base.id, folderId, connectedBy: actorId });
-      await recordEvent(tx, "knowledge.connected", actorId, null, null, { id: base.id, name: base.name });
-    });
+    if (!this.hold(base.id)) throw new AppError(409, "busy", "The knowledge base is syncing, or being deleted or disconnected. Try again when that finishes.");
+    try {
+      if (await this.syncRow(base.id)) throw new AppError(409, "already_connected", "This knowledge base is connected already. Disconnect it first to sync another folder.");
+      // No earlier connection's state can read as deletions against this folder.
+      await this.apps.runtime.removeSync(name).catch((error: unknown) => {
+        throw new AppError(409, error instanceof RuntimeError ? error.code : "busy", error instanceof Error ? error.message : "The knowledge base's earlier sync can't be removed.");
+      });
+      await this.db.transaction(async (tx) => {
+        await tx.insert(knowledgeSync).values({ knowledgeBaseId: base.id, folderId, connectedBy: actorId });
+        await recordEvent(tx, "knowledge.connected", actorId, null, null, { id: base.id, name: base.name });
+      });
+    } finally {
+      this.release(base.id);
+    }
     const row = (await this.syncRow(base.id))!;
     this.launch(base.id, base.name, "resync");
     return this.status(row, false);
@@ -291,25 +332,32 @@ export class KnowledgeSync {
     const base = await this.knowledgeRow(name);
     if (!(await this.syncRow(base.id))) throw new AppError(404, "not_connected", "This knowledge base isn't connected to Drive.");
     if (this.isRunning(base.id)) throw new AppError(409, "busy", "The knowledge base is syncing. Disconnect it when the sync finishes.");
-    await this.apps.runtime.removeSync(name).catch((error: unknown) => {
-      throw new AppError(error instanceof RuntimeError && error.status === 409 ? 409 : 503, error instanceof RuntimeError ? error.code : "runtime_error", error instanceof Error ? error.message : "The sync can't be removed.");
-    });
-    await this.db.transaction(async (tx) => {
-      await tx.delete(knowledgeSync).where(eq(knowledgeSync.knowledgeBaseId, base.id));
-      await recordEvent(tx, "knowledge.disconnected", actorId, null, null, { id: base.id, name: base.name });
-    });
+    if (!this.hold(base.id)) throw new AppError(409, "busy", "The knowledge base is being deleted or disconnected already.");
+    try {
+      await this.apps.runtime.removeSync(name).catch((error: unknown) => {
+        throw new AppError(error instanceof RuntimeError && error.status === 409 ? 409 : 503, error instanceof RuntimeError ? error.code : "runtime_error", error instanceof Error ? error.message : "The sync can't be removed.");
+      });
+      await this.db.transaction(async (tx) => {
+        await tx.delete(knowledgeSync).where(eq(knowledgeSync.knowledgeBaseId, base.id));
+        await recordEvent(tx, "knowledge.disconnected", actorId, null, null, { id: base.id, name: base.name });
+      });
+    } finally {
+      this.release(base.id);
+    }
   }
 
   /**
    * The owner's actions: Sync now, which runs once more after a run under way; Resync, which copies
-   * both ways and deletes nothing; and Apply these deletions, the ones a stopped run listed, which the
-   * owner confirmed. Answers once the run has started; `done` settles when it ends.
+   * both ways and deletes nothing; and Apply these deletions, every one a stopped run listed, which the
+   * owner confirmed by that run and their number. Answers once the run has started; `done` settles
+   * when it ends.
    */
   async start(name: string, input: Record<string, unknown>, actorId: string): Promise<{ done: Promise<void> }> {
     const base = await this.knowledgeRow(name);
     const row = await this.syncRow(base.id);
     if (!row) throw new AppError(404, "not_connected", "This knowledge base isn't connected to Drive.");
     await this.usableConnection();
+    if (this.held.has(base.id)) throw new AppError(409, "busy", "The knowledge base is being deleted, connected or disconnected.");
     const action = input.action;
     if (action === "sync") {
       const waiting = this.again.get(base.id);
@@ -334,14 +382,19 @@ export class KnowledgeSync {
       return { done: this.launch(base.id, base.name, "resync") };
     }
     if (action === "apply_deletions") {
-      if (row.result !== "stopped" || (row.reason !== "max_delete" && row.reason !== "changed")) {
+      if (row.result !== "stopped" || (row.reason !== "max_delete" && row.reason !== "changed") || row.deletions.length === 0) {
         throw new AppError(409, "no_deletions", "There are no deletions waiting for you to confirm.");
       }
-      const confirmed = input.deletions;
-      if (!Array.isArray(confirmed) || confirmed.length === 0 || confirmed.length > 10_000 || !confirmed.every(isDeletion)) {
-        throw new AppError(400, "deletions_required", "Send the deletions you confirmed.");
+      // The owner confirms the deletions of the run they saw, by its time and their number; the runtime
+      // manager gets every one of them, and makes them only if its dry run lists exactly those.
+      const { run, count } = input;
+      if (typeof run !== "string" || typeof count !== "number" || !Number.isInteger(count)) {
+        throw new AppError(400, "deletions_required", "Send the run whose deletions you confirmed, and how many there are.");
       }
-      return { done: this.launch(base.id, base.name, "force", confirmed, actorId) };
+      if (!row.lastRunAt || Date.parse(run) !== row.lastRunAt.getTime() || count !== row.deletions.length) {
+        throw new AppError(409, "deletions_changed", "The deletions waiting changed since you looked, so nothing was deleted. Check the new list.");
+      }
+      return { done: this.launch(base.id, base.name, "force", row.deletions, actorId) };
     }
     throw new AppError(400, "bad_action", "The action must be sync, resync or apply_deletions.");
   }
@@ -356,13 +409,14 @@ export class KnowledgeSync {
       .innerJoin(knowledgeBase, eq(knowledgeSync.knowledgeBaseId, knowledgeBase.id))
       .orderBy(asc(knowledgeBase.name));
     for (const row of rows) {
-      if (row.result === "stopped" || this.isRunning(row.id)) continue;
+      if (row.result === "stopped" || this.isRunning(row.id) || this.held.has(row.id)) continue;
       await this.launch(row.id, row.name, row.resync ? "resync" : "sync");
     }
   }
 
-  /** Starts a run of the knowledge base, which no other run of it is under way for. */
+  /** Starts a run of the knowledge base, which no other run of it is under way for; none while it is held. */
   private launch(id: string, name: string, mode: Mode, confirm?: SyncDeletion[], confirmedBy?: string): Promise<void> {
+    if (this.held.has(id)) return Promise.resolve();
     const run = this.execute(id, name, mode, confirm, confirmedBy)
       .catch((error: unknown) => log("warn", "knowledge.sync_failed", { name, ...errorFields(error) }))
       .finally(() => this.runs.delete(id));
@@ -397,6 +451,8 @@ export class KnowledgeSync {
   /** Keeps a run's result on the knowledge base's sync, and records it against Your Space. */
   private async record(id: string, name: string, before: SyncRow, mode: Mode, startedAt: Date, outcome: SyncRunResult, confirmedBy?: string): Promise<void> {
     const synced = outcome.result === "synced";
+    // More deletions than the owner can confirm: the run stays stopped, and none of them is kept.
+    const tooMany = outcome.result === "stopped" && outcome.deletions.length > MAX_DELETIONS;
     const yourSpace = await operatorActorId(this.db);
     const subject = { id, name };
     await this.db.transaction(async (tx) => {
@@ -405,10 +461,11 @@ export class KnowledgeSync {
         .set({
           lastRunAt: startedAt,
           result: outcome.result as SyncRow["result"],
-          reason: outcome.reason ?? null,
+          reason: tooMany ? "too_many" : (outcome.reason ?? null),
           side: outcome.side ?? null,
           message: outcome.message?.slice(0, 1000) ?? null,
-          deletions: outcome.result === "stopped" ? outcome.deletions.slice(0, 500) : [],
+          // Every one of them, which the owner confirms and the runtime manager compares with its dry run.
+          deletions: outcome.result === "stopped" && !tooMany ? outcome.deletions : [],
           ...(outcome.listed ? { conflicts: outcome.conflicts.slice(0, 500), backups: outcome.backups.slice(0, 500) } : {}),
           ...(synced ? { lastSyncedAt: new Date() } : {}),
           ...(synced && mode === "resync" ? { resync: false, ties: outcome.ties.slice(0, 500) } : {}),
@@ -437,10 +494,4 @@ export class KnowledgeSync {
 
 function failure(message: string): SyncRunResult {
   return { result: "failed", message, deletions: [], ties: [], conflicts: [], backups: [], changed: false };
-}
-
-function isDeletion(value: unknown): value is SyncDeletion {
-  if (typeof value !== "object" || value === null) return false;
-  const { side, path } = value as Record<string, unknown>;
-  return (side === "local" || side === "remote") && typeof path === "string" && path.length > 0 && path.length <= 4096;
 }

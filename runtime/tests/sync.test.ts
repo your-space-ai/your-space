@@ -4,11 +4,12 @@
 // rclone says is read into the owner's outcome. The engine is a fake; the browser tests run real rclone.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { knowledgeStateVolume, knowledgeVolume } from "../src/adapter.ts";
-import { INSTALLATION, SpecError } from "../src/apps.ts";
+import { deleteKnowledge, INSTALLATION, SpecError } from "../src/apps.ts";
 import * as engineModule from "../src/engine.ts";
 import {
   bisyncArgs,
   deletionsOf,
+  exactPattern,
   fixtureEnabled,
   listingOf,
   logLines,
@@ -16,6 +17,7 @@ import {
   outcome,
   RCLONE_IMAGE,
   remoteEnv,
+  removeSync,
   runFolder,
   runTime,
   sameDeletions,
@@ -26,6 +28,7 @@ import {
   syncKnowledge,
   syncNetwork,
   syncProxyFile,
+  tieCopyArgs,
   tiesOf,
   validateSyncRequest,
   type DriveRemote,
@@ -139,6 +142,9 @@ describe("a step's container", () => {
     const flag = (name: string) => args[args.indexOf(name) + 1];
     expect(args.slice(0, 3)).toEqual(["bisync", "remote:", "/knowledge"]);
     expect(args).toEqual(expect.arrayContaining(["--check-access", "--resilient", "--recover", "--drive-skip-gdocs", "--create-empty-src-dirs"]));
+    // Never a shortcut, which rclone would follow out of the chosen folder: listing, uploading and
+    // deleting in the folder or file it points to (https://rclone.org/drive/#shortcuts).
+    expect(args).toContain("--drive-skip-shortcuts");
     expect(flag("--check-filename")).toBe(SYNC_MARKER);
     expect(flag("--max-delete")).toBe(String(MAX_DELETE));
     expect(MAX_DELETE).toBe(50);
@@ -151,6 +157,18 @@ describe("a step's container", () => {
     expect(args).not.toContain("--force");
     expect(args).not.toContain("--resync");
     expect(args.some((a) => a.startsWith("--dump") || a === "-vv")).toBe(false);
+  });
+
+  it("copies exactly the tie files over Drive's, their names' special characters escaped, and nothing else", () => {
+    expect(exactPattern("plan.md")).toBe("/plan.md");
+    expect(exactPattern("notes/tie [1] {a} *?.md")).toBe("/notes/tie \\[1] \\{a\\} \\*\\?.md");
+    expect(exactPattern("back\\slash.md")).toBe("/back\\\\slash.md");
+    const args = tieCopyArgs(["a.md", "dir/b [2].md"]);
+    expect(args.slice(0, 3)).toEqual(["copy", "/knowledge", "remote:"]);
+    // Whatever the two copies' sizes and times, which rclone's copy would otherwise take as the same.
+    expect(args).toEqual(expect.arrayContaining(["--ignore-times", "--drive-skip-gdocs", "--drive-skip-shortcuts"]));
+    expect(args.filter((_, i) => args[i - 1] === "--include")).toEqual(["/a.md", "/dir/b \\[2].md"]);
+    expect(args.some((a) => a === "--exclude" || a === "--filter" || a.startsWith("--delete") || a === "sync")).toBe(false);
   });
 });
 
@@ -192,6 +210,10 @@ describe("reading rclone's log", () => {
     const named = [line("info", "- Path1             File is new                                 - invalid_grant notes.md"), line("notice", "- Path2             Queue copy to Path1                         - remote:Invalid Credentials.md"), line("info", "too many deletes.md: Copied (new)")];
     expect(outcome(0, named as never).result).toBe("synced");
     expect(outcome(1, [...named, line("error", "couldn't list directory")] as never)).toMatchObject({ result: "failed", message: "couldn't list directory" });
+    // Nor does a name in bisync's error lines about a file, which would disconnect every synced knowledge base.
+    const tie = line("error", "-                   Checksum not equal in listing. Path1: aaa, Path2: bbb - Invalid Credentials checklist.md");
+    expect(outcome(7, [tie, line("error", "couldn't list directory"), line("error", "Bisync aborted. Must run --resync to recover.")] as never).result).toBe("stopped");
+    expect(outcome(1, [line("error", "-                   Access test failed: Path1 file not found in Path2 - invalid_grant too many deletes.md"), line("error", "couldn't list directory")] as never).result).toBe("failed");
     // rclone's fatal errors are notices.
     expect(outcome(1, [line("notice", "Failed to create file system for \"remote:\": couldn't fetch token: invalid_grant: maybe token expired?")] as never).result).toBe("unauthorized");
     // A network failure on the token endpoint isn't a refusal: the connection stays.
@@ -231,6 +253,9 @@ describe("reading rclone's log", () => {
       { level: "error", msg: "Bisync aborted. Must run --resync to recover." },
     ];
     expect(tiesOf(logLines(json([tie("a.md"), tie("dir/b.md"), ...end])))).toEqual(["a.md", "dir/b.md"]);
+    // A name with " - " in it is the whole name, as rclone 1.75.2 writes it, so the right file is copied.
+    const real = { level: "error", msg: "-                   Checksum not equal in listing. Path1: 9448a1bf333fadd2a57965ec38487b89, Path2: e5828c564f71fea3a12dde8bd5d27063 - Lecture 1 - Intro, part 2.md" };
+    expect(tiesOf(logLines(json([real, ...end])))).toEqual(["Lecture 1 - Intro, part 2.md"]);
     // Anything else wrong as well, and the knowledge base's copy doesn't replace Drive's.
     expect(tiesOf(logLines(json([tie("a.md"), { level: "error", msg: "couldn't list directory" }, ...end])))).toEqual([]);
   });
@@ -283,10 +308,12 @@ describe("a run", () => {
     const codes = new Map<string, number>();
     vi.mocked(engineModule.engineInfo).mockResolvedValue({ reachable: true, arch: "amd64", connection: "unix:///var/run/docker.sock" });
     vi.mocked(engineModule.inspectImage).mockResolvedValue({ ref: "ubuntu/squid:latest", digest: "sha256:squid", platforms: [], runsHere: true });
-    vi.mocked(engineModule.listContainers).mockResolvedValue([{ Id: "runtime-id", Names: [], State: "running", Status: "", Labels: {} }]);
+    // The runtime manager's own container; no step's container is left behind.
+    vi.mocked(engineModule.listContainers).mockImplementation(async (labels) => (labels.includes("ai.your-space.role=knowledge-sync") ? [] : [{ Id: "runtime-id", Names: [], State: "running", Status: "", Labels: {} }]));
     vi.mocked(engineModule.engine).mockImplementation(async (method, path, body) => {
       if (path.startsWith("/volumes/")) {
         const name = decodeURIComponent(path.slice("/volumes/".length));
+        if (method === "DELETE") return volumes.delete(name) ? { status: 204, body: "" } : { status: 404, body: "" };
         return volumes.has(name) ? { status: 200, body: JSON.stringify({ Name: name, Labels: volumes.get(name) }) } : { status: 404, body: "" };
       }
       if (method === "GET" && path.startsWith("/images/")) return { status: 200, body: "{}" };
@@ -313,6 +340,8 @@ describe("a run", () => {
         return {} as never;
       }
       if (method === "GET" && path === "/containers/runtime-id/json") return { Image: "sha256:runtime" } as never;
+      // What mounts a volume, which a deletion asks: no step's container is left.
+      if (method === "GET" && path.startsWith("/containers/json?")) return [] as never;
       // The volume set-up helper (knowledgeInit), which runs before any step.
       if (method === "POST" && path === "/containers/create") return { Id: "init-id" } as never;
       if (path.startsWith("/containers/") && path.endsWith("/start")) return {} as never;
@@ -362,14 +391,30 @@ describe("a run", () => {
     logs.bisync = [{ stderr: json([tie, { level: "error", msg: "Bisync critical error: path1 and path2 are out of sync, run --resync to recover" }]), code: 7 }, { stderr: json([{ level: "info", msg: "Bisync successful" }]) }];
     const result = await syncKnowledge("notes", { remote, mode: "resync" });
     expect(result).toMatchObject({ result: "synced", ties: ["same.md"], changed: true });
-    const [touchHere, touchThere, newer, path2] = steps();
+    const [touchHere, touchThere, newer, copy, again] = steps();
     expect(touchHere!.body.Cmd.slice(0, 4)).toEqual(["touch", "--timestamp", "2000-01-01T00:00:00", `/knowledge/${SYNC_MARKER}`]);
     // Only the knowledge base, with no network and no secret.
     expect(envOf(touchHere!)).toEqual([]);
     expect(touchHere!.body.HostConfig.NetworkMode).toBe("none");
     expect(touchThere!.body.Cmd.slice(0, 4)).toEqual(["touch", "--timestamp", "2000-01-01T00:00:00", `remote:${SYNC_MARKER}`]);
     expect(newer!.body.Cmd).toEqual(expect.arrayContaining(["--resync", "--resync-mode", "newer"]));
-    expect(path2!.body.Cmd).toEqual(expect.arrayContaining(["--resync", "--resync-mode", "path2"]));
+    // Only the tie is copied over Drive's; then the same resync again, so a file changed on Drive
+    // since the first pass still wins as the newer copy, rather than every differing file going to
+    // the knowledge base's copy as with `--resync-mode path2`.
+    expect(copy!.body.Cmd).toEqual(tieCopyArgs(["same.md"]));
+    expect(envOf(copy!)).toHaveLength(6);
+    expect(copy!.body.HostConfig.NetworkMode).toBe(syncNetwork());
+    expect(again!.body.Cmd).toEqual(newer!.body.Cmd);
+    expect(steps().flatMap(({ body: { Cmd } }) => (Cmd.includes("--resync-mode") ? [Cmd[Cmd.indexOf("--resync-mode") + 1]] : []))).toEqual(["newer", "newer"]);
+  });
+
+  it("doesn't resync again when copying a tie fails", async () => {
+    const tie = { level: "error", msg: "-                   Checksum not equal in listing. Path1: a, Path2: b - same.md" };
+    logs.bisync = [{ stderr: json([tie, { level: "error", msg: "Bisync critical error: path1 and path2 are out of sync, run --resync to recover" }]), code: 7 }];
+    logs.copy = [{ stderr: json([{ level: "error", msg: "Failed to copy: googleapi: Error 500: backendError" }]), code: 1 }];
+    const result = await syncKnowledge("notes", { remote, mode: "resync" });
+    expect(result).toMatchObject({ result: "failed", ties: [] });
+    expect(steps().filter((s) => s.body.Cmd[0] === "bisync")).toHaveLength(1);
   });
 
   it("applies deletions only when a dry run lists exactly the ones the owner confirmed", async () => {
@@ -388,6 +433,85 @@ describe("a run", () => {
       [true, true],
       [true, false],
     ]);
+  });
+
+  it("applies more than 500 deletions when the owner confirmed every one of them", async () => {
+    const many = Array.from({ length: 700 }, (_, i) => ({ side: "local" as const, path: `course/week ${i}.md` }));
+    const listed = many.map((d) => ({ level: "notice", msg: `- Path2             File was deleted                            - ${d.path}` }));
+    logs.bisync = [{ stderr: json(listed) }, { stderr: json([{ level: "info", msg: "Bisync successful" }]) }];
+    const request = validateSyncRequest({ remote, mode: "force", confirm: [...many].reverse() });
+    expect(request.confirm).toHaveLength(700);
+    expect((await syncKnowledge("notes", request)).result).toBe("synced");
+    expect(steps().filter((s) => s.body.Cmd[0] === "bisync").map((s) => s.body.Cmd.includes("--dry-run"))).toEqual([true, false]);
+  });
+
+  /** Holds the engine at the first request `at` matches, until released. */
+  function holdEngineAt(at: (method: string, path: string, body: unknown) => boolean): { reached: Promise<void>; release: () => void } {
+    const answer = vi.mocked(engineModule.engine).getMockImplementation()!;
+    let release: () => void = () => {};
+    let reach: () => void = () => {};
+    const reached = new Promise<void>((resolve) => (reach = resolve));
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let once = false;
+    vi.mocked(engineModule.engine).mockImplementation(async (method, path, body) => {
+      if (!once && at(method, path, body)) {
+        once = true;
+        reach();
+        await held;
+      }
+      return answer(method, path, body);
+    });
+    return { reached, release };
+  }
+
+  it("holds the knowledge base before its first step and between steps: neither it nor its sync is deleted meanwhile", async () => {
+    // Before its first container: nothing mounts the volume yet, as while rclone's image is pulled.
+    const early = holdEngineAt(() => true);
+    const first = syncKnowledge("notes", { remote, mode: "sync" });
+    await early.reached;
+    expect(created).toEqual([]);
+    await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("is syncing") });
+    await expect(removeSync("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("is syncing") });
+    early.release();
+    expect((await first).result).toBe("synced");
+
+    // Between bisync and the listing: bisync's container is removed, the listing's isn't made yet.
+    created = [];
+    const between = holdEngineAt((method, path, body) => method === "POST" && path.startsWith("/containers/create?name=") && (body as { Cmd: string[] }).Cmd[0] === "lsjson");
+    const second = syncKnowledge("notes", { remote, mode: "sync" });
+    await between.reached;
+    expect(steps().map((s) => s.body.Cmd[0])).toEqual(["bisync"]);
+    await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409 });
+    await expect(removeSync("notes")).rejects.toMatchObject({ status: 409 });
+    between.release();
+    expect((await second).listed).toBe(true);
+    expect(volumes.has(knowledgeVolume(INSTALLATION, "notes"))).toBe(true);
+    expect(volumes.has(knowledgeStateVolume(INSTALLATION, "notes"))).toBe(true);
+
+    // Once it ends, the knowledge base and its sync state are deleted.
+    await deleteKnowledge("notes");
+    expect(volumes.has(knowledgeVolume(INSTALLATION, "notes"))).toBe(false);
+    expect(volumes.has(knowledgeStateVolume(INSTALLATION, "notes"))).toBe(false);
+  });
+
+  it("starts no run while the knowledge base or its sync is being deleted", async () => {
+    volumes.set(knowledgeStateVolume(INSTALLATION, "notes"), { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "knowledge-sync", "ai.your-space.knowledge": "notes" });
+    const deleting = holdEngineAt((_, path) => path.startsWith("/volumes/"));
+    const deleted = deleteKnowledge("notes");
+    await deleting.reached;
+    await expect(syncKnowledge("notes", { remote, mode: "sync" })).rejects.toMatchObject({ status: 409, message: expect.stringContaining("being deleted") });
+    deleting.release();
+    await deleted;
+    expect(created).toEqual([]);
+    expect(volumes.size).toBe(0);
+
+    const removing = holdEngineAt((_, path) => path.startsWith("/volumes/"));
+    const removed = removeSync("notes");
+    await removing.reached;
+    await expect(syncKnowledge("notes", { remote, mode: "resync" })).rejects.toMatchObject({ status: 409 });
+    removing.release();
+    await removed;
+    expect(created).toEqual([]);
   });
 
   it("answers busy for a second run of the same knowledge base while one runs", async () => {

@@ -66,7 +66,8 @@ whose folder already has files.
 
 The first sync copies both ways and deletes nothing: a file on one side only is copied to the other,
 and where both sides have a file, the newer copy wins. When both copies have the same modification
-time but different content, the knowledge base's copy wins. The first sync also puts Your Space's
+time but different content, the knowledge base's copy replaces Drive's, which Drive keeps in the
+file's version history, and the page lists those files. The first sync also puts Your Space's
 marker file, `.your-space-sync`, at the top of the knowledge base and of the Drive folder. Leave it
 there: a sync that can't find it on both sides stops.
 
@@ -77,6 +78,9 @@ The knowledge base's page shows when it last synced, and what to do when a sync 
 ## What a sync does
 
 - It covers exactly the chosen folder and the folders in it, never the rest of your Drive.
+- Shortcuts in the folder are skipped, and stay in Drive only: a shortcut points to a file or
+  folder somewhere else in your Drive, which the sync would otherwise copy, change and delete there.
+  To sync such a folder, move it into the chosen folder, or connect another knowledge base to it.
 - Google Docs, Sheets and Slides are skipped: they have no file to edit locally, and stay in Drive.
   Empty folders sync too.
 - A file changed on both sides between two syncs keeps both copies: the knowledge base's keeps its
@@ -93,10 +97,12 @@ Deleting your files on Drive is the worst thing a sync could do, so it stops and
 rather than guess. Your files stay as they are on both sides, and apps keep working on the local copy.
 
 - **More than half of the files were deleted** on one side since the last sync. The page lists the
-  deletions. **Resync** copies them back from the other side and deletes nothing. **Apply these
-  deletions** deletes them on the other side too, for this one sync, once you confirm: just before,
-  Your Space checks the list again, and if more files were deleted since, it deletes nothing and
-  shows you the new list.
+  deletions, the first 500 of them by name and how many more. **Resync** copies them back from the
+  other side and deletes nothing. **Apply these deletions** deletes all of them on the other side
+  too, for this one sync, once you confirm: just before, Your Space checks the list again, and if
+  more files were deleted since, it deletes nothing and shows you the new list. Over 10,000
+  deletions are more than Your Space lists for you to confirm: then only **Resync** is offered, and
+  to delete the files, delete them on the other side too.
 - **The knowledge base or the folder is empty**, or **the marker file is missing** on one side, as
   when a folder was replaced, emptied or moved. **Resync** puts the marker back and copies both
   ways, deleting nothing.
@@ -107,7 +113,8 @@ rather than guess. Your files stay as they are on both sides, and apps keep work
 
 A sync that fails for another reason, such as no internet connection, is tried again five minutes
 later. Only one sync of a knowledge base runs at a time; **Sync now** during one runs once more
-after it.
+after it. A knowledge base can't be deleted or disconnected while it syncs, and no sync starts
+while it is being deleted or disconnected.
 
 ## Disconnect, change or remove
 
@@ -132,9 +139,13 @@ capabilities, with a read-only file system, no access to the Docker engine and n
 only the knowledge base's volume and its sync state. Its only network is one whose way out is an
 outbound proxy of the sync's own, which lets through only Google's token endpoint
 (`oauth2.googleapis.com`) and the Drive API (`www.googleapis.com`). rclone gets the client and the
-token as that container's environment, for that step, and keeps its configuration in memory: they
-are never written to a file, logged or given to an app. rclone renews the access token from the
-refresh token as it needs, in memory; Your Space keeps the refresh token it got at sign-in.
+token as that container's environment, for that step, and keeps its configuration in memory: Your
+Space never writes them to a file, logs them or gives them to an app. The Docker engine keeps a
+container's environment in that container's configuration for as long as the container exists, so
+each step's container is removed when the step ends, and one left behind, as when the runtime
+manager restarts in the middle of a step, is removed when it starts again. rclone renews the access
+token from the refresh token as it needs, in memory; Your Space keeps the refresh token it got at
+sign-in.
 
 On the Docker engine:
 
@@ -142,8 +153,11 @@ On the Docker engine:
   the replaced files of the last 30 days. Disconnecting or deleting the knowledge base deletes it;
   removing an app or deleting its data never does.
 - `<installation>_knowledge-sync`: the Compose project of the sync's outbound proxy. It starts with
-  the first sync and stops with your apps (`docker compose exec runtime stop-apps`).
-- `<installation>.knowledge-sync.<name>`: the container of a step that is running now.
+  the first sync and stops with your apps (`docker compose exec runtime stop-apps`). Deleting
+  knowledge bases leaves it; [Remove Your Space](index.md#remove-your-space) removes it.
+- `<installation>.knowledge-sync.<name>`: the container of a step that is running now. The runtime
+  manager removes one left behind when it starts, and before it deletes the knowledge base or its
+  sync.
 
 `<installation>` is your installation's Compose project name, `your-space` unless you changed it.
 

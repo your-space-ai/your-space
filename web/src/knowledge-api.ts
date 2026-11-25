@@ -22,11 +22,14 @@ export interface KnowledgeSync {
   lastRunAt: string | null;
   lastSyncedAt: string | null;
   result: "synced" | "stopped" | "unauthorized" | "failed" | null;
-  reason: "max_delete" | "empty" | "marker" | "resync" | "changed" | null;
+  reason: "max_delete" | "too_many" | "empty" | "marker" | "resync" | "changed" | null;
   side: "local" | "remote" | null;
   summary: string | null;
   detail: string | null;
+  /** The first of the deletions a stopped run listed; `deletionCounts` says how many there are. */
   deletions: SyncDeletion[];
+  /** How many deletions it listed, by the side each file was deleted on. */
+  deletionCounts: { local: number; remote: number };
   conflicts: string[];
   backups: { run: string; path: string; size: number }[];
   ties: string[];
