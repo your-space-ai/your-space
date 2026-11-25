@@ -238,6 +238,8 @@ describe("private kits through the GitHub connection", () => {
       "https://raw.githubusercontent.com/ys-fixtures/private-kits/main/..%2Fkit.yaml",
       // %2e%2e parts the URL parser resolves would read ys-fixtures/private-other under this link.
       "https://github.com/ys-fixtures/private-kits/blob/main/%2e%2e/%2e%2e/%2e%2e/private-other/blob/main/kit.yaml",
+      // So would a newline the URL parser drops before it resolves the parts.
+      `https://github.com/ys-fixtures/private-kits/blob/main/${"%2e%2\ne/".repeat(3)}private-other/blob/main/kit.yaml`,
     ]) {
       const { status, json } = await review(link);
       expect([link, status, json.error]).toEqual([link, 400, "source"]);

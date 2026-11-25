@@ -65,6 +65,9 @@ describe("links, kits and settings", () => {
       "https://github.com/a/b/blob/main/docs/%2e%2e/c.yml",
       "https://github.com/a/b/blob/main/%2E%2e/%2e./.%2E/x/blob/main/c.yml",
       "https://raw.githubusercontent.com/a/b/main/./c.yml",
+      // The URL parser drops a tab or a newline before it resolves the parts.
+      "https://github.com/a/b/blob/main/%2e%2\ne/%2e%2\ne/%2e%2\ne/x/blob/main/c.yml",
+      "https://github.com/a/b/blob/main/.\t./c.yml",
     ]) {
       expect(() => parseLink(bad), bad).toThrow(SourceError);
     }

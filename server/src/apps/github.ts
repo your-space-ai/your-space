@@ -77,13 +77,12 @@ export const MAX_FILE_BYTES = 256 * 1024;
  * repository in the URLs built from them.
  */
 export function parseLink(link: string): FileLink {
-  let url: URL;
-  try {
-    url = new URL(link.trim());
-  } catch {
-    throw new SourceError("That isn't a link. Paste the GitHub link to the app's kit.");
-  }
-  const segments = hasDotPart(link.trim()) ? null : decodedSegments(url.pathname);
+  const input = link.trim();
+  // The URL parser drops tabs and newlines, and control characters at the ends, before it resolves
+  // `.` and `..` parts. A link has none, so the parts hasDotPart checks are the ones it parses.
+  const url = /[\x00-\x1f\x7f]/.test(input) ? null : URL.parse(input);
+  if (!url) throw new SourceError("That isn't a link. Paste the GitHub link to the app's kit.");
+  const segments = hasDotPart(input) ? null : decodedSegments(url.pathname);
   if (segments && url.protocol === "https:" && url.hostname === "github.com") {
     const [owner, name, kind, ...rest] = segments;
     if (owner && name && NAME.test(owner) && NAME.test(name) && (kind === "blob" || kind === "raw") && rest.length >= 2) {
