@@ -123,6 +123,23 @@ describe("a pinned agent-access kit", () => {
     }
   });
 
+  it("finds an escaped secret at any depth of JSON text inside text that fits the limit", () => {
+    for (const [inner, secret] of [
+      ['synthetic"token', 'synthetic"token'],
+      ["back\\slash", "back\\slash"],
+      ['{"token":"\\u0073ynthetic-secret"}', "synthetic-secret"],
+    ] as const) {
+      let body: unknown = { debug: inner };
+      let depth = 0;
+      while (Buffer.byteLength(JSON.stringify(body)) <= AGENT_RESULT_LIMIT) {
+        expect(() => passAgentResult(body, [secret])).toThrow("Unsafe app result");
+        body = { debug: JSON.stringify(body) };
+        depth++;
+      }
+      expect(depth).toBeGreaterThan(10);
+    }
+  });
+
   it("refuses a response that is too large or isn't JSON", () => {
     expect(() => passAgentResult({ text: "x".repeat(AGENT_RESULT_LIMIT) }, [])).toThrow("App result is too large");
     expect(passAgentResult({ text: "x".repeat(AGENT_RESULT_LIMIT - 20) }, [])).toBeTruthy();

@@ -216,9 +216,11 @@ export function passAgentResult(data: unknown, secrets: readonly string[]): unkn
   check(Buffer.byteLength(text) <= AGENT_RESULT_LIMIT, "App result is too large.");
   // Upstreams can echo a token anywhere: in a value or a key, in a diagnostic string, or in JSON
   // encoded as text, with any of JSON's escapes. Each pass undoes one level of escaping, so a secret
-  // escaped as text inside text shows once the passes reach its level.
+  // escaped as text inside text shows once the passes reach its level. Each level at least doubles
+  // the backslashes of the escapes inside it, so in a result within the limit no escape needs more
+  // than log2(AGENT_RESULT_LIMIT) passes.
   let view = text;
-  for (let level = 0; level < 4; level++) {
+  for (let level = 0; level <= Math.log2(AGENT_RESULT_LIMIT); level++) {
     check(!secrets.some((secret) => secret && view.includes(secret)), "Unsafe app result.");
     const next = unescapeJson(view);
     if (next === view) break;
