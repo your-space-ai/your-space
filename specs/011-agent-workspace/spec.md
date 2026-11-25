@@ -2,7 +2,7 @@
 
 **Outcome.** One person can ask an agent to install Your Space, create a dashboard that reads selected apps, keep its source on GitHub and deploy a reviewed change to the same installation. The workspace runs independently of the agent and the dashboard code remains portable.
 
-**Deferred in part (2026-11-23).** Making a Home app, managed repositories with the GitHub connection, and deploying a customization are out of the alpha and deferred until after it ([decision](../../docs/architecture/decisions.md#creator-workflow-deferred)). Those rows keep their acceptance for when the work returns. Setup from a shell and installing from a kit stay; a kit in a private repository installs with the server command, `install-app --kit -`. (2026-11-25: private installs through a read-only GitHub connection return in [journey 015](../015-private-sources/spec.md), apart from this journey; managed repositories and their connection stay deferred here.)
+**Deferred in part (2026-11-23).** Making a Home app, managed repositories with the GitHub connection, and deploying a customization are out of the alpha and deferred until after it ([decision](../../docs/architecture/decisions.md#creator-workflow-deferred)). Those rows keep their acceptance for when the work returns. Setup from a shell and installing from a kit stay; a kit in a private repository installs with the server command, `install-app --kit -`, when the Compose file it pins is public. (2026-11-25: private installs through a read-only GitHub connection return in [journey 015](../015-private-sources/spec.md), apart from this journey; managed repositories and their connection stay deferred here.)
 
 | Owner journey | Acceptance |
 | --- | --- |

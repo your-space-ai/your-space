@@ -92,20 +92,27 @@ The server command follows the same path ([decision 6](#6-the-web-client-and-the
   [fine-grained token permissions](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens)).
   The contents API returns a file's text with the `application/vnd.github.raw+json` media type
   ([repository contents](https://docs.github.com/en/rest/repos/contents)). The existing limits
-  hold: 256 KiB, UTF-8, exact 40-character commits.
+  hold: 256 KiB, UTF-8, exact 40-character commits. One other request is allowed: asking GitHub
+  which account the credential belongs to (`GET /user` for a token), when the owner connects and
+  when the GitHub page shows the connection's state. It gives the login for **Connected as
+  @login**; a credential GitHub refuses is reported as not accepted, and the owner is asked to
+  connect again.
 - **R3. Same rules.** A private kit and a private Compose file go through the same checks as public
   ones. Nothing about the kit format changes ([kit format](../002-install-an-app/contracts/kit-format.md)).
-- **R4. Provenance.** The installed app records, for its kit and its Compose file, that each was
-  read through the connection and the GitHub login it belonged to, beside the repository, path and
-  commit it already records. Reinstalling after a disconnect reads the files again and needs a
-  connection again.
+- **R4. Provenance.** The installed app records, for its kit and for its Compose file separately,
+  how each was read: anonymously, or through the connection with the GitHub login it belonged to,
+  beside the repository, path and commit it already records. A public kit naming a private Compose
+  file records the kit as read anonymously and only the Compose file as read through the connection.
+  Reinstalling after a disconnect reads the files again and needs a connection again for those read
+  through it.
 - **R5. The token stays on the server.** It is encrypted under the data key, never returned by any
   API, never logged, and never given to an app or an agent. The API reports only whether a
   connection exists, its login, when it last worked and whether GitHub still accepts it.
 - **R6. One connection per workspace.** The owner holds it. It authorizes Your Space to fetch
   files; it doesn't grant an installed app anything (constitution principle IV: "Repository access
   does not grant an app access to workspace resources").
-- **R7. Only on request.** The connection is used only while the owner reviews or installs. Nothing
+- **R7. Only on request.** The connection is used only while the owner reviews or installs, and for
+  the account check in R2 when the owner connects or opens the GitHub page. Nothing
   polls GitHub in the background, consistent with the no-telemetry rule
   ([spec map](../README.md#rules-every-spec-follows)).
 - **R8. Docs.** The install guide gets a "Private kits" section with the connect steps, what the
@@ -210,13 +217,16 @@ stored connection.
 
 | Option | |
 | --- | --- |
-| **A. Label each private file and name the connection** | The kit and the Compose file each show **Private · read with your GitHub connection (@login)** beside the pinned link. When the Compose file is in a different private repository from the kit, the review says so: "This kit reads `<owner>/<repo>` with your GitHub connection." Confirming the install is the owner's consent to that read. The four problems in the journey each get their own message. |
+| **A. Label each private file and name the connection** | The kit and the Compose file each show **Private · read with your GitHub connection (@login)** beside the pinned link. When the Compose file is in a different private repository from the kit, the review says so: "This kit reads `<owner>/<repo>` with your GitHub connection." Confirming the install is the owner's consent to using what was read. Each problem in the journey gets its own message. |
 | B. The same review as for public sources | Hides that a kit, possibly written by someone else, reads a private repository through the owner's connection. |
 | C. A, and refuse a kit whose private Compose file is in a different repository from the kit | The rule the intermediate design in the 2026-11-23 cut used. It contradicts the owner's request for private apps with kits elsewhere. |
 
 **Recommendation: A.** A kit someone else wrote can name a private repository the owner can read.
 Saying so in the review, before the owner confirms, makes that read visible without forbidding the
-case the owner asked for.
+case the owner asked for. The review reads the file before the owner confirms, as it must to check
+it, but what it read goes only into the owner's own review on their own server: nothing is
+installed, started or sent anywhere until they confirm, so asking before the read would add a step
+without protecting anything. Asking first stays possible if the owner prefers it.
 
 ### 8. When it ships
 
