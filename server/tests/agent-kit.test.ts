@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseKit, KitError } from "../src/apps/kits.ts";
-import { agentCredentialHeader, filterAgentResult, renderAgentRequest } from "../src/apps/agent-kit.ts";
+import { AGENT_RESULT_LIMIT, agentCredentialHeader, passAgentResult, renderAgentRequest } from "../src/apps/agent-kit.ts";
 
 const fixture = {
   kit: 2,
@@ -8,14 +8,13 @@ const fixture = {
     credential: { binding: "service", inject: { location: "header", name: "Authorization", scheme: "Bearer" } },
     roles: { read: { title: "Read", routes: ["list"] }, inspect: { title: "Inspect", routes: ["list", "show"] } },
     routes: {
-      list: { method: "GET", path: "/items", effect: "read", queryFields: { search: "string" }, outputFields: ["id", "title"] },
+      list: { method: "GET", path: "/items", effect: "read", queryFields: { search: "string" } },
       show: {
         method: "GET",
         path: "/items/{id}",
         effect: "read",
         approval: "ask",
         pathParams: { id: "integer" },
-        outputFields: ["id", "title"],
       },
     },
   },
@@ -29,7 +28,6 @@ const write = {
   pathParams: { id: "integer" },
   bodyFields: { title: "string" },
   operationId: { in: "header", name: "Idempotency-Key" },
-  outputFields: ["id", "title"],
 };
 
 describe("a pinned agent-access kit", () => {
@@ -70,6 +68,13 @@ describe("a pinned agent-access kit", () => {
     }
   });
 
+  it("refuses outputFields, saying the app's response is passed through", () => {
+    const routes = { list: { ...list, outputFields: ["id"] }, show };
+    expect(() => parseKit(JSON.stringify({ ...fixture, agentAccess: { ...fixture.agentAccess, routes } }))).toThrow(
+      /outputFields was removed: Your Space passes the app's JSON response to the agent unchanged/,
+    );
+  });
+
   it("renders only kit-declared input and sorted query parameters", () => {
     expect(renderAgentRequest(list, { query: { search: "blue & green" } }).path).toBe("/items?search=blue+%26+green");
     expect(renderAgentRequest(show, { path: { id: 7 } })).toEqual({ method: "GET", path: "/items/7", headers: {} });
@@ -88,16 +93,73 @@ describe("a pinned agent-access kit", () => {
     }
   });
 
-  it("returns selected scalar fields and fails closed on an upstream secret echo", () => {
-    expect(filterAgentResult(list, [{ id: 1, title: "public", internal: "hidden" }], [])).toEqual([{ id: 1, title: "public" }]);
-    expect(() => filterAgentResult(list, { title: { internal: "hidden" } }, [])).toThrow();
-    expect(() => filterAgentResult(list, { title: "Bearer synthetic-secret" }, ["synthetic-secret"])).toThrow(
-      "Unsafe app result",
-    );
-    expect(() => filterAgentResult(list, { title: JSON.stringify({ token: 'synthetic"token' }) }, ['synthetic"token'])).toThrow(
-      "Unsafe app result",
-    );
-    expect(() => filterAgentResult(list, { id: 902341 }, ["902341"])).toThrow("Unsafe app result");
-    expect(filterAgentResult(show, null, [])).toBe(null);
+  it("passes the app's JSON response through unchanged", () => {
+    // A wrapped list with nested fields, as REST APIs such as Twenty's return it.
+    const wrapped = {
+      data: { companies: [{ id: "c1", name: { firstName: "Ada", lastName: "Lovelace" }, tags: ["a", null], employees: 3 }] },
+      pageInfo: { hasNextPage: false, endCursor: null },
+      totalCount: 1,
+    };
+    expect(passAgentResult(wrapped, ["synthetic-secret"])).toEqual(wrapped);
+    expect(passAgentResult([{ id: 1, internal: { kept: true } }], [])).toEqual([{ id: 1, internal: { kept: true } }]);
+    for (const value of [null, "text", 7, false, []]) expect(passAgentResult(value, [])).toEqual(value);
+  });
+
+  it("fails closed on an upstream secret echo anywhere in the response", () => {
+    for (const [body, secret] of [
+      [{ title: "Bearer synthetic-secret" }, "synthetic-secret"],
+      [{ data: { items: [{ note: { deep: ["synthetic-secret"] } }] } }, "synthetic-secret"],
+      [{ "synthetic-secret": true }, "synthetic-secret"],
+      [{ id: 902341 }, "902341"],
+      [{ title: 'synthetic"token' }, 'synthetic"token'],
+      [{ title: JSON.stringify({ token: 'synthetic"token' }) }, 'synthetic"token'],
+      [{ title: JSON.stringify({ token: "back\\slash" }) }, "back\\slash"],
+      // JSON text inside a string that escapes the secret's characters.
+      [{ debug: '{"token":"\\u0073ynthetic-secret"}' }, "synthetic-secret"],
+      [{ debug: '{"token":"synthetic\\/secret"}' }, "synthetic/secret"],
+      [{ debug: JSON.stringify({ inner: '{"token":"\\u0073ynthetic-secret"}' }) }, "synthetic-secret"],
+    ] as const) {
+      expect(() => passAgentResult(body, ["", secret])).toThrow("Unsafe app result");
+    }
+  });
+
+  it("finds an escaped secret at any depth of JSON text inside text that fits the limit", () => {
+    for (const [inner, secret] of [
+      ['synthetic"token', 'synthetic"token'],
+      ["back\\slash", "back\\slash"],
+      ['{"token":"\\u0073ynthetic-secret"}', "synthetic-secret"],
+    ] as const) {
+      let body: unknown = { debug: inner };
+      let depth = 0;
+      while (Buffer.byteLength(JSON.stringify(body)) <= AGENT_RESULT_LIMIT) {
+        expect(() => passAgentResult(body, [secret])).toThrow("Unsafe app result");
+        body = { debug: JSON.stringify(body) };
+        depth++;
+      }
+      expect(depth).toBeGreaterThan(10);
+    }
+  });
+
+  it("refuses a result escaped deeper than a JSON writer nests, and passes an honest one", () => {
+    // Writing each backslash as \u005c and each quote as \u0022 doesn't double the backslashes, so
+    // the secret hides deeper than nested JSON within the limit can.
+    let hidden = '{"token":"\\u0073ynthetic-secret"}';
+    for (let depth = 1; depth <= 40; depth++) {
+      hidden = `{"inner":"${hidden}"}`.replace(/\\/g, "\\u005c").replace(/"/g, "\\u0022");
+      expect(() => passAgentResult({ debug: hidden }, ["synthetic-secret"])).toThrow("Unsafe app result");
+    }
+    // The deepest escaping a JSON writer leaves within the limit: 18 passes.
+    const path = { path: "\\".repeat(2 ** 16) + "n" };
+    expect(passAgentResult(path, ["synthetic-secret"])).toEqual(path);
+  });
+
+  it("refuses a response that is too large or isn't JSON", () => {
+    expect(() => passAgentResult({ text: "x".repeat(AGENT_RESULT_LIMIT) }, [])).toThrow("App result is too large");
+    expect(passAgentResult({ text: "x".repeat(AGENT_RESULT_LIMIT - 20) }, [])).toBeTruthy();
+    const cycle: Record<string, unknown> = {};
+    cycle.self = cycle;
+    for (const value of [undefined, () => 1, 1n, cycle]) {
+      expect(() => passAgentResult(value, [])).toThrow("Unsupported app result");
+    }
   });
 });

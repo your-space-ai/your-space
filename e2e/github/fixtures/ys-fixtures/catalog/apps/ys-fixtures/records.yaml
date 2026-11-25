@@ -1,5 +1,5 @@
 kit: 2
-source: {repo: ys-fixtures/records, path: compose.yaml, commit: 45cc1205f720f67b4d69c2e8188a34c3aac5abd7}
+source: {repo: ys-fixtures/records, path: compose.yaml, commit: f876adc96d8ce410c6896a1fc26b822714481c90}
 name: records
 interface: {service: app, port: 8080}
 agentAccess:
@@ -14,11 +14,9 @@ agentAccess:
       method: GET
       path: /items
       effect: read
-      outputFields: [id, revision, title]
     show:
       method: GET
       path: /items/{id}
       effect: read
       approval: ask
       pathParams: {id: uuid}
-      outputFields: [id, revision, title]

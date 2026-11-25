@@ -87,7 +87,8 @@ export async function catalog(client: pg.PoolClient, id: string) {
 }
 /**
  * Agents only read (decision 2026-11-23, Alpha scope). A kit stored before then may still declare
- * write routes; they are left out, so no role grants them.
+ * write routes; they are left out, so no role grants them. A kit stored before 2026-11-24 may still
+ * give its routes outputFields; nothing reads them, and the app's response reaches the agent unchanged.
  */
 function readsOnly(access: AgentAccess): AgentAccess {
   const routes = Object.fromEntries(

@@ -28,4 +28,10 @@ Use the fields declared by the action under `path` and `query` in the input file
 you first returns a pending request ID; check it with `your-space agent request` once you have
 decided.
 
+A read returns the app's JSON response under `result`, unchanged: the shape its API gives, up to
+256 KiB. Your Space refuses a response that isn't JSON, is larger, or contains the app credential,
+and the request's status is then `unknown`. A kit doesn't name the fields an agent gets back, so
+the app credential's scope limits what a granted route returns: bind a credential that can see only
+what you want agents to read.
+
 Review pending requests in **Agents**. Approve or deny the exact request and check the activity entry. Rotate or revoke a key there, narrow the grant, or disable the agent. Your Space keeps the app credential on the server.

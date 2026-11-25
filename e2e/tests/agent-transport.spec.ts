@@ -12,7 +12,7 @@ test("the private transport reaches only the registered interface of the selecte
     interface: { service: "web", port: 8080 },
     agentAccess: {
       credential: { binding: "fixture", inject: { location: "header", name: "X-API-Key" } },
-      routes: { read: { method: "GET", path: "/record.json", effect: "read", outputFields: ["id"] } },
+      routes: { read: { method: "GET", path: "/record.json", effect: "read" } },
       roles: { reader: { title: "Reader", routes: ["read"] } },
     },
   };

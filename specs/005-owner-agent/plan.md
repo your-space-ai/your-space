@@ -4,7 +4,7 @@
 
 ## Delivery order
 
-1. Define kit roles, allowed methods and routes, credential recipes and result fields. Verify the parser and pinned review evidence with neutral fixtures.
+1. Define kit roles, allowed methods and routes and credential recipes (result fields were dropped 2026-11-24: the app's response passes through unchanged). Verify the parser and pinned review evidence with neutral fixtures.
 2. Resolve the selected service and port on the installation’s private network. Exercise the runtime and edge together before exposing any caller-facing route.
 3. Add the owner API and additive storage for identities, keys, app credentials and grants. Verify zero-access defaults and upgrades from a populated installation.
 4. Admit and dispatch an agent request under current authority. Exercise owner approval, withdrawal, expiry, recovery, attribution and isolation.

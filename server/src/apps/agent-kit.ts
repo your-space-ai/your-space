@@ -1,10 +1,9 @@
 // The declaration lives in the pinned installation kit. Only this module turns a
 // declared route and validated scalar fields into an upstream request. Agents only read
-// (decision 2026-11-23, Alpha scope): every route is a GET with effect: read.
+// (decision 2026-11-23, Alpha scope): every route is a GET with effect: read. The app's JSON
+// response reaches the agent unchanged (decision 2026-11-24), so a route declares no output.
 type FieldType = "string" | "uuid" | "integer" | "boolean";
 type Fields = Record<string, FieldType>;
-type Scalar = string | number | boolean | null;
-type ResultRow = Record<string, Scalar>;
 export interface AgentRoute {
   method: "GET";
   path: string;
@@ -12,12 +11,15 @@ export interface AgentRoute {
   approval?: "ask" | "allow";
   pathParams?: Fields;
   queryFields?: Fields;
-  outputFields: string[];
 }
 /** Fields only a write route could use, before agents became read-only. */
 const WRITE_FIELDS = ["bodyFields", "operationId", "expectedRevision", "receipt"];
 const READS_ONLY =
   "Agents only read in this version of Your Space: each route is a GET with effect: read, without a body, an operation ID, a revision or a receipt.";
+const NO_OUTPUT_FIELDS =
+  "outputFields was removed: Your Space passes the app's JSON response to the agent unchanged. Remove outputFields from the route.";
+/** The largest app result, in bytes of JSON, that an agent gets; the transport stops reading past it. */
+export const AGENT_RESULT_LIMIT = 256 * 1024;
 export interface AgentAccess {
   credential: { binding: string; inject: { location: "header"; name: string; scheme?: "Bearer" } };
   roles: Record<string, { title: string; routes: string[] }>;
@@ -74,12 +76,13 @@ function parseFields(value: unknown): Fields {
 function parseRoute(value: unknown): AgentRoute {
   const declared = mapping(value);
   check(declared.effect !== "write" && !WRITE_FIELDS.some((name) => Object.hasOwn(declared, name)), READS_ONLY);
-  const r = keys(value, ["method", "path", "effect", "approval", "pathParams", "queryFields", "outputFields"]);
+  check(!Object.hasOwn(declared, "outputFields"), NO_OUTPUT_FIELDS);
+  const r = keys(value, ["method", "path", "effect", "approval", "pathParams", "queryFields"]);
   const { method, path, effect, approval } = r;
   check(method === "GET" && effect === "read", READS_ONLY);
   check(approval === undefined || approval === "allow" || approval === "ask", "Unknown approval setting.");
   check(typeof path === "string" && path.startsWith("/") && path.length <= 512, "Expected a relative route path.");
-  const route: AgentRoute = { method, path, effect, approval, outputFields: nameList(r.outputFields, field) };
+  const route: AgentRoute = { method, path, effect, approval };
   for (const slot of ["pathParams", "queryFields"] as const) {
     if (r[slot] !== undefined) route[slot] = parseFields(r[slot]);
   }
@@ -190,36 +193,45 @@ export function agentCredentialHeader(access: AgentAccess, secret: string): Reco
   const { name, scheme } = access.credential.inject;
   return { [name]: scheme ? scheme + " " + secret : secret };
 }
-export function filterAgentResult(
-  route: AgentRoute,
-  data: unknown,
-  secrets: readonly string[],
-): ResultRow | ResultRow[] | null {
-  if (data === null) return null;
-  function row(item: unknown): ResultRow {
-    const src = mapping(item);
-    const result: ResultRow = {};
-    for (const name of route.outputFields) {
-      if (!Object.hasOwn(src, name)) continue;
-      const v = src[name];
-      check(
-        v === null ||
-          typeof v === "boolean" ||
-          (typeof v === "number" && Number.isFinite(v)) ||
-          (typeof v === "string" && v.length <= 8192),
-        "Unsupported app result.",
-      );
-      // Upstreams can echo a token even inside a diagnostic string or JSON-encoded text.
-      const text = String(v);
-      check(
-        !secrets.some((secret) => secret && (text.includes(secret) || text.includes(JSON.stringify(secret).slice(1, -1)))),
-        "Unsafe app result.",
-      );
-      result[name] = v;
-    }
-    return result;
+const JSON_ESCAPE = /\\(?:u([\da-fA-F]{4})|(["\\/bfnrt]))/g;
+const ESCAPED: Record<string, string> = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+/**
+ * A JSON writer doubles the backslashes of each escape it nests, so undoing the escapes of a result
+ * within AGENT_RESULT_LIMIT takes at most log2(AGENT_RESULT_LIMIT) = 18 passes. A result that still
+ * changes after this many was escaped some other way, such as \ for each backslash, and is
+ * refused, so a crafted one can't make the check run a pass per character.
+ */
+const ESCAPE_PASSES = 32;
+/** Undoes one level of JSON string escaping wherever it appears in the text. */
+function unescapeJson(text: string): string {
+  return text.replace(JSON_ESCAPE, (_, hex: string | undefined, char: string) =>
+    hex ? String.fromCharCode(parseInt(hex, 16)) : (ESCAPED[char] ?? char),
+  );
+}
+/**
+ * The app's response, for the agent, as it came: any JSON the app returns, of at most
+ * AGENT_RESULT_LIMIT bytes, and never one that contains the app credential.
+ */
+export function passAgentResult(data: unknown, secrets: readonly string[]): unknown {
+  let text: string | undefined;
+  try {
+    text = JSON.stringify(data);
+  } catch {
+    // A cycle or a BigInt isn't JSON.
   }
-  if (!Array.isArray(data)) return row(data);
-  check(data.length <= 500, "App result is too large.");
-  return data.map(row);
+  check(typeof text === "string", "Unsupported app result.");
+  check(Buffer.byteLength(text) <= AGENT_RESULT_LIMIT, "App result is too large.");
+  // Upstreams can echo a token anywhere: in a value or a key, in a diagnostic string, or in JSON
+  // encoded as text, with any of JSON's escapes. Each pass undoes one level of escaping, so a secret
+  // escaped as text inside text shows once the passes reach its level.
+  let view = text;
+  for (let pass = 0; ; pass++) {
+    check(!secrets.some((secret) => secret && view.includes(secret)), "Unsafe app result.");
+    const next = unescapeJson(view);
+    if (next === view) break;
+    check(pass < ESCAPE_PASSES, "Unsafe app result.");
+    view = next;
+  }
+  // What the agent gets is exactly the JSON that was checked.
+  return JSON.parse(text);
 }
