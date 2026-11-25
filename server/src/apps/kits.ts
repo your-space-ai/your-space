@@ -73,7 +73,7 @@ export function parseKnowledge(value: unknown): { path: string } {
   const path = `/${parts.join("/")}`;
   if (path === "/") throw new KitError("knowledge.path can't be /: give a folder, like /knowledge.");
   if (parts.length > 8 || parts.some((part) => !/^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$/.test(part))) {
-    throw new KitError("knowledge.path must be folder names of letters, digits, dots, dashes and underscores, each not starting with a dot.");
+    throw new KitError("knowledge.path must be at most 8 folder names deep, each 1 to 64 letters, digits, dots, dashes and underscores, starting with a letter, digit or underscore.");
   }
   if (SYSTEM_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))) throw new KitError(`knowledge.path can't be in ${path.split("/").slice(0, 2).join("/")}, a system folder.`);
   return { path };

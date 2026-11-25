@@ -155,6 +155,8 @@ let containers: (ContainerSummary & { volumes?: string[] })[];
 let created: Json[];
 let calls: string[];
 let initExit: number;
+/** Whether the engine fails to delete a volume, as when it stopped answering. */
+let volumeDeleteFails: boolean;
 
 function matches(labels: Record<string, string>, filters: string[]): boolean {
   return filters.every((filter) => {
@@ -169,6 +171,7 @@ beforeEach(() => {
   created = [];
   calls = [];
   initExit = 0;
+  volumeDeleteFails = false;
   vi.mocked(engineModule.engineJson).mockImplementation(async (method, path, body) => {
     calls.push(`${method} ${path.split("?")[0]}`);
     if (path === "/containers/runtime-id/json") return { Image: "sha256:runtime" } as never;
@@ -204,6 +207,7 @@ beforeEach(() => {
       const name = decodeURIComponent(path.slice("/volumes/".length));
       if (method === "GET") return volumes.has(name) ? { status: 200, body: JSON.stringify({ Name: name, Labels: volumes.get(name) }) } : { status: 404, body: "" };
       if (method === "DELETE") {
+        if (volumeDeleteFails) return { status: 500, body: "the engine failed" };
         if (containers.some((c) => c.volumes?.includes(name))) return { status: 409, body: "volume is in use" };
         return volumes.delete(name) ? { status: 204, body: "" } : { status: 404, body: "" };
       }
@@ -247,7 +251,10 @@ describe("a knowledge base's volume", () => {
   it("is kept, with its files, when it is this installation's already, and refused when it isn't", async () => {
     volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
     expect(await createKnowledge("notes")).toEqual({ created: false });
-    expect(created).toEqual([]);
+    expect(calls).not.toContain("POST /volumes/create");
+    // Its folder is set up again, which only gives it its owner and mode: its files stay as they are.
+    expect(created).toEqual([knowledgeInit("sha256:runtime", NOTES)]);
+    expect((created[0] as { Cmd: string[] }).Cmd).toEqual(["chown 1000:1000 /knowledge && chmod 2777 /knowledge"]);
     volumes.set(NOTES, { "ai.your-space.installation": "someone-else" });
     await expect(createKnowledge("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("Your Space didn't make it") });
   });
@@ -256,6 +263,27 @@ describe("a knowledge base's volume", () => {
     initExit = 1;
     await expect(createKnowledge("notes")).rejects.toThrow(/exit code 1/);
     expect(volumes.has(NOTES)).toBe(false);
+  });
+
+  it("gets its folder set up on the next try when a failed try's volume couldn't be deleted", async () => {
+    initExit = 1;
+    volumeDeleteFails = true;
+    await expect(createKnowledge("notes")).rejects.toThrow(/exit code 1/);
+    // The engine kept the volume, labelled as this installation's, with its folder not set up.
+    expect(volumes.get(NOTES)).toEqual(knowledgeLabels(INSTALLATION, "notes"));
+    initExit = 0;
+    volumeDeleteFails = false;
+    expect(await createKnowledge("notes")).toEqual({ created: false });
+    expect(created).toEqual([knowledgeInit("sha256:runtime", NOTES), knowledgeInit("sha256:runtime", NOTES)]);
+    expect(volumes.has(NOTES)).toBe(true);
+  });
+
+  it("keeps a kept one, with its files, when its folder can't be set up again", async () => {
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    initExit = 1;
+    await expect(createKnowledge("notes")).rejects.toThrow(/exit code 1/);
+    expect(volumes.has(NOTES)).toBe(true);
+    expect(calls).not.toContain("DELETE /volumes/" + NOTES);
   });
 
   it("isn't deleted while a container mounts it, even a stopped one", async () => {

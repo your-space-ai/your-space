@@ -33,9 +33,9 @@ async function waitForJob(page: Page): Promise<void> {
   expect(await job.getAttribute("data-job-state"), (await job.textContent()) ?? "").toBe("succeeded");
 }
 
-/** Runs a shell command in an app's container, as the user the app runs as. */
+/** Runs a shell command in an app's container, as the user the app runs as; a command that fails fails the test. */
 async function inApp(container: string, script: string): Promise<string> {
-  return (await docker(["exec", container, "sh", "-c", script])).stdout.trim();
+  return (await docker(["exec", container, "sh", "-c", script], false)).stdout.trim();
 }
 
 const containerId = async (container: string) => (await docker(["inspect", container, "--format", "{{.Id}}"], false)).stdout.trim();
@@ -43,7 +43,7 @@ const containerId = async (container: string) => (await docker(["inspect", conta
 /** A knowledge base's volume on the engine, by its labels: its name, or "" when there is none. */
 async function knowledgeVolume(name: string): Promise<string> {
   const filters = [`label=ai.your-space.installation=${PROJECT}`, "label=ai.your-space.role=knowledge", `label=ai.your-space.knowledge=${name}`];
-  return (await docker(["volume", "ls", "-q", ...filters.flatMap((f) => ["--filter", f])])).stdout.trim();
+  return (await docker(["volume", "ls", "-q", ...filters.flatMap((f) => ["--filter", f])], false)).stdout.trim();
 }
 
 async function install(page: Page, app: string, pick: string[]): Promise<void> {
@@ -127,8 +127,20 @@ test("the app's page changes its knowledge bases, which recreates its interface 
   await knowledge.getByLabel("Family recipes").check();
   await expect(knowledge).toContainText("Saving restarts the app's interface service");
   await evidence(page, testInfo, "014-1-app-knowledge");
+  // While the save is under way, the picks can't change, so none made meanwhile is lost when it ends.
+  let send = () => {};
+  const sent = new Promise<void>((resolve) => (send = resolve));
+  await page.route("**/api/apps/notes-one/knowledge", async (route) => {
+    await sent;
+    await route.continue();
+  });
   await knowledge.getByRole("button", { name: "Save knowledge bases" }).click();
+  await expect(knowledge.getByLabel("Course notes")).toBeDisabled();
+  await expect(knowledge.getByLabel("Family recipes")).toBeDisabled();
+  send();
   await waitForJob(page);
+  await page.unroute("**/api/apps/notes-one/knowledge");
+  await expect(knowledge.getByLabel("Family recipes")).toBeEnabled();
   expect(await containerId(ONE)).not.toBe(before);
   expect(await inApp(ONE, "cat /knowledge/recipes/soup.md")).toBe("Lentil soup");
   // Files written before the change are still there.
@@ -185,5 +197,6 @@ test("deleting a knowledge base asks first, names the apps that use it, and take
   await page.getByRole("alertdialog", { name: "Delete Family recipes?" }).getByRole("button", { name: "Delete knowledge base" }).click();
   await expect(page.getByText("No knowledge base yet.")).toBeVisible({ timeout: 120_000 });
   expect(await knowledgeVolume("recipes")).toBe("");
-  expect(await inApp(TWO, "ls -1 /knowledge")).toBe("");
+  // With none left, Your Space mounts nothing, so the knowledge path may not be there at all.
+  expect(await inApp(TWO, "ls -1A /knowledge 2>/dev/null || true")).toBe("");
 });

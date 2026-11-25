@@ -2,7 +2,7 @@
 // ask for knowledge; each change is recorded against the owner. Removing an app, or deleting its data,
 // never deletes a knowledge base, and deleting one takes it away from its apps first.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { KitError, parseKit } from "../src/apps/kits.ts";
 import { actor, app, appKnowledgeBase, event, eventKnowledgeBase, knowledgeBase } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
@@ -26,7 +26,7 @@ describe("a kit's knowledge", () => {
     expect(kit("knowledge: { path: /data/vault/ }").knowledge).toEqual({ path: "/data/vault" });
     expect(kit("knowledge: { path: //data/./vault }").knowledge).toEqual({ path: "/data/vault" });
     // Both kit formats take it: a Your Space that doesn't know it refuses it as an unknown field.
-    const agentAccess = "agentAccess: { credential: { binding: service, inject: { location: header, name: X-API-Key } }, roles: { read: { title: Read, routes: [list] } }, routes: { list: { method: GET, path: /items, effect: read, outputFields: [id] } } }";
+    const agentAccess = "agentAccess: { credential: { binding: service, inject: { location: header, name: X-API-Key } }, roles: { read: { title: Read, routes: [list] } }, routes: { list: { method: GET, path: /items, effect: read } } }";
     expect(kit(`knowledge: {}\n${agentAccess}`, 2).knowledge).toEqual({ path: "/knowledge" });
     // A kit without the field asks for none.
     expect(kit("").knowledge).toBeUndefined();
@@ -44,6 +44,9 @@ describe("a kit's knowledge", () => {
       ["knowledge: { path: /dev }", /system folder/],
       ["knowledge: { path: '/my notes' }", /folder names/],
       ["knowledge: { path: /.hidden }", /folder names/],
+      ["knowledge: { path: /-vault }", /starting with a letter, digit or underscore/],
+      ["knowledge: { path: /a/b/c/d/e/f/g/h/i }", /at most 8 folder names deep/],
+      [`knowledge: { path: /${"a".repeat(65)} }`, /each 1 to 64/],
       ["knowledge: { path: 7 }", /absolute/],
       ["knowledge: true", /mapping/],
       ["knowledge:", /mapping/],
@@ -58,13 +61,22 @@ describe("a kit's knowledge", () => {
   });
 });
 
-/** Holds each apply until released, so a test can catch an app while it's busy. */
+/** Holds each apply while `hold` is on, until released, so a test can catch an app while it's busy. */
 class HeldRuntime extends FakeRuntime {
   hold = false;
-  release: () => void = () => {};
+  private waiting: (() => void)[] = [];
   override async apply(spec: AppSpec, onEvent: (event: ApplyEvent) => void) {
-    if (this.hold) await new Promise<void>((resolve) => (this.release = resolve));
+    if (this.hold) await new Promise<void>((resolve) => this.waiting.push(resolve));
     return super.apply(spec, onEvent);
+  }
+  /** Lets every apply that waits go on. */
+  release(): void {
+    for (const resolve of this.waiting.splice(0)) resolve();
+  }
+  /** Waits until an apply waits. */
+  async untilHeld(): Promise<void> {
+    for (let i = 0; i < 200 && this.waiting.length === 0; i++) await new Promise((r) => setTimeout(r, 10));
+    if (this.waiting.length === 0) throw new Error("No apply is waiting.");
   }
 }
 
@@ -80,7 +92,9 @@ beforeAll(async () => {
     "ys-fixtures/notes/compose.yaml": COMPOSE,
     "ys-fixtures/vault/compose.yaml": COMPOSE,
     "ys-fixtures/plain/compose.yaml": COMPOSE,
+    "ys-fixtures/atlas/compose.yaml": COMPOSE,
     ...plainKit("notes", "knowledge: {}\n"),
+    ...plainKit("atlas", "knowledge: {}\n"),
     ...plainKit("vault", "knowledge: { path: /vault/ }\n"),
     ...plainKit("plain"),
   });
@@ -121,13 +135,28 @@ async function install(name: string, knowledge?: unknown): Promise<Response> {
   return response;
 }
 
-/** The knowledge base of each event of a type, by the name the event keeps, with who it is recorded against. */
+/**
+ * The knowledge base of each event of a type, by the name the event keeps, with who it is recorded
+ * against, in the order of the knowledge bases' names.
+ */
 async function events(type: string) {
   return t.db
     .select({ actorId: event.actorId, subjectAppId: event.subjectAppId, knowledgeBase: eventKnowledgeBase.name })
     .from(event)
     .leftJoin(eventKnowledgeBase, eq(eventKnowledgeBase.eventId, event.id))
-    .where(eq(event.type, type));
+    .where(eq(event.type, type))
+    .orderBy(asc(eventKnowledgeBase.name));
+}
+
+/** Holds every apply while `during` runs, then lets them go, even when an assertion in it fails. */
+async function holdingApplies(during: () => Promise<void>): Promise<void> {
+  runtime.hold = true;
+  try {
+    await during();
+  } finally {
+    runtime.hold = false;
+    runtime.release();
+  }
 }
 
 const knowledgeId = async (name: string) => (await t.db.select({ id: knowledgeBase.id }).from(knowledgeBase).where(eq(knowledgeBase.name, name)))[0]!.id;
@@ -320,10 +349,13 @@ describe("deleting a knowledge base", () => {
   it("is kept, with the apps that couldn't be applied without it, until they can", async () => {
     runtime.failApply = "The engine stopped.";
     const refused = await api("/api/knowledge/course-notes", { method: "DELETE" });
+    runtime.failApply = undefined;
     expect(refused.status).toBe(409);
-    const { message } = (await refused.json()) as { message: string };
-    expect(message).toMatch(/still mounted by vault/);
+    const { error, message } = (await refused.json()) as { error: string; message: string };
+    expect(error).toBe("apps_failed");
+    expect(message).toMatch(/The knowledge base course-notes wasn't deleted/);
     expect(message).toMatch(/These apps keep it, since they couldn't be applied again without it, or removed: vault: /);
+    expect(runtime.knowledge.has("course-notes")).toBe(true);
     expect(await t.db.select().from(knowledgeBase).where(eq(knowledgeBase.name, "course-notes"))).toHaveLength(1);
     // The app still mounts it, so it keeps it, and the knowledge base still lists it.
     expect(await t.db.select().from(appKnowledgeBase).where(and(eq(appKnowledgeBase.appId, await appId("vault"))))).toHaveLength(1);
@@ -331,7 +363,6 @@ describe("deleting a knowledge base", () => {
     expect(list.knowledgeBases.find((k) => k.name === "course-notes")!.apps.map((a) => a.name)).toEqual(["vault"]);
 
     // Once the app can be applied again, deleting it again takes it from the app and deletes it.
-    runtime.failApply = undefined;
     expect((await api("/api/knowledge/course-notes", { method: "DELETE" })).status).toBe(204);
     expect(runtime.knowledge.size).toBe(0);
     expect(lastApply("vault").knowledge).toEqual({ path: "/vault", bases: [] });
@@ -380,14 +411,15 @@ describe("deleting a knowledge base when its apps and their grants disagree", ()
   it("saves only the change whose job starts, when two arrive for an app at once", async () => {
     expect((await send("/api/knowledge", { name: "soon" })).status).toBe(201);
     expect((await send("/api/knowledge", { name: "later" })).status).toBe(201);
-    runtime.hold = true;
-    const answers = await Promise.all([send("/api/apps/vault/knowledge", { bases: ["soon"] }, "PUT"), send("/api/apps/vault/knowledge", { bases: ["later"] }, "PUT")]);
-    expect(answers.map((a) => a.status).sort()).toEqual([202, 409]);
-    const won = answers[0]!.status === 202 ? 0 : 1;
-    // The refused change saved nothing: the grants are the ones the job under way applies.
-    expect(await grantsOf("vault")).toEqual([["soon"], ["later"]][won]);
-    runtime.hold = false;
-    runtime.release();
+    let answers: Response[] = [];
+    let won = 0;
+    await holdingApplies(async () => {
+      answers = await Promise.all([send("/api/apps/vault/knowledge", { bases: ["soon"] }, "PUT"), send("/api/apps/vault/knowledge", { bases: ["later"] }, "PUT")]);
+      expect(answers.map((a) => a.status).sort()).toEqual([202, 409]);
+      won = answers[0]!.status === 202 ? 0 : 1;
+      // The refused change saved nothing: the grants are the ones the job under way applies.
+      expect(await grantsOf("vault")).toEqual([["soon"], ["later"]][won]);
+    });
     expect((await waitForJob(((await answers[won]!.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
     expect(lastApply("vault").knowledge!.bases).toEqual([["soon"], ["later"]][won]);
     const cleared = await send("/api/apps/vault/knowledge", { bases: [] }, "PUT");
@@ -396,26 +428,183 @@ describe("deleting a knowledge base when its apps and their grants disagree", ()
   });
 
   it("changes nothing while an app that has it is busy, on the app's page or the Knowledge page", async () => {
-    runtime.hold = true;
-    const first = await send("/api/apps/vault/knowledge", { bases: ["later"] }, "PUT");
-    expect(first.status).toBe(202);
-    const second = await send("/api/apps/vault/knowledge", { bases: [] }, "PUT");
-    expect(second.status).toBe(409);
-    expect(((await second.json()) as { error: string }).error).toBe("busy");
-    // The first change's grant is kept, so it matches the apply under way.
-    expect(await grantsOf("vault")).toEqual(["later"]);
+    let first: Response | undefined;
+    await holdingApplies(async () => {
+      first = await send("/api/apps/vault/knowledge", { bases: ["later"] }, "PUT");
+      expect(first.status).toBe(202);
+      const second = await send("/api/apps/vault/knowledge", { bases: [] }, "PUT");
+      expect(second.status).toBe(409);
+      expect(((await second.json()) as { error: string }).error).toBe("busy");
+      // The first change's grant is kept, so it matches the apply under way.
+      expect(await grantsOf("vault")).toEqual(["later"]);
 
-    const deletes = runtime.calls.filter((c) => c.method === "deleteKnowledge").length;
-    const refused = await api("/api/knowledge/later", { method: "DELETE" });
-    expect(refused.status).toBe(409);
-    expect(((await refused.json()) as { error: string }).error).toBe("busy");
-    expect(await grantsOf("vault")).toEqual(["later"]);
-    expect(runtime.calls.filter((c) => c.method === "deleteKnowledge").length).toBe(deletes);
-
-    runtime.hold = false;
-    runtime.release();
-    expect((await waitForJob(((await first.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+      const deletes = runtime.calls.filter((c) => c.method === "deleteKnowledge").length;
+      const refused = await api("/api/knowledge/later", { method: "DELETE" });
+      expect(refused.status).toBe(409);
+      expect(((await refused.json()) as { error: string }).error).toBe("busy");
+      expect(await grantsOf("vault")).toEqual(["later"]);
+      expect(runtime.calls.filter((c) => c.method === "deleteKnowledge").length).toBe(deletes);
+    });
+    expect((await waitForJob(((await first!.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
     expect((await api("/api/knowledge/later", { method: "DELETE" })).status).toBe(204);
     expect(await grantsOf("vault")).toEqual([]);
+  });
+});
+
+describe("deleting a knowledge base while the owner changes its apps", () => {
+  const jobOf = async (response: Response) => ((await response.json()) as { jobId: string }).jobId;
+
+  it("keeps it, and the grant of an app that couldn't be applied, even when no container of the app mounts it", async () => {
+    expect((await send("/api/knowledge", { name: "unmounted" })).status).toBe(201);
+    // The change saves vault's grant, but its apply fails, so no container of vault's mounts it.
+    runtime.failApply = "The engine stopped.";
+    try {
+      expect((await waitForJob(await jobOf(await send("/api/apps/vault/knowledge", { bases: ["unmounted"] }, "PUT")))).state).toBe("failed");
+      expect(runtime.lastApply("ys-vault")!.knowledge!.bases).toEqual([]);
+      const refused = await api("/api/knowledge/unmounted", { method: "DELETE" });
+      expect(refused.status).toBe(409);
+      const { error, message } = (await refused.json()) as { error: string; message: string };
+      expect(error).toBe("apps_failed");
+      expect(message).toMatch(/These apps keep it, since they couldn't be applied again without it, or removed: vault: /);
+    } finally {
+      runtime.failApply = undefined;
+    }
+    // Nothing was deleted: the storage, its record and vault's grant are all kept.
+    expect(runtime.calls.some((c) => c.method === "deleteKnowledge" && c.project === "unmounted")).toBe(false);
+    expect(runtime.knowledge.has("unmounted")).toBe(true);
+    expect(await t.db.select().from(knowledgeBase).where(eq(knowledgeBase.name, "unmounted"))).toHaveLength(1);
+    expect(await grantsOf("vault")).toEqual(["unmounted"]);
+
+    // Once vault can be applied again, the delete goes through.
+    expect((await api("/api/knowledge/unmounted", { method: "DELETE" })).status).toBe(204);
+    expect(await grantsOf("vault")).toEqual([]);
+    expect(runtime.knowledge.has("unmounted")).toBe(false);
+  });
+
+  it("holds each app it applies again until it ends, so the owner's changes to them meanwhile are refused", async () => {
+    expect((await send("/api/knowledge", { name: "shared" })).status).toBe(201);
+    expect((await install("atlas", ["shared"])).status).toBe(202);
+    expect((await waitForJob(await jobOf(await send("/api/apps/vault/knowledge", { bases: ["shared"] }, "PUT")))).state).toBe("succeeded");
+    const ofType = (type: string) => t.db.select().from(event).where(eq(event.type, type));
+    const removals = (await ofType("app.removed")).length;
+
+    let deleting: Promise<Response> | undefined;
+    await holdingApplies(async () => {
+      deleting = api("/api/knowledge/shared", { method: "DELETE" });
+      // atlas is applied again first, and waits there; vault is next.
+      await runtime.untilHeld();
+      const change = await send("/api/apps/vault/knowledge", { bases: [] }, "PUT");
+      expect(change.status).toBe(409);
+      expect(((await change.json()) as { error: string }).error).toBe("busy");
+      const removal = await send("/api/apps/vault/remove", {});
+      expect(removal.status).toBe(409);
+      expect(((await removal.json()) as { error: string }).error).toBe("busy");
+    });
+    expect((await deleting!).status).toBe(204);
+    // Neither refused change did anything: vault still runs, applied again without the knowledge base.
+    expect((await t.db.select({ state: app.state, desired: app.desired }).from(app).where(eq(app.name, "vault")))[0]).toEqual({ state: "running", desired: "running" });
+    expect(lastApply("vault").knowledge).toEqual({ path: "/vault", bases: [] });
+    expect(lastApply("atlas").knowledge).toEqual({ path: "/knowledge", bases: [] });
+    expect((await ofType("app.removed")).length).toBe(removals);
+    expect(runtime.knowledge.has("shared")).toBe(false);
+  });
+
+  it("records a removal only once its job holds the app, so one refused as busy changes nothing", async () => {
+    // Another change takes vault right after the removal finds it free, as deleting a knowledge base can.
+    const apps = server.apps! as unknown as { liveRow: (name: string) => Promise<{ id: string }> };
+    const liveRow = apps.liveRow.bind(apps);
+    let other: { done: Promise<void> } | undefined;
+    await holdingApplies(async () => {
+      apps.liveRow = async (name) => {
+        const row = await liveRow(name);
+        other = await server.apps!.startJob(row.id, "apply");
+        return row;
+      };
+      try {
+        const removal = await send("/api/apps/vault/remove", {});
+        expect(removal.status).toBe(409);
+        expect(((await removal.json()) as { error: string }).error).toBe("busy");
+      } finally {
+        apps.liveRow = liveRow;
+      }
+      expect((await t.db.select({ desired: app.desired }).from(app).where(eq(app.name, "vault")))[0]!.desired).toBe("running");
+      expect(await t.db.select().from(event).where(and(eq(event.type, "app.removed"), eq(event.subjectAppId, await appId("vault"))))).toEqual([]);
+    });
+    await other?.done;
+  });
+
+  it("saves an app's change against the grants it has once its job holds it", async () => {
+    for (const name of ["first", "second", "third"]) expect((await send("/api/knowledge", { name })).status).toBe(201);
+    expect((await waitForJob(await jobOf(await send("/api/apps/vault/knowledge", { bases: ["first"] }, "PUT")))).state).toBe("succeeded");
+    // The change to third reads vault's grants, then waits, while another change to vault is asked for.
+    const apps = server.apps!;
+    const grants = apps.grants.bind(apps);
+    let reached = () => {};
+    const atGrants = new Promise<void>((resolve) => (reached = resolve));
+    let go = () => {};
+    const resume = new Promise<void>((resolve) => (go = resolve));
+    let pause = true;
+    apps.grants = async (id, db) => {
+      const found = await grants(id, db);
+      if (pause) {
+        pause = false;
+        reached();
+        await resume;
+      }
+      return found;
+    };
+    try {
+      const late = send("/api/apps/vault/knowledge", { bases: ["third"] }, "PUT");
+      await atGrants;
+      const other = await send("/api/apps/vault/knowledge", { bases: ["second"] }, "PUT");
+      if (other.status === 202) await waitForJob(await jobOf(other));
+      go();
+      const answer = await late;
+      expect(answer.status).toBe(202);
+      expect((await waitForJob(await jobOf(answer))).state).toBe("succeeded");
+    } finally {
+      apps.grants = grants;
+      go();
+    }
+    // The grants are exactly one change's, never a mix of both, and they are what vault runs with.
+    const saved = await grantsOf("vault");
+    expect([["second"], ["third"]]).toContainEqual(saved);
+    expect(lastApply("vault").knowledge!.bases).toEqual(saved);
+  });
+
+  it("saves nothing when the job that would apply a change can't be recorded", async () => {
+    const before = await grantsOf("vault");
+    const granted = (await events("knowledge.granted")).length;
+    await t.pool.query("create function refuse_jobs() returns trigger language plpgsql as $$ begin raise exception 'no jobs'; end $$");
+    await t.pool.query("create trigger refuse_jobs before insert on install_job for each row execute function refuse_jobs()");
+    try {
+      expect((await send("/api/apps/vault/knowledge", { bases: ["first"] }, "PUT")).status).toBe(500);
+    } finally {
+      await t.pool.query("drop trigger refuse_jobs on install_job");
+      await t.pool.query("drop function refuse_jobs()");
+    }
+    expect(await grantsOf("vault")).toEqual(before);
+    expect((await events("knowledge.granted")).length).toBe(granted);
+    // The app isn't left busy: the change works once its job can be recorded.
+    expect((await waitForJob(await jobOf(await send("/api/apps/vault/knowledge", { bases: ["first"] }, "PUT")))).state).toBe("succeeded");
+    expect(await grantsOf("vault")).toEqual(["first"]);
+  });
+
+  it("doesn't start an app removed after it read the apps, before it held them", async () => {
+    expect((await waitForJob(await jobOf(await send("/api/apps/atlas/knowledge", { bases: ["first"] }, "PUT")))).state).toBe("succeeded");
+    let deleting: Promise<Response> | undefined;
+    const calls = runtime.calls.length;
+    await holdingApplies(async () => {
+      deleting = api("/api/knowledge/first", { method: "DELETE" });
+      await runtime.untilHeld();
+      // vault as a removal that finished just before the delete held it leaves it: removed, with no containers.
+      await t.db.update(app).set({ state: "removed", desired: "removed" }).where(eq(app.name, "vault"));
+      runtime.applied.delete("ys-vault");
+      runtime.running.delete("ys-vault");
+    });
+    expect((await deleting!).status).toBe(204);
+    expect(runtime.calls.slice(calls).some((c) => c.method === "apply" && c.spec?.project === "ys-vault")).toBe(false);
+    expect(runtime.running.has("ys-vault")).toBe(false);
+    expect((await t.db.select({ state: app.state }).from(app).where(eq(app.name, "vault")))[0]!.state).toBe("removed");
   });
 });

@@ -101,67 +101,87 @@ export class KnowledgeBases {
    * given to, and any app whose containers still mount it without a grant, as after a change that
    * couldn't be applied or a restart in the middle of an earlier delete. Each is applied again
    * without it, or removed when the owner asked to remove it, and only then does the runtime manager
-   * delete its storage, which it refuses while any container still mounts it. When it refuses, an
-   * app that couldn't be applied or removed keeps its grant, so the owner can fix that app and try again.
+   * delete its storage, which it refuses while any container still mounts it. When an app couldn't be
+   * applied or removed, nothing is deleted: that app keeps its grant, so the owner can fix it and try
+   * again. The apps are held from the start to the end, so no other change of theirs runs meanwhile.
    */
   async delete(name: string, actorId: string): Promise<void> {
     const row = await this.rowByName(name);
     const subject = { id: row.id, name: row.name };
     const { apps: mounting } = await this.apps.runtime.knowledgeUsers(name).catch(refused);
-    const grants = await this.db.select().from(appKnowledgeBase).where(eq(appKnowledgeBase.knowledgeBaseId, row.id));
-    const granted = grants.map((g) => g.appId);
+    const granted = (await this.db.select({ appId: appKnowledgeBase.appId }).from(appKnowledgeBase).where(eq(appKnowledgeBase.knowledgeBaseId, row.id))).map((g) => g.appId);
     const which = [...(granted.length ? [inArray(app.id, granted)] : []), ...(mounting.length ? [inArray(app.name, mounting)] : [])];
     // A removed app has no containers to apply.
     const targets = which.length
       ? await this.db
-          .select({ id: app.id, title: app.title, desired: app.desired })
+          .select({ id: app.id, title: app.title })
           .from(app)
           .where(and(ne(app.state, "removed"), or(...which)))
           .orderBy(asc(app.title))
       : [];
     const busy = targets.filter((target) => this.apps.isBusy(target.id));
     if (busy.length) throw new AppError(409, "busy", `${busy.map((b) => b.title).join(", ")} ${busy.length === 1 ? "is" : "are"} busy with another change. Try again when it finishes.`);
-    // Only the grants read here are taken: one given since stays, with the apply that mounts it.
-    const taken = grants.filter((g) => targets.some((target) => target.id === g.appId));
-    if (taken.length) {
-      await this.db.delete(appKnowledgeBase).where(and(eq(appKnowledgeBase.knowledgeBaseId, row.id), inArray(appKnowledgeBase.appId, taken.map((g) => g.appId))));
-    }
-    const failed: { appId: string; reason: string }[] = [];
-    for (const target of targets) {
-      // An app the owner asked to remove, whose removal didn't finish, is removed, not started again.
-      const kind = target.desired === "removed" ? "remove" : "apply";
-      try {
-        const { jobId, done } = await this.apps.startJob(target.id, kind);
-        await done;
-        const job = await this.apps.job(jobId);
-        if (job.state !== "succeeded") {
-          failed.push({ appId: target.id, reason: `${target.title}: ${job.error ?? (kind === "remove" ? "it wasn't removed." : "it didn't start again.")}` });
-        }
-      } catch (error) {
-        failed.push({ appId: target.id, reason: `${target.title}: ${error instanceof AppError ? error.message : "it couldn't be applied again."}` });
-      }
-    }
-    const kept = (appId: string) => failed.some((f) => f.appId === appId);
+    // Taken with no wait after the check: what is read of the apps from here on stays true until the end.
+    const release = this.apps.hold(targets.map((target) => target.id));
     try {
-      await this.apps.runtime.deleteKnowledge(name);
-    } catch (error) {
-      await this.db.transaction(async (tx) => {
-        const back = taken.filter((g) => kept(g.appId));
-        if (back.length) await tx.insert(appKnowledgeBase).values(back).onConflictDoNothing();
-        for (const { appId } of taken.filter((g) => !kept(g.appId))) await recordEvent(tx, "knowledge.revoked", actorId, null, appId, subject);
-      });
-      if (error instanceof RuntimeError && failed.length) {
-        throw new AppError(409, error.code, `${error.message} These apps keep it, since they couldn't be applied again without it, or removed: ${failed.map((f) => f.reason).join(" ")}`);
+      // Only the held apps' grants are taken: one given since to another app stays, with the apply that mounts it.
+      const ids = targets.map((target) => target.id);
+      const taken = ids.length
+        ? await this.db
+            .delete(appKnowledgeBase)
+            .where(and(eq(appKnowledgeBase.knowledgeBaseId, row.id), inArray(appKnowledgeBase.appId, ids)))
+            .returning()
+        : [];
+      const failed: { appId: string; reason: string }[] = [];
+      for (const target of targets) {
+        // Read now that the app is held. One removed since it was read has no containers to apply, and
+        // one the owner asked to remove, whose removal didn't finish, is removed, not started again.
+        const current = (await this.db.select({ state: app.state, desired: app.desired }).from(app).where(eq(app.id, target.id)))[0];
+        if (!current || current.state === "removed") continue;
+        const kind = current.desired === "removed" ? "remove" : "apply";
+        try {
+          const { jobId, done } = await this.apps.startJob(target.id, kind, { held: true });
+          await done;
+          const job = await this.apps.job(jobId);
+          if (job.state !== "succeeded") {
+            failed.push({ appId: target.id, reason: `${target.title}: ${job.error ?? (kind === "remove" ? "it wasn't removed." : "it didn't start again.")}` });
+          }
+        } catch (error) {
+          failed.push({ appId: target.id, reason: `${target.title}: ${error instanceof AppError ? error.message : "it couldn't be applied again."}` });
+        }
       }
-      refused(error);
+      // When nothing is deleted, an app that couldn't be applied or removed keeps its grant, and the others' are revoked.
+      const keep = () =>
+        this.db.transaction(async (tx) => {
+          const back = taken.filter((g) => failed.some((f) => f.appId === g.appId));
+          if (back.length) await tx.insert(appKnowledgeBase).values(back).onConflictDoNothing();
+          for (const { appId } of taken.filter((g) => !back.includes(g))) await recordEvent(tx, "knowledge.revoked", actorId, null, appId, subject);
+        });
+      if (failed.length) {
+        // Even when no container of theirs mounts it, so the knowledge base is kept as long as an app keeps it.
+        await keep();
+        throw new AppError(
+          409,
+          "apps_failed",
+          `The knowledge base ${name} wasn't deleted, and keeps its files. These apps keep it, since they couldn't be applied again without it, or removed: ${failed.map((f) => f.reason).join(" ")}`,
+        );
+      }
+      try {
+        await this.apps.runtime.deleteKnowledge(name);
+      } catch (error) {
+        await keep();
+        refused(error);
+      }
+      await this.db.transaction(async (tx) => {
+        // Every grant ends with it, one given since it was read too.
+        const left = await tx.select({ appId: appKnowledgeBase.appId }).from(appKnowledgeBase).where(eq(appKnowledgeBase.knowledgeBaseId, row.id));
+        for (const appId of new Set([...taken.map((g) => g.appId), ...left.map((g) => g.appId)])) await recordEvent(tx, "knowledge.revoked", actorId, null, appId, subject);
+        await recordEvent(tx, "knowledge.deleted", actorId, null, null, subject);
+        await tx.delete(knowledgeBase).where(eq(knowledgeBase.id, row.id));
+      });
+      log("info", "knowledge.deleted", { name, apps: targets.length });
+    } finally {
+      release();
     }
-    await this.db.transaction(async (tx) => {
-      // Every grant ends with it, one given since it was read too.
-      const left = await tx.select({ appId: appKnowledgeBase.appId }).from(appKnowledgeBase).where(eq(appKnowledgeBase.knowledgeBaseId, row.id));
-      for (const appId of new Set([...granted, ...left.map((g) => g.appId)])) await recordEvent(tx, "knowledge.revoked", actorId, null, appId, subject);
-      await recordEvent(tx, "knowledge.deleted", actorId, null, null, subject);
-      await tx.delete(knowledgeBase).where(eq(knowledgeBase.id, row.id));
-    });
-    log("info", "knowledge.deleted", { name, apps: targets.length });
   }
 }

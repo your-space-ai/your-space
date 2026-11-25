@@ -653,19 +653,25 @@ async function initKnowledge(volume: string): Promise<void> {
  * Creates a knowledge base's volume, labelled as Your Space's and as knowledge, never as an app's or a
  * Compose project's, and sets up its folder. One that is this installation's already is kept, with its
  * files, as after Your Space's own data was reset; a volume of that name that isn't is refused.
+ *
+ * A kept one's folder is set up again too. The engine can't change a volume's labels, so nothing on
+ * the volume says whether an earlier try set it up, as when that try's volume couldn't be deleted or
+ * the runtime manager stopped in between. Setting up only gives the folder its owner and mode, so a
+ * folder set up already stays as it is, and its files are never touched.
  */
 export async function createKnowledge(name: string): Promise<{ created: boolean }> {
-  if (await knowledgeOf(name)) return { created: false };
+  const kept = Boolean(await knowledgeOf(name));
   const volume = knowledgeVolume(INSTALLATION, name);
-  await engineJson("POST", "/volumes/create", { Name: volume, Driver: "local", Labels: knowledgeLabels(INSTALLATION, name) });
+  if (!kept) await engineJson("POST", "/volumes/create", { Name: volume, Driver: "local", Labels: knowledgeLabels(INSTALLATION, name) });
   try {
     await initKnowledge(volume);
   } catch (error) {
-    // A knowledge base without its folder set up isn't kept, so the next try starts over.
-    await engine("DELETE", `/volumes/${encodeURIComponent(volume)}`).catch(() => {});
+    // A new knowledge base without its folder set up isn't kept, so the next try starts over. A kept
+    // one keeps its files.
+    if (!kept) await engine("DELETE", `/volumes/${encodeURIComponent(volume)}`).catch(() => {});
     throw error;
   }
-  return { created: true };
+  return { created: !kept };
 }
 
 /** The containers that mount a volume, running or not: the engine keeps a volume any of them uses. */

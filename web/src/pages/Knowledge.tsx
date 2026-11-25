@@ -136,10 +136,11 @@ function DeleteKnowledge({ base, onClose }: { base: KnowledgeBase; onClose: () =
     },
     onSuccess: onClose,
   });
+  // No cleanup closes it: React removes the dialog with the confirmation, which takes it out of the
+  // top layer, and a close() there would fire onClose after StrictMode's second showModal().
   useEffect(() => {
     const element = dialog.current;
     if (element && !element.open) element.showModal();
-    return () => element?.close();
   }, []);
   const apps = base.apps.map((app) => app.title);
 

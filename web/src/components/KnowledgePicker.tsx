@@ -5,7 +5,18 @@ import { Link } from "@tanstack/react-router";
 import { errorMessage } from "../apps-api.ts";
 import { knowledgeQuery } from "../knowledge-api.ts";
 
-export function KnowledgePicker({ path, selected, onChange }: { path: string; selected: string[]; onChange: (names: string[]) => void }) {
+export function KnowledgePicker({
+  path,
+  selected,
+  onChange,
+  disabled = false,
+}: {
+  path: string;
+  selected: string[];
+  onChange: (names: string[]) => void;
+  /** While a save of the picks is under way, so a change made meanwhile isn't lost when it ends. */
+  disabled?: boolean;
+}) {
   const knowledge = useQuery(knowledgeQuery);
   if (knowledge.isError) {
     return (
@@ -25,7 +36,7 @@ export function KnowledgePicker({ path, selected, onChange }: { path: string; se
   }
   const toggle = (name: string, on: boolean) => onChange(on ? [...selected, name].sort() : selected.filter((n) => n !== name));
   return (
-    <fieldset className="knowledge-picker">
+    <fieldset className="knowledge-picker" disabled={disabled}>
       <legend className="visually-hidden">Knowledge bases</legend>
       {list.map((base) => (
         <label key={base.name} className="checkbox" data-knowledge-choice={base.name}>

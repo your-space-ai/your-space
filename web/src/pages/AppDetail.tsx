@@ -265,7 +265,7 @@ function Knowledge({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { 
           save.mutate();
         }}
       >
-        <KnowledgePicker path={d.knowledge!.path} selected={picked} onChange={setSelected} />
+        <KnowledgePicker path={d.knowledge!.path} selected={picked} onChange={setSelected} disabled={save.isPending} />
         {changed ? <p className="muted small">Saving restarts the app's interface service with these folders. Its data is kept.</p> : null}
         {save.isError ? (
           <p className="notice error" role="alert">

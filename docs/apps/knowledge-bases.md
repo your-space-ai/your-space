@@ -33,10 +33,11 @@ others.
 
 ## Files and users
 
-Every app given a knowledge base reads and writes all of it. A new knowledge base's folder belongs
-to user and group 1000, is writable by everyone, and gives new files its group, so apps running as
-different users can all create files there. An app running as another user than 1000 may not be
-able to change a file another user wrote; most self-hosted images run as user 1000.
+Your Space mounts a knowledge base read-write in every app given it. What an app can do with each
+file there depends on the file's permissions and the user the app runs as. A new knowledge base's
+folder belongs to user and group 1000, is writable by everyone, and gives new files its group, so
+apps running as different users can all create files there. An app running as another user than
+1000 may not be able to change a file another user wrote; most self-hosted images run as user 1000.
 
 When two apps change the same file, the last one to write it wins. Your Space doesn't merge them.
 
@@ -69,7 +70,8 @@ knowledge: { path: /knowledge }   # path is optional; /knowledge is the default
 
 Your Space mounts each knowledge base the owner gives the app at `<path>/<name>` in its interface
 service. The app finds them by listing `<path>`. The path must be absolute, isn't `/`, and names no
-`..`. The app's own file can't mount anything at or inside it. See the
+`..`. It is at most 8 folders deep, each 1 to 64 letters, digits, dots, dashes and underscores,
+starting with a letter, digit or underscore. The app's own file can't mount anything at or inside it. See the
 [kit format](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
 
 Keeping a knowledge base in sync with a Google Drive folder is
