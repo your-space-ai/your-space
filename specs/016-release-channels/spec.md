@@ -88,7 +88,9 @@ remember between runs, and one source of truth stays: the version `stack.yaml` p
 
 - **Default:** the channel of the installed version: an alpha app is on Alpha, a stable app on
   Stable, a canary app on Canary. Nothing is stored until the owner chooses, so nobody's updates
-  change: an alpha app that updates to `0.1.0` then follows Stable, as today.
+  change: an alpha app that updates to `0.1.0` then follows Stable, as today. The one exception is a
+  canary app, which stores Canary at its first check, so a release it installs from the Canary
+  feed (decision 5) leaves it on Canary.
 - **What a Stable user sees:** only `x.y.z` releases, as today. Choosing a channel that has nothing
   newer, such as Stable during the alpha, says so ("No Stable release yet") rather than failing.
 - **Where:** a **Your Space › Update Channel** submenu with the four as radio items, beside
@@ -286,7 +288,7 @@ Written for the recommendations; each changes with its decision.
 
 - **FR-001**: The Mac app offers Stable, Beta, Alpha and Canary under **Your Space › Update
   Channel**. Until the owner chooses, it follows the installed version's channel; only a choice is
-  stored, in `updates.json`.
+  stored, in `updates.json`, except that a canary app stores Canary at its first check.
 - **FR-002**: Every check, automatic or manual, uses the channel's feed, with downgrades off.
   A channel with nothing newer says so.
 - **FR-003**: Choosing Canary first says that canaries are unsupported. Leaving it waits for a newer
