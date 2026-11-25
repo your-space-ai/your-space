@@ -13,8 +13,8 @@ function kitLink(value: unknown): string {
 
 /**
  * The review of an app from its kit's link: the only way the web client installs an app (decision
- * 2026-11-23). It reads public GitHub, as the server command does; a kit in a private repository
- * installs from this machine with the server command instead.
+ * 2026-11-23). It reads public GitHub, and a kit in a private repository through the GitHub
+ * connection, as the server command does (journey 015).
  */
 export function kitRoutes(auth: Auth, db: Db, apps: AppsService) {
   const router = Router();
@@ -31,18 +31,7 @@ export function kitRoutes(auth: Auth, db: Db, apps: AppsService) {
       if (!req.is("application/json") || req.get("origin") !== new URL(auth.options.baseURL as string).origin)
         throw new AppError(403, "forbidden", "Open the kit from the signed-in workspace.");
       const kitUrl: unknown = req.body?.kitUrl;
-      res.json(
-        await apps.preview({ link: kitLink(kitUrl) }).catch((error: unknown) => {
-          if (error instanceof AppError && error.code === "kit_not_found") {
-            throw new AppError(
-              404,
-              error.code,
-              `${error.message} If the kit is in a private repository, install it from this machine with the server command: docker compose exec -T server install-app --kit - < kit.yaml.`,
-            );
-          }
-          throw error;
-        }),
-      );
+      res.json(await apps.preview({ link: kitLink(kitUrl) }));
     } catch (error) {
       if (error instanceof AppError) res.status(error.status).json({ error: error.code, message: error.message });
       else next(error);

@@ -276,6 +276,16 @@ summary {
   margin-left: 0.4em;
 }
 
+/* A file the review read through the GitHub connection (journey 015). */
+.source-label {
+  display: inline-block;
+  font-size: 0.85em;
+  padding: 0.05em 0.5em;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+
 .state {
   font-size: 0.85em;
   padding: 0.05em 0.5em;

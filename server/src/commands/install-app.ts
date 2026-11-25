@@ -1,8 +1,9 @@
 // install-app <kit-link> | --kit <file | ->, then [--reuse-data] [--publish [--port <n>]
 // [--bind <address>] [--link <url>]] [--json] (FR-009, contracts/http-api.md). Every app
 // installs from its kit, which names its Compose file on GitHub (decision 2026-11-23; a Compose file
-// on this machine, --compose, left with the alpha scope). Reviews the app, installs it as the
-// operator, and waits until it runs or the install fails.
+// on this machine, --compose, left with the alpha scope). A kit in a private repository is read
+// through the GitHub connection, as in the web client (journey 015). Reviews the app, installs it as
+// the operator, and waits until it runs or the install fails.
 import { parseArgs } from "node:util";
 import { operatorActorId } from "../actors.ts";
 import { errorFields, log } from "../log.ts";
@@ -11,10 +12,19 @@ import { KitFileError, readLocalKit } from "../apps/kits.ts";
 import { isLocalSource, sourcesProblem } from "../apps/local.ts";
 import { socketRuntime } from "../apps/runtime-client.ts";
 import { AppError, AppsService } from "../apps/service.ts";
+import { GithubConnection } from "../github-connection.ts";
 import { EXIT, localFileLine, openForCommand, output, publishedLine } from "./output.ts";
 
 const USAGE =
   "Usage: install-app <github-link-to-kit> | --kit <file | ->, then [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]";
+const CONNECT = "docker compose exec server github connect";
+/** What to run for a review the GitHub connection answers (journey 015). */
+const CONNECTION_HINT: Record<string, string> = {
+  not_connected: `Connect GitHub with: ${CONNECT}. Or give the kit file: install-app --kit - < kit.yaml`,
+  token_refused: `Reconnect with: ${CONNECT}`,
+  token_unreadable: `Reconnect with: ${CONNECT}`,
+  repository_not_visible: `To connect another token: ${CONNECT}`,
+};
 
 async function main(argv: string[]): Promise<number> {
   let values: {
@@ -70,7 +80,11 @@ async function main(argv: string[]): Promise<number> {
   const opened = openForCommand(out);
   if (!opened) return EXIT.unexpected;
   const { config, database } = opened;
-  const apps = new AppsService(database.db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey });
+  const apps = new AppsService(database.db, socketRuntime(), {
+    publicUrl: config.publicUrl,
+    dataKey: config.dataKey,
+    credentials: new GithubConnection(database.db, config.dataKey),
+  });
   try {
     // The command runs in the server's container, so standard input (`--kit -`) is how a file on the
     // host reaches it. A kit's link is read from GitHub, and the kit names the app's Compose file
@@ -83,9 +97,10 @@ async function main(argv: string[]): Promise<number> {
       return EXIT.notApplicable;
     }
     if (!out.json) {
+      const kitRead = review.kit.read?.read === "connection" ? ` (private, read with your GitHub connection @${review.kit.read.login})` : "";
       process.stderr.write(
         [
-          `${review.title} from ${isLocalSource(review.source) ? localFileLine(review.source) : `${review.source.repo} at ${review.source.commit.slice(0, 12)}`}${review.kit.repo ? `, with its kit ${review.kit.repo}/${review.kit.path} at ${review.kit.commit!.slice(0, 12)}` : ", with the kit file you gave"}`,
+          `${review.title} from ${isLocalSource(review.source) ? localFileLine(review.source) : `${review.source.repo} at ${review.source.commit.slice(0, 12)}`}${review.kit.repo ? `, with its kit ${review.kit.repo}/${review.kit.path} at ${review.kit.commit!.slice(0, 12)}${kitRead}` : ", with the kit file you gave"}`,
           ...review.services.map((s) => `  ${s.name}: ${s.image}${s.interface ? " (interface)" : ""}`),
           ...review.adaptations.map((a) => `  ${a.service}: ${a.detail}`),
           review.warning,
@@ -119,6 +134,7 @@ async function main(argv: string[]): Promise<number> {
         // A Compose file on this machine has no commit; its digest identifies it.
         ...(isLocalSource(review.source) ? { source: review.source.link } : { commit: review.source.commit }),
         kit: review.kit.source,
+        provenance: detail.provenance,
       },
       [
         `Installed ${review.title} (${detail.state}). Open it from Your Space, or at ${detail.origin}`,
@@ -132,11 +148,10 @@ async function main(argv: string[]): Promise<number> {
       return EXIT.notApplicable;
     }
     if (error instanceof AppError) {
-      // A kit Your Space can't read from GitHub, as in a private repository, can come from this machine.
-      const message =
-        error.code === "kit_not_found"
-          ? `${error.message} If the kit is in a private repository, give the kit file instead: install-app --kit - < kit.yaml. The kit names the app's Compose file in a public repository.`
-          : error.message;
+      // A private kit is read through the GitHub connection, which this command connects too. A kit
+      // file on this machine needs no connection.
+      const hint = CONNECTION_HINT[error.code];
+      const message = hint ? `${error.message} ${hint}` : error.message;
       out.failure({ ok: false, error: error.code, message }, message);
       return error.status >= 500 ? EXIT.storage : EXIT.notApplicable;
     }

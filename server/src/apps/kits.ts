@@ -289,12 +289,16 @@ export function composeOf(kit: Kit): { repo: string; path: string; commit: strin
   return { repo: kit.source.repo, path: kit.source.path, commit: kit.source.commit! };
 }
 
-/** The kit at a GitHub link, read at the exact commit the link resolves to. */
+/** The kit at a GitHub link, read from public GitHub at the exact commit the link resolves to. */
 export async function kitFromLink(
   link: string,
   endpoints: GithubEndpoints = githubEndpoints(),
   fetcher: typeof fetch = fetch,
 ): Promise<FoundKit & { file: SourceFile }> {
-  const file = await fetchSource(link, endpoints, fetcher);
+  return kitFromSource(await fetchSource(link, endpoints, fetcher));
+}
+
+/** The kit in a file read from GitHub at its exact commit, however it was read. */
+export function kitFromSource(file: SourceFile): FoundKit & { file: SourceFile } {
   return { kit: parseKit(file.text), source: file.pinnedLink, file };
 }

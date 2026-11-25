@@ -46,18 +46,19 @@ export async function startServer(
   const publicUrl = options.publicUrl ?? `http://space.localhost:${port}`;
   const auth = createAuth({ config: { publicUrl, authSecret: TEST_SECRET }, db });
   const handoffs = new Handoffs();
+  const github = new GithubConnection(db, TEST_DATA_KEY, {
+    endpoints: { api: "https://api.github.test", raw: "https://raw.github.test" },
+    fetch: options.github?.fetch ?? options.apps?.fetch ?? offline,
+  });
   const apps = options.apps
     ? new AppsService(db, options.apps.runtime, {
         publicUrl,
         dataKey: TEST_DATA_KEY,
         fetch: options.apps.fetch,
         github: { api: "https://api.github.test", raw: "https://raw.github.test" },
+        credentials: github,
       })
     : undefined;
-  const github = new GithubConnection(db, TEST_DATA_KEY, {
-    endpoints: { api: "https://api.github.test", raw: "https://raw.github.test" },
-    fetch: options.github?.fetch ?? options.apps?.fetch ?? offline,
-  });
   server.on("request", createApp({ auth, db, dataKey: TEST_DATA_KEY, apps: apps ? { service: apps, handoffs } : undefined, github }));
   return {
     url,

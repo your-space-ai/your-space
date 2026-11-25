@@ -55,13 +55,12 @@ source:
 A kit kept in the app's own repository names an earlier commit than its own, since a file can't
 name the commit it is in: commit the Compose file, then the kit with that commit.
 
-Your Space reads kits and Compose files from public GitHub. A kit in a private repository installs
-from this machine instead, with the server command (see below).
+Your Space reads kits and Compose files from public GitHub, and a kit in a private repository
+through your GitHub connection (see [Private kits](#private-kits)).
 
-From the server, `docker compose exec server install-app <kit-link>` does the same. A kit Your Space
-can't read on GitHub, such as one in a private repository, can come from this machine instead, and
-names the app's Compose file and its commit in a public repository:
-`docker compose exec -T server install-app --kit - < kit.yaml`.
+From the server, `docker compose exec server install-app <kit-link>` does the same, through the same
+connection. A kit file on this machine needs no connection, and names the app's Compose file and its
+commit in a public repository: `docker compose exec -T server install-app --kit - < kit.yaml`.
 
 The app's Compose file is always the one its kit names in a public repository on GitHub. When an
 app's own file is in a private repository or doesn't fit Your Space's rules, for example because it
@@ -87,8 +86,8 @@ offers a link to open the app in its own tab.
 
 Your Space can keep a GitHub connection: a token that can only read the repositories you choose,
 for kits in private repositories. Your Space keeps it encrypted on this server, never shows it
-again, and never gives it to apps or agents. Until Your Space reads kits through it, a private kit
-installs with the server command, as above.
+again, and never gives it to apps or agents. The Compose file a private kit names must still be in a
+public repository for now.
 
 **Connect in the dashboard.** Open **GitHub** in the sidebar and choose **Create a token on GitHub**.
 GitHub opens its new fine-grained token page with a name and read access to contents already chosen.
@@ -124,6 +123,29 @@ for such tokens, or block them. When GitHub stops accepting the token, because i
 deleted it, the GitHub page and `github status` say so: create a new one and connect again, which
 replaces it. They say so too when Your Space can't read the stored token, as when its data key was
 replaced without the one before it.
+
+**Install a private kit.** Paste the kit's link in **Apps**, as for any kit, or give it to
+`docker compose exec server install-app <kit-link>`. Your Space reads it from public GitHub first,
+without the connection, and only when GitHub answers that there's no such repository does it read
+the kit again through the connection: it resolves the link's branch to a commit with GitHub's commits
+API and reads the kit at that commit with the contents API. A public kit never uses the connection,
+so it installs the same with no connection, or with one GitHub no longer accepts. The review labels
+the kit **Private · read with your GitHub connection (@login)**, and the installed app records, for
+its kit and its Compose file, whether each was read anonymously or through the connection, and with
+which account.
+
+When a private kit can't be read, the review says why, and links to the GitHub page:
+
+- **Not connected:** public GitHub doesn't show the kit. Connect GitHub with a token that can read
+  its repository.
+- **GitHub doesn't show the repository to your connection:** the token's resource owner or
+  repositories don't include it, or an organization hasn't approved the token. Edit the token at
+  GitHub, or connect another one.
+- **There is no file at that commit:** the repository and branch are there, but not the kit's path.
+- **GitHub no longer accepts the token:** it expired, or you deleted or revoked it. Your Space marks
+  it, and the GitHub page and `github status` show **Reconnect**.
+- **No data key here can read the token:** as when the data key was replaced without the one before
+  it. Connect GitHub again.
 
 **Disconnect.** **Disconnect** on the GitHub page, or `docker compose exec server github disconnect`,
 makes Your Space forget the token, and installed apps keep running. Your Space can't delete the token

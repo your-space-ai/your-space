@@ -408,7 +408,13 @@ describe("apps API", () => {
     const review = JSON.parse(text);
     expect(review).toMatchObject({ name: "whoami", title: "Who Am I", ok: true, origin: `http://whoami.${new URL(server.publicUrl).host}`, outbound: ["example.com"], interface: { service: "web", port: 80 } });
     expect(review.source).toMatchObject({ repo: "ys-fixtures/whoami", commit: COMMIT });
-    expect(review.kit).toEqual({ source: `https://github.com/ys-fixtures/catalog/blob/${COMMIT}/apps/ys-fixtures/whoami.yaml`, repo: "ys-fixtures/catalog", path: "apps/ys-fixtures/whoami.yaml", commit: COMMIT });
+    expect(review.kit).toEqual({
+      source: `https://github.com/ys-fixtures/catalog/blob/${COMMIT}/apps/ys-fixtures/whoami.yaml`,
+      repo: "ys-fixtures/catalog",
+      path: "apps/ys-fixtures/whoami.yaml",
+      commit: COMMIT,
+      read: { read: "anonymous" },
+    });
     expect(review.settings.find((s: { name: string }) => s.name === "API_TOKEN")).toMatchObject({ secret: true, generated: true, set: true });
     expect(text).not.toContain("published-default-token");
     expect(review.warning).toMatch(/trusts it/);
@@ -648,10 +654,10 @@ describe("apps API", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: "kit_required", message: expect.stringMatching(/not a Your Space kit.*Give the link to the app's kit/) });
     expect((await post("/api/kits/preview", { kitUrl: "https://example.com/kit.yaml" })).status).toBe(400);
-    // A kit GitHub doesn't show this machine, as in a private repository, installs with the server command.
+    // A kit GitHub doesn't show this machine, as in a private repository, needs the GitHub connection (journey 015).
     const hidden = await post("/api/kits/preview", { kitUrl: "https://github.com/ys-fixtures/private-kits/blob/main/kit.yaml" });
     expect(hidden.status).toBe(404);
-    expect(await hidden.json()).toMatchObject({ error: "kit_not_found", message: expect.stringMatching(/repository must be public\. If the kit is in a private repository, install it from this machine.*install-app --kit - < kit\.yaml/) });
+    expect(await hidden.json()).toMatchObject({ error: "not_connected", message: expect.stringMatching(/on public GitHub\. If the repository is private, connect GitHub/) });
     expect((await post("/api/kits/preview", {})).status).toBe(400);
     expect((await post("/api/apps/preview", { link: COMPOSE_LINK })).status).toBe(404);
   });

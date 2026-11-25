@@ -2,6 +2,7 @@
 import type { SavedView } from "../../../shared/workspace-layout/model.mjs";
 import type { Theme } from "../../../shared/appearance/theme.mjs";
 import type { AgentAccess } from "../apps/agent-kit.ts";
+import type { FileRead } from "../apps/github.ts";
 import { sql } from "drizzle-orm";
 import { boolean, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organization, user } from "./auth-schema.ts";
@@ -132,6 +133,17 @@ export interface Publish {
   link: string | null;
 }
 
+/**
+ * How an app's kit and its Compose file were each read from GitHub (journey 015, R4): anonymously, or
+ * through the GitHub connection with the account the token belonged to. A kit given on this machine
+ * wasn't read from GitHub, so it has none.
+ */
+export interface Provenance {
+  kit: FileRead | null;
+  /** Null only for a Compose file given on this machine, which no command gives any more. */
+  compose: FileRead | null;
+}
+
 export const app = pgTable(
   "app",
   {
@@ -146,6 +158,8 @@ export const app = pgTable(
     compose: text("compose").notNull(),
     kit: jsonb("kit").$type<StoredKit>(),
     kitSource: text("kit_source"),
+    /** Null for an app installed before journey 015. */
+    provenance: jsonb("provenance").$type<Provenance>(),
     images: jsonb("images").$type<Record<string, { digest: string }>>().notNull(),
     adaptations: jsonb("adaptations").$type<Adaptation[]>().notNull(),
     interface: jsonb("interface").$type<{ service: string; port: number }>(),

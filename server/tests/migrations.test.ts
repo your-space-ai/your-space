@@ -150,32 +150,24 @@ it("upgrades a populated 0005 workspace in place without granting agent access",
   const cookie = await signedInOwnerCookie(t.db);
   const before = await records(t.db);
   const owner = before.actors.find((row) => row.kind === "human")!;
-  const appsBefore = await t.db
-    .insert(app)
-    .values({
-      name: "legacy",
-      title: "Legacy app",
-      sourceUrl: "https://example.test/legacy",
-      repo: "sample/legacy",
-      path: "compose.yaml",
-      ref: "main",
-      commit: "a".repeat(40),
-      compose: "services: {}",
-      kit: { kit: 1 },
-      interface: { service: "web", port: 8080 },
-      images: {},
-      adaptations: [],
-      limits: {},
-      state: "running",
-      installedBy: owner.id,
-    })
-    .returning();
+  // Written as SQL: the schema's app table has columns that later migrations add.
+  const { rows: appsBefore } = await t.pool.query(
+    `insert into app (name, title, source_url, repo, path, ref, commit, compose, kit, interface, images, adaptations, limits, state, installed_by)
+     values ('legacy', 'Legacy app', 'https://example.test/legacy', 'sample/legacy', 'compose.yaml', 'main', $1, 'services: {}', '{"kit":1}',
+       '{"service":"web","port":8080}', '{}', '[]', '{}', 'running', $2)
+     returning *`,
+    ["a".repeat(40), owner.id],
+  );
   expect(appsBefore).toHaveLength(1);
 
   await runMigrations(t.pool);
   expect(await recorded(t.db)).toEqual(SHIPPED_ROWS);
   expect(await records(t.db)).toEqual(before);
-  expect(await t.db.select().from(app)).toEqual(appsBefore);
+  // The app is as it was; an app installed before journey 015 has no record of how its files were read.
+  const { rows: appsAfter } = await t.pool.query("select * from app");
+  expect(appsAfter.map(({ provenance, ...row }) => row)).toEqual(appsBefore);
+  expect(appsAfter.map((row) => row.provenance)).toEqual([null]);
+  expect(await t.db.select({ name: app.name }).from(app)).toEqual([{ name: "legacy" }]);
   const authority = await t.pool.query(`select
     (select count(*)::int from external_agent) as agents,
     (select count(*)::int from agent_key) as keys,

@@ -3,12 +3,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { operatorActorId } from "../src/actors.ts";
 import { moveSettingsToDataKey } from "../src/apps/keys.ts";
+import { AppsService } from "../src/apps/service.ts";
 import { decrypt, encrypt } from "../src/apps/settings.ts";
 import { app, appSetting, sourceCredential } from "../src/db/schema.ts";
 import { GithubConnection } from "../src/github-connection.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { createOwnerWithPassword } from "./helpers/owner.ts";
-import { fakeGithubAccounts } from "./helpers/runtime.ts";
+import { COMMIT, fakeGithub, fakeGithubAccounts, FakeRuntime } from "./helpers/runtime.ts";
 
 const KEY = "data-key-for-these-tests-only-0123456789abc";
 const NEXT = "next-data-key-for-these-tests-only-01234567";
@@ -96,6 +97,20 @@ describe("moving the GitHub connection onto the data key (journey 015, decision 
     // Restarted with only the new key, the connection still works.
     expect(await moveSettingsToDataKey(t.db, { dataKey: NEXT })).toEqual({ moved: 0, current: 1, unreadable: 0 });
     expect((await connection(NEXT).status()).contents).toMatchObject({ set: true, login: "ys-fixture-owner", accepted: true });
+    // And a private kit installs through it afterwards (slice 2).
+    const files = fakeGithub(
+      {
+        "ys-fixtures/private-kits/notes.yaml": `kit: 1\nsource: { repo: ys-fixtures/notes, path: compose.yaml, commit: ${COMMIT} }\nname: notes\ninterface: { service: web, port: 80 }\n`,
+        "ys-fixtures/notes/compose.yaml": "services:\n  web:\n    image: traefik/whoami:latest\n",
+      },
+      { private: { "ys-fixtures/private-kits": [TOKEN] } },
+    );
+    const apps = new AppsService(t.db, new FakeRuntime(), { publicUrl: "http://space.localhost", dataKey: NEXT, github: endpoints, fetch: files, credentials: connection(NEXT) });
+    const review = await apps.preview({ link: "https://github.com/ys-fixtures/private-kits/blob/main/notes.yaml" });
+    expect(review.kit.read).toEqual({ read: "connection", login: "ys-fixture-owner" });
+    const { name, done } = await apps.install(review.previewId, {}, false, await operatorActorId(t.db));
+    await done;
+    expect((await apps.detail(name)).provenance).toEqual({ kit: { read: "connection", login: "ys-fixture-owner" }, compose: { read: "anonymous" } });
   });
 
   it("leaves a token no key here can read, which shows Reconnect", async () => {

@@ -147,14 +147,17 @@ export interface PublicSetting {
   publishedDefault: string | null;
 }
 
+/** How a file was read from GitHub (journey 015): anonymously, or through the GitHub connection. */
+export type FileRead = { read: "anonymous" } | { read: "connection"; login: string };
+
 export interface Review {
   previewId: string;
   name: string;
   title: string;
   origin: string;
-  source: { link: string; repo: string; path: string; ref: string; commit: string; pinnedLink: string };
+  source: { link: string; repo: string; path: string; ref: string; commit: string; pinnedLink: string; read: FileRead | null };
   /** The kit the app installs with; a kit on GitHub also gives its repository, path and commit. */
-  kit: { source: string; repo?: string; path?: string; commit?: string };
+  kit: { source: string; repo?: string; path?: string; commit?: string; read: FileRead | null };
   ok: boolean;
   services: { name: string; image: string; interface: boolean; ports: number[]; published: { target: number; host: number }[]; volumes: string[]; dependsOn: string[] }[];
   images: { ref: string; digest?: string; runsHere: boolean }[];

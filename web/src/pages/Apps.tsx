@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import { api, appsQuery, errorMessage, ownTabLink, shortDigest, STATE_LABEL, type AppList, type Review } from "../apps-api.ts";
+import { api, ApiError, appsQuery, errorMessage, ownTabLink, shortDigest, STATE_LABEL, type AppList, type FileRead, type Review } from "../apps-api.ts";
 import { JobProgress } from "../components/JobProgress.tsx";
 import { PUBLISH_NOTE, publishBody, PublishFields, type PublishForm } from "../components/PublishFields.tsx";
 import { DeleteData } from "./AppDetail.tsx";
@@ -157,6 +157,12 @@ function Install() {
       {preview.isError ? (
         <p className="notice error" role="alert">
           {errorMessage(preview.error)}
+          {preview.error instanceof ApiError && CONNECTION_FIX[preview.error.code] ? (
+            <>
+              {" "}
+              <Link to="/github">{CONNECTION_FIX[preview.error.code]}</Link>
+            </>
+          ) : null}
         </p>
       ) : null}
       {review ? (
@@ -190,6 +196,27 @@ function Install() {
         </>
       ) : null}
     </section>
+  );
+}
+
+/** Where the owner fixes a review the GitHub connection answers (journey 015): the GitHub page. */
+const CONNECTION_FIX: Record<string, string> = {
+  not_connected: "Connect GitHub",
+  token_refused: "Reconnect GitHub",
+  token_unreadable: "Reconnect GitHub",
+  repository_not_visible: "Open the GitHub page",
+};
+
+/** A Private label on a file read through the GitHub connection (decision 7). */
+function PrivateLabel({ read, file }: { read: FileRead | null; file: string }) {
+  if (read?.read !== "connection") return null;
+  return (
+    <>
+      {" "}
+      <span className="source-label" data-private={file}>
+        Private · read with your GitHub connection (@{read.login})
+      </span>
+    </>
   );
 }
 
@@ -229,7 +256,8 @@ function ReviewPanel(props: {
         <a href={review.source.pinnedLink} target="_blank" rel="noreferrer">
           {review.source.repo}/{review.source.path}
         </a>{" "}
-        at commit <code>{review.source.commit.slice(0, 12)}</code>, with its kit
+        at commit <code>{review.source.commit.slice(0, 12)}</code>
+        <PrivateLabel read={review.source.read} file="compose" />, with its kit
         {review.kit.repo && review.kit.commit ? (
           <>
             {" "}
@@ -237,6 +265,7 @@ function ReviewPanel(props: {
               {review.kit.repo}/{review.kit.path}
             </a>{" "}
             at commit <code>{review.kit.commit.slice(0, 12)}</code>
+            <PrivateLabel read={review.kit.read} file="kit" />
           </>
         ) : null}
         . It will be at <code>{(props.publishing && publishBody(props.publish).link) || review.origin}</code>.
