@@ -308,7 +308,8 @@ Written for the recommendations; each changes with its decision.
   stopped for the owner to finish by hand, the app says so and doesn't start the workspace.
 - **FR-007**: A pull request check refuses a change to a migration already on `main`, and a new
   migration not stamped strictly after every migration before it, since Drizzle skips one stamped
-  at or before the newest it recorded.
+  at or before the newest it recorded. The rule holds against `main` as it is at merge, not only
+  when the check last ran, so a pull request overtaken by a newer migration is updated first.
 - **FR-008**: After a successful upgrade, `upgrade` keeps the newest five backups and the newest
   taken from a release, and lists what it deleted.
 - **FR-009**: The canary page, the Mac guide, the release guide and the decision record describe
