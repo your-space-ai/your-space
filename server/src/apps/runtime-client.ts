@@ -135,6 +135,8 @@ export interface Runtime {
   checkPort(project: string, publish: { port: number; bind: string }): Promise<{ inUse: boolean; by?: string }>;
   /** Creates a knowledge base's storage, or keeps this installation's own that has its name. */
   createKnowledge(name: string): Promise<{ created: boolean }>;
+  /** The apps whose containers mount a knowledge base, running or not, with or without a grant. */
+  knowledgeUsers(name: string): Promise<{ apps: string[] }>;
   /** Deletes a knowledge base's storage and its files; refused while an app still mounts it. */
   deleteKnowledge(name: string): Promise<void>;
 }
@@ -235,6 +237,7 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
     denials: (project) => json("GET", `${p(project)}/denials`, undefined, socketPath),
     checkPort: (project, publish) => json("POST", `${p(project)}/port`, { publish }, socketPath),
     createKnowledge: (name) => json("POST", "/knowledge", { name }, socketPath),
+    knowledgeUsers: (name) => json("GET", `/knowledge/${encodeURIComponent(name)}`, undefined, socketPath),
     deleteKnowledge: async (name) => void (await json("DELETE", `/knowledge/${encodeURIComponent(name)}`, undefined, socketPath)),
   };
 }

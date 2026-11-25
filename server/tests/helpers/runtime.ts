@@ -60,6 +60,9 @@ export class FakeRuntime implements Runtime {
     this.calls.push({ method: "apply", spec });
     onEvent({ step: "check" });
     if (this.failApply) throw new Error(this.failApply);
+    // Like the runtime manager, a knowledge base without its storage stops the apply before anything starts.
+    const missingBase = spec.knowledge?.bases.find((name) => !this.knowledge.has(name));
+    if (missingBase) throw new RuntimeError(`The knowledge base ${missingBase} isn't on this machine's engine, so ${spec.app} can't mount it.`, 409, "engine_error");
     // An apply never gives a required setting a placeholder.
     const missing = this.variables.find((v) => v.required && !spec.env[v.name]);
     if (missing) throw new Error(`The file isn't a Compose file Your Space can read: required variable ${missing.name} is missing a value`);
@@ -110,10 +113,23 @@ export class FakeRuntime implements Runtime {
     return { created };
   }
 
+  /** The apps whose containers mount it, from the spec each last ran. */
+  async knowledgeUsers(name: string) {
+    this.calls.push({ method: "knowledgeUsers", project: name });
+    return { apps: this.mounting(name) };
+  }
+
+  private mounting(name: string): string[] {
+    return [...this.applied]
+      .filter(([, spec]) => spec.knowledge?.bases.includes(name))
+      .map(([project]) => project.slice(3))
+      .sort();
+  }
+
   async deleteKnowledge(name: string) {
     this.calls.push({ method: "deleteKnowledge", project: name });
     // Like the runtime manager, refused while an app's containers mount it.
-    const users = [...this.applied].filter(([, spec]) => spec.knowledge?.bases.includes(name)).map(([project]) => project.slice(3));
+    const users = this.mounting(name);
     if (users.length > 0) throw new RuntimeError(`The knowledge base ${name} is still mounted by ${users.join(", ")}, so it can't be deleted yet.`, 409, "engine_error");
     this.knowledge.delete(name);
   }

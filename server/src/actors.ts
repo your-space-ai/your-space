@@ -33,10 +33,10 @@ export async function recordEvent(
   actorId: string,
   subjectUserId: string | null,
   subjectAppId: string | null = null,
-  subjectKnowledgeBaseId: string | null = null,
+  subjectKnowledgeBase: { id: string; name: string } | null = null,
 ): Promise<void> {
   const [row] = await db.insert(event).values({ type, actorId, subjectUserId, subjectAppId }).returning({ id: event.id });
-  if (subjectKnowledgeBaseId) await db.insert(eventKnowledgeBase).values({ eventId: row!.id, knowledgeBaseId: subjectKnowledgeBaseId });
+  if (subjectKnowledgeBase) await db.insert(eventKnowledgeBase).values({ eventId: row!.id, knowledgeBaseId: subjectKnowledgeBase.id, name: subjectKnowledgeBase.name });
 }
 
 /**

@@ -1,7 +1,7 @@
 // Knowledge bases (journey 014, decision 2026-11-25): named folders of files that belong to Your
 // Space, not to any app, kept in volumes the runtime manager makes. The owner creates them here and
 // gives them to apps whose kits ask for knowledge (AppsService.install and updateKnowledge).
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, or } from "drizzle-orm";
 import { recordEvent } from "../actors.ts";
 import { app, appKnowledgeBase, knowledgeBase } from "../db/schema.ts";
 import { log } from "../log.ts";
@@ -76,14 +76,13 @@ export class KnowledgeBases {
       throw new AppError(409, "already_exists", `A knowledge base called ${name} already exists.`);
     }
     await this.apps.runtime.createKnowledge(name).catch(refused);
-    const id = await this.db.transaction(async (tx) => {
+    await this.db.transaction(async (tx) => {
       const inserted = await tx.insert(knowledgeBase).values({ name, title, createdBy: actorId }).onConflictDoNothing().returning({ id: knowledgeBase.id });
       if (!inserted[0]) throw new AppError(409, "already_exists", `A knowledge base called ${name} already exists.`);
-      await recordEvent(tx, "knowledge.created", actorId, null, null, inserted[0].id);
-      return inserted[0].id;
+      await recordEvent(tx, "knowledge.created", actorId, null, null, { id: inserted[0].id, name });
     });
     log("info", "knowledge.created", { name });
-    return { name, title, id };
+    return { name, title };
   }
 
   /** Changes a knowledge base's title; its name, the apps' folder, stays. */
@@ -92,58 +91,77 @@ export class KnowledgeBases {
     const title = titleOf(input);
     await this.db.transaction(async (tx) => {
       await tx.update(knowledgeBase).set({ title, updatedAt: new Date() }).where(eq(knowledgeBase.id, row.id));
-      await recordEvent(tx, "knowledge.retitled", actorId, null, null, row.id);
+      await recordEvent(tx, "knowledge.retitled", actorId, null, null, { id: row.id, name: row.name });
     });
     return { name, title };
   }
 
   /**
-   * Deletes a knowledge base and its files. It leaves every app it was given to first: those apps are
-   * applied again without it, and only then does the runtime manager delete its storage, which it
-   * refuses while any container still mounts it. When it refuses, an app that couldn't be applied
-   * without the knowledge base keeps it, so the owner can fix that app and try again.
+   * Deletes a knowledge base and its files. It leaves every app that has it first: each app it was
+   * given to, and any app whose containers still mount it without a grant, as after a change that
+   * couldn't be applied or a restart in the middle of an earlier delete. Each is applied again
+   * without it, or removed when the owner asked to remove it, and only then does the runtime manager
+   * delete its storage, which it refuses while any container still mounts it. When it refuses, an
+   * app that couldn't be applied or removed keeps its grant, so the owner can fix that app and try again.
    */
   async delete(name: string, actorId: string): Promise<void> {
     const row = await this.rowByName(name);
-    const grants = await this.db
-      .select({ grant: appKnowledgeBase, title: app.title, state: app.state })
-      .from(appKnowledgeBase)
-      .innerJoin(app, eq(appKnowledgeBase.appId, app.id))
-      .where(eq(appKnowledgeBase.knowledgeBaseId, row.id));
-    const busy = grants.filter((g) => this.apps.isBusy(g.grant.appId));
-    if (busy.length) throw new AppError(409, "busy", `${busy.map((g) => g.title).join(", ")} ${busy.length === 1 ? "is" : "are"} busy with another change. Try again when it finishes.`);
-    if (grants.length) await this.db.delete(appKnowledgeBase).where(eq(appKnowledgeBase.knowledgeBaseId, row.id));
+    const subject = { id: row.id, name: row.name };
+    const { apps: mounting } = await this.apps.runtime.knowledgeUsers(name).catch(refused);
+    const grants = await this.db.select().from(appKnowledgeBase).where(eq(appKnowledgeBase.knowledgeBaseId, row.id));
+    const granted = grants.map((g) => g.appId);
+    const which = [...(granted.length ? [inArray(app.id, granted)] : []), ...(mounting.length ? [inArray(app.name, mounting)] : [])];
+    // A removed app has no containers to apply.
+    const targets = which.length
+      ? await this.db
+          .select({ id: app.id, title: app.title, desired: app.desired })
+          .from(app)
+          .where(and(ne(app.state, "removed"), or(...which)))
+          .orderBy(asc(app.title))
+      : [];
+    const busy = targets.filter((target) => this.apps.isBusy(target.id));
+    if (busy.length) throw new AppError(409, "busy", `${busy.map((b) => b.title).join(", ")} ${busy.length === 1 ? "is" : "are"} busy with another change. Try again when it finishes.`);
+    // Only the grants read here are taken: one given since stays, with the apply that mounts it.
+    const taken = grants.filter((g) => targets.some((target) => target.id === g.appId));
+    if (taken.length) {
+      await this.db.delete(appKnowledgeBase).where(and(eq(appKnowledgeBase.knowledgeBaseId, row.id), inArray(appKnowledgeBase.appId, taken.map((g) => g.appId))));
+    }
     const failed: { appId: string; reason: string }[] = [];
-    for (const { grant, title, state } of grants) {
-      if (state === "removed") continue;
+    for (const target of targets) {
+      // An app the owner asked to remove, whose removal didn't finish, is removed, not started again.
+      const kind = target.desired === "removed" ? "remove" : "apply";
       try {
-        const { jobId, done } = await this.apps.startJob(grant.appId, "apply");
+        const { jobId, done } = await this.apps.startJob(target.id, kind);
         await done;
         const job = await this.apps.job(jobId);
-        if (job.state !== "succeeded") failed.push({ appId: grant.appId, reason: `${title}: ${job.error ?? "it didn't start again."}` });
+        if (job.state !== "succeeded") {
+          failed.push({ appId: target.id, reason: `${target.title}: ${job.error ?? (kind === "remove" ? "it wasn't removed." : "it didn't start again.")}` });
+        }
       } catch (error) {
-        failed.push({ appId: grant.appId, reason: `${title}: ${error instanceof AppError ? error.message : "it couldn't be applied again."}` });
+        failed.push({ appId: target.id, reason: `${target.title}: ${error instanceof AppError ? error.message : "it couldn't be applied again."}` });
       }
     }
-    const left = grants.filter((g) => !failed.some((f) => f.appId === g.grant.appId));
+    const kept = (appId: string) => failed.some((f) => f.appId === appId);
     try {
       await this.apps.runtime.deleteKnowledge(name);
     } catch (error) {
       await this.db.transaction(async (tx) => {
-        const back = grants.filter((g) => failed.some((f) => f.appId === g.grant.appId)).map((g) => g.grant);
+        const back = taken.filter((g) => kept(g.appId));
         if (back.length) await tx.insert(appKnowledgeBase).values(back).onConflictDoNothing();
-        for (const { grant } of left) await recordEvent(tx, "knowledge.revoked", actorId, null, grant.appId, row.id);
+        for (const { appId } of taken.filter((g) => !kept(g.appId))) await recordEvent(tx, "knowledge.revoked", actorId, null, appId, subject);
       });
       if (error instanceof RuntimeError && failed.length) {
-        throw new AppError(409, error.code, `${error.message} These apps couldn't be applied without it, so they keep it: ${failed.map((f) => f.reason).join(" ")}`);
+        throw new AppError(409, error.code, `${error.message} These apps keep it, since they couldn't be applied again without it, or removed: ${failed.map((f) => f.reason).join(" ")}`);
       }
       refused(error);
     }
     await this.db.transaction(async (tx) => {
-      for (const { grant } of grants) await recordEvent(tx, "knowledge.revoked", actorId, null, grant.appId, row.id);
-      await recordEvent(tx, "knowledge.deleted", actorId, null, null, row.id);
+      // Every grant ends with it, one given since it was read too.
+      const left = await tx.select({ appId: appKnowledgeBase.appId }).from(appKnowledgeBase).where(eq(appKnowledgeBase.knowledgeBaseId, row.id));
+      for (const appId of new Set([...granted, ...left.map((g) => g.appId)])) await recordEvent(tx, "knowledge.revoked", actorId, null, appId, subject);
+      await recordEvent(tx, "knowledge.deleted", actorId, null, null, subject);
       await tx.delete(knowledgeBase).where(eq(knowledgeBase.id, row.id));
     });
-    log("info", "knowledge.deleted", { name, apps: grants.length });
+    log("info", "knowledge.deleted", { name, apps: targets.length });
   }
 }

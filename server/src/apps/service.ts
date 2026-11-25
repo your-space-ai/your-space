@@ -788,7 +788,7 @@ export class AppsService {
       await recordEvent(tx, "app.installed", actorId, null, id);
       if (bases.length) {
         await tx.insert(appKnowledgeBase).values(bases.map((base) => ({ appId: id, knowledgeBaseId: base.id, grantedBy: actorId })));
-        for (const base of bases) await recordEvent(tx, "knowledge.granted", actorId, null, id, base.id);
+        for (const base of bases) await recordEvent(tx, "knowledge.granted", actorId, null, id, base);
       }
       return id;
     });
@@ -895,16 +895,20 @@ export class AppsService {
   }
 
   /** A job for a request, which answers with the job's ID and doesn't wait for it. */
-  private async queue(appId: string, kind: "apply" | "remove"): Promise<{ jobId: string }> {
-    const { jobId } = await this.startJob(appId, kind);
+  private async queue(appId: string, kind: "apply" | "remove", first?: () => Promise<void>): Promise<{ jobId: string }> {
+    const { jobId } = await this.startJob(appId, kind, first);
     return { jobId };
   }
 
-  /** Starts a job that applies the app; one job per app at a time. */
-  async startJob(appId: string, kind: "install" | "apply" | "remove"): Promise<{ jobId: string; done: Promise<void> }> {
+  /**
+   * Starts a job that applies the app; one job per app at a time. `first` runs once the app is the
+   * job's, before the job starts, so a change it saves is never left without the job that applies it.
+   */
+  async startJob(appId: string, kind: "install" | "apply" | "remove", first?: () => Promise<void>): Promise<{ jobId: string; done: Promise<void> }> {
     if (this.busy.has(appId)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
     this.busy.add(appId);
     try {
+      await first?.();
       const inserted = await this.db.insert(installJob).values({ appId, kind }).returning({ id: installJob.id });
       const jobId = inserted[0]!.id;
       return { jobId, done: this.runJob(jobId, appId, kind).finally(() => this.busy.delete(appId)) };
@@ -1358,15 +1362,18 @@ export class AppsService {
     const current = await this.grants(row.id);
     const added = next.filter((base) => !current.some((c) => c.id === base.id));
     const removed = current.filter((base) => !next.some((n) => n.id === base.id));
-    await this.db.transaction(async (tx) => {
-      if (removed.length) {
-        await tx.delete(appKnowledgeBase).where(and(eq(appKnowledgeBase.appId, row.id), inArray(appKnowledgeBase.knowledgeBaseId, removed.map((base) => base.id))));
-      }
-      if (added.length) await tx.insert(appKnowledgeBase).values(added.map((base) => ({ appId: row.id, knowledgeBaseId: base.id, grantedBy: actorId })));
-      for (const base of added) await recordEvent(tx, "knowledge.granted", actorId, null, row.id, base.id);
-      for (const base of removed) await recordEvent(tx, "knowledge.revoked", actorId, null, row.id, base.id);
-    });
-    return this.queue(row.id, "apply");
+    // Saved only once the app is the job's: a grant saved without the apply that mounts it, or takes
+    // it away, would leave the app's containers and its grants disagreeing.
+    return this.queue(row.id, "apply", () =>
+      this.db.transaction(async (tx) => {
+        if (removed.length) {
+          await tx.delete(appKnowledgeBase).where(and(eq(appKnowledgeBase.appId, row.id), inArray(appKnowledgeBase.knowledgeBaseId, removed.map((base) => base.id))));
+        }
+        if (added.length) await tx.insert(appKnowledgeBase).values(added.map((base) => ({ appId: row.id, knowledgeBaseId: base.id, grantedBy: actorId })));
+        for (const base of added) await recordEvent(tx, "knowledge.granted", actorId, null, row.id, base);
+        for (const base of removed) await recordEvent(tx, "knowledge.revoked", actorId, null, row.id, base);
+      }),
+    );
   }
 
   async approve(name: string, host: string, actorId: string): Promise<{ jobId: string }> {

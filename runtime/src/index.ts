@@ -15,6 +15,7 @@ import {
   down,
   INSTALLATION,
   isStopping,
+  knowledgeUsers,
   listApps,
   resolveInterface,
   logs,
@@ -86,6 +87,7 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     return send(res, 200, created);
   }
   const knowledge = KNOWLEDGE_PATH.exec(pathname);
+  if (knowledge && method === "GET") return send(res, 200, await knowledgeUsers(validateKnowledgeName(knowledge[1]!)));
   if (knowledge && method === "DELETE") return (await deleteKnowledge(validateKnowledgeName(knowledge[1]!)), send(res, 200, { ok: true }));
   if (method === "POST" && pathname === "/apply") {
     const spec = validateSpec(await readBody(req));

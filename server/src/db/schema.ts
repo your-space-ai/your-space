@@ -221,15 +221,15 @@ export const knowledgeBase = pgTable(
 /**
  * The knowledge base an event is about. A table of its own rather than a column of `event`, which
  * keeps the shape every earlier schema has: the upgrade tests write and read events at schema 0005.
- * Deleting the knowledge base removes the link; the event stays.
+ * It keeps the knowledge base's name, so the record outlives it: deleting the knowledge base clears
+ * only the link to its row.
  */
 export const eventKnowledgeBase = pgTable("event_knowledge_base", {
   eventId: uuid("event_id")
     .primaryKey()
     .references(() => event.id, { onDelete: "cascade" }),
-  knowledgeBaseId: uuid("knowledge_base_id")
-    .notNull()
-    .references(() => knowledgeBase.id, { onDelete: "cascade" }),
+  knowledgeBaseId: uuid("knowledge_base_id").references(() => knowledgeBase.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
 });
 
 /** A knowledge base the owner gave an app. Removing the app, or deleting the knowledge base, ends it. */

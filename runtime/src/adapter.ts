@@ -2,6 +2,7 @@
 // from `docker compose config --format json`, and build the file Your Space runs. Pure functions, so
 // the rules are tested without Docker.
 import { createHash } from "node:crypto";
+import { posix } from "node:path";
 import type { RegistryCredential } from "./engine.ts";
 
 export interface AppSpec {
@@ -421,13 +422,20 @@ function checkTopLevel(resolved: Json, refusals: Refusal[]): void {
   }
 }
 
-/** The paths a service mounts a volume, a host folder or a tmpfs at. */
+/**
+ * The paths a service mounts a volume, a host folder or a tmpfs at, normalised as the engine does:
+ * Compose cleans a volume's target, but leaves a short-form tmpfs as written, so `//knowledge`,
+ * `/./knowledge/notes` and `/x/../knowledge` are each in the knowledge path.
+ */
 function mountTargets(service: Json): string[] {
   const targets: string[] = [];
   for (const volume of Array.isArray(service.volumes) ? service.volumes : []) if (isObject(volume) && typeof volume.target === "string") targets.push(volume.target);
   const tmpfs = Array.isArray(service.tmpfs) ? service.tmpfs : typeof service.tmpfs === "string" ? [service.tmpfs] : [];
   for (const entry of tmpfs) targets.push(String(entry).split(":")[0]!);
-  return targets.map((target) => (target.length > 1 ? target.replace(/\/+$/, "") : target));
+  return targets.map((target) => {
+    const clean = posix.normalize(target);
+    return clean.length > 1 ? clean.replace(/\/+$/, "") : clean;
+  });
 }
 
 function dependsOn(service: Json): string[] {

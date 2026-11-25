@@ -1,5 +1,5 @@
 {
-  "id": "01e1a162-67d4-4592-8859-f545bc7fc180",
+  "id": "bac2aa49-7907-4c5b-b3d1-87149c27ab59",
   "prevId": "af9bab85-4eac-481f-a0b4-fff3a2e40a2c",
   "version": "7",
   "dialect": "postgresql",
@@ -1832,6 +1832,12 @@
           "name": "knowledge_base_id",
           "type": "uuid",
           "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
           "notNull": true
         }
       },
@@ -1860,7 +1866,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

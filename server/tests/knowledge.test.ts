@@ -7,6 +7,7 @@ import { KitError, parseKit } from "../src/apps/kits.ts";
 import { actor, app, appKnowledgeBase, event, eventKnowledgeBase, knowledgeBase } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
+import type { ApplyEvent, AppSpec } from "../src/apps/runtime-client.ts";
 import { COMMIT, fakeGithub, FakeRuntime, kitLink, plainKit } from "./helpers/runtime.ts";
 import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
 
@@ -57,7 +58,17 @@ describe("a kit's knowledge", () => {
   });
 });
 
-const runtime = new FakeRuntime();
+/** Holds each apply until released, so a test can catch an app while it's busy. */
+class HeldRuntime extends FakeRuntime {
+  hold = false;
+  release: () => void = () => {};
+  override async apply(spec: AppSpec, onEvent: (event: ApplyEvent) => void) {
+    if (this.hold) await new Promise<void>((resolve) => (this.release = resolve));
+    return super.apply(spec, onEvent);
+  }
+}
+
+const runtime = new HeldRuntime();
 let t: TestDatabase;
 let server: TestServer;
 let cookie: string;
@@ -110,15 +121,20 @@ async function install(name: string, knowledge?: unknown): Promise<Response> {
   return response;
 }
 
-/** The knowledge bases of each event of a type, by name, with who it is recorded against. */
+/** The knowledge base of each event of a type, by the name the event keeps, with who it is recorded against. */
 async function events(type: string) {
   return t.db
-    .select({ actorId: event.actorId, subjectAppId: event.subjectAppId, knowledgeBase: knowledgeBase.name })
+    .select({ actorId: event.actorId, subjectAppId: event.subjectAppId, knowledgeBase: eventKnowledgeBase.name })
     .from(event)
     .leftJoin(eventKnowledgeBase, eq(eventKnowledgeBase.eventId, event.id))
-    .leftJoin(knowledgeBase, eq(eventKnowledgeBase.knowledgeBaseId, knowledgeBase.id))
     .where(eq(event.type, type));
 }
+
+const knowledgeId = async (name: string) => (await t.db.select({ id: knowledgeBase.id }).from(knowledgeBase).where(eq(knowledgeBase.name, name)))[0]!.id;
+const grantsOf = async (name: string) =>
+  (await t.db.select({ name: knowledgeBase.name }).from(appKnowledgeBase).innerJoin(knowledgeBase, eq(appKnowledgeBase.knowledgeBaseId, knowledgeBase.id)).where(eq(appKnowledgeBase.appId, await appId(name))))
+    .map((g) => g.name)
+    .sort();
 
 const appId = async (name: string) => (await t.db.select({ id: app.id }).from(app).where(eq(app.name, name)))[0]!.id;
 const lastApply = (name: string) => runtime.lastApply(`ys-${name}`)!;
@@ -157,7 +173,8 @@ describe("knowledge bases", () => {
   it("are created with a fixed name and a title, recorded against the owner", async () => {
     const created = await send("/api/knowledge", { name: "course-notes", title: "Course notes" });
     expect(created.status).toBe(201);
-    expect(await created.json()).toMatchObject({ name: "course-notes", title: "Course notes" });
+    // Names only: the API never answers with a knowledge base's internal ID.
+    expect(await created.json()).toEqual({ name: "course-notes", title: "Course notes" });
     // Without a title, the name is its title.
     expect((await send("/api/knowledge", { name: "recipes" })).status).toBe(201);
     expect([...runtime.knowledge].sort()).toEqual(["course-notes", "recipes"]);
@@ -181,7 +198,11 @@ describe("knowledge bases", () => {
     }
     const taken = await send("/api/knowledge", { name: "recipes" });
     expect(taken.status).toBe(409);
-    expect((await send("/api/knowledge", { name: "x", title: " " })).status).toBe(400);
+    for (const title of [" ", "x".repeat(81), 7]) {
+      const response = await send("/api/knowledge", { name: "x", title });
+      expect(response.status, JSON.stringify(title)).toBe(400);
+      expect(((await response.json()) as { error: string }).error).toBe("bad_title");
+    }
     expect(runtime.calls.filter((c) => c.method === "createKnowledge").length).toBe(calls);
   });
 
@@ -192,6 +213,11 @@ describe("knowledge bases", () => {
     expect(row).toMatchObject({ name: "recipes", title: "Family recipes" });
     expect(await events("knowledge.retitled")).toEqual([{ actorId: owner, subjectAppId: null, knowledgeBase: "recipes" }]);
     expect((await send("/api/knowledge/nope", { title: "x" }, "PATCH")).status).toBe(404);
+    for (const title of [undefined, "", "x".repeat(81)]) {
+      const response = await send("/api/knowledge/recipes", { title }, "PATCH");
+      expect(response.status, JSON.stringify(title)).toBe(400);
+      expect(((await response.json()) as { error: string }).error).toBe("bad_title");
+    }
   });
 });
 
@@ -278,10 +304,17 @@ describe("deleting a knowledge base", () => {
     expect(after.findIndex((c) => c.method === "deleteKnowledge" && c.project === "recipes")).toBeGreaterThan(apply);
     expect(runtime.knowledge.has("recipes")).toBe(false);
     expect(await t.db.select().from(knowledgeBase).where(eq(knowledgeBase.name, "recipes"))).toEqual([]);
-    // Recorded against the owner; the deleted knowledge base's link went with it.
+    // Recorded against the owner. Each event keeps the knowledge base's name, so the record outlives it.
     const vault = await appId("vault");
-    expect((await events("knowledge.revoked")).filter((e) => e.subjectAppId === vault)).toEqual([{ actorId: owner, subjectAppId: vault, knowledgeBase: null }]);
-    expect(await t.db.select({ actorId: event.actorId }).from(event).where(eq(event.type, "knowledge.deleted"))).toEqual([{ actorId: owner }]);
+    expect((await events("knowledge.revoked")).filter((e) => e.subjectAppId === vault)).toEqual([{ actorId: owner, subjectAppId: vault, knowledgeBase: "recipes" }]);
+    expect(await events("knowledge.deleted")).toEqual([{ actorId: owner, subjectAppId: null, knowledgeBase: "recipes" }]);
+    const history = await t.db
+      .select({ type: event.type, actorId: event.actorId, knowledgeBaseId: eventKnowledgeBase.knowledgeBaseId })
+      .from(eventKnowledgeBase)
+      .innerJoin(event, eq(event.id, eventKnowledgeBase.eventId))
+      .where(eq(eventKnowledgeBase.name, "recipes"));
+    expect(history.map((e) => e.type).sort()).toEqual(["knowledge.created", "knowledge.deleted", "knowledge.granted", "knowledge.granted", "knowledge.retitled", "knowledge.revoked"]);
+    for (const e of history) expect(e).toMatchObject({ actorId: owner, knowledgeBaseId: null });
   });
 
   it("is kept, with the apps that couldn't be applied without it, until they can", async () => {
@@ -290,7 +323,7 @@ describe("deleting a knowledge base", () => {
     expect(refused.status).toBe(409);
     const { message } = (await refused.json()) as { message: string };
     expect(message).toMatch(/still mounted by vault/);
-    expect(message).toMatch(/These apps couldn't be applied without it, so they keep it: vault: /);
+    expect(message).toMatch(/These apps keep it, since they couldn't be applied again without it, or removed: vault: /);
     expect(await t.db.select().from(knowledgeBase).where(eq(knowledgeBase.name, "course-notes"))).toHaveLength(1);
     // The app still mounts it, so it keeps it, and the knowledge base still lists it.
     expect(await t.db.select().from(appKnowledgeBase).where(and(eq(appKnowledgeBase.appId, await appId("vault"))))).toHaveLength(1);
@@ -303,5 +336,86 @@ describe("deleting a knowledge base", () => {
     expect(runtime.knowledge.size).toBe(0);
     expect(lastApply("vault").knowledge).toEqual({ path: "/vault", bases: [] });
     expect(await t.db.select().from(knowledgeBase)).toEqual([]);
+  });
+});
+
+describe("deleting a knowledge base when its apps and their grants disagree", () => {
+  it("applies again an app whose containers still mount it without a grant", async () => {
+    expect((await send("/api/knowledge", { name: "drafts" })).status).toBe(201);
+    const given = await send("/api/apps/vault/knowledge", { bases: ["drafts"] }, "PUT");
+    expect((await waitForJob(((await given.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+    expect(lastApply("vault").knowledge!.bases).toEqual(["drafts"]);
+    // As after a restart in the middle of an earlier delete, or a change that took the grant but
+    // couldn't be applied: the container mounts it, and no grant says so.
+    await t.db.delete(appKnowledgeBase).where(eq(appKnowledgeBase.knowledgeBaseId, await knowledgeId("drafts")));
+    const list = (await (await api("/api/knowledge")).json()) as { knowledgeBases: { name: string; apps: unknown[] }[] };
+    expect(list.knowledgeBases.find((k) => k.name === "drafts")!.apps).toEqual([]);
+
+    const calls = runtime.calls.length;
+    expect((await api("/api/knowledge/drafts", { method: "DELETE" })).status).toBe(204);
+    const after = runtime.calls.slice(calls);
+    expect(after.map((c) => c.method)).toEqual(["knowledgeUsers", "apply", "deleteKnowledge"]);
+    expect(lastApply("vault").knowledge).toEqual({ path: "/vault", bases: [] });
+    expect(runtime.knowledge.has("drafts")).toBe(false);
+    expect(await t.db.select().from(knowledgeBase).where(eq(knowledgeBase.name, "drafts"))).toEqual([]);
+  });
+
+  it("removes an app the owner asked to remove, whose removal didn't finish, rather than start it again", async () => {
+    expect((await send("/api/knowledge", { name: "inbox" })).status).toBe(201);
+    expect((await install("notes", ["inbox"])).status).toBe(202);
+    // A removal that failed: the app is failed, should be removed, and keeps its grants.
+    await t.db.update(app).set({ state: "failed", desired: "removed", stateReason: "The engine stopped." }).where(eq(app.name, "notes"));
+    expect(await grantsOf("notes")).toEqual(["inbox"]);
+
+    const calls = runtime.calls.length;
+    expect((await api("/api/knowledge/inbox", { method: "DELETE" })).status).toBe(204);
+    const after = runtime.calls.slice(calls);
+    expect(after.some((c) => c.method === "apply" && c.spec?.project === "ys-notes")).toBe(false);
+    expect(after.filter((c) => c.method === "down").map((c) => c.project)).toEqual(["ys-notes"]);
+    expect(runtime.running.has("ys-notes")).toBe(false);
+    expect((await t.db.select({ state: app.state, desired: app.desired }).from(app).where(eq(app.name, "notes")))[0]).toEqual({ state: "removed", desired: "removed" });
+    expect(runtime.knowledge.has("inbox")).toBe(false);
+  });
+
+  it("saves only the change whose job starts, when two arrive for an app at once", async () => {
+    expect((await send("/api/knowledge", { name: "soon" })).status).toBe(201);
+    expect((await send("/api/knowledge", { name: "later" })).status).toBe(201);
+    runtime.hold = true;
+    const answers = await Promise.all([send("/api/apps/vault/knowledge", { bases: ["soon"] }, "PUT"), send("/api/apps/vault/knowledge", { bases: ["later"] }, "PUT")]);
+    expect(answers.map((a) => a.status).sort()).toEqual([202, 409]);
+    const won = answers[0]!.status === 202 ? 0 : 1;
+    // The refused change saved nothing: the grants are the ones the job under way applies.
+    expect(await grantsOf("vault")).toEqual([["soon"], ["later"]][won]);
+    runtime.hold = false;
+    runtime.release();
+    expect((await waitForJob(((await answers[won]!.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+    expect(lastApply("vault").knowledge!.bases).toEqual([["soon"], ["later"]][won]);
+    const cleared = await send("/api/apps/vault/knowledge", { bases: [] }, "PUT");
+    await waitForJob(((await cleared.json()) as { jobId: string }).jobId);
+    expect((await api("/api/knowledge/soon", { method: "DELETE" })).status).toBe(204);
+  });
+
+  it("changes nothing while an app that has it is busy, on the app's page or the Knowledge page", async () => {
+    runtime.hold = true;
+    const first = await send("/api/apps/vault/knowledge", { bases: ["later"] }, "PUT");
+    expect(first.status).toBe(202);
+    const second = await send("/api/apps/vault/knowledge", { bases: [] }, "PUT");
+    expect(second.status).toBe(409);
+    expect(((await second.json()) as { error: string }).error).toBe("busy");
+    // The first change's grant is kept, so it matches the apply under way.
+    expect(await grantsOf("vault")).toEqual(["later"]);
+
+    const deletes = runtime.calls.filter((c) => c.method === "deleteKnowledge").length;
+    const refused = await api("/api/knowledge/later", { method: "DELETE" });
+    expect(refused.status).toBe(409);
+    expect(((await refused.json()) as { error: string }).error).toBe("busy");
+    expect(await grantsOf("vault")).toEqual(["later"]);
+    expect(runtime.calls.filter((c) => c.method === "deleteKnowledge").length).toBe(deletes);
+
+    runtime.hold = false;
+    runtime.release();
+    expect((await waitForJob(((await first.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+    expect((await api("/api/knowledge/later", { method: "DELETE" })).status).toBe(204);
+    expect(await grantsOf("vault")).toEqual([]);
   });
 });

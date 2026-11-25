@@ -5,15 +5,31 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { adapt, KNOWLEDGE_PREFIX, knowledgeLabels, knowledgeVolume, type AppSpec } from "../src/adapter.ts";
-import { anonymousVolumes, createKnowledge, deleteKnowledge, deleteVolumes, INSTALLATION, isKnowledge, knowledgeInit, SpecError, validateSpec } from "../src/apps.ts";
+import {
+  anonymousVolumes,
+  apply,
+  createKnowledge,
+  deleteKnowledge,
+  deleteVolumes,
+  INSTALLATION,
+  isKnowledge,
+  knowledgeInit,
+  knowledgeUsers,
+  SpecError,
+  validateSpec,
+} from "../src/apps.ts";
 import * as engineModule from "../src/engine.ts";
-import type { ContainerSummary } from "../src/engine.ts";
+import type { CliResult, ContainerSummary } from "../src/engine.ts";
 
 vi.mock("../src/engine.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/engine.ts")>()),
   engine: vi.fn(),
   engineJson: vi.fn(),
   listContainers: vi.fn(),
+  docker: vi.fn(),
+  engineInfo: vi.fn(),
+  inspectImage: vi.fn(),
+  connectNetwork: vi.fn(),
 }));
 
 const sure = JSON.parse(readFileSync(new URL("./sure-resolved.json", import.meta.url), "utf8")) as Record<string, unknown>;
@@ -75,6 +91,11 @@ describe("mounting knowledge bases", () => {
       { volumes: [{ type: "volume", source: "data", target: "/knowledge" }] },
       { volumes: [{ type: "volume", source: "data", target: "/knowledge/notes/" }] },
       { tmpfs: ["/knowledge/cache:size=1m"] },
+      // Compose leaves a short-form tmpfs as written, and the engine cleans it.
+      { tmpfs: ["//knowledge"] },
+      { tmpfs: ["/./knowledge/notes"] },
+      { tmpfs: "/x/../knowledge" },
+      { volumes: [{ type: "volume", source: "data", target: "/./knowledge//notes" }] },
     ]) {
       const result = adapt({ ...spec, knowledge: { path: "/knowledge", bases: [] } }, { services: { web: { image: "busybox", ...service } }, volumes: { data: {} } });
       expect(result.adapted, JSON.stringify(service)).toBeNull();
@@ -188,6 +209,8 @@ beforeEach(() => {
       }
     }
     if (method === "DELETE" && path.startsWith("/containers/init-id")) return { status: 204, body: "" };
+    // Every image is on the engine already, so an apply pulls nothing.
+    if (method === "GET" && path.startsWith("/images/")) return { status: 200, body: "{}" };
     throw new Error(`unexpected ${method} ${path}`);
   });
 });
@@ -267,8 +290,107 @@ describe("a knowledge base's volume", () => {
     expect(isKnowledge({ Name: NOTES, Labels: null })).toBe(true);
   });
 
+  it("names the apps of this installation whose containers mount it, running or stopped", async () => {
+    expect(await knowledgeUsers("notes")).toEqual({ apps: [] });
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    const own = (app: string, state: string) => ({ "ai.your-space.installation": INSTALLATION, "ai.your-space.app": app, state });
+    containers.push(
+      { Id: "v", Names: ["/ys-vault-web-1"], State: "exited", Status: "Exited (0)", Labels: own("vault", "exited"), volumes: [NOTES] },
+      { Id: "n", Names: ["/ys-notes-web-1"], State: "running", Status: "Up", Labels: own("notes", "running"), volumes: [NOTES] },
+      { Id: "n2", Names: ["/ys-notes-worker-1"], State: "running", Status: "Up", Labels: own("notes", "running"), volumes: [NOTES] },
+      // Another installation's app, or a container that isn't an app, is no app of this one.
+      { Id: "o", Names: ["/other"], State: "running", Status: "Up", Labels: { "ai.your-space.installation": "someone-else", "ai.your-space.app": "other" }, volumes: [NOTES] },
+      { Id: "x", Names: ["/shell"], State: "running", Status: "Up", Labels: {}, volumes: [NOTES] },
+      { Id: "p", Names: ["/ys-plain-web-1"], State: "running", Status: "Up", Labels: own("plain", "running") },
+    );
+    expect(await knowledgeUsers("notes")).toEqual({ apps: ["notes", "vault"] });
+    volumes.set(NOTES, { "ai.your-space.installation": "someone-else" });
+    await expect(knowledgeUsers("notes")).rejects.toMatchObject({ status: 409 });
+  });
+
   it("is never one of the anonymous volumes an app's removal deletes", () => {
     const app: ContainerSummary = { Id: "a", Names: [], State: "running", Status: "Up", Labels: {}, Mounts: [{ Type: "volume", Name: NOTES }, { Type: "volume", Name: "f".repeat(64) }] };
     expect(anonymousVolumes([app], new Set(["f".repeat(64)]))).toEqual(["f".repeat(64)]);
+  });
+});
+
+describe("applying an app given knowledge bases", () => {
+  const given: AppSpec = {
+    project: "ys-notes",
+    app: "notes",
+    installation: INSTALLATION,
+    compose: "services: {}",
+    env: {},
+    interface: { service: "web", port: 80 },
+    knowledge: { path: "/knowledge", bases: ["notes"] },
+  };
+  /** What `docker compose up` was given, or undefined when the apply never reached it. */
+  let up: { args: string[]; file: Json } | undefined;
+
+  beforeEach(() => {
+    up = undefined;
+    vi.mocked(engineModule.engineInfo).mockResolvedValue({ reachable: true, arch: "arm64", connection: "unix:///var/run/docker.sock" });
+    vi.mocked(engineModule.inspectImage).mockImplementation(async (ref) => ({ ref, digest: "sha256:abc", platforms: [], runsHere: true }));
+    vi.mocked(engineModule.docker).mockImplementation(async (args): Promise<CliResult> => {
+      const ok = (stdout: string) => ({ code: 0, stdout, stderr: "" });
+      if (args.includes("--variables")) return ok("{}");
+      if (args.includes("--format")) return ok(JSON.stringify({ name: "ys-notes", services: { web: { image: "busybox:1.37" } } }));
+      if (args.includes("up")) {
+        const file = args[args.indexOf("-f") + 1]!;
+        up = { args, file: JSON.parse(readFileSync(file, "utf8")) as Json };
+        return ok("");
+      }
+      throw new Error(`unexpected docker ${args.join(" ")}`);
+    });
+  });
+
+  async function refused(spec: AppSpec, message: RegExp) {
+    const steps: unknown[] = [];
+    await expect(apply(spec, (event) => steps.push(event)), message.source).rejects.toMatchObject({ status: 409, message: expect.stringMatching(message) });
+    // Stopped before anything is pulled or started.
+    expect(steps).toEqual([{ step: "check" }]);
+    expect(calls.some((c) => c.startsWith("GET /images/"))).toBe(false);
+    expect(up).toBeUndefined();
+  }
+
+  it("stops before Compose when a knowledge base's volume is missing", async () => {
+    await refused(given, /The knowledge base notes isn't on this machine's engine, so notes can't mount it/);
+    // Each knowledge base is checked, not only the first.
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    await refused({ ...given, knowledge: { path: "/knowledge", bases: ["notes", "recipes"] } }, /The knowledge base recipes isn't on this machine's engine/);
+  });
+
+  it("stops before Compose when a volume has the name but isn't this installation's knowledge base", async () => {
+    const foreign: Record<string, string>[] = [
+      // No labels, as a volume anything on the machine could make with that name.
+      {},
+      { ...knowledgeLabels(INSTALLATION, "notes"), "ai.your-space.installation": "someone-else" },
+      { ...knowledgeLabels(INSTALLATION, "notes"), "ai.your-space.role": "app" },
+      { ...knowledgeLabels(INSTALLATION, "notes"), "ai.your-space.knowledge": "recipes" },
+      { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "knowledge" },
+    ];
+    for (const labels of foreign) {
+      volumes.set(NOTES, labels);
+      calls = [];
+      await refused(given, /exists on the engine, but Your Space didn't make it/);
+    }
+  });
+
+  it("mounts this installation's own knowledge base, as an external volume Compose doesn't make", async () => {
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    const steps: unknown[] = [];
+    await apply(given, (event) => steps.push(event));
+    expect(steps.at(-1)).toEqual({ step: "started" });
+    expect(calls).toContain(`GET /volumes/${NOTES}`);
+    expect(up!.args).toContain("up");
+    const web = (up!.file.services as Record<string, Json>).web!;
+    expect(web.volumes).toContainEqual({ type: "volume", source: NOTES, target: "/knowledge/notes", volume: { nocopy: true } });
+    expect((up!.file.volumes as Json)[NOTES]).toEqual({ external: true, name: NOTES });
+  });
+
+  it("checks nothing for an app given none", async () => {
+    await apply({ ...given, knowledge: { path: "/knowledge", bases: [] } }, () => {});
+    expect(calls.some((c) => c.startsWith("GET /volumes/"))).toBe(false);
+    expect(Object.keys((up!.file.volumes as Json | undefined) ?? {}).some((name) => name.startsWith(KNOWLEDGE_PREFIX))).toBe(false);
   });
 });

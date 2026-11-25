@@ -675,6 +675,18 @@ async function mountedBy(volume: string): Promise<ContainerSummary[]> {
 }
 
 /**
+ * The apps of this installation whose containers mount a knowledge base, running or not. The server
+ * asks before deleting one, so it applies each of them again without it, even one it has no grant
+ * for, as after a change that couldn't be applied.
+ */
+export async function knowledgeUsers(name: string): Promise<{ apps: string[] }> {
+  if (!(await knowledgeOf(name))) return { apps: [] };
+  const users = await mountedBy(knowledgeVolume(INSTALLATION, name));
+  const apps = users.filter((c) => c.Labels["ai.your-space.installation"] === INSTALLATION).map((c) => c.Labels["ai.your-space.app"]);
+  return { apps: [...new Set(apps.filter((app): app is string => !!app))].sort() };
+}
+
+/**
  * Deletes a knowledge base's volume and its files. Refused while any container mounts it: the server
  * first takes it away from every app it was given to and applies them again.
  */
