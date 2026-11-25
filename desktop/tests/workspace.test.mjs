@@ -147,6 +147,15 @@ test("bringing a saved workspace's window to the front makes it the one launch o
   assert.deepEqual(list.map(entry => [entry.origin, entry.lastOpened]), [['https://one.example.com', 30], ['https://two.example.com', 20]]);
   assert.equal(mostRecent(list).origin, 'https://one.example.com');
   assert.throws(() => usedSaved(list, 'https://one.example.com/reset-password#token=t', 40), {code: 'invalid_address'});
+
+  // A clock that went back, or a time equal to the latest, still makes it the most recent.
+  list = usedSaved(list, 'https://two.example.com', 25);
+  assert.deepEqual(list.map(entry => entry.lastOpened), [30, 31]);
+  list = openedSaved(list, {origin: 'https://one.example.com'}, 31);
+  assert.equal(mostRecent(list).origin, 'https://one.example.com');
+  list = openedSaved(list, {origin: 'https://three.example.com'}, 5);
+  assert.deepEqual(list.map(entry => entry.lastOpened), [32, 31, 33]);
+  assert.equal(mostRecent(list).origin, 'https://three.example.com');
 });
 
 test('past the limit, adding a workspace forgets the one opened longest ago, never This Mac first', () => {

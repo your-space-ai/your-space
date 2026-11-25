@@ -135,6 +135,7 @@ export function parseSaved(data) {
 // doesn't make This Mac a plain server. Past the limit, the entry opened longest ago goes, This Mac last.
 export function openedSaved(list, {origin, name, local = false}, time) {
   origin = workspaceOrigin(origin);
+  time = latest(list, time);
   const index = list.findIndex(entry => entry.origin === origin);
   if (index >= 0) {
     const entry = list[index];
@@ -180,7 +181,13 @@ export function usedSaved(list, origin, time) {
   origin = workspaceOrigin(origin);
   const index = list.findIndex(entry => entry.origin === origin);
   if (index < 0 || mostRecent(list) === list[index]) return list;
-  return list.with(index, {...list[index], lastOpened: time});
+  return list.with(index, {...list[index], lastOpened: latest(list, time)});
+}
+
+// A time after every saved one, so the workspace just opened or used is the most recent even when the
+// clock has gone back or two times are equal.
+function latest(list, time) {
+  return Math.max(time, (mostRecent(list)?.lastOpened ?? 0) + 1);
 }
 
 async function writePrivate(file, contents) {
