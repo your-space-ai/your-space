@@ -8,6 +8,7 @@ import { ConnectionError, GITHUB_TOKENS_URL, GithubConnection, type TokenStatus 
 import { errorFields, log } from "../log.ts";
 import { StorageUnavailable } from "../owner/installation.ts";
 import { EXIT, formatTime, openForCommand, output, STORAGE_MESSAGE, type Output } from "./output.ts";
+import { Cancelled, hiddenPrompt } from "./prompt.ts";
 
 const USAGE = "Usage: github connect | status | disconnect [--json]";
 const CONNECT = "docker compose exec server github connect";
@@ -16,38 +17,6 @@ const NO_TOKEN_ARGUMENT =
   `github connect doesn't take the token on the command line, where it would reach shell history and process lists. Run ${CONNECT} and paste it at the prompt, or give it on standard input: docker compose exec -T server github connect < token.txt`;
 // A fine-grained token is about 100 characters; this bounds a mistaken file on standard input.
 const MAX_INPUT = 64 * 1024;
-
-class Cancelled extends Error {}
-
-/** Reads a line from the terminal without showing it. */
-function hiddenPrompt(question: string): Promise<string> {
-  const input = process.stdin;
-  return new Promise((resolve, reject) => {
-    let value = "";
-    const finish = (error?: Error) => {
-      input.off("data", onData);
-      input.setRawMode(false);
-      input.pause();
-      process.stderr.write("\n");
-      if (error) reject(error);
-      else resolve(value);
-    };
-    const onData = (chunk: string) => {
-      for (const char of chunk) {
-        if (char === "\r" || char === "\n") return finish();
-        if (char === "\u0003") return finish(new Cancelled()); // Ctrl-C
-        if (char === "\u0004") return finish(value ? undefined : new Cancelled()); // Ctrl-D
-        if (char === "\u007f" || char === "\b") value = value.slice(0, -1);
-        else if (value.length < MAX_INPUT) value += char;
-      }
-    };
-    process.stderr.write(question);
-    input.setEncoding("utf8");
-    input.setRawMode(true);
-    input.on("data", onData);
-    input.resume();
-  });
-}
 
 async function readStdin(): Promise<string> {
   let text = "";
@@ -92,7 +61,7 @@ async function run(action: string, connection: GithubConnection, out: Output): P
   }
   let token: string;
   try {
-    token = process.stdin.isTTY ? await hiddenPrompt("Paste the GitHub token (it isn't shown), then press Enter: ") : await readStdin();
+    token = process.stdin.isTTY ? await hiddenPrompt("Paste the GitHub token (it isn't shown), then press Enter: ", MAX_INPUT) : await readStdin();
   } catch (error) {
     if (!(error instanceof Cancelled)) throw error;
     out.failure({ ok: false, error: "cancelled", message: "Cancelled. Nothing changed." }, "Cancelled. Nothing changed.");

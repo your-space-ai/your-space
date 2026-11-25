@@ -14,12 +14,17 @@ import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
 import { fakeGithubAccounts } from "./helpers/runtime.ts";
 import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
 
-// Synthetic tokens, shaped like nothing GitHub issues.
-const TOKEN = "ys-fixture-contents-token-0001";
-const NEXT_TOKEN = "ys-fixture-contents-token-0002";
+// Synthetic tokens with GitHub's prefixes, far too short to be real ones.
+const TOKEN = "github_pat_ys_fixture_contents_0001";
+const NEXT_TOKEN = "github_pat_ys_fixture_contents_0002";
 const LOGIN = "ys-fixture-owner";
 // A managed user's login ends in `_<shortcode>`.
-const MANAGED_TOKEN = "ys-fixture-contents-token-0003";
+const MANAGED_TOKEN = "github_pat_ys_fixture_contents_0003";
+// A fine-grained token GitHub doesn't know.
+const UNKNOWN_TOKEN = "github_pat_ys_fixture_unknown";
+// A classic token, whose scopes reach every repository its account can, and an OAuth app's token.
+const CLASSIC_TOKEN = "ghp_ys_fixture_classic";
+const OAUTH_TOKEN = "gho_ys_fixture_oauth";
 
 describe("the GitHub page's API", () => {
   let t: TestDatabase;
@@ -95,10 +100,10 @@ describe("the GitHub page's API", () => {
   });
 
   it("refuses a token GitHub doesn't accept, or one that isn't a token, and stores nothing", async () => {
-    const refused = await read("PUT", { token: "ys-fixture-unknown-token" });
+    const refused = await read("PUT", { token: UNKNOWN_TOKEN });
     expect(refused.status).toBe(400);
     expect(refused.json.error).toBe("token_refused");
-    expect(refused.text).not.toContain("ys-fixture-unknown-token");
+    expect(refused.text).not.toContain(UNKNOWN_TOKEN);
     expect((await read("PUT", { token: "" })).json.error).toBe("token_required");
     expect((await read("PUT", { token: "two words" })).json.error).toBe("token_invalid");
     expect((await read("PUT", { token: TOKEN, scope: "repo" })).status).toBe(400);
@@ -107,6 +112,21 @@ describe("the GitHub page's API", () => {
     expect(offline.status).toBe(503);
     expect(offline.json.error).toBe("github_unavailable");
     expect(await stored()).toBeUndefined();
+  });
+
+  it("refuses a token that isn't fine-grained before asking GitHub, even one GitHub would accept", async () => {
+    accounts.set(CLASSIC_TOKEN, LOGIN);
+    accounts.set(OAUTH_TOKEN, LOGIN);
+    for (const token of [CLASSIC_TOKEN, OAUTH_TOKEN]) {
+      const refused = await read("PUT", { token });
+      expect(refused.status).toBe(400);
+      expect(refused.json.error).toBe("token_not_fine_grained");
+      expect(refused.json.message).toContain("fine-grained");
+      expect(refused.text).not.toContain(token);
+    }
+    expect(github.calls).toEqual([]);
+    expect(await stored()).toBeUndefined();
+    expect(lines.join("\n")).not.toContain(CLASSIC_TOKEN);
   });
 
   it("shows Reconnect once GitHub refuses the token, and connecting a new one clears it", async () => {
@@ -217,10 +237,16 @@ describe("the github server command", () => {
     expect((await run(["status", "--json"])).json.contents).toMatchObject({ set: true, accepted: false, problem: "refused" });
     expect((await run(["status"])).stdout).toContain("GitHub no longer accepts the token");
 
-    const refused = await run(["connect", "--json"], "ys-fixture-unknown-token");
+    const refused = await run(["connect", "--json"], UNKNOWN_TOKEN);
     expect(refused.code).toBe(2);
     expect(refused.json).toMatchObject({ ok: false, error: "token_refused" });
     expect((await run(["connect", "--json"])).json).toMatchObject({ ok: false, error: "token_required" });
+    accounts.set(CLASSIC_TOKEN, LOGIN);
+    const classic = await run(["connect", "--json"], `${CLASSIC_TOKEN}\n`);
+    expect(classic.code).toBe(2);
+    expect(classic.json).toMatchObject({ ok: false, error: "token_not_fine_grained" });
+    expect(output(classic)).not.toContain(CLASSIC_TOKEN);
+    expect((await run(["connect"], CLASSIC_TOKEN)).stderr).toContain("fine-grained token");
 
     const disconnected = await run(["disconnect", "--json"]);
     expect(disconnected.code).toBe(0);

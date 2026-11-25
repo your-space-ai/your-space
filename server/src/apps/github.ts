@@ -116,6 +116,15 @@ export class TokenRefusedError extends Error {
   }
 }
 
+/**
+ * Whether a token is a fine-grained personal access token, the only kind a contents token may be
+ * (decision 1): GitHub starts each one with `github_pat_`, and a classic one, whose scopes reach
+ * every repository its account can, with `ghp_`.
+ */
+export function isFineGrainedToken(token: string): boolean {
+  return token.startsWith("github_pat_");
+}
+
 // A login is only shown, so any short run of letters, digits, hyphens and underscores will do:
 // managed users' logins end in `_<shortcode>`.
 const LOGIN = /^[A-Za-z0-9_-]{1,100}$/;

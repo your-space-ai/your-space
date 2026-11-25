@@ -3,7 +3,7 @@
 // it, and disconnect. It calls the same server actions as the `github` server command (decision 6),
 // and never shows the token again.
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { api, errorMessage } from "../apps-api.ts";
 
 type TokenStatus =
@@ -144,14 +144,22 @@ function Connection({ contents, onDisconnected }: { contents: Extract<TokenStatu
 
 function Connect({ reconnect, onConnected }: { reconnect: boolean; onConnected: (data: GithubStatus) => void }) {
   const [token, setToken] = useState("");
+  // The token waits here only until the request takes it. It isn't the mutation's variables, which
+  // TanStack Query keeps in its cache after the request.
+  const sending = useRef("");
   const connect = useMutation({
-    mutationFn: (value: string) => api<GithubStatus>("PUT", "/api/github", { token: value }),
+    mutationFn: () => {
+      const value = sending.current;
+      sending.current = "";
+      return api<GithubStatus>("PUT", "/api/github", { token: value });
+    },
     onSuccess: onConnected,
   });
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
-    connect.mutate(token);
-    // The token isn't kept on the page, whatever GitHub answers.
+    sending.current = token;
+    connect.mutate();
+    // The field is cleared, whatever GitHub answers.
     setToken("");
   };
   return (
@@ -173,7 +181,8 @@ function Connect({ reconnect, onConnected }: { reconnect: boolean; onConnected: 
         <p className="muted">
           Only the contents of the repositories you pick, and only to read them. A token reaches one account or
           organization, and not repositories where you're an outside collaborator. An organization can require approval
-          for it, or block such tokens.
+          for it, or block such tokens. Your Space takes only a fine-grained token: a classic token can reach every
+          repository your account can, so it's refused.
         </p>
       </details>
       <form onSubmit={onSubmit}>

@@ -1,7 +1,8 @@
 # 015 · Install apps from my private GitHub repositories
 
-**Status**: Accepted 2026-11-25, for alpha.2. The owner settled every decision below; nothing here
-is built yet.
+**Status**: Accepted 2026-11-25, for alpha.2. The owner settled every decision below. Slice 1
+(Connect) delivered 2026-11-25 in [PR #130](https://github.com/your-space-ai/your-space/pull/130);
+slices 2–5 to come.
 
 **Created**: 2026-11-25
 

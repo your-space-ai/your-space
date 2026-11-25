@@ -117,8 +117,9 @@ Each takes `--json`. The page and the command share one connection, so a token c
 shows in both.
 
 **What the token can read.** Only the contents of the repositories you pick, and only to read them.
-A fine-grained token reaches the repositories of one account or organization, not ones where you're
-only an outside collaborator. It expires when you chose, and an organization can require approval
+Your Space takes only a fine-grained token, which starts with `github_pat_`, and refuses a classic
+one, which can reach every repository your account can. A fine-grained token reaches the
+repositories of one account or organization, not ones where you're only an outside collaborator. It expires when you chose, and an organization can require approval
 for such tokens, or block them. When GitHub stops accepting the token, because it expired or you
 deleted it, the GitHub page and `github status` say so: create a new one and connect again, which
 replaces it. They say so too when Your Space can't read the stored token, as when its data key was

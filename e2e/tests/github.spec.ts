@@ -5,7 +5,7 @@ import { setPassword, signIn } from "./helpers/ui.ts";
 
 // Journey 015, slice 1: connecting GitHub. The real owner UI, database and server command; only
 // GitHub is replaced, by the stand-in mounted by compose.e2e.yaml, which knows this synthetic token.
-const TOKEN = "ys-fixture-contents-token";
+const TOKEN = "github_pat_ys_fixture_contents";
 const LOGIN = "ys-fixture-owner";
 
 test("the owner connects GitHub on its page or with the server command, and disconnects", async ({ page }, testInfo) => {
@@ -25,8 +25,14 @@ test("the owner connects GitHub on its page or with the server command, and disc
   expect(create.searchParams.get("contents")).toBe("read");
   await evidence(page, testInfo, "github-connect");
 
+  // A classic token is refused before GitHub is asked: it could reach every repository.
+  await page.getByLabel("Token").fill("ghp_ys_fixture_classic");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("only a fine-grained token");
+  await expect(page.getByLabel("Token")).toHaveValue("");
+
   // A token GitHub refuses isn't stored, and the field doesn't keep it.
-  await page.getByLabel("Token").fill("ys-fixture-unknown-token");
+  await page.getByLabel("Token").fill("github_pat_ys_fixture_unknown");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("GitHub doesn't accept this token");
   await expect(page.getByLabel("Token")).toHaveValue("");

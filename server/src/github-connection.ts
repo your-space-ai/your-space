@@ -9,7 +9,7 @@ import type { Auth } from "./auth.ts";
 import type { Db } from "./db/client.ts";
 import { sourceCredential } from "./db/schema.ts";
 import { ownerFor } from "./apps/routes.ts";
-import { githubAccount, githubEndpoints, SourceError, TokenRefusedError, type GithubEndpoints } from "./apps/github.ts";
+import { githubAccount, githubEndpoints, isFineGrainedToken, SourceError, TokenRefusedError, type GithubEndpoints } from "./apps/github.ts";
 import { decrypt, encrypt } from "./apps/settings.ts";
 import { readInstallation } from "./owner/installation.ts";
 
@@ -127,6 +127,15 @@ export class GithubConnection {
     const token = input.trim();
     if (!TOKEN.test(token)) {
       throw new ConnectionError(400, "token_invalid", "That isn't a GitHub token. Copy the whole token GitHub showed you and paste it again.");
+    }
+    // A classic or app token could reach more than the repositories the owner chooses, so it isn't
+    // sent to GitHub or stored.
+    if (!isFineGrainedToken(token)) {
+      throw new ConnectionError(
+        400,
+        "token_not_fine_grained",
+        "Your Space takes only a fine-grained token, which starts with github_pat_ and reads only the repositories you choose. Create one with Contents read, from Create a token on GitHub on Your Space's GitHub page, and paste it.",
+      );
     }
     const workspaceId = await this.workspace();
     let login: string;

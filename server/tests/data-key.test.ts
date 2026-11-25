@@ -79,7 +79,7 @@ describe("moving apps' settings onto the data key", () => {
 });
 
 describe("moving the GitHub connection onto the data key (journey 015, decision 3)", () => {
-  const TOKEN = "ys-fixture-contents-token-0001";
+  const TOKEN = "github_pat_ys_fixture_contents_0001";
   const github = fakeGithubAccounts(new Map([[TOKEN, "ys-fixture-owner"]]));
   const endpoints = { api: "https://api.github.test", raw: "https://raw.github.test" };
   const connection = (dataKey: string) => new GithubConnection(t.db, dataKey, { endpoints, fetch: github.fetch });

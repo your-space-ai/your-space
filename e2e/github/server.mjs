@@ -11,7 +11,7 @@ import { fixtureCommit } from "./commits.mjs";
 const root = fileURLToPath(new URL("./fixtures/", import.meta.url));
 
 // Synthetic tokens and the accounts they belong to; GitHub refuses any other token.
-const ACCOUNTS = new Map([["ys-fixture-contents-token", "ys-fixture-owner"]]);
+const ACCOUNTS = new Map([["github_pat_ys_fixture_contents", "ys-fixture-owner"]]);
 
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://github");
