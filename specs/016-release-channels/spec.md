@@ -36,7 +36,7 @@ owner chose differently from the recommendation, what was considered.
 | # | Question | Decision | Owner |
 | --- | --- | --- | --- |
 | 1 | Is the channel remembered or chosen each time? | The app's setting decides, stored in the installation and kept across updates; the CLI takes `--channel` on each run and stores nothing | "Each run (--channel)"; "whatever the setting is in the users installation, if its set to canary, then stays on canary, user sets it basck to alpah, then alpha" |
-| 2 | Which channels? | Two for now: Alpha, the default, and Canary | "right now its just alpha (default and --channel alpha), and canary. in the future we'll have other names and can change the default." |
+| 2 | Which channels? | Two for now: Alpha and Canary. A release build starts on Alpha (decision 1) | "right now its just alpha (default and --channel alpha), and canary. in the future we'll have other names and can change the default." |
 | 3 | How often is a Mac canary built? | Once a day and on demand, from the newest Linux canary, signing only the update ZIPs | "this is fine" |
 | 4 | How is an unattended Mac canary signed? | A second Developer ID certificate and its own App Store Connect API key, in a `macos-canary` environment with no approval step | "A second certificate" |
 | 5 | How are builds published and found? | Each channel has a feed at a fixed address on a rolling release: a new `alpha` release, and the `canary` prerelease, which still holds only the newest build. Clients read their channel's feed | "we'll just go with this for now to keep it simple" |
@@ -89,8 +89,9 @@ remember leaving Canary.
 
 **Decided:** two channels, each with its own feed (decision 5):
 
-- **Alpha**, the default: the published releases, tagged `v` and a version. They are alphas now;
-  betas and stable releases, when there are any, are tagged the same way.
+- **Alpha**: the published releases, tagged `v` and a version. They are alphas now; betas and
+  stable releases, when there are any, are tagged the same way. A release build starts on Alpha
+  (decision 1).
 - **Canary**: the canary builds of `main`.
 
 The CLI names a channel with `--channel alpha` or `--channel canary`. The app's setting is a **Your
@@ -204,8 +205,8 @@ all three.
 **Considered:** finding each channel's newest build through GitHub's API, by tag, which costs
 requests on every check and needs handling when GitHub limits them; a prerelease kept for every
 canary build now, which decision 7 records as the later direction; electron-updater's GitHub
-provider, which reads only the newest 10 entries of the releases feed (decision 10); a feed on
-another host, such as Cloudflare, which is new infrastructure.
+provider, which skips every tag that isn't a version and so can't read either rolling release
+(decision 10); a feed on another host, such as Cloudflare, which is new infrastructure.
 
 ## 6. What `upgrade --channel` Runs
 
@@ -304,10 +305,11 @@ first whose tag is a version, so it skips `alpha` and `canary`
 lines 81–113). With only the two rolling releases beside the `v` tags, those two take at most two of
 the 10 places, wherever the feed lists them. So the newest release is always in the feed, and
 alpha.2 stays there until eight to ten later releases follow it. An alpha.1 app that checks at any
-time finds the newest release and updates to it from that release's `latest-mac.yml`. One gap: a
-release's `v` tag is pushed before Release draft runs, and the feed lists it while the release is
-still a draft, so until it is published the alpha.1 app's check fails. An automatic check stays
-quiet, and **Check for Updates…** says it couldn't check.
+time finds the newest release and updates to it from that release's `latest-mac.yml`. One likely
+gap, inferred from other repositories' feeds, which list tags that have no published release: a
+release's `v` tag is pushed before Release draft runs, so while the release is still a draft the
+alpha.1 app would pick that tag, find no `latest-mac.yml`, and fail its check until the release is
+published. An automatic check stays quiet, and **Check for Updates…** says it couldn't check.
 
 **Considered:** the flag first and the Mac parts after alpha.2; all of it after the first packaged
 release.
