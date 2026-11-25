@@ -128,12 +128,17 @@ jobs:
           }
 
           # A build that started earlier but finished later, such as a re-run, never replaces a newer
-          # one. Only the published prerelease counts: a draft is something an attempt left unfinished.
+          # one: the newest the published prerelease names, by its title, which changes only once a
+          # build's files are all there, or by its npm package, whose name a failed replacement may
+          # have deleted. Only the published prerelease counts: a draft is what an attempt left.
           retry gh api --paginate "$api/releases?per_page=100" \
-            --jq '.[] | select(.tag_name == "canary" and (.draft | not)) | .assets[].name' > "$RUNNER_TEMP/assets"
-          published=$(sed -n 's/^your-space-ai-cli-\(.*\)\.tgz$/\1/p' "$RUNNER_TEMP/assets")
-          if [[ -n $published && ${published##*.} -gt ${VERSION##*.} ]]; then
-            echo "The canary prerelease already holds $published, a later build than $VERSION: nothing is replaced." >> "$GITHUB_STEP_SUMMARY"
+            --jq '.[] | select(.tag_name == "canary" and (.draft | not)) | .name, .assets[].name' > "$RUNNER_TEMP/held"
+          newest=
+          while read -r held; do
+            if [[ -z $newest || ${held##*.} -gt ${newest##*.} ]]; then newest=$held; fi
+          done < <(sed -n -e 's/^Canary \(.*\) (not a release)$/\1/p' -e 's/^your-space-ai-cli-\(.*\)\.tgz$/\1/p' "$RUNNER_TEMP/held")
+          if [[ -n $newest && ${newest##*.} -gt ${VERSION##*.} ]]; then
+            echo "The canary prerelease already holds $newest, a later build than $VERSION: nothing is replaced." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -175,18 +180,18 @@ jobs:
           retry gh release upload canary SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
           retry gh api --method PATCH "$api/releases/$id" -F prerelease=true -f name="$title" -f body="$notes" --silent
 
+          # What installs read: the published prerelease holds exactly this build's files, and its
+          # SHA256SUMS is this build's. Only then do the tag and the images follow.
+          retry gh api "$api/releases/$id" --jq 'select(.draft | not) | .assets[] | select(.state == "uploaded") | .name' > "$RUNNER_TEMP/published"
+          diff <(printf '%s\n' "${files[@]}" SHA256SUMS | sort) <(sort "$RUNNER_TEMP/published")
+          retry gh release download canary --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --output "$RUNNER_TEMP/SHA256SUMS" --clobber
+          cmp SHA256SUMS "$RUNNER_TEMP/SHA256SUMS"
+
           # The tag follows the build, so the prerelease's source code is this commit. GitHub may refuse
           # to move a tag for a workflow's token; the files are what installs read, so that only warns.
           if ! retry gh api --method PATCH "$api/git/refs/tags/canary" -f sha="$GITHUB_SHA" -F force=true --silent; then
             echo "::warning::The canary tag stays where it was; the prerelease's files and notes are this build's, of $GITHUB_SHA."
           fi
-
-          # What installs read: the published prerelease holds exactly this build's files, and its
-          # SHA256SUMS is this build's. Only then do the images follow.
-          retry gh api "$api/releases/$id" --jq 'select(.draft | not) | .assets[] | select(.state == "uploaded") | .name' > "$RUNNER_TEMP/published"
-          diff <(printf '%s\n' "${files[@]}" SHA256SUMS | sort) <(sort "$RUNNER_TEMP/published")
-          retry gh release download canary --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --output "$RUNNER_TEMP/SHA256SUMS" --clobber
-          cmp SHA256SUMS "$RUNNER_TEMP/SHA256SUMS"
           echo "replaced=true" >> "$GITHUB_OUTPUT"
       - if: steps.publish.outputs.replaced == 'true'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
