@@ -34,6 +34,7 @@ asset=your-space-linux-x64
 canary=https://github.com/your-space-ai/your-space/releases/download/canary
 curl -fL -O "$canary/$asset" -O "$canary/SHA256SUMS"
 awk -v name="$asset" '$2 == name { print }' SHA256SUMS | sha256sum -c - &&
+  mkdir -p ~/.local/bin &&
   install -m 755 "$asset" ~/.local/bin/your-space
 your-space --version
 ```

@@ -99,7 +99,9 @@ describe("canary builds", () => {
       expect(isVersion(canary(tag)), tag).toBe(true);
       expect(isCanary(canary(tag)), tag).toBe(true);
     }
-    for (const bad of [["canary"], ["v0.1.0-rc.1"], ["v0.1.0-alpha.01"], ["v0.1.0", "01261125"], ["v0.1.0", "20261125", "0"], ["v0.1.0", "20261125", "007"]]) {
+    // Only numbered alphas and betas: after alpha, a canary (alpha.canary.…) would sort after alpha.1,
+    // and after alpha.1.1 one would sort after alpha.1.2.
+    for (const bad of [["canary"], ["v0.1.0-rc.1"], ["v0.1.0-alpha.01"], ["v0.1.0-alpha"], ["v0.1.0-alpha.1.1"], ["v0.1.0-beta.x"], ["v0.1.0", "01261125"], ["v0.1.0", "20261125", "0"], ["v0.1.0", "20261125", "007"]]) {
       expect(() => execFileSync(new URL("../../deploy/canary-version.sh", import.meta.url).pathname, [bad[0]!, bad[1] ?? "20261125", bad[2] ?? "1"], { stdio: "pipe" }), bad.join(" ")).toThrow();
     }
   });

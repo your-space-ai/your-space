@@ -48,7 +48,9 @@ jobs:
         run: |
           # Prereleases are alphas or betas: the Mac app's updater (electron-updater) offers an alpha app later
           # alphas, betas and stable releases, and a beta app later betas and stable releases, but no other kind.
-          [[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta)(\.[0-9A-Za-z-]+)*)?$ ]] ||
+          # Each is numbered, such as alpha.2, so a canary build sorts before every later release
+          # (deploy/canary-version.sh).
+          [[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta)\.(0|[1-9][0-9]*))?$ ]] ||
             { echo "::error::Use a version tag such as v0.1.0, v0.1.0-alpha.2 or v0.1.0-beta.1."; exit 1; }
           test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "$GITHUB_SHA"
           releases=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name')

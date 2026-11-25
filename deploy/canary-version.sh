@@ -12,7 +12,9 @@ tag=$1
 day=$2
 build=$3
 number='(0|[1-9][0-9]*)'
-if ! printf '%s\n' "$tag" | grep -Eqx "v$number\.$number\.$number(-(alpha|beta)(\.[0-9A-Za-z-]+)*)?"; then
+# A release is stable or a numbered alpha or beta, as Release draft requires: after any other
+# prerelease, such as alpha or alpha.1.1, a canary wouldn't sort before every later release.
+if ! printf '%s\n' "$tag" | grep -Eqx "v$number\.$number\.$number(-(alpha|beta)\.$number)?"; then
   echo "$tag isn't a release tag such as v0.1.0 or v0.1.0-alpha.1." >&2
   exit 1
 fi
