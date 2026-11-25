@@ -10,7 +10,8 @@ name: Canary
 # channel.json, which names the build (deploy/channel-json.sh; spec 016, decision 5). Once they are
 # published it points the images' `canary` tag at the build, so the images never run ahead of the
 # files. It checks and deletes only its own files there, never another workflow's, such as a Mac
-# canary's. It never moves `latest`, publishes nothing to npm, and builds no Mac app.
+# canary's, and stops before changing any if the prerelease holds latest-mac.yml, which no canary
+# release may carry. It never moves `latest`, publishes nothing to npm, and builds no Mac app.
 on:
   push:
     branches: [main]
@@ -108,6 +109,7 @@ jobs:
           sha256sum -- "${files[@]}" > SHA256SUMS
           sha256sum -c SHA256SUMS
           printf '%s\n' "$CHANNEL_JSON" > channel.json
+          jq -e --arg v "$VERSION" --arg c "$GITHUB_SHA" '. == {channel: "canary", version: $v, commit: $c}' channel.json > /dev/null
       - name: Replace the canary prerelease's files with this build's
         id: publish
         working-directory: release
@@ -176,6 +178,14 @@ jobs:
             esac
           }
           id=$(retry canary_release)
+          # No canary release may carry latest-mac.yml, the file an Alpha Mac app reads (spec 016, the
+          # guard). This workflow never uploads one, and deletes only its own files, so if one is there
+          # it stops before changing anything, for a maintainer to find where it came from.
+          retry gh api --paginate "$api/releases/$id/assets?per_page=100" --jq '.[].name' > "$RUNNER_TEMP/listed"
+          if grep -qx latest-mac.yml "$RUNNER_TEMP/listed"; then
+            echo "::error::The canary prerelease holds latest-mac.yml, which no canary release may carry, so nothing is replaced. Delete it, then re-run."
+            exit 1
+          fi
           # The title and notes name this build before any file changes, so if a step below fails, an
           # older build still finds this one recorded, even once --clobber has deleted its package.
           retry gh api --method PATCH "$api/releases/$id" -F prerelease=true -f name="$title" -f body="$notes" --silent
@@ -191,7 +201,7 @@ jobs:
           # already. Only this workflow's own files count, here and in the check below: the Linux
           # files, SHA256SUMS and channel.json. Another workflow's on the same prerelease, such as a Mac
           # canary's canary-mac.yml and your-space-macos-* ZIPs, are never deleted, even half there.
-          own='your-space\.tar\.gz|your-space-ai-cli-.*\.tgz|your-space-linux-.*|SHA256SUMS|channel\.json'
+          own='your-space\.tar\.gz|your-space-ai-cli-.*\.tgz|your-space-linux-(x64|arm64|licenses\.txt)|SHA256SUMS|channel\.json'
           delete_files() {
             local asset state name
             gh api --paginate "$api/releases/$id/assets?per_page=100" --jq '.[] | "\(.id) \(.state) \(.name)"' > "$RUNNER_TEMP/listed" || return 1

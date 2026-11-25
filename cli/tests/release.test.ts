@@ -213,20 +213,53 @@ describe("channel.json", () => {
     }
   });
 
-  it("refuses another channel and a commit that isn't a full one", () => {
-    for (const bad of [["beta", "0.1.0-beta.1", commit], ["Canary", canary("v0.1.0-alpha.1"), commit], ["canary", canary("v0.1.0-alpha.1"), commit.slice(0, 7)], ["canary", canary("v0.1.0-alpha.1"), commit.toUpperCase()], ["alpha", "0.1.0-alpha.2", `${commit}0`]]) {
-      expect(() => channelJson(...bad), bad.join(" ")).toThrow();
-    }
+  it("refuses another channel, a commit that isn't a full one, a value of more than one line and a missing or extra argument", () => {
+    const bad = [
+      ["beta", "0.1.0-beta.1", commit], ["Canary", canary("v0.1.0-alpha.1"), commit], ["canary", canary("v0.1.0-alpha.1"), commit.slice(0, 7)],
+      ["canary", canary("v0.1.0-alpha.1"), commit.toUpperCase()], ["alpha", "0.1.0-alpha.2", `${commit}0`],
+      // Each line on its own is valid, so only the line break gives these away.
+      ["alpha", '0.1.0-alpha.2\n","injected":"x', commit], ["alpha", "0.1.0-alpha.2\n", commit], ["alpha", "0.1.0-alpha.2", `${commit}\n${commit}`], ["alpha\n", "0.1.0-alpha.2", commit],
+      ["alpha", "0.1.0-alpha.2"], ["alpha", "0.1.0-alpha.2", commit, "extra"],
+    ];
+    for (const args of bad) expect(() => channelJson(...args), JSON.stringify(args)).toThrow();
   });
 
-  it("is recorded, as the Canary workflow writes it, for the test that Alpha clients never get a canary", () => {
-    const recorded = readFileSync(new URL("../../shared/release-channels/fixtures/canary/channel.json", import.meta.url), "utf8");
-    const named = JSON.parse(recorded) as { channel: string; version: string; commit: string };
-    expect(channelJson(named.channel, named.version, named.commit)).toBe(recorded);
+  it("is kept as the Canary workflow writes it, for the test that Alpha clients never get a canary", () => {
+    const kept = readFileSync(new URL("../../shared/release-channels/fixtures/canary/channel.json", import.meta.url), "utf8");
+    const named = JSON.parse(kept) as { channel: string; version: string; commit: string };
+    expect(channelJson(named.channel, named.version, named.commit)).toBe(kept);
     expect(named.channel).toBe("canary");
     // A canary whose version contains -alpha. and sorts after the release it follows.
     expect(named.version).toContain("-alpha.");
     expect(compareVersions(named.version, "0.1.0-alpha.1")).toBeGreaterThan(0);
+  });
+});
+
+describe("the Canary workflow", () => {
+  const workflow = readFileSync(new URL("../../.github/workflows/canary.yml", import.meta.url), "utf8");
+  /** The names of the files its publish step uploads, checks and deletes, as `[[ $name =~ ^($own)$ ]]` reads them. */
+  const own = workflow.match(/^ *own='([^']+)'$/m)![1]!;
+  const owned = (...names: string[]) =>
+    execFileSync("bash", ["-c", 'own=$1; shift; for name; do if [[ $name =~ ^($own)$ ]]; then echo "$name"; fi; done', "-", own, ...names], { encoding: "utf8" }).split("\n").filter(Boolean);
+
+  it("checks and deletes only its own files on the canary prerelease, never a Mac canary's", () => {
+    const linux = ["your-space.tar.gz", "your-space-ai-cli-0.1.0-alpha.1.canary.20261125.5.tgz", "your-space-linux-x64", "your-space-linux-arm64", "your-space-linux-licenses.txt", "SHA256SUMS", "channel.json"];
+    expect(owned(...linux)).toEqual(linux);
+    const others = [
+      "canary-mac.yml", "latest-mac.yml", "your-space-macos-arm64-0.1.0-alpha.1.canary.20261125.5.zip", "your-space-macos-x64-0.1.0-alpha.1.canary.20261125.5.dmg",
+      "your-space-linux-x64.zip", "your-space-linux-riscv64", "xSHA256SUMS", "channel.json.bak", "your-space.tar.gz.sig",
+    ];
+    expect(owned(...others)).toEqual([]);
+  });
+
+  it("uploads only its own files, so never latest-mac.yml", () => {
+    const sets = [...workflow.matchAll(/^ *files=\((.+)\)$/gm)].map((set) => set[1]!.replaceAll('"', "").replaceAll("$VERSION", "0.1.0-alpha.1.canary.20261125.5").split(" "));
+    expect(sets).toHaveLength(2);
+    expect(sets[1]).toEqual(sets[0]);
+    expect(owned(...sets[0]!)).toEqual(sets[0]);
+    // Every upload goes through upload(), and these are all its calls.
+    expect(workflow.match(/gh release upload/g)).toHaveLength(1);
+    expect([...workflow.matchAll(/^ *retry upload \w+ (.+)$/gm)].map((upload) => upload[1])).toEqual(['"${files[@]}"', "SHA256SUMS", "channel.json"]);
   });
 });
 
