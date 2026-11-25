@@ -13,6 +13,8 @@ let engineProblem = null;
 // The saved connections, in the order the main process keeps them.
 let saved = [];
 let loaded = false;
+// Whether the problem shown is that the saved list couldn't be read.
+let unreadable = false;
 // After a workspace opens, the launcher hides; when it shows again, it shows the list.
 let afterOpen = false;
 // A request from the main process that arrived while an operation was running.
@@ -124,17 +126,34 @@ function render(list) {
   byId("first-choices").hidden = any;
   byId("run-here").hidden = saved.some((entry) => entry.local);
   byId("saved-list").replaceChildren(...saved.map(row));
+  byId("list-retry").hidden = true;
+  byId("welcome-intro").hidden = false;
+  if (unreadable) byId("problem").textContent = "";
+  unreadable = false;
   byId("welcome").classList.remove("loading");
   loaded = true;
   if (focused?.origin) findKey(focused)?.focus({ preventScroll: true });
   if (active === "welcome") window.scrollTo(0, scroll);
 }
 
+// The saved list couldn't be read. Only trying again is offered: the first-run choices would say
+// nothing is saved, and opening or adding a connection fails until the list can be read.
+function unreadableList(message) {
+  unreadable = true;
+  byId("saved").hidden = true;
+  byId("first-choices").hidden = true;
+  byId("welcome-intro").hidden = true;
+  byId("list-retry").hidden = false;
+  byId("welcome-intro").after(byId("feedback"));
+  byId("problem").textContent = typeof message === "string" && message ? message : "Your Space couldn’t read your saved connections. Try again.";
+  byId("welcome").classList.remove("loading");
+}
+
 async function refresh() {
   let state;
   try { state = await api.connections(); } catch { state = null; }
   if (state && !state.error && Array.isArray(state.connections)) render(state.connections);
-  else if (!loaded) render([]);
+  else if (!loaded) unreadableList(state?.error?.message);
   handle(state?.request);
 }
 
@@ -443,6 +462,13 @@ byId("run-here").addEventListener("click", () => {
 byId("add-server").addEventListener("click", () => {
   byId("remote-form").reset();
   show("remote");
+});
+byId("reload").addEventListener("click", async () => {
+  byId("reload").disabled = true;
+  byId("problem").textContent = "";
+  await refresh();
+  byId("reload").disabled = false;
+  (byId("list-retry").hidden ? byId("welcome-title") : byId("reload")).focus();
 });
 byId("back").addEventListener("click", () => show(active === "owner" ? "local" : "welcome"));
 byId("retry").addEventListener("click", () => checkEngines());

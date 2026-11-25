@@ -303,7 +303,10 @@ async function savedState() {
 async function launcherState() {
   const request = launcherRequest;
   launcherRequest = undefined;
-  const connections = await savedState();
+  let connections;
+  try { connections = await savedState(); } catch {
+    throw new WorkspaceError('read_failed', 'Your Space could not read your saved connections. Try again.');
+  }
   return request ? {connections, request} : {connections};
 }
 

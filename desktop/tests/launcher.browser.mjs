@@ -361,3 +361,25 @@ test("the dialog stays open while a rename waits for its reply, and a reply only
   await expect(dialog).toBeHidden();
   await expect(page.getByRole("button", { name: "Rename or remove Garage" })).toBeFocused();
 });
+
+test("a saved list that can't be read says so and offers to try again, not the first-run choices", async (t) => {
+  const replies = [
+    () => { throw new Error("private detail"); },
+    () => ({ error: { code: "read_failed", message: "Your Space could not read your saved connections. Try again." } }),
+    () => ({ connections: [home] }),
+  ];
+  const { page, calls } = await launch(t, { connections: () => replies.shift()() });
+  await expect(page.getByRole("alert")).toHaveText("Your Space couldn’t read your saved connections. Try again.");
+  await expect(page.getByRole("button", { name: /Connect to a server/ })).toBeHidden();
+  await expect(page.getByRole("button", { name: /Run on this Mac/ })).toBeHidden();
+  const retry = page.getByRole("button", { name: "Try again" });
+  await retry.click();
+  await expect(page.getByRole("alert")).toHaveText("Your Space could not read your saved connections. Try again.");
+  await expect(retry).toBeFocused();
+  await retry.click();
+  await expect(page.getByRole("heading", { name: "Open a connection" })).toBeFocused();
+  await expect(page.getByRole("alert")).toBeEmpty();
+  await expect(retry).toBeHidden();
+  await expect(rowButton(page, "Home server")).toBeVisible();
+  assert.deepEqual(calls, []);
+});
