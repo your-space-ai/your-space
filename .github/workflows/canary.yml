@@ -41,6 +41,8 @@ jobs:
           BUILD: ${{ github.run_number }}
         run: |
           set -o pipefail
+          # Only main publishes. The job's condition compares without regard to case; this doesn't.
+          test "$GITHUB_REF" = refs/heads/main
           # The release this commit follows: the nearest version tag in its history.
           tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)
           version=$(deploy/canary-version.sh "$tag" "$(date -u +%Y%m%d)" "$BUILD")
