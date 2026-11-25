@@ -104,6 +104,26 @@ are listed at the end.
 - Verify the kit format refuses unknown knowledge fields, and that an app without the declaration
   gets no credential.
 
+## Delivery slices
+
+Each slice is one reviewable PR with an owner-visible result checked in a browser. Each needs only
+the slices before it.
+
+1. **Knowledge-source concept and Drive connection.** Settings › Connections adds Google Drive with
+   the operator's client, stores the token encrypted and refreshes it. Result: the owner connects
+   Drive, sees it connected after a restart, and sees it marked disconnected after revoking access
+   in Google.
+2. **Views.** Create, rename and delete views by picking folders from the connected Drive. Result:
+   the owner creates a view and sees its folders and file count.
+3. **Kit declaration and grants.** The kit's `knowledge` field, the install review's view picker and
+   the app page's grant editor, with a per-installation credential. Result: installing a fixture
+   kit shows the picker, and the app page lists the granted views.
+4. **Knowledge API and folder enforcement.** List and read for granted views, with every boundary
+   rule above and an activity record per request. Result: the fixture app lists and reads a granted
+   view, and is refused outside it.
+5. **TypeScript SDK.** `knowledge.views()`, `files.list()` and `files.read()`, finding Your Space
+   inside an installed app. Result: a sample app built on the SDK shows a view's files in its pane.
+
 ## Open questions
 
 - Which SDK packages ship first: TypeScript only, or TypeScript and Python together (decisions.md
