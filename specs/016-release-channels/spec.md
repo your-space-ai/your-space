@@ -177,9 +177,12 @@ electron-updater 6.8.11's GitHub provider can't serve Canary
 
 - The app sets the feed from the stored channel and never infers it from its version: Canary uses
   the generic feed; Alpha and Beta use the GitHub provider with that `channel` and prereleases
-  allowed; Stable uses it with prereleases off, which reads GitHub's latest release, "the most
-  recent non-prerelease, non-draft release" ([GitHub](https://docs.github.com/en/rest/releases/releases)).
-  After setting `channel`, it sets `allowDowngrade` back to `false`.
+  allowed; Stable uses it with prereleases off and the default `latest` channel, so it reads
+  `latest-mac.yml` from GitHub's latest release, "the most recent non-prerelease, non-draft
+  release" ([GitHub](https://docs.github.com/en/rest/releases/releases)). Stable is never sent as a
+  channel name: that asks for `stable-mac.yml`, which no release has, and with prereleases off the
+  provider doesn't fall back to `latest-mac.yml` (lines 158–166). After setting `channel`, the app
+  sets `allowDowngrade` back to `false`.
 - When the newest published release, of any kind, is newer than the newest canary, the daily job
   writes `canary-mac.yml` for that release instead, listing its ZIPs by their full download links,
   so a Canary app gets it through the one feed.
