@@ -35,7 +35,7 @@ others, as noted.
 | --- | --- | --- |
 | 1 | Is the channel remembered or chosen each time? | The app remembers it in its settings; the CLI takes it per run and stores nothing |
 | 2 | Which channels, under what names, and what is the default? | Stable, Beta, Alpha, Canary, each also getting everything more stable; the default is the channel of the installed version |
-| 3 | How often is a Mac canary built, signed and notarized? | Once a day, from the newest Linux canary, only when there is a newer one; update ZIPs only |
+| 3 | How often is a Mac canary built, signed and notarized? | Once a day, from the newest Linux canary, only when there is a newer canary or release; update ZIPs only |
 | 4 | How is an unattended Mac canary signed? | A second Developer ID certificate in its own `macos-canary` environment, with no approval step |
 | 5 | Where does a Mac canary app find its updates? | `canary-mac.yml` on the rolling `canary` prerelease, read with electron-updater's generic provider |
 | 6 | What does `upgrade --channel` run? | It hands over to the newest build's own CLI, so an installation still moves to the version of the CLI that runs it |
@@ -79,8 +79,8 @@ remember between runs, and one source of truth stays: the version `stack.yaml` p
 
 | Option | Channels | Trade-offs |
 | --- | --- | --- |
-| **A. Stable, Beta, Alpha, Canary** | Each also gets everything more stable: Beta gets betas and stable releases, Alpha gets alphas, betas and stable, Canary gets canaries | The release tags and electron-updater's own channels already work this way ([release channels](https://github.com/electron-userland/electron-builder/blob/electron-updater%406.8.11/website/docs/tutorials/release-using-channels.md)), so no mapping. Stable and Beta have no build yet during the alpha |
-| B. Releases and Canary | Releases follows the version's own track, as today; Canary gets canaries | Two choices. An alpha app can't ask for stable releases only |
+| **A. Stable, Beta, Alpha, Canary** | Each also gets everything more stable: Beta gets betas and stable releases, Alpha gets alphas, betas and stable, Canary gets canaries and any release newer than the newest canary | The release tags and electron-updater's own channels already work this way ([release channels](https://github.com/electron-userland/electron-builder/blob/electron-updater%406.8.11/website/docs/tutorials/release-using-channels.md)), so no mapping. Stable and Beta have no build yet during the alpha |
+| B. Releases and Canary | Releases follows the version's own track, as today; Canary as in A | Two choices. An alpha app can't ask for stable releases only |
 | C. Stable, Preview, Canary | Preview is alphas and betas together | Three choices. A name the tags and the library don't use |
 
 **Recommendation: A.**
@@ -92,6 +92,9 @@ remember between runs, and one source of truth stays: the version `stack.yaml` p
 - **Where:** a **Your Space › Update Channel** submenu with the four as radio items, beside
   **Check for Updates Automatically**, so it stays out of the way. Choosing Canary first says that
   canaries are unsupported and may change the data in ways the next release doesn't expect.
+- **Canary and releases:** a release is tagged at the tip of `main`, so the next canary is built
+  from it or later and sorts after it. Until that canary exists, or while canaries stop for a while,
+  a newer release is offered instead (decisions 5 and 6).
 - **Mac Canary is daily** (decision 3), while the Linux canary is every push; the name stays
   Canary, as the CLI and the docs call it.
 
@@ -125,7 +128,8 @@ that commit (the prerelease's notes name it) and that version, whose images are 
 install test passed. A Mac build
 with a version of its own would need images of its own, and Canary's newest-build-only rule skips
 commits, so the Mac build can't pick its own commit either. It signs and notarizes the two app
-ZIPs, not the DMGs.
+ZIPs, not the DMGs. When a published release is newer than that canary, it builds nothing and points
+the feed at the release (decision 5).
 
 ## 4. Signing an Unattended Build
 
@@ -176,7 +180,14 @@ electron-updater 6.8.11's GitHub provider can't serve Canary
   allowed; Stable uses it with prereleases off, which reads GitHub's latest release, "the most
   recent non-prerelease, non-draft release" ([GitHub](https://docs.github.com/en/rest/releases/releases)).
   After setting `channel`, it sets `allowDowngrade` back to `false`.
-- The canary workflow uploads the new ZIPs, then `canary-mac.yml`, and deletes the old ZIPs last.
+- When the newest published release, of any kind, is newer than the newest canary, the daily job
+  writes `canary-mac.yml` for that release instead, listing its ZIPs by their full download links,
+  so a Canary app gets it through the one feed.
+- Each workflow replaces only its own files on the prerelease. The Linux canary's cleanup, which
+  today deletes every file not in its own list, leaves `canary-mac.yml` and the `your-space-macos-*`
+  ZIPs; the Mac job leaves the Linux files and `SHA256SUMS`, which lists only the Linux build. The
+  Mac ZIPs are checked against the SHA-512 digests in `canary-mac.yml`.
+- The Mac canary workflow uploads the new ZIPs, then `canary-mac.yml`, and deletes the old ZIPs last.
   The generic provider adds a `noCache` query to the feed's address; a GitHub download link with
   one still redirects to the file (checked on alpha.1's `latest-mac.yml`, 2026-11-25).
 - electron-builder's main branch has unreleased changes to how the GitHub provider picks a release,
@@ -187,9 +198,9 @@ electron-updater 6.8.11's GitHub provider can't serve Canary
 
 A CLI is one version, and since 2026-11-24 an installation moves to the version of the CLI that
 runs `upgrade`. The newest build is found with one request to GitHub, started by the owner: GitHub's
-latest release for Stable, the newest release by version for Alpha and Beta, and the `canary`
-prerelease's files for Canary (the npm package's file name carries its version). No npm canary is
-needed.
+latest release for Stable, the newest release by version for Alpha and Beta, and for Canary the
+newer of the `canary` prerelease's build (the npm package's file name carries its version) and the
+newest release of any kind. No npm canary is needed.
 
 | Option | How | Trade-offs |
 | --- | --- | --- |
@@ -272,9 +283,11 @@ Written for the recommendations; each changes with its decision.
 - **FR-004**: Once a day, and when started by hand, a workflow packages the newest Linux canary for
   Apple Silicon and Intel, signs it with the canary certificate, notarizes and staples both apps,
   checks their update ZIPs, and publishes them and `canary-mac.yml` on the `canary` prerelease in
-  that order. It never delays the Linux canary.
+  that order. When a published release is newer, `canary-mac.yml` points at that release's ZIPs
+  instead. It never delays the Linux canary, and neither workflow removes the other's files.
 - **FR-005**: `your-space upgrade --channel stable|beta|alpha|canary` finds the newest build of that
-  channel, checks and runs its CLI's `upgrade`, and changes nothing when the installation is already
+  channel (for Canary, the newer of the newest canary and the newest release), checks and runs its
+  CLI's `upgrade`, and changes nothing when the installation is already
   that new or newer. Plain `upgrade` is unchanged.
 - **FR-006**: After a successful upgrade, `upgrade` keeps the newest five backups and the newest
   taken from a release, and lists what it deleted.
