@@ -21,6 +21,7 @@ import {
 import { errorFields, log } from "../log.ts";
 import {
   fetchPinnedFile,
+  fetchPinnedFileWith,
   fetchSourceWith,
   githubEndpoints,
   SourceError,
@@ -74,8 +75,9 @@ export class AppError extends Error {
 }
 
 /**
- * The workspace's source credential (journey 015), the GitHub connection: what reads a kit GitHub
- * doesn't show anonymously. It is asked for only after an anonymous read found nothing (R1).
+ * The workspace's source credential (journey 015), the GitHub connection: what reads a kit, or the
+ * Compose file a kit pins, that GitHub doesn't show anonymously. It is asked for only after an
+ * anonymous read found nothing (R1).
  */
 export interface SourceCredentials {
   reading(): Promise<
@@ -106,7 +108,7 @@ export interface AppsConfig {
 
 /** The API's error code for each way GitHub gave no file. */
 const MISS_CODE: Record<SourceMiss, string> = { not_found: "not_found", not_visible: "repository_not_visible", no_ref: "not_found", no_file: "file_missing" };
-/** What the owner does about a connection that can't read a private kit; the page and the command each say where. */
+/** What the owner does about a connection that can't read a private file; the page and the command each say where. */
 const RECONNECT = "Create a new token and connect GitHub again, then try again.";
 
 interface Preview {
@@ -394,8 +396,7 @@ export class AppsService {
         found = kitFromFile(kit.text, null);
       } else {
         found = "link" in kit ? await this.kitAt(kit.link, github, fetcher) : kitFromFile(kit.text, null);
-        const file = composeOf(found.kit);
-        source = await fetchPinnedFile(file.repo, file.path, file.commit, github, fetcher);
+        source = await this.composeAt(found.kit, github, fetcher);
       }
     } catch (error) {
       if (error instanceof NotAKitError) throw new AppError(400, "kit_required", error.message);
@@ -417,32 +418,60 @@ export class AppsService {
       return await kitFromLink(link, github, fetcher);
     } catch (error) {
       if (!(error instanceof SourceError && error.miss === "not_found")) throw error;
-      const reading = (await this.config.credentials?.reading()) ?? { state: "none" as const };
-      if (reading.state === "none") {
-        throw new AppError(404, "not_connected", `${error.message} If the repository is private, connect GitHub with a token that can read it, then try again.`);
-      }
-      if (reading.state === "unreadable") {
-        throw new AppError(
-          409,
-          "token_unreadable",
-          `${error.message} Your GitHub connection (@${reading.login}) can't read it: no data key here can read its token, as when the data key was replaced without the one before it. ${RECONNECT}`,
-        );
-      }
-      let file: SourceFile;
-      try {
-        file = await fetchSourceWith(reading.credential, link, github, fetcher);
-      } catch (failure) {
-        if (!(failure instanceof TokenRefusedError)) throw failure;
-        await reading.refused();
-        throw new AppError(
-          409,
-          "token_refused",
-          `GitHub no longer accepts your GitHub connection's token (@${reading.credential.login}): it expired, or it was deleted or revoked. ${RECONNECT}`,
-        );
-      }
-      await reading.worked();
-      return kitFromSource(file);
+      return kitFromSource(await this.throughConnection(error, "kit", (credential) => fetchSourceWith(credential, link, github, fetcher)));
     }
+  }
+
+  /**
+   * The Compose file a kit pins, at its exact commit, read the same way as the kit (journey 015): from
+   * public GitHub first, and through the GitHub connection only when GitHub shows no such repository
+   * without it. It may be in the kit's repository or another one, and a public Compose file never
+   * touches the connection, whether the kit was read through it or given on this machine.
+   */
+  private async composeAt(kit: Kit, github: GithubEndpoints, fetcher: typeof fetch): Promise<SourceFile> {
+    const file = composeOf(kit);
+    try {
+      return await fetchPinnedFile(file.repo, file.path, file.commit, github, fetcher);
+    } catch (error) {
+      if (!(error instanceof SourceError && error.miss === "not_found")) throw error;
+      return this.throughConnection(error, "compose", (credential) => fetchPinnedFileWith(credential, file.repo, file.path, file.commit, github, fetcher));
+    }
+  }
+
+  /**
+   * A file public GitHub doesn't show (`miss`), read again with the connection's token, or the
+   * problem that stops it: nothing connected, a token no data key here reads, or one GitHub no longer
+   * accepts, which is marked so the GitHub page shows Reconnect (decision 5). Each error's details
+   * say which file it was, the kit or its Compose file.
+   */
+  private async throughConnection(miss: SourceError, file: "kit" | "compose", read: (credential: SourceCredential) => Promise<SourceFile>): Promise<SourceFile> {
+    const reading = (await this.config.credentials?.reading()) ?? { state: "none" as const };
+    if (reading.state === "none") {
+      throw new AppError(404, "not_connected", `${miss.message} If the repository is private, connect GitHub with a token that can read it, then try again.`, { file });
+    }
+    if (reading.state === "unreadable") {
+      throw new AppError(
+        409,
+        "token_unreadable",
+        `${miss.message} Your GitHub connection (@${reading.login}) can't read it: no data key here can read its token, as when the data key was replaced without the one before it. ${RECONNECT}`,
+        { file },
+      );
+    }
+    let found: SourceFile;
+    try {
+      found = await read(reading.credential);
+    } catch (failure) {
+      if (!(failure instanceof TokenRefusedError)) throw failure;
+      await reading.refused();
+      throw new AppError(
+        409,
+        "token_refused",
+        `GitHub no longer accepts your GitHub connection's token (@${reading.credential.login}): it expired, or it was deleted or revoked. ${RECONNECT}`,
+        { file },
+      );
+    }
+    await reading.worked();
+    return found;
   }
 
   /** The review of a kit and the Compose file it names, both already read. HTTP callers never
@@ -530,6 +559,7 @@ export class AppsService {
   }
 
   private reviewOf(p: Preview) {
+    const kit = kitIdentity(p.kitSource);
     return {
       previewId: p.id,
       name: p.name,
@@ -537,7 +567,11 @@ export class AppsService {
       origin: this.address(p.name).origin,
       // How each file was read: a Private label in the review for one read through the connection (decision 7).
       source: { link: p.source.link, repo: p.source.repo, path: p.source.path, ref: p.source.ref, commit: p.source.commit, pinnedLink: p.source.pinnedLink, read: p.source.read ?? null },
-      kit: { ...kitIdentity(p.kitSource), read: p.kitRead },
+      kit: { ...kit, read: p.kitRead },
+      // A Compose file read through the connection from a repository other than the kit's, which a kit
+      // file given on this machine doesn't have, gets its own line in the review (decision 7).
+      readsRepository:
+        p.source.read?.read === "connection" && p.source.repo.toLowerCase() !== kit.repo?.toLowerCase() ? p.source.repo : null,
       ok: p.check.ok,
       services: p.check.services,
       images: p.check.images.map((i) => ({ ref: i.ref, digest: i.digest, runsHere: i.runsHere })),

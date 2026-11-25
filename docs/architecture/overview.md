@@ -91,13 +91,16 @@ The signed-in dashboard arranges installed app panes in a resizable grid. A name
   project. A Compose file's link alone is refused. When public GitHub answers that a kit's
   repository doesn't exist, as for a private one, the server reads the kit again through the GitHub
   connection: GitHub's commits API with the token resolves the link to a commit, and its contents
-  API returns the kit at that commit. A kit file given to the server command needs no connection.
+  API returns the kit at that commit. The Compose file the kit pins is read the same way: its raw
+  file anonymously, and when that answers 404, the commits API without the token tells a private
+  repository from a missing file or commit, and only a private one is read again with the token. A
+  kit file given to the server command needs the connection only for a private Compose file.
 - **Connecting GitHub (015):** the owner pastes a fine-grained token, Contents read on the
   repositories they choose, on the GitHub page or into the `github` server command → the server asks
   GitHub's API which account it belongs to (`GET /user`) → stores it encrypted under the data key,
   and moves it with everything else when the data key is replaced. The server asks again only when
-  the owner opens the page or checks its status, and uses the token otherwise only for a private
-  kit's review or install.
+  the owner opens the page or checks its status, and uses the token otherwise only to review or
+  install a private kit or Compose file.
 - **An app reaching the internet:** app → its egress proxy → approved host, or a denial the
   runtime manager reads and the server turns into an access request.
 - **An agent.** The CLI sends the agent’s key and requested action to the server through the edge.
@@ -124,7 +127,7 @@ aligned box borders. Rationale belongs in the decision record, not here.
 ```text
 Authorized agent on host → setup CLI → Docker workspace → private owner claim
 Kit link or directory → public GitHub at pinned commits → install preview
-Private kit link → GitHub connection (commits + contents API) → install preview
+Private kit or Compose file → GitHub connection (commits + contents API) → install preview
 Private kit file → server command (install-app --kit -) → install preview
 ```
 

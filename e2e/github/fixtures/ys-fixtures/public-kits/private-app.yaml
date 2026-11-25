@@ -1,0 +1,17 @@
+# A kit in a public repository whose Compose file is in a private one (journey 015): Your Space reads
+# the kit anonymously and the Compose file through the GitHub connection.
+kit: 1
+source:
+  repo: ys-fixtures/private-app
+  path: compose.yaml
+  commit: 4a8a1e6d08178e3ace62fbe5f2c9b1dea00e0e5a
+name: private-app
+title: Private App
+interface:
+  service: web
+  port: 80
+env:
+  API_TOKEN: { generate: { bytes: 24 } }
+  GREETING: { ask: optional, secret: false }
+limits:
+  web: { memory: 64M, cpus: 0.5 }

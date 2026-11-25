@@ -1,13 +1,14 @@
 // install-app <kit-link> | --kit <file | ->, then [--reuse-data] [--publish [--port <n>]
 // [--bind <address>] [--link <url>]] [--json] (FR-009, contracts/http-api.md). Every app
 // installs from its kit, which names its Compose file on GitHub (decision 2026-11-23; a Compose file
-// on this machine, --compose, left with the alpha scope). A kit in a private repository is read
-// through the GitHub connection, as in the web client (journey 015). Reviews the app, installs it as
-// the operator, and waits until it runs or the install fails.
+// on this machine, --compose, left with the alpha scope). A kit, or the Compose file it names, in a
+// private repository is read through the GitHub connection, as in the web client (journey 015), and
+// a kit file given with --kit needs the connection only for a private Compose file. Reviews the app,
+// installs it as the operator, and waits until it runs or the install fails.
 import { parseArgs } from "node:util";
 import { operatorActorId } from "../actors.ts";
 import { errorFields, log } from "../log.ts";
-import { SourceError } from "../apps/github.ts";
+import { SourceError, type FileRead } from "../apps/github.ts";
 import { KitFileError, readLocalKit } from "../apps/kits.ts";
 import { isLocalSource, sourcesProblem } from "../apps/local.ts";
 import { socketRuntime } from "../apps/runtime-client.ts";
@@ -20,11 +21,18 @@ const USAGE =
 const CONNECT = "docker compose exec server github connect";
 /** What to run for a review the GitHub connection answers (journey 015). */
 const CONNECTION_HINT: Record<string, string> = {
-  not_connected: `Connect GitHub with: ${CONNECT}. Or give the kit file: install-app --kit - < kit.yaml`,
+  not_connected: `Connect GitHub with: ${CONNECT}.`,
   token_refused: `Reconnect with: ${CONNECT}`,
   token_unreadable: `Reconnect with: ${CONNECT}`,
   repository_not_visible: `To connect another token: ${CONNECT}`,
 };
+/** A private kit also installs from a kit file on this machine; a private Compose file needs the connection. */
+const KIT_FILE_HINT = "Or give the kit file: install-app --kit - < kit.yaml";
+
+/** The review's note on a file read through the GitHub connection (decision 7). */
+function privately(read: FileRead | null): string {
+  return read?.read === "connection" ? ` (private, read with your GitHub connection @${read.login})` : "";
+}
 
 async function main(argv: string[]): Promise<number> {
   let values: {
@@ -97,10 +105,10 @@ async function main(argv: string[]): Promise<number> {
       return EXIT.notApplicable;
     }
     if (!out.json) {
-      const kitRead = review.kit.read?.read === "connection" ? ` (private, read with your GitHub connection @${review.kit.read.login})` : "";
       process.stderr.write(
         [
-          `${review.title} from ${isLocalSource(review.source) ? localFileLine(review.source) : `${review.source.repo} at ${review.source.commit.slice(0, 12)}`}${review.kit.repo ? `, with its kit ${review.kit.repo}/${review.kit.path} at ${review.kit.commit!.slice(0, 12)}${kitRead}` : ", with the kit file you gave"}`,
+          `${review.title} from ${isLocalSource(review.source) ? localFileLine(review.source) : `${review.source.repo} at ${review.source.commit.slice(0, 12)}${privately(review.source.read)}`}${review.kit.repo ? `, with its kit ${review.kit.repo}/${review.kit.path} at ${review.kit.commit!.slice(0, 12)}${privately(review.kit.read)}` : ", with the kit file you gave"}`,
+          ...(review.readsRepository ? [`This kit reads ${review.readsRepository} with your GitHub connection.`] : []),
           ...review.services.map((s) => `  ${s.name}: ${s.image}${s.interface ? " (interface)" : ""}`),
           ...review.adaptations.map((a) => `  ${a.service}: ${a.detail}`),
           review.warning,
@@ -148,9 +156,10 @@ async function main(argv: string[]): Promise<number> {
       return EXIT.notApplicable;
     }
     if (error instanceof AppError) {
-      // A private kit is read through the GitHub connection, which this command connects too. A kit
-      // file on this machine needs no connection.
-      const hint = CONNECTION_HINT[error.code];
+      // A private kit, or Compose file, is read through the GitHub connection, which this command
+      // connects too. A kit file on this machine needs no connection for itself.
+      const file = (error.details as { file?: string } | undefined)?.file;
+      const hint = [CONNECTION_HINT[error.code], error.code === "not_connected" && file === "kit" ? KIT_FILE_HINT : undefined].filter(Boolean).join(" ");
       const message = hint ? `${error.message} ${hint}` : error.message;
       out.failure({ ok: false, error: error.code, message }, message);
       return error.status >= 500 ? EXIT.storage : EXIT.notApplicable;

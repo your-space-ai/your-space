@@ -256,7 +256,8 @@ function ReviewPanel(props: {
         <a href={review.source.pinnedLink} target="_blank" rel="noreferrer">
           {review.source.repo}/{review.source.path}
         </a>{" "}
-        at commit <code>{review.source.commit.slice(0, 12)}</code>, with its kit
+        at commit <code>{review.source.commit.slice(0, 12)}</code>
+        <PrivateLabel read={review.source.read} file="compose" />, with its kit
         {review.kit.repo && review.kit.commit ? (
           <>
             {" "}
@@ -269,6 +270,11 @@ function ReviewPanel(props: {
         ) : null}
         . It will be at <code>{(props.publishing && publishBody(props.publish).link) || review.origin}</code>.
       </p>
+      {review.readsRepository ? (
+        <p data-field="reads-repository">
+          This kit reads <code>{review.readsRepository}</code> with your GitHub connection.
+        </p>
+      ) : null}
 
       {review.refusals.length > 0 ? (
         <div className="notice error" role="alert">

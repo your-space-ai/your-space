@@ -1,8 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { fixtureCommit } from "../github/commits.mjs";
 import { evidence } from "./helpers/evidence.ts";
 import { compose, composeWithInput, createOwner, logs, resetStack, serverCommand, sql } from "./helpers/stack.ts";
-import { setPassword, signIn } from "./helpers/ui.ts";
+import { installReviewed, reviewKit as review, setPassword, signIn } from "./helpers/ui.ts";
 
 // Journey 015, slice 2: installing a kit from a private repository through the GitHub connection. The
 // real owner UI, server command, database and runtime; only GitHub is replaced, by the stand-in
@@ -13,20 +13,6 @@ const LOGIN = "ys-fixture-owner";
 const PRIVATE_KIT = "https://github.com/ys-fixtures/private-kits/blob/main/whoami.yaml";
 const COMMAND_KIT = "https://github.com/ys-fixtures/private-kits/blob/main/command.yaml";
 const PUBLIC_KIT = "https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/whoami.yaml";
-const LINK_LABEL = "Link to the app's kit";
-
-async function review(page: Page, link: string): Promise<void> {
-  await page.goto("/apps");
-  await page.getByLabel(LINK_LABEL).fill(link);
-  await page.getByRole("button", { name: "Review", exact: true }).click();
-}
-
-async function installReviewed(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Install", exact: true }).click();
-  const job = page.locator("section.job");
-  await expect(job).toHaveAttribute("data-job-state", /succeeded|failed/, { timeout: 120_000 });
-  expect(await job.getAttribute("data-job-state"), (await job.textContent()) ?? "").toBe("succeeded");
-}
 
 test("the owner installs a kit from a private repository through the GitHub connection", async ({ page, browserName }, testInfo) => {
   test.setTimeout(480_000);
