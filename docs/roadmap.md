@@ -145,7 +145,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 - [ ] **Private GitHub sources (015)** · *alpha.2*
 
-  **Agreed (2026-11-25):** [Private GitHub sources](architecture/decisions.md#private-github-sources). The connection returns, read only, for installs, specified in the [journey 015 spec](https://github.com/your-space-ai/your-space/pull/125).
+  **Agreed (2026-11-25):** [Private GitHub sources](architecture/decisions.md#private-github-sources). The connection returns, read only, for installs, specified in the [journey 015 spec](https://github.com/your-space-ai/your-space/blob/main/specs/015-private-sources/spec.md).
 
   - [ ] Connect GitHub with a fine-grained token, Contents read on chosen repositories, from the dashboard's GitHub page or the `github` server command, and manage it from either.
   - [ ] Install from a kit in a private repository through that connection, in the web client and with the server command. Until then a private kit installs with the server command, `install-app --kit -`, only when the Compose file it pins is public.
