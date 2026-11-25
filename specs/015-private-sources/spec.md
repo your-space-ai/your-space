@@ -1,7 +1,7 @@
 # 015 · Install apps from my private GitHub repositories
 
-**Status**: Draft for the owner to iterate on. The direction is accepted; the decisions below are
-open and nothing here is built.
+**Status**: Accepted 2026-11-25, for alpha.2. The owner settled every decision below; nothing here
+is built yet.
 
 **Created**: 2026-11-25
 
@@ -16,13 +16,14 @@ private repos as well, as long as the signed in owner's github accuont has acces
 
 - **Who:** the owner of a workspace whose kits, or the Compose files those kits pin, are in GitHub
   repositories that aren't public.
-- **Done when:** the owner connects GitHub once, in the dashboard, and then installs from a kit's
-  link exactly as today, whether the kit, its Compose file or both are private. Public installs
+- **Done when:** the owner connects GitHub once, in the dashboard or with a server command, and
+  then installs from a kit's link exactly as today, whether the kit, its Compose file, its images on
+  GHCR, or all of them are private. Public installs
   work the same with or without the connection, and keep working when the connection is broken.
 - **Not covered:** anything that writes to GitHub, managed repositories, agents reading
   repositories, and the rest of journey 011's creator workflow, which stays
-  [deferred](../../docs/architecture/decisions.md#creator-workflow-deferred). Private container
-  images are [decision 4](#4-private-container-images).
+  [deferred](../../docs/architecture/decisions.md#creator-workflow-deferred). Registries other than
+  GHCR ([decision 4](#4-private-container-images)).
 
 ## Why
 
@@ -54,32 +55,40 @@ unreadable" ([Creator workflow deferred](../../docs/architecture/decisions.md#cr
 
 | Reason | Answer |
 | --- | --- |
-| Every operator registered an OAuth app | No option recommended in [decision 1](#1-how-the-owner-connects-github) needs one. A fine-grained token needs no app at all; a GitHub App would be registered once, by the project, with a client ID that ships with Your Space. |
+| Every operator registered an OAuth app | Nobody registers anything: the owner pastes a fine-grained token ([decision 1](#1-how-the-owner-connects-github)). |
 | Never ran against real GitHub | [Acceptance](#acceptance) requires a recorded run against real GitHub, on a disposable account, before the journey is checked off. CI's stand-in GitHub covers the rest. |
-| Rotating the data key left the token unreadable | The stored token moves to the new data key with everything else when the server starts after a rotation, and a test rotates the key with a connection in place ([decision 3](#3-storing-the-token-and-rotating-the-data-key)). A token no key can read shows **Reconnect** and never blocks a public install. |
+| Rotating the data key left the token unreadable | The stored token moves to the new data key with everything else when the server starts after a rotation, and a test rotates the key with a connection in place ([decision 3](#3-storing-the-tokens-and-rotating-the-data-key)). A token no key can read shows **Reconnect** and never blocks a public install. |
 
 The removed connection also asked for GitHub's `repo` scope for private access, which can read and
-write every repository the account reaches. Every option recommended here reads only.
+write every repository the account reaches. This one reads only: contents on the repositories the
+owner picks, and, if the owner adds it, packages.
 
 ## Owner journey
 
 1. **Connect.** The dashboard has a **GitHub** page beside Appearance and Engine (under Settings
-   once [013](../013-workspace-redesign/spec.md)'s Settings arrives). The owner follows its steps,
-   and the page then shows **Connected as @login**, what the connection can read, and
-   **Disconnect**.
-2. **Install a private kit.** The owner pastes a kit's link, as today. Your Space reads it from
+   once [013](../013-workspace-redesign/spec.md)'s Settings arrives). It opens GitHub's new-token
+   page pre-filled, the owner creates a fine-grained token with Contents read on the repositories
+   they choose, and pastes it. The page then shows **Connected as @login** and **Disconnect**.
+2. **Add an image token, if needed.** For private images on GHCR, the owner also pastes a classic
+   token with only `read:packages`. The page shows it as a separate line, **Images: @login**, which
+   the owner can add, replace or remove on its own.
+3. **Install a private kit.** The owner pastes a kit's link, as today. Your Space reads it from
    public GitHub first. If GitHub answers that it doesn't exist, Your Space tries again with the
    connection. The review marks the kit **Private**, read through the connection.
-3. **Install a kit whose app is private.** The kit's `source` names a Compose file in a private
+4. **Install a kit whose app is private.** The kit's `source` names a Compose file in a private
    repository, the kit's own or another. Your Space reads it the same way, at `source.commit`, and
-   the review marks it **Private** too.
-4. **Something is wrong.** The review says which of these it is, in plain words, and what to do:
+   the review marks it **Private** too. A private GHCR image is pulled with the image token and
+   marked **Private image**.
+5. **Something is wrong.** The review says which of these it is, in plain words, and what to do:
    not connected; connected, but GitHub doesn't show this repository to the connection; the file
-   isn't there at that commit; the connection no longer works; an image is private.
-5. **Disconnect.** The owner removes the connection. Installed apps keep running. Your Space links
-   to the place on GitHub where the owner deletes or revokes it there too.
+   isn't there at that commit; a token no longer works; an image is private and there is no image
+   token, or the image token can't read it.
+6. **Disconnect.** The owner removes the connection, both tokens. Installed apps keep running. The
+   page tells the owner to delete the tokens at GitHub too, and links there.
 
-The server command follows the same path ([decision 6](#6-the-web-client-and-the-server-command)).
+Every action on the GitHub page is also a server command
+([decision 6](#6-one-connection-managed-from-the-web-client-or-the-server-command)): the page is a
+wrapper over the same actions.
 
 ## Requirements
 
@@ -93,10 +102,13 @@ The server command follows the same path ([decision 6](#6-the-web-client-and-the
   The contents API returns a file's text with the `application/vnd.github.raw+json` media type
   ([repository contents](https://docs.github.com/en/rest/repos/contents)). The existing limits
   hold: 256 KiB, UTF-8, exact 40-character commits. One other request is allowed: asking GitHub
-  which account the credential belongs to (`GET /user` for a token), when the owner connects and
-  when the GitHub page shows the connection's state. It gives the login for **Connected as
-  @login**; a credential GitHub refuses is reported as not accepted, and the owner is asked to
-  connect again.
+  which account a token belongs to (`GET /user`), when the owner connects or adds the image token
+  and when the GitHub page or `github status` shows the state. It gives the login for **Connected
+  as @login**; a token GitHub refuses is reported as not accepted, and the owner is asked to connect
+  again. For the image token, the same response's `X-OAuth-Scopes` header
+  ([scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps))
+  must list `read:packages` and nothing more, or the token is refused before it is stored. The
+  image token is used for nothing but signing the engine in to `ghcr.io` (R9).
 - **R3. Same rules.** A private kit and a private Compose file go through the same checks as public
   ones. Nothing about the kit format changes ([kit format](../002-install-an-app/contracts/kit-format.md)).
 - **R4. Provenance.** The installed app records, for its kit and for its Compose file separately,
@@ -105,171 +117,231 @@ The server command follows the same path ([decision 6](#6-the-web-client-and-the
   file records the kit as read anonymously and only the Compose file as read through the connection.
   Reinstalling after a disconnect reads the files again and needs a connection again for those read
   through it.
-- **R5. The token stays on the server.** It is encrypted under the data key, never returned by any
-  API, never logged, and never given to an app or an agent. The API reports only whether a
-  connection exists, its login, when it last worked and whether GitHub still accepts it.
-- **R6. One connection per workspace.** The owner holds it. It authorizes Your Space to fetch
-  files; it doesn't grant an installed app anything (constitution principle IV: "Repository access
+- **R5. The tokens stay on the server.** Both are encrypted under the data key, never returned by
+  any API or command, never logged, and never given to an app or an agent. The API and `github
+  status` report only whether each token is set, its login, when it last worked and whether GitHub
+  still accepts it.
+- **R6. One connection per workspace.** The owner holds it: one contents token and an optional
+  image token. It authorizes Your Space to fetch files and pull images; it doesn't grant an
+  installed app anything (constitution principle IV: "Repository access
   does not grant an app access to workspace resources").
 - **R7. Only on request.** The connection is used only while the owner reviews or installs, and for
-  the account check in R2 when the owner connects or opens the GitHub page. Nothing
+  the account check in R2 when the owner connects or checks its state. Nothing
   polls GitHub in the background, consistent with the no-telemetry rule
   ([spec map](../README.md#rules-every-spec-follows)).
-- **R8. Docs.** The install guide gets a "Private kits" section with the connect steps, what the
-  connection can read, and how to remove it at GitHub. The architecture overview's install path
-  names the private read. Both land with the slice that ships them, not before.
+- **R8. Docs.** The install guide gets a "Private kits" section with the connect steps in the
+  dashboard and with the server command, what each token can read, the classic token's limits, and
+  how to delete the tokens at GitHub. The architecture overview's install path names the private
+  reads and the registry sign-in. Each lands with the slice that ships it, not before.
+- **R9. Private images.** When a kit's image is on `ghcr.io` and the registry won't show it without
+  credentials, Your Space retries with the image token, given to the engine as registry
+  credentials for that pull only (Docker's `X-Registry-Auth` on the pull,
+  [Docker Engine API v1.47](https://docs.docker.com/reference/api/engine/version/v1.47/)). The
+  engine's API documents no credentials for the lookup Your Space uses to pin a digest without
+  pulling, so the plan checks whether it accepts them; if not, Your Space pulls the image with the
+  credentials and pins the digest the pulled image reports. Nothing is written to a Docker config
+  file. Other registries stay public-only, with a message that says so.
 
 ## Decisions
 
-Each decision lists its options and a recommendation. None is a default until the owner chooses.
+The owner settled these on 2026-11-25. The options weighed and their sources are kept below each,
+for when one is revisited.
 
 ### 1. How the owner connects GitHub
 
-| Option | What the owner does | Reads only? | Reaches | Costs |
-| --- | --- | --- | --- | --- |
-| **A. Fine-grained personal access token, pasted** | The GitHub page opens GitHub's new-token page pre-filled with a name and `contents=read` ([pre-filling](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#pre-filling-fine-grained-personal-access-token-details-using-url-parameters)). The owner picks the account and repositories, creates it, and pastes it back. | Yes: Contents read on the repositories chosen | One account or organization per token: "Each token is limited to access resources owned by a single user or organization" ([fine-grained tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens)). Not repositories where the owner is an outside collaborator ([limitations](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations)). | Copying a token. It expires when the owner says (1 to 366 days, or none unless an organization's policy forbids it). An organization can require approval or block these tokens. No registration by anyone, no sign-in flow to build. |
-| **B. A GitHub App the project publishes, with the device flow** | **Connect GitHub** shows a short code; the owner enters it at GitHub and approves. The owner installs the app on each account that owns repositories it should read, choosing repositories. | Yes: the app asks for Contents read only | Repositories "that both the user and app can access" ([user access tokens](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app)), across every account where it's installed. An organization owner, or a repository admin for repositories they administer, installs it there ([installing](https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party)). | The project registers a **public** GitHub App, since a private one "can only be installed on the account that owns the app" ([public or private](https://docs.github.com/en/apps/creating-github-apps/setting-up-a-github-app/making-a-github-app-public-or-private)). That is a public resource in the project's name and needs the owner's explicit approval first. The device flow needs no client secret: "The `client_secret` is not needed for the device flow" ([device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#error-codes-for-the-device-flow)). Its tokens expire after 8 hours and refresh without the secret: the secret is "Required unless the user access token was generated using the device flow" ([refreshing](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens)). A refresh token unused for 6 months means connecting again. GitHub warns against enabling the device flow without reason and notes that a public client ID can be reused by anyone ([best practices](https://docs.github.com/en/apps/creating-github-apps/about-creating-github-apps/best-practices-for-creating-a-github-app#client-secrets)); here the reason is that every self-hosted workspace has its own address, so no fixed callback URL can serve them all, and the device flow is the flow GitHub provides for that case. The removed connection's device-flow code is in history to reuse. |
-| **C. An OAuth app the project publishes, with the device flow** | As B, without installing anything. | **No.** No OAuth scope reads private code only: `repo` "Grants full access to public and private repositories including read and write access to code" ([scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#available-scopes)) | Everything the account can reach, outside-collaborator repositories included | Fails [decision 2](#2-what-the-connection-may-do). GitHub itself prefers GitHub Apps ([differences](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps)). |
-| **D. The operator's own OAuth app** | The operator registers an app and sets its client ID; then as C. | No, as C | As C | The first reason the connection was cut. |
+**Accepted: a fine-grained personal access token, pasted by the owner.** (Owner: "Fine-grained
+token".) The GitHub page opens GitHub's new-token page pre-filled with a name and `contents=read`
+([pre-filling](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#pre-filling-fine-grained-personal-access-token-details-using-url-parameters));
+the owner picks the account and repositories, creates it and pastes it back. Nobody registers an
+app, and there is no sign-in flow or refresh to build.
 
-**The tension.** The owner asked for private repositories "as long as the signed in owner's github
-account has access to both". Only C and D reach everything the account can, and they do it with
-write access to all of it. A and B read only what the owner or an installer chose. Neither reaches a
-repository where the owner is only an outside collaborator, unless its owner installs the app (B).
+Its limits, stated in the guide: "Each token is limited to access resources owned by a single user
+or organization"
+([fine-grained tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens)),
+so the first slice reaches one account or organization; it can't reach repositories where the owner
+is only an outside collaborator
+([limitations](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations));
+it expires when the owner chooses, 1 to 366 days or none unless an organization's policy forbids
+it; and an organization can require approval for it or block it. The owner's request reached
+"both" repositories the account can access; read-only access to everything the account reaches
+isn't offered by any GitHub token type, so a second account is a second token, later, if needed.
 
-**Recommendation: A, the fine-grained token.** It reads only, needs nothing registered by anyone,
-no sign-in flow, no refresh and no public resource in the project's name, and it covers the case in
-front of us: kits, and the Compose files they pin, under one account or organization. The cost is
-one paste, and one token per account that owns the repositories; the first slice holds one token.
-If pasting, or kits spread across accounts, becomes a real problem, B is the upgrade: built against
-the same concept (a credential that reads a source), it is a second adapter, not a redesign
-(constitution principle VIII). Choose B now if a **Connect GitHub** button, rather than a paste, is
-what "connect their github account" should mean.
+Considered and not chosen:
+
+- **A GitHub App the project publishes, with the device flow.** It reads only, across every account
+  where it is installed: a user access token reaches what "both the user and app can access"
+  ([user access tokens](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app)).
+  It needs no client secret ("The `client_secret` is not needed for the device flow",
+  [device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#error-codes-for-the-device-flow)),
+  and its 8-hour tokens refresh without one
+  ([refreshing](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens)).
+  But the project would register a public app in its name, since a private one "can only be
+  installed on the account that owns the app"
+  ([public or private](https://docs.github.com/en/apps/creating-github-apps/setting-up-a-github-app/making-a-github-app-public-or-private)),
+  the owner installs it on each account
+  ([installing](https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party)),
+  and GitHub warns against the device flow without reason
+  ([best practices](https://docs.github.com/en/apps/creating-github-apps/about-creating-github-apps/best-practices-for-creating-a-github-app#client-secrets)).
+  It stays the upgrade path: a second adapter for the same concept, not a redesign.
+- **An OAuth app the project publishes.** No OAuth scope reads private code only: `repo` "Grants
+  full access to public and private repositories including read and write access to code"
+  ([scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#available-scopes)).
+- **The operator's own OAuth app.** The first reason the connection was cut.
 
 ### 2. What the connection may do
 
-| Option | |
-| --- | --- |
-| **A. Contents read on the repositories the owner chooses** | Enough to resolve a commit and read a file (R2). Nothing else. |
-| B. Contents read on all the account's repositories | Less to choose when connecting; more exposed if the token leaks. |
-| C. Anything broader | No feature here needs it. |
+**Accepted: Contents read only, on the repositories the owner chooses.** (Owner: "yes, contents read
+only".) That is enough to resolve a commit and read a file (R2). The GitHub page tells the owner to
+choose **Only select repositories**. The image token (decision 4) is the one exception, and it only
+reads packages.
 
-**Recommendation: A.** With the token (decision 1 A), the owner chooses **Only select
-repositories**; the page says to. With a GitHub App, the app requests Contents read only and the
-installer picks repositories. Your Space never asks for more.
+### 3. Storing the tokens and rotating the data key
 
-### 3. Storing the token and rotating the data key
+**Accepted: encrypted under the data key and moved on rotation, with a test.** (Owner: "yes, encrypt
+under the data key".) Both tokens are stored like an app's secret settings
+([spec 009](../009-encrypt-stored-data/spec.md)). The server's startup step that moves values onto a
+new data key, which today covers apps' settings, agent credentials and agent requests, covers them
+too; leaving the token out of that step is what broke the last connection. A test rotates the key
+with a connection in place and installs a private kit afterwards. A token no key can read shows
+**Reconnect**, never an error in a public review.
 
-| Option | |
-| --- | --- |
-| **A. One encrypted row under the data key, moved on rotation** | The token is stored like an app's secret settings ([spec 009](../009-encrypt-stored-data/spec.md)). The server's startup step that moves values onto a new data key, which today covers apps' settings, agent credentials and agent requests, covers it too. A test rotates the key with a connection in place and installs a private kit afterwards. A token no key can read is reported as **Reconnect**, never as an error in a public review. |
-| B. A file in the `ys-secrets` volume | Avoids the data key, but adds a secret outside the database, against the "known storage" rule, and a second path for rotation and backup. |
-| C. Not stored: the owner pastes a token for each install | Nothing to rotate, but no connection, and the owner retypes it every time. |
-
-**Recommendation: A.** It is the gap that broke the last connection: its column wasn't in the
-rotation step. With a GitHub App (decision 1 B), the refresh token is stored and moved the same way.
+Considered: a file in the `ys-secrets` volume, which adds a secret outside the database and a second
+rotation path; and not storing it, which means pasting a token for every install.
 
 ### 4. Private container images
 
-A private app often publishes its images privately, for example on GHCR. Reading a repository
-doesn't pull them. GHCR "only supports authentication using a personal access token (classic)",
-with `read:packages` ([Container registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)),
+**Accepted: in scope, with a second, optional token for GHCR.** (Owner: "ok, two tokens with
+optional classic for images".) This changes the recommendation to leave private images out.
+GitHub's container registry "only supports authentication using a personal access token (classic)"
+([Container registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)),
 and fine-grained tokens can't reach packages
-([limitations](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations)).
-Docker's engine API takes registry credentials on a pull in an `X-Registry-Auth` header, but its
-documentation shows no such header for the registry lookup Your Space uses to pin a digest without
-pulling ([Docker Engine API v1.47](https://docs.docker.com/reference/api/engine/version/v1.47/)).
+([limitations](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations)),
+so the connection holds two tokens:
 
-| Option | |
-| --- | --- |
-| **A. Out of scope: images must be public** | The review refuses an image the registry won't show without credentials, naming the image and saying images must be public for now. |
-| B. A classic token with `read:packages` for GHCR | A second, broader kind of token, for one registry, and the pin lookup needs checking first. |
-| C. Registry credentials per registry, like `docker login` | The general answer; a feature of its own. |
+- **The contents token**, fine-grained, Contents read, for kits and Compose files (decision 1).
+- **The image token**, optional: a classic token with only `read:packages`, "to download container
+  images and read their metadata", used only to sign the engine in to `ghcr.io` when it pulls a
+  private image (R9).
 
-**Recommendation: A**, with the clear refusal. The kits in use today pull public images. C goes on the
-roadmap as later direction for when a real private image needs it.
+The image token is a slot of its own, apart from the contents token, so if fine-grained tokens gain
+packages, it becomes a token swap. Its limits, stated on the GitHub page and in the guide:
+
+- A classic token's scopes aren't limited to chosen repositories, so `read:packages` reads every
+  package the account can see.
+- An organization can stop classic tokens from reaching its resources
+  ([token policy](https://docs.github.com/en/organizations/managing-programmatic-access-to-your-organization/setting-a-personal-access-token-policy-for-your-organization)).
+- An organization with SAML single sign-on must have the token authorized: "You must authorize your
+  personal access token (classic) after creation before the token can access an organization that
+  uses SAML single sign-on"
+  ([single sign-on](https://docs.github.com/en/enterprise-cloud@latest/authentication/authenticating-with-single-sign-on/authorizing-a-personal-access-token-for-use-with-single-sign-on)).
+
+GitHub's documentation gives no date for retiring classic tokens. Registries other than GHCR stay
+public-only for now, and the review says so; general per-registry credentials are later direction.
 
 ### 5. Revoking and disconnecting
 
-| Option | |
-| --- | --- |
-| **A. Disconnect forgets the token here; the owner revokes it at GitHub** | **Disconnect** deletes the stored token at once. The page links to where the owner deletes the token, or revokes a GitHub App's authorization, at GitHub. Installed apps keep running and keep their records. A token GitHub refuses (expired, deleted, revoked) is marked on its next use, and the GitHub page and the review show **Reconnect**. |
-| B. Disconnect also stops or removes apps installed from private sources | Breaks the rule that disconnecting a source must not "uninstall it, or delete its data" ([distribution direction](../../docs/architecture/decisions.md#accepted-future-app-distribution-direction)). |
-| C. Your Space revokes at GitHub | Not possible for B without the app's secret: GitHub's revoke endpoints need "the `client_secret` as the password" ([OAuth authorizations API](https://docs.github.com/en/rest/apps/oauth-applications)). A user revokes a GitHub App's authorization in their own settings ([reviewing and revoking](https://docs.github.com/en/apps/using-github-apps/reviewing-and-revoking-authorization-of-github-apps)). |
+**Accepted: Disconnect forgets the tokens here; the owner revokes them at GitHub.** (Owner agreed to
+each point.)
 
-**Recommendation: A.** Nothing checks the token in the background (R7); a broken one is found when
-the owner next needs it, and never affects what is already running.
+- **Disconnect** deletes both stored tokens at once, and the page, or the command's output, tells the
+  owner to delete them at GitHub too, with the link. Removing only the image token works the same.
+- Installed apps keep running and keep their records. Disconnecting a source must not "uninstall it,
+  or delete its data"
+  ([distribution direction](../../docs/architecture/decisions.md#accepted-future-app-distribution-direction)).
+- A token GitHub refuses (expired, deleted, revoked) is marked on its next use: the GitHub page and
+  `github status` show **Reconnect**, and a private install fails with a message that says which
+  token to replace. Nothing checks the tokens in the background (R7).
 
-### 6. The web client and the server command
+Your Space can't revoke a token at GitHub for the owner: a personal access token is deleted in the
+owner's own settings.
 
-`install-app` runs in the server's container with its database and data key, so it can use the
-stored connection.
+### 6. One connection, managed from the web client or the server command
 
-| Option | |
-| --- | --- |
-| **A. One connection, used by both** | The owner connects in the web client. `install-app <kit-link>` reads private files through it too, and `install-app --kit -` uses it for a private Compose file the kit names. Without a connection, `--kit -` keeps working for a kit whose Compose file is public. |
-| B. Web client only | The server command stays public-only apart from `--kit -`, and a private Compose file can't install from it. |
-| C. A as well as connecting from the command (`github connect --token -`) | For a server the owner never opens in a browser. The browser is the dashboard, so it can wait for a real need. |
+**Accepted: one connection, used by both, and managed from either.** (Owner: "shouldn't matter where
+i set it up, i should be able to manage from cli as well ui is like a cli wrapper on behalf of the
+user".)
 
-**Recommendation: A.**
+- `install-app <kit-link>` reads private files through the connection, as the web client does, and
+  `install-app --kit -` uses it for a private Compose file or image the kit names. Without a
+  connection, `--kit -` keeps working for a kit whose Compose file and images are public.
+- A `github` server command has the GitHub page's actions: `github connect` (the contents token),
+  `github status`, `github image-token` (add or replace it) and `github disconnect` (both, or
+  `--image-token` for that one alone). It runs like the other server commands
+  (`docker compose exec server github status`) and takes `--json`.
+- Tokens are read from a hidden prompt, or from standard input when it isn't a terminal
+  (`docker compose exec -T server github connect < token.txt`), never from the command line, where
+  they would reach shell history and process lists.
+- The GitHub page calls the same server actions, so the page and the command can't drift.
 
 ### 7. What the install review shows about a private source
 
-| Option | |
-| --- | --- |
-| **A. Label each private file and name the connection** | The kit and the Compose file each show **Private · read with your GitHub connection (@login)** beside the pinned link. When the Compose file is in a different private repository from the kit, the review says so: "This kit reads `<owner>/<repo>` with your GitHub connection." Confirming the install is the owner's consent to using what was read. Each problem in the journey gets its own message. |
-| B. The same review as for public sources | Hides that a kit, possibly written by someone else, reads a private repository through the owner's connection. |
-| C. A, and refuse a kit whose private Compose file is in a different repository from the kit | The rule the intermediate design in the 2026-11-23 cut used. It contradicts the owner's request for private apps with kits elsewhere. |
+**Accepted.** (Owner: "if i added my credentials, and i pasted in a private repo link, it should be
+fine.")
 
-**Recommendation: A.** A kit someone else wrote can name a private repository the owner can read.
-Saying so in the review, before the owner confirms, makes that read visible without forbidding the
-case the owner asked for. The review reads the file before the owner confirms, as it must to check
-it, but what it read goes only into the owner's own review on their own server: nothing is
-installed, started or sent anywhere until they confirm, so asking before the read would add a step
-without protecting anything. Asking first stays possible if the owner prefers it.
+- A **Private · read with your GitHub connection (@login)** label on each file read through the
+  connection, beside its pinned link.
+- A line when the kit pins a Compose file from a different private repository: "This kit reads
+  `<owner>/<repo>` with your GitHub connection."
+- A **Private image** label on each image pulled with the image token.
+- No install until the owner confirms, as for every install. There is no prompt before reading: the
+  owner gave the connection and pasted the link, and what the review reads stays in the owner's own
+  review on their own server until they confirm.
+- Each problem in the journey gets its own message.
+
+Considered: the same review as for public sources, which hides that a kit reads a private
+repository through the owner's connection; and refusing a private Compose file in another
+repository, the rule of the intermediate design in the 2026-11-23 cut, which contradicts the
+owner's request.
 
 ### 8. When it ships
 
-| Option | |
-| --- | --- |
-| **A. Alpha.2** | Private kits install from the dashboard in the next prerelease. |
-| B. Later direction, timing open | Waits behind the rest of alpha.2. |
-
-**Recommendation: A.** Kits are often private while they are drafts, and the kits used to try
-journeys such as [014](https://github.com/your-space-ai/your-space/pull/123) are private today, so
-they can't install on the alpha.
+**Accepted: alpha.2.** (Owner: "yes, everything we're doing is towards alpha 2".) Kits are often
+private while they are drafts, and private kits can't install from the dashboard on the alpha.
 
 ## Acceptance
 
 **In CI**, with the stand-in GitHub the browser journeys already use:
 
-- Connecting shows the login; Disconnect removes it; the API never returns the token.
+- Connecting shows the login; Disconnect removes both tokens; neither the API nor any command
+  returns a token.
+- The `github` server command connects, reports status, adds and replaces the image token and
+  disconnects, with the same results the GitHub page shows; a token given as an argument is
+  refused, and one given on standard input is accepted.
+- An image token whose scopes are more than `read:packages` is refused before it is stored.
 - A private kit, a public kit naming a private Compose file, and a private kit naming a private
   Compose file in another repository each install, and the review labels each private file.
 - With no connection, with a token GitHub refuses, and with a token no key can read, a public kit
   still installs, and a private one shows the matching message.
-- The repository-not-visible, file-missing and private-image cases each show their message.
+- The repository-not-visible and file-missing cases each show their message.
+- A private GHCR image pulls with the image token, is pinned to its digest and is labelled **Private
+  image**; without the image token, or with one that can't read it, the review says which, and a
+  private image on another registry is refused with its message.
 - Rotating the data key with a connection in place, then restarting, keeps the connection, and a
   private kit installs afterwards.
 - `install-app <private-kit-link>` installs through the connection, and `--kit -` with a private
   Compose file does too.
-- The token appears in no log, no API response, no app's environment and no agent's request.
+- Neither token appears in any log, API response, command output, Docker config file, app's
+  environment or agent's request.
 
 **Against real GitHub**, before the journey is checked off: a maintainer run on a fresh install,
 with a disposable GitHub account and a disposable organization, recorded in the PR with the commit
 it ran on:
 
-1. Connect with a token for the organization, Contents read, only select repositories.
+1. Connect with a fine-grained token for the organization, Contents read, only select
+   repositories, from the GitHub page. Check `github status` shows the same.
 2. Install from a private kit whose Compose file is public, then from a private kit whose Compose
    file is in a second private repository; open each app.
-3. Try a kit in a repository the token wasn't given; see the not-visible message.
-4. Rotate the data key, restart, and install again from a private kit.
-5. Delete the token at GitHub; see **Reconnect** on the next private review, and install a public
+3. Add a classic token with only `read:packages` with `github image-token`, and install a kit whose
+   image is a private package on GHCR; open the app.
+4. Try a kit in a repository the token wasn't given; see the not-visible message.
+5. Rotate the data key, restart, and install again from a private kit.
+6. Delete the contents token at GitHub; see **Reconnect** on the next private review, and install a public
    kit.
-6. Disconnect; the apps keep running.
+7. Disconnect with `github disconnect`; the GitHub page shows Connect, and the apps keep running.
 
-The stand-in can't show that GitHub's real answers, a private repository's 404 and the contents
-API's raw text among them, match what Your Space expects; only the live run does.
+The stand-in can't show that GitHub's real answers, a private repository's 404, the contents API's
+raw text and GHCR's answer to the engine's sign-in among them, match what Your Space expects; only
+the live run does.
 
 ## Delivery slices
 
@@ -277,16 +349,22 @@ Each slice ends with something the owner sees in the browser.
 
 | Slice | Delivers | The owner sees |
 | --- | --- | --- |
-| 1. Connect | The GitHub page, storing the token (decision 3), the rotation step and its test, Disconnect, and the docs' connect steps | **Connected as @login** on the GitHub page, and the page back to **Connect** after Disconnect |
+| 1. Connect | The GitHub page and the `github` server command for the contents token, storing it (decision 3), the rotation step and its test, Disconnect, and the docs' connect steps | **Connected as @login** on the GitHub page, also after connecting with the command, and the page back to **Connect** after Disconnect |
 | 2. Private kits | Public-first reads with the connection on a 404, the review's labels and messages, provenance, and the server command | A private kit's review labelled **Private**, and its app open in a pane |
-| 3. Private apps | The kit's Compose file read through the connection, the second-repository line, and the private-image refusal | A kit with a private Compose file reviewed and installed, and a private image refused with its message |
-| 4. Live run | The real-GitHub run above, any fixes it finds, and the overview and roadmap checked off | The recorded run's screenshots on the PR |
+| 3. Private apps | The kit's Compose file read through the connection and the second-repository line | A kit with a private Compose file reviewed and installed |
+| 4. Private images | The image token on the GitHub page and in `github image-token`, its scope check, signing the engine in to GHCR for a pull, pinning, and the review's labels and messages | **Images: @login** on the GitHub page, and a kit with a private GHCR image reviewed with **Private image** and installed |
+| 5. Live run | The real-GitHub run above, any fixes it finds, and the overview and roadmap checked off | The recorded run's screenshots on the PR |
 
 ## Concept and adapter
 
-The concept is a **source credential**: something that lets Your Space read a file at a commit in a
-source it can't read anonymously. Its first adapter is a GitHub token. Only the GitHub source code
-knows how the token is sent (constitution principle VIII), so a GitHub App's token, or another
-host's, is another adapter.
+Two concepts, each with its first adapter (constitution principle VIII):
+
+- A **source credential** lets Your Space read a file at a commit in a source it can't read
+  anonymously. Its first adapter is a fine-grained GitHub token; only the GitHub source code knows
+  how it is sent, so a GitHub App's token, or another host's, is another adapter.
+- A **registry credential** lets the engine pull an image a registry won't give anonymously. Its
+  first adapter is the classic GitHub token for `ghcr.io`; only the runtime manager, which already
+  talks to the engine, passes it on. A fine-grained token with packages, or another registry's
+  credentials, is another adapter.
 
 [Install apps](../../docs/apps/install-apps.md) · [Kit format](../002-install-an-app/contracts/kit-format.md) · [Journey 011](../011-agent-workspace/spec.md)

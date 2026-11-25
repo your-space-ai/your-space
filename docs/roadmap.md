@@ -143,12 +143,14 @@ Each branch puts the work on `main` beside the checks and plans for that part of
   - [ ] Install from a kit in a managed repository, and deploy an installed app from a reviewed repository commit, keeping its installation and volumes.
   - [ ] Rehearse with a disposable live GitHub account: a private repo, an authorized fork and edit, and the owner-confirmed deployment from that commit.
 
-- [ ] **Private GitHub sources (015)** · *Later direction*
+- [ ] **Private GitHub sources (015)** · *alpha.2*
 
-  **Agreed (2026-11-25):** [Private GitHub sources](architecture/decisions.md#private-github-sources). The connection returns, read only, for installs. How the owner connects, and when it ships, are open decisions in the [journey 015 spec](https://github.com/your-space-ai/your-space/pull/125).
+  **Agreed (2026-11-25):** [Private GitHub sources](architecture/decisions.md#private-github-sources). The connection returns, read only, for installs, specified in the [journey 015 spec](https://github.com/your-space-ai/your-space/pull/125).
 
-  - [ ] Connect GitHub in the dashboard, read only, and install from a kit in a private repository through that connection; whether the server command uses it too is an open decision. Until then a private kit installs with the server command, `install-app --kit -`, only when the Compose file it pins is public.
+  - [ ] Connect GitHub with a fine-grained token, Contents read on chosen repositories, from the dashboard's GitHub page or the `github` server command, and manage it from either.
+  - [ ] Install from a kit in a private repository through that connection, in the web client and with the server command. Until then a private kit installs with the server command, `install-app --kit -`, only when the Compose file it pins is public.
   - [ ] Install from a kit whose Compose file is in a private repository.
+  - [ ] Pull private images from GHCR with an optional classic token limited to `read:packages`.
   - [ ] Keep the connection through a data-key rotation, and keep public installs working when it is broken.
   - [ ] Run it against real GitHub with a disposable account.
 
