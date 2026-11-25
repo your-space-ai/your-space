@@ -127,8 +127,9 @@ replaced without the one before it.
 `docker compose exec server install-app <kit-link>`. Your Space reads it from public GitHub first,
 without the connection, and only when GitHub answers that there's no such repository does it read
 the kit again through the connection: it resolves the link's branch to a commit with GitHub's commits
-API and reads the kit at that commit with the contents API. A public kit never uses the connection,
-so it installs the same with no connection, or with one GitHub no longer accepts. The review labels
+API and reads the kit at that commit with the contents API. Reading a public kit never uses the
+connection, so a public kit whose Compose file is public too installs the same with no connection,
+or with one GitHub no longer accepts. The review labels
 the kit **Private · read with your GitHub connection (@login)**, and the installed app records, for
 its kit and its Compose file, whether each was read anonymously or through the connection, and with
 which account.
