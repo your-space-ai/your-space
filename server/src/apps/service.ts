@@ -370,6 +370,9 @@ export class AppsService {
   readonly config: AppsConfig;
   private readonly previews = new Map<string, Preview>();
   private readonly busy = new Set<string>();
+  /** Knowledge bases being deleted, and how many saves of their grants are under way, by ID (journey 014). */
+  private readonly knowledgeDeleting = new Set<string>();
+  private readonly knowledgeGranting = new Map<string, number>();
   /** Apps whose outdated Caddy this server process has renewed, or tried to: once each. */
   private readonly renewed = new Set<string>();
 
@@ -728,7 +731,14 @@ export class AppsService {
     const bases = await this.knowledgeBases(p.kit, p.title, knowledgeWith);
 
     this.previews.delete(previewId);
-    const appId = await this.db.transaction(async (tx) => {
+    // The app's rows and its install job are saved together, once the job holds the app: a request
+    // that fails leaves no app installing without a job.
+    const retained = p.retained
+      ? (await this.db.select({ id: app.id }).from(app).where(and(eq(app.name, p.name), eq(app.state, "removed"))))[0]
+      : undefined;
+    if (p.retained && !retained) throw new AppError(409, "conflict", "The app changed while you were reviewing it. Paste the kit's link again.");
+    const appId = retained?.id ?? randomUUID();
+    const write = async (tx: Tx) => {
       const values = {
         title: p.title,
         sourceUrl: p.source.link,
@@ -754,22 +764,24 @@ export class AppsService {
         updatedAt: new Date(),
         removedAt: null,
       };
-      let id: string;
-      if (p.retained) {
-        const updated = await tx.update(app).set(values).where(and(eq(app.name, p.name), eq(app.state, "removed"))).returning({ id: app.id });
+      const id = appId;
+      if (retained) {
+        const updated = await tx
+          .update(app)
+          .set(values)
+          .where(and(eq(app.id, id), eq(app.state, "removed")))
+          .returning({ id: app.id });
         if (!updated[0]) throw new AppError(409, "conflict", "The app changed while you were reviewing it. Paste the kit's link again.");
-        id = updated[0].id;
         await tx.delete(appSetting).where(eq(appSetting.appId, id));
         await tx.delete(appOutbound).where(eq(appOutbound.appId, id));
         await tx.delete(appKnowledgeBase).where(eq(appKnowledgeBase.appId, id));
       } else {
         const inserted = await tx
           .insert(app)
-          .values({ name: p.name, ...values })
+          .values({ id, name: p.name, ...values })
           .onConflictDoNothing()
           .returning({ id: app.id });
         if (!inserted[0]) throw new AppError(409, "already_installed", `An app called ${p.name} is already installed.`);
-        id = inserted[0].id;
       }
       if (settings.length) {
         await tx.insert(appSetting).values(
@@ -791,9 +803,8 @@ export class AppsService {
         await tx.insert(appKnowledgeBase).values(bases.map((base) => ({ appId: id, knowledgeBaseId: base.id, grantedBy: actorId })));
         for (const base of bases) await recordEvent(tx, "knowledge.granted", actorId, null, id, base);
       }
-      return id;
-    });
-    const { jobId, done } = await this.startJob(appId, "install");
+    };
+    const { jobId, done } = await this.granting(bases, () => this.startJob(appId, "install", { first: write }));
     log("info", "app.install_started", { app: p.name });
     return { name: p.name, jobId, done };
   }
@@ -900,6 +911,39 @@ export class AppsService {
     };
   }
 
+  /**
+   * Holds a knowledge base for its deletion, so no app is given it meanwhile (granting). Refused while
+   * a grant of it is being saved, or it is being deleted already. Returns what lets it go.
+   */
+  holdKnowledge(id: string): () => void {
+    if (this.knowledgeDeleting.has(id) || this.knowledgeGranting.has(id)) {
+      throw new AppError(409, "busy", "The knowledge base is being given to an app, or deleted, right now. Try again when that finishes.");
+    }
+    this.knowledgeDeleting.add(id);
+    return () => {
+      this.knowledgeDeleting.delete(id);
+    };
+  }
+
+  /**
+   * Saves grants of these knowledge bases with `save`, which ends once they are saved. Refused while
+   * one is being deleted (holdKnowledge), so a deletion never misses a grant saved while it runs.
+   */
+  private async granting<T>(bases: { id: string; name: string }[], save: () => Promise<T>): Promise<T> {
+    const deleting = bases.find((base) => this.knowledgeDeleting.has(base.id));
+    if (deleting) throw new AppError(409, "busy", `The knowledge base ${deleting.name} is being deleted.`);
+    for (const { id } of bases) this.knowledgeGranting.set(id, (this.knowledgeGranting.get(id) ?? 0) + 1);
+    try {
+      return await save();
+    } finally {
+      for (const { id } of bases) {
+        const left = (this.knowledgeGranting.get(id) ?? 1) - 1;
+        if (left > 0) this.knowledgeGranting.set(id, left);
+        else this.knowledgeGranting.delete(id);
+      }
+    }
+  }
+
   private async step(jobId: string, message: string): Promise<void> {
     const step: JobStep = { at: now(), message };
     await this.db
@@ -934,6 +978,11 @@ export class AppsService {
     };
     try {
       const jobId = await this.db.transaction(async (tx) => {
+        // An app removed since the request read it isn't started again: its removal stands.
+        if (kind === "apply") {
+          const [current] = await tx.select({ state: app.state }).from(app).where(eq(app.id, appId));
+          if (current?.state === "removed") throw new AppError(409, "removed", "The app has been removed. Install it again to use it.");
+        }
         await first?.(tx);
         const inserted = await tx.insert(installJob).values({ appId, kind }).returning({ id: installJob.id });
         return inserted[0]!.id;
@@ -1389,7 +1438,7 @@ export class AppsService {
     // Read and saved only once the app is the job's, with the job: a grant saved without the apply
     // that mounts it, or takes it away, would leave the app's containers and its grants disagreeing,
     // and grants read before then may be another change's, from before it was saved.
-    return this.queue(row.id, "apply", async (tx) => {
+    return this.granting(next, () => this.queue(row.id, "apply", async (tx) => {
       const current = await this.grants(row.id, tx);
       const added = next.filter((base) => !current.some((c) => c.id === base.id));
       const removed = current.filter((base) => !next.some((n) => n.id === base.id));
@@ -1399,7 +1448,7 @@ export class AppsService {
       if (added.length) await tx.insert(appKnowledgeBase).values(added.map((base) => ({ appId: row.id, knowledgeBaseId: base.id, grantedBy: actorId })));
       for (const base of added) await recordEvent(tx, "knowledge.granted", actorId, null, row.id, base);
       for (const base of removed) await recordEvent(tx, "knowledge.revoked", actorId, null, row.id, base);
-    });
+    }));
   }
 
   async approve(name: string, host: string, actorId: string): Promise<{ jobId: string }> {

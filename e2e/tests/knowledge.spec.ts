@@ -46,6 +46,20 @@ async function knowledgeVolume(name: string): Promise<string> {
   return (await docker(["volume", "ls", "-q", ...filters.flatMap((f) => ["--filter", f])], false)).stdout.trim();
 }
 
+/**
+ * Holds the page's requests of a method to a path until the function it returns lets them through.
+ * The route stays, passing every request on, so none it holds is left to an unroute.
+ */
+async function holdRequests(page: Page, path: string, method: string): Promise<() => void> {
+  let release = () => {};
+  const released = new Promise<void>((resolve) => (release = resolve));
+  await page.route(`**${path}`, async (route) => {
+    if (route.request().method() === method) await released;
+    await route.continue();
+  });
+  return release;
+}
+
 async function install(page: Page, app: string, pick: string[]): Promise<void> {
   await page.goto("/apps");
   await page.getByLabel(LINK_LABEL).fill(kit(app));
@@ -72,9 +86,16 @@ test("the owner creates knowledge bases, and the apps given them share their fil
   await create.getByLabel("Title").fill("Course notes");
   await create.getByRole("button", { name: "Create" }).click();
   await expect(page.locator('li[data-knowledge="course-notes"]')).toContainText("Not given to any app yet.");
+  // While one is being created, the form can't change, so nothing typed meanwhile is cleared when it is.
+  const creating = await holdRequests(page, "/api/knowledge", "POST");
   await create.getByLabel("Name").fill("recipes");
   await create.getByRole("button", { name: "Create" }).click();
+  await expect(create.getByLabel("Name")).toBeDisabled();
+  await expect(create.getByLabel("Title")).toBeDisabled();
+  creating();
   await expect(page.locator('li[data-knowledge="recipes"]')).toBeVisible();
+  await expect(create.getByLabel("Name")).toBeEnabled();
+  await expect(create.getByLabel("Name")).toHaveValue("");
 
   // Each is a volume of Your Space's, labelled as knowledge and never as an app's Compose project.
   const notes = await knowledgeVolume("course-notes");
@@ -128,23 +149,35 @@ test("the app's page changes its knowledge bases, which recreates its interface 
   await expect(knowledge).toContainText("Saving restarts the app's interface service");
   await evidence(page, testInfo, "014-1-app-knowledge");
   // While the save is under way, the picks can't change, so none made meanwhile is lost when it ends.
-  let send = () => {};
-  const sent = new Promise<void>((resolve) => (send = resolve));
-  await page.route("**/api/apps/notes-one/knowledge", async (route) => {
-    await sent;
-    await route.continue();
-  });
+  const saving = await holdRequests(page, "/api/apps/notes-one/knowledge", "PUT");
   await knowledge.getByRole("button", { name: "Save knowledge bases" }).click();
   await expect(knowledge.getByLabel("Course notes")).toBeDisabled();
   await expect(knowledge.getByLabel("Family recipes")).toBeDisabled();
-  send();
+  // Once it is saved, the picks stay as saved, and can't change, until the app's details show them.
+  const details = await holdRequests(page, "/api/apps/notes-one", "GET");
+  saving();
+  await expect(page.locator("section.job")).toBeVisible();
+  await expect(knowledge.getByLabel("Family recipes")).toBeChecked();
+  await expect(knowledge.getByLabel("Family recipes")).toBeDisabled();
+  details();
   await waitForJob(page);
-  await page.unroute("**/api/apps/notes-one/knowledge");
   await expect(knowledge.getByLabel("Family recipes")).toBeEnabled();
+  await expect(knowledge.getByLabel("Family recipes")).toBeChecked();
   expect(await containerId(ONE)).not.toBe(before);
   expect(await inApp(ONE, "cat /knowledge/recipes/soup.md")).toBe("Lentil soup");
   // Files written before the change are still there.
   expect(await inApp(ONE, "cat /knowledge/course-notes/week-1.md")).toBe("Week 1: cells");
+
+  // A pick of a knowledge base deleted since, as in another tab, is dropped once the list shows it gone.
+  const origin = new URL(page.url()).origin;
+  expect((await page.request.post("/api/knowledge", { data: { name: "scratch" }, headers: { origin } })).status()).toBe(201);
+  await page.reload();
+  await knowledge.getByLabel("scratch").check();
+  await expect(knowledge.getByRole("button", { name: "Save knowledge bases" })).toBeEnabled();
+  expect((await page.request.delete("/api/knowledge/scratch", { headers: { origin } })).status()).toBe(204);
+  await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange")));
+  await expect(knowledge.getByLabel("scratch")).toHaveCount(0);
+  await expect(knowledge.getByRole("button", { name: "Save knowledge bases" })).toBeDisabled();
 });
 
 test("removing an app and deleting its data keeps its knowledge bases' files", async ({ page }) => {
@@ -158,7 +191,7 @@ test("removing an app and deleting its data keeps its knowledge bases' files", a
   await page.getByRole("alertdialog").getByLabel("Type notes-one to confirm").fill("notes-one");
   await page.getByRole("alertdialog").getByRole("button", { name: "Delete data" }).click();
   await expect(page.getByRole("heading", { name: "Kept data" })).toHaveCount(0);
-  expect((await docker(["volume", "ls", "-q", "--filter", "name=ys-notes-one_data"])).stdout.trim()).toBe("");
+  expect((await docker(["volume", "ls", "-q", "--filter", "name=ys-notes-one_data"], false)).stdout.trim()).toBe("");
 
   expect(await knowledgeVolume("course-notes")).not.toBe("");
   expect(await knowledgeVolume("recipes")).not.toBe("");
@@ -198,5 +231,5 @@ test("deleting a knowledge base asks first, names the apps that use it, and take
   await expect(page.getByText("No knowledge base yet.")).toBeVisible({ timeout: 120_000 });
   expect(await knowledgeVolume("recipes")).toBe("");
   // With none left, Your Space mounts nothing, so the knowledge path may not be there at all.
-  expect(await inApp(TWO, "ls -1A /knowledge 2>/dev/null || true")).toBe("");
+  expect(await inApp(TWO, "[ ! -e /knowledge ] || ls -1A /knowledge")).toBe("");
 });

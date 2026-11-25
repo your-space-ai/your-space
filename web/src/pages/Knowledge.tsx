@@ -215,12 +215,21 @@ function Create() {
         <label>
           Name
           <small>Its folder in every app you give it, so it can't change later: lower-case letters, digits and dashes.</small>
-          <input value={name} required maxLength={40} autoComplete="off" placeholder="course-notes" onChange={(event) => setName(folderName(event.target.value))} />
+          <input
+            value={name}
+            required
+            maxLength={40}
+            autoComplete="off"
+            placeholder="course-notes"
+            // Not while one is being created, whose name and title are cleared when it is.
+            disabled={create.isPending}
+            onChange={(event) => setName(folderName(event.target.value))}
+          />
         </label>
         <label>
           Title
           <small>Optional, and you can change it later.</small>
-          <input value={title} maxLength={80} autoComplete="off" placeholder="Course notes" onChange={(event) => setTitle(event.target.value)} />
+          <input value={title} maxLength={80} autoComplete="off" placeholder="Course notes" disabled={create.isPending} onChange={(event) => setTitle(event.target.value)} />
         </label>
         {create.isError ? (
           <p className="notice error" role="alert">

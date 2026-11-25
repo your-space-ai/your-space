@@ -155,6 +155,8 @@ let containers: (ContainerSummary & { volumes?: string[] })[];
 let created: Json[];
 let calls: string[];
 let initExit: number;
+/** Exit codes for the next setups, in order, before initExit. */
+let initExits: number[];
 /** Whether the engine fails to delete a volume, as when it stopped answering. */
 let volumeDeleteFails: boolean;
 
@@ -171,6 +173,7 @@ beforeEach(() => {
   created = [];
   calls = [];
   initExit = 0;
+  initExits = [];
   volumeDeleteFails = false;
   vi.mocked(engineModule.engineJson).mockImplementation(async (method, path, body) => {
     calls.push(`${method} ${path.split("?")[0]}`);
@@ -185,7 +188,7 @@ beforeEach(() => {
       return { Id: "init-id" } as never;
     }
     if (method === "POST" && path === "/containers/init-id/start") return {} as never;
-    if (method === "POST" && path === "/containers/init-id/wait") return { StatusCode: initExit } as never;
+    if (method === "POST" && path === "/containers/init-id/wait") return { StatusCode: initExits.shift() ?? initExit } as never;
     if (method === "GET" && path.startsWith("/volumes?")) {
       const filters = JSON.parse(decodeURIComponent(path.split("filters=")[1]!)) as { label: string[] };
       return { Volumes: [...volumes].filter(([, labels]) => matches(labels, filters.label)).map(([Name, Labels]) => ({ Name, Labels })) } as never;
@@ -276,6 +279,17 @@ describe("a knowledge base's volume", () => {
     expect(await createKnowledge("notes")).toEqual({ created: false });
     expect(created).toEqual([knowledgeInit("sha256:runtime", NOTES), knowledgeInit("sha256:runtime", NOTES)]);
     expect(volumes.has(NOTES)).toBe(true);
+  });
+
+  it("is created once at a time per name, so a failed try never deletes the volume another made", async () => {
+    // Two creates at once: the first sets up the folder, the second's setup fails.
+    initExits = [0, 1];
+    const [first, second] = await Promise.allSettled([createKnowledge("notes"), createKnowledge("notes")]);
+    expect(first).toEqual({ status: "fulfilled", value: { created: true } });
+    expect(second.status).toBe("rejected");
+    // The second found the first's volume, so it kept it.
+    expect(volumes.get(NOTES)).toEqual(knowledgeLabels(INSTALLATION, "notes"));
+    expect(calls.filter((c) => c === "POST /volumes/create")).toHaveLength(1);
   });
 
   it("keeps a kept one, with its files, when its folder can't be set up again", async () => {

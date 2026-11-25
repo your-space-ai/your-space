@@ -103,10 +103,26 @@ export class KnowledgeBases {
    * without it, or removed when the owner asked to remove it, and only then does the runtime manager
    * delete its storage, which it refuses while any container still mounts it. When an app couldn't be
    * applied or removed, nothing is deleted: that app keeps its grant, so the owner can fix it and try
-   * again. The apps are held from the start to the end, so no other change of theirs runs meanwhile.
+   * again. The apps are held from the start to the end, so no other change of theirs runs meanwhile,
+   * and so is the knowledge base, so no app is given it meanwhile.
    */
   async delete(name: string, actorId: string): Promise<void> {
     const row = await this.rowByName(name);
+    const releaseBase = this.apps.holdKnowledge(row.id);
+    try {
+      await this.deleteHeld(row, actorId);
+    } finally {
+      releaseBase();
+    }
+  }
+
+  /** The app's state now, read once a deletion holds it. */
+  private async current(appId: string) {
+    return (await this.db.select({ state: app.state, desired: app.desired }).from(app).where(eq(app.id, appId)))[0];
+  }
+
+  private async deleteHeld(row: typeof knowledgeBase.$inferSelect, actorId: string): Promise<void> {
+    const { name } = row;
     const subject = { id: row.id, name: row.name };
     const { apps: mounting } = await this.apps.runtime.knowledgeUsers(name).catch(refused);
     const granted = (await this.db.select({ appId: appKnowledgeBase.appId }).from(appKnowledgeBase).where(eq(appKnowledgeBase.knowledgeBaseId, row.id))).map((g) => g.appId);
@@ -134,12 +150,13 @@ export class KnowledgeBases {
         : [];
       const failed: { appId: string; reason: string }[] = [];
       for (const target of targets) {
-        // Read now that the app is held. One removed since it was read has no containers to apply, and
-        // one the owner asked to remove, whose removal didn't finish, is removed, not started again.
-        const current = (await this.db.select({ state: app.state, desired: app.desired }).from(app).where(eq(app.id, target.id)))[0];
-        if (!current || current.state === "removed") continue;
-        const kind = current.desired === "removed" ? "remove" : "apply";
+        let kind: "apply" | "remove" = "apply";
         try {
+          // Read now that the app is held. One removed since it was read has no containers to apply,
+          // and one the owner asked to remove, whose removal didn't finish, is removed, not started again.
+          const current = await this.current(target.id);
+          if (!current || current.state === "removed") continue;
+          kind = current.desired === "removed" ? "remove" : "apply";
           const { jobId, done } = await this.apps.startJob(target.id, kind, { held: true });
           await done;
           const job = await this.apps.job(jobId);

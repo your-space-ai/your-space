@@ -6,6 +6,7 @@ import { useState, type FormEvent } from "react";
 import { api, appQuery, errorMessage, ownTabLink, STATE_LABEL, type AppDetail as Detail } from "../apps-api.ts";
 import { JobProgress } from "../components/JobProgress.tsx";
 import { KnowledgePicker } from "../components/KnowledgePicker.tsx";
+import { knowledgeQuery } from "../knowledge-api.ts";
 import { PUBLISH_NOTE, publishBody, PublishFields, type PublishForm } from "../components/PublishFields.tsx";
 
 const MIB = 1024 * 1024;
@@ -240,17 +241,21 @@ function Settings({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { j
 /** The knowledge bases the app is given (journey 014): saving recreates its interface service with their folders. */
 function Knowledge({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { jobId: string }) => void }) {
   const queryClient = useQueryClient();
-  const given = d.knowledge!.bases.map((base) => base.name);
+  const catalog = useQuery(knowledgeQuery);
+  // A pick of a knowledge base deleted since, as in another tab, is dropped once the list shows it gone.
+  const existing = (names: string[]) => (catalog.data ? names.filter((name) => catalog.data.knowledgeBases.some((base) => base.name === name)) : names);
+  const given = existing(d.knowledge!.bases.map((base) => base.name));
   const [selected, setSelected] = useState<string[] | null>(null);
-  const picked = selected ?? given;
+  const picked = selected ? existing(selected) : given;
   const changed = picked.join(",") !== given.join(",");
   const save = useMutation({
     mutationFn: () => api<{ jobId: string }>("PUT", `/api/apps/${d.name}/knowledge`, { bases: picked }),
-    onSuccess: (r) => {
-      setSelected(null);
+    // The picks stay as saved, and the picker disabled, until the app's details show them.
+    onSuccess: async (r) => {
       onStarted(r);
-      void queryClient.invalidateQueries({ queryKey: ["apps", d.name] });
       void queryClient.invalidateQueries({ queryKey: ["knowledge"] });
+      await queryClient.invalidateQueries({ queryKey: ["apps", d.name] });
+      setSelected(null);
     },
   });
   return (

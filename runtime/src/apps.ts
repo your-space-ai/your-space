@@ -649,6 +649,9 @@ async function initKnowledge(volume: string): Promise<void> {
   }
 }
 
+/** Each knowledge base being created now, by name. */
+const creating = new Map<string, Promise<{ created: boolean }>>();
+
 /**
  * Creates a knowledge base's volume, labelled as Your Space's and as knowledge, never as an app's or a
  * Compose project's, and sets up its folder. One that is this installation's already is kept, with its
@@ -659,7 +662,16 @@ async function initKnowledge(volume: string): Promise<void> {
  * the runtime manager stopped in between. Setting up only gives the folder its owner and mode, so a
  * folder set up already stays as it is, and its files are never touched.
  */
-export async function createKnowledge(name: string): Promise<{ created: boolean }> {
+export function createKnowledge(name: string): Promise<{ created: boolean }> {
+  // One at a time per name, so a try that fails deletes only a volume it made itself.
+  const run = (creating.get(name) ?? Promise.resolve()).catch(() => {}).then(() => createKnowledgeNow(name));
+  creating.set(name, run);
+  return run.finally(() => {
+    if (creating.get(name) === run) creating.delete(name);
+  });
+}
+
+async function createKnowledgeNow(name: string): Promise<{ created: boolean }> {
   const kept = Boolean(await knowledgeOf(name));
   const volume = knowledgeVolume(INSTALLATION, name);
   if (!kept) await engineJson("POST", "/volumes/create", { Name: volume, Driver: "local", Labels: knowledgeLabels(INSTALLATION, name) });
