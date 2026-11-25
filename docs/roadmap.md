@@ -23,7 +23,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 | Product area | Branches |
 | --- | --- |
 | [Dashboard and desktop](#dashboard-and-desktop) | [App panes and saved views](#app-panes-and-saved-views) · [Themes](#themes) · [Desktop clients](#desktop-clients) |
-| [Apps and kits](#apps-and-kits) | [Installation and isolation](#installation-and-isolation) · [Custom apps and sources](#custom-apps-and-sources) · [Integration contracts and SDKs](#integration-contracts-and-sdks) |
+| [Apps and kits](#apps-and-kits) | [Installation and isolation](#installation-and-isolation) · [Custom apps and sources](#custom-apps-and-sources) · [Knowledge bases](#knowledge-bases) · [Integration contracts and SDKs](#integration-contracts-and-sdks) |
 | [AI agents](#ai-agents) | [Roles and approvals](#roles-and-approvals) · [Agent connections and workflows](#agent-connections-and-workflows) |
 | [Workspace and hosting](#workspace-and-hosting) | [Local and server setup](#local-and-server-setup) · [Backups and updates](#backups-and-updates) · [Deployment options](#deployment-options) |
 | [Accounts and access](#accounts-and-access) | [Owner access](#owner-access) · [Members and recovery](#members-and-recovery) |
@@ -186,6 +186,23 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
   **Reworded (2026-11-14):** the first public release reads apps' own Compose files, with
   installation kits, instead of a Compose file with an `x-your-space` section.
+
+### Knowledge bases
+
+- [ ] **Let my apps share a knowledge base (014)** · *Later direction*
+
+  **Agreed (2026-11-25):** [Knowledge bases](architecture/decisions.md#knowledge-bases). Not scheduled for a release yet. [Knowledge base journey](https://github.com/your-space-ai/your-space/blob/main/specs/014-knowledge-bases/spec.md)
+
+  - [ ] Create local knowledge bases, and give them to installed apps whose kits declare `knowledge`, mounted read-write at `<path>/<name>`.
+  - [ ] Keep a knowledge base in two-way sync with a Google Drive folder through rclone, with the operator's own OAuth client, conflict copies and sync safety checks.
+  - [ ] Verify sync against real Google Drive with an operator-registered client.
+
+- [ ] **More from knowledge bases** · *Later direction*
+
+  - [ ] Write controls: read-only mounts or a writer folder in the kit, with owner controls.
+  - [ ] Many writers: a copy per writer merged with git, then an SDK or CRDTs for live editing of the same file.
+  - [ ] Other rclone remotes, each once it passes a both-sides-edit and conflict check, and uploading files from the browser.
+  - [ ] Search and other layers over a knowledge base's files, and knowledge bases for agents.
 
 ### Integration contracts and SDKs
 

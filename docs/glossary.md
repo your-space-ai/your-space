@@ -13,5 +13,6 @@ product reads as one place rather than a collection of technical parts.
 | Provider | An outside service the space or its apps draw on, such as an LLM service | Utilities |
 | Installation kit | An app's definition in the space, which makes it fit without changing it: the app's Compose file at an exact commit, which part is its interface, its whole environment and where each value comes from, which outbound hosts it needs, and how the app is shown. Every installed app has one. Maintained outside Your Space. | The parts and instructions in the box |
 | Agent | Software that acts for a person in the space (journey 005) | Help in the home |
+| Knowledge base | A named folder of files the space keeps and lends to the apps the owner chooses, optionally kept in sync with a folder elsewhere, such as Google Drive (journey 014) | The bookshelf |
 
 Keep this list short: add a term when a specification or the decision record first uses it.

@@ -20,6 +20,10 @@ Owner's browser ──────► Caddy ─────► web UI and server
                          │                  │
                          │                  └──► runtime manager ─► Docker
                          └──► app access gate ─► installed app on its network
+                                                      │
+                                       knowledge base volume (shared, read-write)
+                                                      │
+                                 knowledge sync (rclone bisync) ─► egress ─► remote folder (Drive)
 
 Owner's local CLI ────► Docker Compose and operator commands
 Agent CLI (005) ──────► edge ─► gateway ─► authorized action in the app
@@ -65,6 +69,7 @@ Agent CLI (005) ──────► edge ─► gateway ─► authorized acti
    [app deployment](decisions.md#accepted-future-app-deployment-direction) and
    [concepts and adapters](decisions.md#concepts-and-adapters).
 7. **Apps.** Each managed app runs as a Compose project with its own network and declared storage. Owner-approved outbound hosts and opt-in publishing are described in [running apps and reaching them](decisions.md#running-apps-and-reaching-them). The connector for externally hosted apps belongs to 007.
+   **Knowledge bases (014, planned).** Named volumes that belong to Your Space, not to an app. The runtime manager creates them and mounts the ones the owner grants into an app's interface service at `<path>/<name>`, read-write. A synced knowledge base also has a sync job: an rclone container the runtime runs for Your Space, unprivileged and without engine access, that reaches only its remote through its own outbound proxy and runs `rclone bisync` against the local volume. Apps read the volume, never the remote. See [Knowledge bases](decisions.md#knowledge-bases).
 8. **Host.** The owner supplies a Docker-compatible engine on their personal machine or server. Only the workspace host needs Docker. A Mac connecting to an existing server needs its URL and the owner's sign-in. A bundled engine or VM follows publication.
 
 The dashboard reads presentation tokens from its workspace server. The Mac launcher shows the default theme before connection. [Appearance](../appearance.md)

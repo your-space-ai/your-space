@@ -126,6 +126,40 @@ The return must answer the three reasons the connection was cut: no operator reg
 
 **Decision update (2026-11-24):** At the owner's decision, an agent's read passes the app's JSON response through unchanged, and kits no longer declare `outputFields`. The field listed the top-level scalar fields the gateway returned from a record or a list of records. Real REST APIs don't fit it: Twenty, for example, wraps a list as `{data: {companies: [...]}, pageInfo, totalCount}` and nests fields such as `name.firstName`, so the gateway returned empty rows or refused the response. The gateway keeps its safety checks: the response must be JSON of at most 256 KiB, and one that contains the app credential, raw or JSON-escaped, anywhere in it is refused with a generic outcome and nothing saved. A kit that declares `outputFields` is refused with a message saying the response is passed through; a kit stored before keeps it on record, and the gateway ignores it. What a granted route returns is now limited by the app credential's own scope, not by the kit. This supersedes the "allowed output" of each route in [journey 005](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/spec.md) and its [kit contract](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/contracts/kit-agent-access.md#supported-declarations).
 
+### Knowledge bases
+
+**Owner decisions, 2026-11-25.** Apps share files through knowledge bases: named volumes that belong
+to Your Space, not to any app, which the owner creates and gives to installed apps. An app's kit asks
+for knowledge with `knowledge: { path: /knowledge }` (the path is optional); the owner picks
+knowledge bases in the install review and on the app's page, and Your Space mounts each one in the
+app's interface service at `<path>/<name>`, one folder each, even when there is only one. This is a
+new isolation decision: until now each app's volumes were its own, and apps' Compose files still
+can't name external volumes or host folders. A knowledge base is the one shared volume an app may
+mount, and only Your Space adds the mount. Removing an app, and deleting its data, never deletes a
+knowledge base. [Journey 014](https://github.com/your-space-ai/your-space/blob/main/specs/014-knowledge-bases/spec.md)
+
+- **Local and synced.** A local knowledge base is only the volume. A synced one adds a two-way sync
+  with a remote folder: `rclone bisync`, run by Your Space in a container of its own, unprivileged,
+  with no FUSE, no volume plugin and no engine access, against the local volume. Apps never mount the
+  remote and Your Space never serves an app's files from the Google API: the owner: "YS server should
+  manage rclone on behalf of the user and serve from rclone, not serve directly from the google api".
+  A live mount was rejected because it needs FUSE and extra privileges in a container, and leaves
+  apps without their files when the remote is unreachable.
+- **Google Drive first, with the operator's own OAuth client.** rclone's shared client ID stops
+  working during 2026 ([rclone Drive docs](https://rclone.org/drive/)). The token is encrypted with
+  the data key and moved when the data key changes, which the GitHub connection didn't do
+  ([Creator workflow deferred](#creator-workflow-deferred)). Any other rclone remote is accepted
+  direction, each listed once it passes a both-sides-edit and conflict check.
+- **Every mount is read-write in v1.** No writer role, read-only mount or folder ownership: the owner
+  doesn't want a solution before there is a problem. Two apps writing the same file locally means the
+  last write wins; bisync's conflict copies cover only local against remote, and the remote's version
+  history is the fallback. Later, opt-in so that no v1 kit breaks: `readOnly` or `write: <folder>` in
+  the kit with owner controls; then a copy per writer merged with git; then an SDK or CRDTs for live
+  editing of the same file.
+- **No SDK or knowledge API in v1.** This supersedes the 2026-11-24 draft of journey 014: views over
+  Drive folders, read through a knowledge API and a TypeScript SDK with folder checks on every read.
+  Apps use files; search and other layers come later on top of them.
+
 ## Purpose and Scope
 
 This is the canonical project-wide record of accepted architecture and product direction, including decisions for future work.
@@ -665,6 +699,8 @@ of technical parts. The [glossary](../glossary.md) records the terms.
 **Decision update (2026-11-02):** No telemetry in the first release. Any future reporting must be opt-in; opt-out collection is an anti-pattern and is ruled out permanently.
 
 **Decision update (2026-11-03):** Certificate requests the built-in proxy makes for an owner-configured domain are part of HTTPS setup, not reporting. This qualifies the bullet above on automatic outbound requests: with a domain configured, these certificate requests are the only automatic outbound requests besides update checks. (2026-11-23: the Mac app's update check is the only one so far, and **Check for Updates Automatically** turns it off; the server and CLI have none.)
+
+**Decision update (2026-11-25):** A knowledge base the owner connects to a remote folder syncs with it on a schedule ([Knowledge bases](#knowledge-bases)). Those sync requests go only to the remote the owner chose, carry only the owner's files, and stop when the owner disconnects it; they are an action the owner started, not reporting.
 
 ### Documentation
 
