@@ -110,8 +110,10 @@ jobs:
           # GitHub's API fails now and then for a moment, as an HTTP 500 did when the first canary's
           # release was created. retry runs a command again while GitHub answers with a server error
           # or can't be reached: five attempts, 10 to 80 seconds apart. A refusal (HTTP 4xx) fails at
-          # once. Only the attempt that worked writes to stdout. Every command it runs is safe to run
-          # twice: each function below looks at what is there before it changes anything.
+          # once, except one because a name is already taken: a call that failed may still have made
+          # its release or file, and the next attempt looks first. Only the attempt that worked writes
+          # to stdout. Every command it runs is safe to run twice: each function below looks at what
+          # is there before it changes anything.
           retry() {
             local attempt
             for attempt in 1 2 3 4 5; do
@@ -121,24 +123,27 @@ jobs:
                 return 0
               fi
               cat "$RUNNER_TEMP/out" "$RUNNER_TEMP/err" >&2
-              if ((attempt == 5)) || grep -Eq 'HTTP 4[0-9]{2}' "$RUNNER_TEMP/err"; then return 1; fi
+              if ((attempt == 5)); then return 1; fi
+              if grep -Eq 'HTTP 4[0-9]{2}' "$RUNNER_TEMP/err" && ! grep -Eq 'already.exists' "$RUNNER_TEMP/out" "$RUNNER_TEMP/err"; then return 1; fi
               echo "::warning::Attempt $attempt of 5 failed ($(tail -n 1 "$RUNNER_TEMP/err")); trying again in $((10 << (attempt - 1))) seconds." >&2
               sleep $((10 << (attempt - 1)))
             done
           }
 
           # A build that started earlier but finished later, such as a re-run, never replaces a newer
-          # one: the newest the published prerelease names, by its title, which changes only once a
-          # build's files are all there, or by its npm package, whose name a failed replacement may
-          # have deleted. Only the published prerelease counts: a draft is what an attempt left.
+          # one: the newest the published prerelease names, by its title, which a build sets when it
+          # creates the prerelease and once its files are all there, or by its npm package, whose name
+          # a failed replacement may have deleted. Only the published prerelease counts: a draft is
+          # what an attempt left. Only the build number, the version's last part, is read, as digits:
+          # a title is free text, and bash would run anything else in it as arithmetic.
           retry gh api --paginate "$api/releases?per_page=100" \
             --jq '.[] | select(.tag_name == "canary" and (.draft | not)) | .name, .assets[].name' > "$RUNNER_TEMP/held"
-          newest=
+          newest=0
           while read -r held; do
-            if [[ -z $newest || ${held##*.} -gt ${newest##*.} ]]; then newest=$held; fi
-          done < <(sed -n -e 's/^Canary \(.*\) (not a release)$/\1/p' -e 's/^your-space-ai-cli-\(.*\)\.tgz$/\1/p' "$RUNNER_TEMP/held")
-          if [[ -n $newest && ${newest##*.} -gt ${VERSION##*.} ]]; then
-            echo "The canary prerelease already holds $newest, a later build than $VERSION: nothing is replaced." >> "$GITHUB_STEP_SUMMARY"
+            if ((held > newest)); then newest=$held; fi
+          done < <(sed -n -e 's/^Canary .*\.\([1-9][0-9]*\) (not a release)$/\1/p' -e 's/^your-space-ai-cli-.*\.\([1-9][0-9]*\)\.tgz$/\1/p' "$RUNNER_TEMP/held")
+          if ((newest > ${VERSION##*.})); then
+            echo "The canary prerelease already holds build $newest, a later one than $VERSION: nothing is replaced." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -163,21 +168,26 @@ jobs:
 
           # Updated in place, which notifies no one. SHA256SUMS goes before any upload and comes back
           # last, so a download in between finds no checksums and stops, rather than mixing two builds.
-          # Files no longer in the set, such as the last build's npm package, go too. Each attempt
-          # deletes what a fresh listing shows, and a file already gone (HTTP 404) counts as deleted.
+          # Files no longer in the set, such as the last build's npm package, go too, and so does any
+          # file an upload left half there (not "uploaded"): GitHub refuses the next upload of its
+          # name (HTTP 422) until it is deleted. Each attempt deletes what a fresh listing shows, and a
+          # file already gone (HTTP 404) counts as deleted; --clobber replaces this build's files that
+          # are there already.
           delete_old_files() {
-            local asset name
-            gh api --paginate "$api/releases/$id/assets?per_page=100" --jq '.[] | "\(.id) \(.name)"' > "$RUNNER_TEMP/listed" || return 1
-            while read -r asset name; do
-              if [[ $name == SHA256SUMS || " ${files[*]} " != *" $name "* ]]; then
+            local asset state name
+            gh api --paginate "$api/releases/$id/assets?per_page=100" --jq '.[] | "\(.id) \(.state) \(.name)"' > "$RUNNER_TEMP/listed" || return 1
+            while read -r asset state name; do
+              if [[ $state != uploaded || $name == SHA256SUMS || " ${files[*]} " != *" $name "* ]]; then
                 gh api --method DELETE "$api/releases/assets/$asset" 2> "$RUNNER_TEMP/deleted" ||
                   grep -q 'HTTP 404' "$RUNNER_TEMP/deleted" || { cat "$RUNNER_TEMP/deleted" >&2; return 1; }
               fi
             done < "$RUNNER_TEMP/listed"
           }
-          retry delete_old_files
-          retry gh release upload canary "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
-          retry gh release upload canary SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
+          upload() {
+            delete_old_files && gh release upload canary "$@" --repo "$GITHUB_REPOSITORY" --clobber
+          }
+          retry upload "${files[@]}"
+          retry upload SHA256SUMS
           retry gh api --method PATCH "$api/releases/$id" -F prerelease=true -f name="$title" -f body="$notes" --silent
 
           # What installs read: the published prerelease holds exactly this build's files, and its
