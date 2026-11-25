@@ -14,7 +14,9 @@ installation; each knowledge base then connects to a folder by its link.
 
 ## 1. Create the OAuth client
 
-In the [Google Cloud console](https://console.cloud.google.com/):
+In the [Google Cloud console](https://console.cloud.google.com/), as in rclone's own
+[guide to making a client ID](https://rclone.org/drive/#making-your-own-client-id), except for the
+client's type: Your Space's server finishes the sign-in itself, so it is a **Web application**.
 
 1. Create a project for Your Space, or pick one of yours.
 2. Under **APIs & Services**, **Library**, open **Google Drive API** and choose **Enable**.
@@ -24,8 +26,9 @@ In the [Google Cloud console](https://console.cloud.google.com/):
    - **Audience:** user type **External**, unless your Google account belongs to a Google Workspace
      organization and you choose **Internal**. Set the publishing status to **In production**.
      Leave it in **Testing** and Google's refresh tokens expire after seven days, so the sync stops
-     every week until you reconnect. You don't need to submit the app for verification to use it
-     yourself.
+     every week until you reconnect. If Google doesn't let you publish yet, it first asks for a home
+     page and a privacy policy address under **Branding**, and an authorized domain. You don't need
+     to submit the app for verification to use it yourself.
    - **Data access:** you can add the scope `https://www.googleapis.com/auth/drive`. Your Space asks
      for it when you sign in either way.
 4. Under **Clients**, create a client with application type **Web application**. Under
