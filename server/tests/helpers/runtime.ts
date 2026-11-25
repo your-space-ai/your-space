@@ -1,6 +1,6 @@
 // A runtime that records what it is asked and reports what a test sets, in place of the runtime
 // manager. The check follows the real adapter's shape for a fixture file.
-import { RuntimeError, type ApplyEvent, type AppSpec, type CheckAnswer, type Runtime, type ServiceState } from "../../src/apps/runtime-client.ts";
+import { RuntimeError, type ApplyEvent, type AppSpec, type CheckAnswer, type Runtime, type ServiceState, type SyncRequest, type SyncRunResult } from "../../src/apps/runtime-client.ts";
 
 export class FakeRuntime implements Runtime {
   calls: { method: string; spec?: AppSpec; project?: string; publish?: { port: number; bind: string } }[] = [];
@@ -133,6 +133,26 @@ export class FakeRuntime implements Runtime {
     const users = this.mounting(name);
     if (users.length > 0) throw new RuntimeError(`The knowledge base ${name} is still mounted by ${users.join(", ")}, so it can't be deleted yet.`, 409, "engine_error");
     this.knowledge.delete(name);
+  }
+
+  /** Each sync run asked for, by knowledge base, with the request it was given. */
+  syncs: { name: string; request: SyncRequest }[] = [];
+  /** What the next sync runs answer: the first is used up, the last stays. */
+  syncAnswers: Partial<SyncRunResult>[] = [];
+  /** Holds each sync run until released, so a test can catch one under way. */
+  holdSync = false;
+  releaseSync: () => void = () => {};
+  removedSyncs: string[] = [];
+
+  async syncKnowledge(name: string, request: SyncRequest): Promise<SyncRunResult> {
+    this.syncs.push({ name, request });
+    if (this.holdSync) await new Promise<void>((resolve) => (this.releaseSync = resolve));
+    const answer = (this.syncAnswers.length > 1 ? this.syncAnswers.shift() : this.syncAnswers[0]) ?? {};
+    return { result: "synced", deletions: [], ties: [], conflicts: [], backups: [], changed: false, listed: true, ...answer };
+  }
+
+  async removeSync(name: string): Promise<void> {
+    this.removedSyncs.push(name);
   }
 
   /** The spec the project's containers run, from its last apply that succeeded. */

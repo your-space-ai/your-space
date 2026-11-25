@@ -120,6 +120,35 @@ export interface ApplyEvent {
   code?: string;
 }
 
+/** A file a sync run deletes, or would: deleted on this side, so deleted on the other. */
+export interface SyncDeletion {
+  side: "local" | "remote";
+  path: string;
+}
+
+/** A sync run of a knowledge base with its Google Drive folder (journey 014). */
+export interface SyncRequest {
+  /** The remote's configuration, which reaches only rclone's container, for this run. */
+  remote: { type: "drive"; clientId: string; clientSecret: string; token: string; folderId: string };
+  /** A run; a resync, which copies both ways and deletes nothing; or the owner's confirmed deletions. */
+  mode: "sync" | "resync" | "force";
+  confirm?: SyncDeletion[];
+}
+
+export interface SyncRunResult {
+  result: "synced" | "stopped" | "unauthorized" | "failed" | "busy";
+  reason?: "max_delete" | "empty" | "marker" | "resync" | "changed";
+  side?: "local" | "remote";
+  message?: string;
+  deletions: SyncDeletion[];
+  ties: string[];
+  conflicts: string[];
+  backups: { run: string; path: string; size: number }[];
+  changed: boolean;
+  /** Whether the conflict copies and backups were listed after the run. */
+  listed?: boolean;
+}
+
 /** What the server needs from a runtime; tests give a fake. */
 export interface Runtime {
   engine(): Promise<EngineInfo>;
@@ -139,6 +168,10 @@ export interface Runtime {
   knowledgeUsers(name: string): Promise<{ apps: string[] }>;
   /** Deletes a knowledge base's storage and its files; refused while an app still mounts it. */
   deleteKnowledge(name: string): Promise<void>;
+  /** Runs a sync of a knowledge base with its Drive folder; another run of it answers busy. */
+  syncKnowledge(name: string, request: SyncRequest): Promise<SyncRunResult>;
+  /** Removes a knowledge base's sync state; it and the Drive folder keep their files. */
+  removeSync(name: string): Promise<void>;
 }
 
 function call(method: string, path: string, body?: unknown, onLine?: (line: string) => void, socketPath = RUNTIME_SOCKET, deadlineMs?: number): Promise<{ status: number; text: string }> {
@@ -239,5 +272,7 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
     createKnowledge: (name) => json("POST", "/knowledge", { name }, socketPath),
     knowledgeUsers: (name) => json("GET", `/knowledge/${encodeURIComponent(name)}`, undefined, socketPath),
     deleteKnowledge: async (name) => void (await json("DELETE", `/knowledge/${encodeURIComponent(name)}`, undefined, socketPath)),
+    syncKnowledge: (name, request) => json("POST", `/knowledge/${encodeURIComponent(name)}/sync`, request, socketPath),
+    removeSync: async (name) => void (await json("DELETE", `/knowledge/${encodeURIComponent(name)}/sync`, undefined, socketPath)),
   };
 }

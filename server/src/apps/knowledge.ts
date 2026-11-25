@@ -5,6 +5,7 @@ import { and, asc, eq, inArray, ne, or } from "drizzle-orm";
 import { recordEvent } from "../actors.ts";
 import { app, appKnowledgeBase, knowledgeBase } from "../db/schema.ts";
 import { log } from "../log.ts";
+import { KnowledgeSync } from "./knowledge-sync.ts";
 import { RuntimeError } from "./runtime-client.ts";
 import { AppError, type AppsService } from "./service.ts";
 
@@ -60,9 +61,18 @@ export class KnowledgeBases {
   async list() {
     const rows = await this.db.select().from(knowledgeBase).orderBy(asc(knowledgeBase.title), asc(knowledgeBase.name));
     const users = await this.users(rows.map((r) => r.id));
+    const syncs = await KnowledgeSync.for(this.apps).statuses();
     return {
-      knowledgeBases: rows.map((r) => ({ name: r.name, title: r.title, createdAt: r.createdAt, apps: users.get(r.id) ?? [] })),
+      knowledgeBases: rows.map((r) => ({ name: r.name, title: r.title, createdAt: r.createdAt, apps: users.get(r.id) ?? [], sync: syncs.get(r.id) ?? null })),
     };
+  }
+
+  /** One knowledge base, with its sync when it has one (journey 014). */
+  async detail(name: string) {
+    const row = await this.rowByName(name);
+    const users = await this.users([row.id]);
+    const syncs = await KnowledgeSync.for(this.apps).statuses();
+    return { name: row.name, title: row.title, createdAt: row.createdAt, apps: users.get(row.id) ?? [], sync: syncs.get(row.id) ?? null };
   }
 
   /** Creates a knowledge base: its storage first, then its record, so a retry after a failure works. */
@@ -143,6 +153,8 @@ export class KnowledgeBases {
   private async deleteHeld(row: typeof knowledgeBase.$inferSelect, actorId: string): Promise<void> {
     const { name } = row;
     const subject = { id: row.id, name: row.name };
+    // Its sync goes with it, and the Drive folder keeps its files; a run under way finishes first.
+    if (KnowledgeSync.for(this.apps).isRunning(row.id)) throw new AppError(409, "busy", "The knowledge base is syncing. Delete it when the sync finishes.");
     const { apps: mounting } = await this.apps.runtime.knowledgeUsers(name).catch(refused);
     const granted = (await this.db.select({ appId: appKnowledgeBase.appId }).from(appKnowledgeBase).where(eq(appKnowledgeBase.knowledgeBaseId, row.id))).map((g) => g.appId);
     const which = [...(granted.length ? [inArray(app.id, granted)] : []), ...(mounting.length ? [inArray(app.name, mounting)] : [])];

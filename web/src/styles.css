@@ -375,6 +375,19 @@ dialog.modal h2 {
   margin-top: 0;
 }
 
+.sync-attention {
+  color: var(--danger);
+}
+
+/* A notice with paragraphs and an action, above a sync's or the Google connection's actions (journey 014). */
+.notice.block {
+  margin: 0 0 1rem;
+}
+
+.notice.block > :last-child {
+  margin-bottom: 0;
+}
+
 .knowledge-picker {
   border: 0;
   margin: 0;

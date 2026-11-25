@@ -4,7 +4,7 @@
 // it is sent, as Docker does.
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { adapt, KNOWLEDGE_PREFIX, knowledgeLabels, knowledgeVolume, type AppSpec } from "../src/adapter.ts";
+import { adapt, KNOWLEDGE_PREFIX, knowledgeLabels, knowledgeStateVolume, knowledgeSyncLabels, knowledgeVolume, type AppSpec } from "../src/adapter.ts";
 import {
   anonymousVolumes,
   apply,
@@ -369,6 +369,28 @@ describe("a knowledge base's volume", () => {
     await expect(deleteKnowledge("notes")).resolves.toBeUndefined();
   });
 
+  it("takes its sync state with it, and leaves a state volume Your Space didn't make", async () => {
+    const state = knowledgeStateVolume(INSTALLATION, "notes");
+    expect(state.startsWith(KNOWLEDGE_PREFIX)).toBe(true);
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    volumes.set(state, knowledgeSyncLabels(INSTALLATION, "notes"));
+    await deleteKnowledge("notes");
+    expect(volumes.has(state)).toBe(false);
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    volumes.set(state, { "ai.your-space.installation": "someone-else" });
+    await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409 });
+    // Refused before anything was deleted.
+    expect(volumes.has(state)).toBe(true);
+    expect(volumes.has(NOTES)).toBe(true);
+  });
+
+  it("isn't deleted while it syncs", async () => {
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    containers.push({ Id: "sync-id", Names: [`/${INSTALLATION}.knowledge-sync.notes`], State: "running", Status: "Up", Labels: knowledgeSyncLabels(INSTALLATION, "notes"), volumes: [NOTES] });
+    await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("is syncing") });
+    expect(volumes.has(NOTES)).toBe(true);
+  });
+
   it("is never deleted with an app's data", async () => {
     const own = { "ai.your-space.installation": INSTALLATION, "com.docker.compose.project": "ys-notes", "com.docker.compose.volume": "data" };
     volumes.set("ys-notes_data", own);
@@ -377,8 +399,11 @@ describe("a knowledge base's volume", () => {
     const spoofed = knowledgeVolume(INSTALLATION, "spoofed");
     volumes.set(spoofed, { ...knowledgeLabels(INSTALLATION, "spoofed"), "com.docker.compose.project": "ys-notes" });
     volumes.set("ys-notes_odd", { ...own, "ai.your-space.role": "knowledge" });
+    // Nor its sync state, even with the app's project's labels.
+    const state = knowledgeStateVolume(INSTALLATION, "notes");
+    volumes.set(state, { ...knowledgeSyncLabels(INSTALLATION, "notes"), "com.docker.compose.project": "ys-notes" });
     await deleteVolumes("ys-notes");
-    expect([...volumes.keys()].sort()).toEqual([NOTES, spoofed, "ys-notes_odd"].sort());
+    expect([...volumes.keys()].sort()).toEqual([NOTES, spoofed, "ys-notes_odd", state].sort());
     expect(isKnowledge({ Name: NOTES, Labels: null })).toBe(true);
   });
 

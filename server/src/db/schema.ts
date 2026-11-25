@@ -74,7 +74,18 @@ export type EventType =
   | "knowledge.retitled"
   | "knowledge.deleted"
   | "knowledge.granted"
-  | "knowledge.revoked";
+  | "knowledge.revoked"
+  | "knowledge.connected"
+  | "knowledge.disconnected"
+  | "knowledge.resync_requested"
+  | "knowledge.deletions_applied"
+  | "knowledge.synced"
+  | "knowledge.sync_stopped"
+  | "knowledge.sync_failed"
+  | "google.client_saved"
+  | "google.connected"
+  | "google.refused"
+  | "google.removed";
 
 // Apps (journey 002, data-model.md).
 
@@ -248,6 +259,75 @@ export const appKnowledgeBase = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.appId, t.knowledgeBaseId] })],
+);
+
+/**
+ * The Google connection synced knowledge bases use (journey 014): the operator's own OAuth client and
+ * the token of the Google account the owner signed in with. One for the installation. The secret and
+ * the token are AES-256-GCM ciphertext under the data key, moved with apps' settings when it changes.
+ */
+export const googleConnection = pgTable(
+  "google_connection",
+  {
+    id: smallint("id").primaryKey().default(1),
+    clientId: text("client_id").notNull(),
+    clientSecret: text("client_secret").notNull(),
+    /** rclone's token JSON, encrypted; null until the owner signs in with Google. */
+    token: text("token"),
+    /** Why Google refused the token or the client, until the owner signs in again. */
+    problem: text("problem"),
+    connectedAt: timestamp("connected_at", { withTimezone: true }),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => actor.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("google_connection_single_row", sql`${t.id} = 1`)],
+);
+
+/** A file a sync run deletes, or would: deleted on one side, so deleted on the other. */
+export interface SyncDeletion {
+  side: "local" | "remote";
+  path: string;
+}
+
+export type SyncResult = "synced" | "stopped" | "unauthorized" | "failed";
+
+/**
+ * A knowledge base kept in two-way sync with a Google Drive folder, and how its last run went.
+ * Disconnecting deletes the row and the sync's state; both sides keep their files.
+ */
+export const knowledgeSync = pgTable(
+  "knowledge_sync",
+  {
+    knowledgeBaseId: uuid("knowledge_base_id")
+      .primaryKey()
+      .references(() => knowledgeBase.id, { onDelete: "cascade" }),
+    folderId: text("folder_id").notNull(),
+    connectedBy: uuid("connected_by")
+      .notNull()
+      .references(() => actor.id, { onDelete: "restrict" }),
+    connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+    /** The next run copies both ways and deletes nothing: the first run, until one succeeds. */
+    resync: boolean("resync").notNull().default(true),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    result: text("result", { enum: ["synced", "stopped", "unauthorized", "failed"] }),
+    /** Why a run stopped: max_delete, empty, marker, resync or changed. */
+    reason: text("reason"),
+    side: text("side", { enum: ["local", "remote"] }),
+    message: text("message"),
+    deletions: jsonb("deletions").$type<SyncDeletion[]>().notNull().default([]),
+    conflicts: jsonb("conflicts").$type<string[]>().notNull().default([]),
+    backups: jsonb("backups").$type<{ run: string; path: string; size: number }[]>().notNull().default([]),
+    /** Files whose local copy replaced Drive's in the last resync, both having the same time. */
+    ties: jsonb("ties").$type<string[]>().notNull().default([]),
+  },
+  (t) => [
+    check("knowledge_sync_result_valid", sql`${t.result} is null or ${t.result} in ('synced', 'stopped', 'unauthorized', 'failed')`),
+    check("knowledge_sync_side_valid", sql`${t.side} is null or ${t.side} in ('local', 'remote')`),
+  ],
 );
 
 export const appSetting = pgTable(

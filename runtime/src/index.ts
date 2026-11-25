@@ -27,6 +27,7 @@ import {
   validateSpec,
 } from "./apps.ts";
 import { engineInfo, EngineError } from "./engine.ts";
+import { removeSync, stopSyncProxy, syncKnowledge, validateSyncRequest } from "./sync.ts";
 
 import { SOCKET_PATH as SOCKET } from "./socket.ts";
 /** The server runs as node (1000), which must be able to use the socket. */
@@ -69,7 +70,7 @@ function failure(res: ServerResponse, error: unknown): void {
 }
 
 const PROJECT_PATH = /^\/apps\/(ys-[a-z][a-z0-9-]{0,29})(\/[a-z]+)?$/;
-const KNOWLEDGE_PATH = /^\/knowledge\/([a-z0-9-]{1,40})$/;
+const KNOWLEDGE_PATH = /^\/knowledge\/([a-z0-9-]{1,40})(\/sync)?$/;
 
 async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? "/", "http://runtime");
@@ -79,7 +80,11 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (method === "GET" && pathname === "/engine") return send(res, 200, { ...(await engineInfo()), stopping: isStopping() });
   if (method === "GET" && pathname === "/apps") return send(res, 200, await listApps());
   if (method === "POST" && pathname === "/check") return send(res, 200, await check(validateSpec(await readBody(req))));
-  if (method === "POST" && pathname === "/stop-all") return send(res, 200, { stopped: await stopAll() });
+  if (method === "POST" && pathname === "/stop-all") {
+    const stopped = await stopAll();
+    await stopSyncProxy();
+    return send(res, 200, { stopped });
+  }
   if (method === "POST" && pathname === "/knowledge") {
     const { name } = ((await readBody(req)) ?? {}) as { name?: unknown };
     const created = await createKnowledge(validateKnowledgeName(name));
@@ -87,8 +92,17 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     return send(res, 200, created);
   }
   const knowledge = KNOWLEDGE_PATH.exec(pathname);
-  if (knowledge && method === "GET") return send(res, 200, await knowledgeUsers(validateKnowledgeName(knowledge[1]!)));
-  if (knowledge && method === "DELETE") return (await deleteKnowledge(validateKnowledgeName(knowledge[1]!)), send(res, 200, { ok: true }));
+  if (knowledge && !knowledge[2] && method === "GET") return send(res, 200, await knowledgeUsers(validateKnowledgeName(knowledge[1]!)));
+  if (knowledge && !knowledge[2] && method === "DELETE") return (await deleteKnowledge(validateKnowledgeName(knowledge[1]!)), send(res, 200, { ok: true }));
+  if (knowledge?.[2] && method === "POST") {
+    const name = validateKnowledgeName(knowledge[1]!);
+    const request = validateSyncRequest(await readBody(req));
+    const result = await syncKnowledge(name, request);
+    // Never the remote's configuration: only what happened.
+    log(result.result === "synced" ? "info" : "warn", "knowledge.synced", { name, mode: request.mode, result: result.result, reason: result.reason, changed: result.changed });
+    return send(res, 200, result);
+  }
+  if (knowledge?.[2] && method === "DELETE") return (await removeSync(validateKnowledgeName(knowledge[1]!)), send(res, 200, { ok: true }));
   if (method === "POST" && pathname === "/apply") {
     const spec = validateSpec(await readBody(req));
     // Progress as one JSON object per line; the last line says whether it worked.

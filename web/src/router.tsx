@@ -25,6 +25,7 @@ import { Apps } from "./pages/Apps.tsx";
 import { Engine } from "./pages/Engine.tsx";
 import { GitHub } from "./pages/GitHub.tsx";
 import { Knowledge } from "./pages/Knowledge.tsx";
+import { KnowledgeBase } from "./pages/KnowledgeBase.tsx";
 import { failureKind } from "./errors.ts";
 import { Home } from "./pages/Home.tsx";
 import { NoOwnerYet } from "./pages/NoOwnerYet.tsx";
@@ -115,7 +116,21 @@ const appDetailRoute = createRoute({
 const knowledgeRoute = createRoute({
   getParentRoute: () => signedInRoute,
   path: "/knowledge",
-  component: Knowledge,
+  // Google sends the owner back here after signing in, saying how it went (journey 014).
+  validateSearch: (search: Record<string, unknown>): { google?: string } => (typeof search.google === "string" ? { google: search.google } : {}),
+  component: function KnowledgePage() {
+    const { google } = knowledgeRoute.useSearch();
+    return <Knowledge google={google} />;
+  },
+});
+
+const knowledgeBaseRoute = createRoute({
+  getParentRoute: () => signedInRoute,
+  path: "/knowledge/$name",
+  component: function KnowledgeBasePage() {
+    const { name } = knowledgeBaseRoute.useParams();
+    return <KnowledgeBase key={name} name={name} />;
+  },
 });
 
 const AppPane = lazyRouteComponent(() => import("./pages/AppPane.tsx"), "AppPane");
@@ -165,7 +180,7 @@ const resetPasswordRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  signedInRoute.addChildren([homeRoute, agentsRoute, appsRoute, appDetailRoute, knowledgeRoute, openRoute, engineRoute, appearanceRoute, githubRoute]),
+  signedInRoute.addChildren([homeRoute, agentsRoute, appsRoute, appDetailRoute, knowledgeRoute, knowledgeBaseRoute, openRoute, engineRoute, appearanceRoute, githubRoute]),
   signInRoute,
   resetPasswordRoute,
 ]);

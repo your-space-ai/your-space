@@ -80,7 +80,8 @@ first, then runs every step below. `your-space secrets show` says where each sec
   else changes.
 - **Data key:** `docker compose run --rm secrets --new data-key`, then `docker compose restart server`.
   The secrets step keeps the replaced key until the server, as it starts, has re-encrypted every
-  app's settings, and the GitHub connection's tokens, with the new one. Once `docker compose ps` shows the server healthy, remove the old
+  app's settings, the GitHub connection's tokens and the [Google connection](google-drive.md) of
+  synced knowledge bases with the new one. Once `docker compose ps` shows the server healthy, remove the old
   key: `docker compose run --rm secrets --forget previous-data-key`. Until it is removed, the data
   key can't be replaced again.
 - **Database password:** `docker compose run --rm secrets --new database-password`, then

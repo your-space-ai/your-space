@@ -58,6 +58,8 @@ export async function startServer(
         github: { api: "https://api.github.test", raw: "https://raw.github.test" },
         credentials: github,
         registries: github,
+        // Never Google's: a test that signs in answers these addresses in its fetch.
+        google: { auth: "https://accounts.google.test/o/oauth2/v2/auth", token: "https://oauth2.google.test/token" },
       })
     : undefined;
   server.on("request", createApp({ auth, db, dataKey: TEST_DATA_KEY, apps: apps ? { service: apps, handoffs } : undefined, github }));

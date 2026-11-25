@@ -234,7 +234,8 @@ Apps keep their data in their own volumes, named after the app, such as `ys-note
 `docker compose exec runtime stop-apps`. [Knowledge bases](../apps/knowledge-bases.md) are volumes
 of Your Space's, such as `ys-knowledge.your-space.course-notes`. `docker compose down -v` doesn't
 delete them either, and neither does removing an app or deleting its data; deleting the knowledge
-base in **Knowledge** does.
+base in **Knowledge** does. A [synced knowledge base](google-drive.md) also has a volume of its sync
+state, such as `ys-knowledge.your-space.course-notes.sync`, which goes with it.
 
 > [!WARNING]
 > `docker compose down -v` is not a restart. `-v` (`--volumes`) deletes all of Your Space's volumes,
@@ -355,8 +356,9 @@ Don't delete the `ys-postgres` volume to make the error go away: that deletes yo
 Your Space's database is PostgreSQL, which doesn't encrypt what it stores: anyone with a copy of the
 `ys-postgres` volume, a file backup, or the disk can read it.
 
-- **Installed apps' settings** (their keys, passwords and API keys, generated or yours) are
-  encrypted by Your Space with the data key, AES-256-GCM. The data key is kept apart from the
+- **Installed apps' settings** (their keys, passwords and API keys, generated or yours), and the
+  client secret and token of the [Google connection](google-drive.md), are encrypted by Your Space
+  with the data key, AES-256-GCM. The data key is kept apart from the
   database, in the `ys-secrets` volume or in `.env`, so a copy of the database alone doesn't reveal
   them.
 - **The GitHub connection's tokens**, the contents token and the image token, are encrypted with the

@@ -13,6 +13,7 @@ import { socketRuntime } from "./apps/runtime-client.ts";
 import { moveSettingsToDataKey } from "./apps/keys.ts";
 import { AppsService } from "./apps/service.ts";
 import { GithubConnection } from "./github-connection.ts";
+import { KnowledgeSync, SYNC_INTERVAL_MS } from "./apps/knowledge-sync.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 /** The gate's listener: only Caddy reaches it (deploy/Caddyfile). */
@@ -115,6 +116,23 @@ async function reconcile(): Promise<void> {
 }
 void reconcile();
 const reconcileTimer = setInterval(() => void reconcile(), RECONCILE_INTERVAL_MS);
+
+// Synced knowledge bases sync every five minutes while the server runs (journey 014). Each pass waits
+// for the one before; a run the owner started meanwhile is left to finish.
+const knowledgeSync = KnowledgeSync.for(apps);
+let syncing = false;
+async function syncKnowledge(): Promise<void> {
+  if (syncing) return;
+  syncing = true;
+  try {
+    await knowledgeSync.scheduled();
+  } catch (error) {
+    log("warn", "knowledge.schedule_failed", errorFields(error));
+  } finally {
+    syncing = false;
+  }
+}
+const syncTimer = setInterval(() => void syncKnowledge(), SYNC_INTERVAL_MS);
 const server: Server = app.listen(PORT, "0.0.0.0", () => {
   // Which setup the .env produced, so `docker compose logs server` shows it.
   log("info", "server.listening", { port: PORT, setup: config.mode, address: config.publicUrl });
@@ -123,6 +141,7 @@ const server: Server = app.listen(PORT, "0.0.0.0", () => {
 function shutdown(signal: string): void {
   log("info", "server.stopping", { signal });
   clearInterval(reconcileTimer);
+  clearInterval(syncTimer);
   gateServer.close();
   server.close(() => {
     void pool.end().finally(() => process.exit(0));
