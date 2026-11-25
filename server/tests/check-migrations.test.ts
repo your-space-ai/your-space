@@ -1,7 +1,7 @@
 // The pull request check that keeps migrations on main as merged and new ones stamped after them
 // (scripts/check-migrations.mjs; spec 016, decision 8 and FR-011), run on throwaway git repositories.
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -200,6 +200,14 @@ describe.skipIf(!HAS_GIT && !process.env.GITHUB_ACTIONS)("check-migrations", () 
     rmSync(join(repo, `${DIR}/meta/0002_snapshot.json`));
     commit("Add a migration without its snapshot");
     expect(run()).toMatchObject({ status: 1, err: expect.stringContaining(`0002_knowledge_bases has no new ${DIR}/meta/0002_snapshot.json.`) });
+  });
+
+  it("refuses a new migration file that is a symbolic link", () => {
+    migrate("knowledge_bases", MAIN_WHEN + 1);
+    rmSync(join(repo, `${DIR}/0002_knowledge_bases.sql`));
+    symlinkSync("../../README.md", join(repo, `${DIR}/0002_knowledge_bases.sql`));
+    commit("Add a migration whose SQL is a link");
+    expect(run()).toMatchObject({ status: 1, err: expect.stringContaining(`${DIR}/0002_knowledge_bases.sql isn't a regular file.`) });
   });
 
   it("refuses a new snapshot without a journal entry", () => {

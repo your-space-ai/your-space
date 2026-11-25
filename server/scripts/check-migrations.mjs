@@ -25,14 +25,15 @@ const pad = (idx) => String(idx).padStart(4, "0");
 const sqlPath = (entry) => `${DIR}/${entry.tag}.sql`;
 const snapshotPath = (entry) => `${DIR}/meta/${pad(entry.idx)}_snapshot.json`;
 
-/** The blob of each migration file in a commit, by path. */
+/** The mode and blob of each migration file in a commit ("100644 <blob>"), by path. */
 function files(commit) {
   const out = new Map();
   for (const line of git("ls-tree", "-r", "-z", "--full-tree", commit, "--", DIR).split("\0")) {
     if (!line) continue;
     const tab = line.indexOf("\t");
     const path = line.slice(tab + 1);
-    if (MIGRATION_FILE.test(path)) out.set(path, line.slice(0, tab).split(" ")[2]);
+    const [mode, , blob] = line.slice(0, tab).split(" ");
+    if (MIGRATION_FILE.test(path)) out.set(path, `${mode} ${blob}`);
   }
   return out;
 }
@@ -41,9 +42,9 @@ const same = (a, b) => a.size === b.size && [...a].every(([path, blob]) => b.get
 
 /** The journal's entries, or [] when there is no journal. */
 function entries(commit, blobs) {
-  const blob = blobs.get(JOURNAL);
-  if (!blob) return [];
-  const { entries } = JSON.parse(git("cat-file", "blob", blob));
+  const file = blobs.get(JOURNAL);
+  if (!file) return [];
+  const { entries } = JSON.parse(git("cat-file", "blob", file.split(" ")[1]));
   if (!Array.isArray(entries)) throw new Error(`${JOURNAL} in ${commit} has no entries list.`);
   return entries;
 }
@@ -117,6 +118,8 @@ function compare(main, head) {
   // Each new .sql file and snapshot belongs to one new journal entry, and each new entry has both.
   const fresh = [...headFiles.keys()].filter((path) => path !== JOURNAL && !mainFiles.has(path));
   for (const path of fresh) {
+    // Drizzle reads them through the filesystem, so a link would apply whatever it points at.
+    if (!headFiles.get(path).startsWith("100644 ")) problems.push(`${path} isn't a regular file.`);
     const count = added.filter((entry) => sqlPath(entry) === path || snapshotPath(entry) === path).length;
     if (count !== 1) problems.push(`${path} has ${count} new journal entries, not 1.`);
   }
@@ -148,9 +151,9 @@ if (result.problems.length) {
   console.error(`The migrations in ${head} don't follow main's (${main}):`);
   for (const problem of result.problems) console.error(`- ${problem}`);
   console.error(
-    "Never change a migration on main; add a new one. To stamp a migration after main's, rebase on main, " +
-      "take main's server/drizzle, and generate it again with npm run db:generate --workspace server -- --name <name>. " +
-      "See docs/maintainers/contributor-ci.md.",
+    "Never change a migration on main; add a new one. To stamp a migration after main's, rebase on main and " +
+      "generate it again with npm run db:generate --workspace server -- --name <name>, " +
+      "as docs/maintainers/contributor-ci.md describes.",
   );
   process.exit(1);
 }

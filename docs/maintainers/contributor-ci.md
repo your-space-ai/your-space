@@ -8,7 +8,7 @@ Before approving an external run, inspect the changed workflow and every script 
 
 ## Migration order
 
-Contribution checks requires **Migration order**, which keeps the server's migrations in `server/drizzle/` append-only ([spec 016, decision 8](https://github.com/your-space-ai/your-space/blob/main/specs/016-release-channels/spec.md#8-migrations-on-main)). It refuses a pull request that changes, deletes or renames a migration already on `main`: its journal entry in `meta/_journal.json`, its `.sql` file or its `meta/NNNN_snapshot.json`. It also refuses a new migration that isn't the next `idx`, whose tag doesn't start with that `idx`, or whose `when` stamp isn't later than every stamp before it or is more than a day ahead of the check's clock, and a new `.sql` file or snapshot without its own new journal entry, or an entry without both. `npm run db:generate` writes all three. Drizzle runs only migrations stamped later than the newest a database records, and never reads one again once applied, so a database that followed Canary would skip either mistake without an error.
+Contribution checks requires **Migration order**, which keeps the server's migrations in `server/drizzle/` append-only ([spec 016, decision 8](https://github.com/your-space-ai/your-space/blob/main/specs/016-release-channels/spec.md#8-migrations-on-main)). It refuses a pull request that changes, deletes or renames a migration already on `main`: its journal entry in `meta/_journal.json`, its `.sql` file or its `meta/NNNN_snapshot.json`. It also refuses a new migration that isn't the next `idx`, whose tag doesn't start with that `idx`, or whose `when` stamp isn't later than every stamp before it or is more than a day ahead of the check's clock, and a new `.sql` file or snapshot without its own new journal entry, an entry without both, or either one as a symbolic link rather than a regular file. `npm run db:generate` writes all three. Drizzle runs only migrations stamped later than the newest a database records, and never reads one again once applied, so a database that followed Canary would skip either mistake without an error.
 
 The check compares the pull request's head with `main` as it is when the check runs, which the checkout fetches, rather than the base the pull request event names, so a stacked pull request and a re-run are checked against what they would merge into. A pull request that changes none of the migration files in `server/drizzle/`, the journal, the `.sql` files and the snapshots, passes however far behind `main` it is. On `main`, each push is compared with the commit before it, as an alarm. Run it locally with `node server/scripts/check-migrations.mjs origin/main HEAD` after `git fetch origin main`.
 
@@ -19,17 +19,26 @@ At merge, two pull requests that each add a migration both append to `meta/_jour
 To fix a failure:
 
 - **A merged migration changed.** Put it back as it is on `main`, and make the change in a new migration instead: `git restore --source origin/main --staged --worktree -- server/drizzle/<file>`, then `npm run db:generate --workspace server -- --name <name>`.
-- **`main` took a migration after your branch left it, or yours is stamped too early.** Rebase on `main`. Where your migration conflicts, take `main`'s `server/drizzle/` and generate yours again, which stamps it after `main`'s. `db:generate` reads the schema, so resolve any conflict in `server/src/db/` first:
+- **`main` took a migration after your branch left it.** Rebase on `main`. Where one of your migrations conflicts, take `server/drizzle/` as the rebase has it so far, which keeps `main`'s migrations and those of yours already replayed, and generate that one again, which stamps it after them. `db:generate` reads the schema, so resolve any conflict in `server/src/db/` first:
 
   ```sh
   git fetch origin main
   git rebase origin/main
   # At each conflict in server/drizzle, once server/src/db/ has none:
-  git restore --source origin/main --staged --worktree -- server/drizzle
+  git show REBASE_HEAD:server/drizzle/<tag>.sql   # the migration being replayed, to copy from
+  git restore --source HEAD --staged --worktree -- server/drizzle
   npm run db:generate --workspace server -- --name <name>
   git add server/drizzle
   git rebase --continue
   ```
 
-  Anything you wrote into your `.sql` file by hand, such as an `UPDATE`, goes into the generated one again.
-- **Yours is stamped more than a day ahead.** Set the machine's clock right, then generate it again the same way.
+- **Yours is stamped too early, or more than a day ahead.** Set the machine's clock right. Then, on your branch rebased on `main`, take `main`'s `server/drizzle/` and generate your migration again:
+
+  ```sh
+  git restore --source origin/main --staged --worktree -- server/drizzle
+  npm run db:generate --workspace server -- --name <name>
+  git add server/drizzle
+  git commit
+  ```
+
+Generating again writes only what the schema implies. Copy anything you wrote into a `.sql` file by hand, such as an `UPDATE`, into the generated one.
