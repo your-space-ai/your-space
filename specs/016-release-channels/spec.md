@@ -192,15 +192,18 @@ identifiers:
   `v0.1.0-alpha.2`, `v0.1.0-beta.1`). The newest is the highest version whose release is
   published: Release draft needs the tag before it makes the draft, so a tag alone doesn't count.
   The tags come from GitHub's matching-refs API for `tags/v`, all in one response
-  ([matching references](https://docs.github.com/en/rest/git/refs#list-matching-references)),
-  and each release by its tag ([by tag](https://docs.github.com/en/rest/releases/releases#get-a-release-by-tag-name)),
-  which GitHub shows only once it is published.
+  ([matching references](https://docs.github.com/en/rest/git/refs#list-matching-references)).
+  From the highest version down, each is looked up as a release by its tag
+  ([by tag](https://docs.github.com/en/rest/releases/releases#get-a-release-by-tag-name)), which
+  GitHub shows only once it is published, until one is found. So a check makes two or three
+  requests, well within the 60 an hour GitHub allows without signing in
+  ([rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)).
 - **Canary** looks only at `canary-<date>.<run>` tags. The newest is the build the `canary`
   prerelease holds; for the Mac app, the newest with Mac files, which the shortcut's
   `canary-mac.yml` names and which can be up to a day behind (decision 3). Any kept build can be
   chosen instead: `your-space upgrade --channel canary --version canary-20261125.3` (the build's
   tag or its full version), and the Mac app lists the kept builds that have Mac files, newest
-  first.
+  first, reading the list of releases a page at a time as the owner asks for more.
 
 `--version` needs `--channel` and names a build of that channel: a canary under Alpha, or a `v`
 release under Canary, is refused with nothing changed.
@@ -342,7 +345,8 @@ release.
   decision 5 and reads it with electron-updater's generic provider, with the channel in the feed's
   options and downgrades off. The app is offered only its channel's builds, and says so when
   nothing is newer. A lookup that fails says the app couldn't check, and offers nothing.
-- **FR-003**: The Mac app lists the kept canary builds that have Mac files, newest first. A newer
+- **FR-003**: The Mac app lists the kept canary builds that have Mac files, newest first, a page of
+  releases at a time. A newer
   one installs as an update; an older one is a downgrade, which the app explains (FR-008) and
   doesn't install.
 - **FR-004**: Every canary build publishes its own prerelease, `canary-<date>.<run>`, then the
@@ -363,11 +367,13 @@ release.
 - **FR-007**: A required test proves that Alpha clients never select a canary. Its fixture is the
   recorded GitHub responses the rule reads, with the newest published `v` release followed by more
   than ten canary builds, whose versions contain `-alpha.` and sort after it: the matching-refs
-  response for `tags/v`, each release by its tag, including the "not found" for a higher `v` tag
-  whose release is still a draft, the rolling `canary` prerelease, the newest `v` release's
-  `latest-mac.yml`, the shortcut's `canary-mac.yml`, and the releases Atom feed. With the pinned electron-updater:
-  - `upgrade --channel alpha` and the Mac app on Alpha select the newest published `v` release, and
-    offer nothing to a client already on it or on a later canary.
+  response for `tags/v`, the releases looked up by tag, including the "not found" for a higher `v`
+  tag whose release is still a draft, the rolling `canary` prerelease, the newest `v` release's
+  `latest-mac.yml`, the shortcut's `canary-mac.yml`, and the releases Atom feed. With the pinned
+  electron-updater:
+  - `upgrade --channel alpha` and the Mac app on Alpha select the newest published `v` release,
+    looking up only the tags from the highest down to it, and offer nothing to a client already on
+    it or on a later canary.
   - Canary selects only `canary-` builds.
   - A `--version` naming the other channel's build is refused.
   - The alpha.1 app's GitHub provider, reading that Atom feed, never resolves to a canary's files.
