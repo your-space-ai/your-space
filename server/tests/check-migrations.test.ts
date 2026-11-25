@@ -210,6 +210,14 @@ describe.skipIf(!HAS_GIT && !process.env.GITHUB_ACTIONS)("check-migrations", () 
     expect(run()).toMatchObject({ status: 1, err: expect.stringContaining(`${DIR}/0002_knowledge_bases.sql isn't a regular file.`) });
   });
 
+  it("refuses a journal turned into a symbolic link", () => {
+    // A link whose target text is the journal's own JSON, so the journal still parses.
+    const blob = git("rev-parse", `HEAD:${JOURNAL}`);
+    git("update-index", "--cacheinfo", `120000,${blob},${JOURNAL}`);
+    git("commit", "-q", "-m", "Make the journal a link");
+    expect(run()).toMatchObject({ status: 1, err: expect.stringContaining(`${JOURNAL} isn't a regular file.`) });
+  });
+
   it("refuses a new snapshot without a journal entry", () => {
     write(`${DIR}/meta/0009_snapshot.json`, "{}\n");
     commit("Add a snapshot alone");

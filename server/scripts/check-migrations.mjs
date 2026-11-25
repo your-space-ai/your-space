@@ -115,11 +115,14 @@ function compare(main, head) {
     if (Number.isSafeInteger(entry.when) && entry.when > newest) newest = entry.when;
   }
 
+  // Drizzle reads them through the filesystem, so a link would apply whatever it points at.
+  for (const [path, file] of headFiles) {
+    if (file !== mainFiles.get(path) && !file.startsWith("100644 ")) problems.push(`${path} isn't a regular file.`);
+  }
+
   // Each new .sql file and snapshot belongs to one new journal entry, and each new entry has both.
   const fresh = [...headFiles.keys()].filter((path) => path !== JOURNAL && !mainFiles.has(path));
   for (const path of fresh) {
-    // Drizzle reads them through the filesystem, so a link would apply whatever it points at.
-    if (!headFiles.get(path).startsWith("100644 ")) problems.push(`${path} isn't a regular file.`);
     const count = added.filter((entry) => sqlPath(entry) === path || snapshotPath(entry) === path).length;
     if (count !== 1) problems.push(`${path} has ${count} new journal entries, not 1.`);
   }
