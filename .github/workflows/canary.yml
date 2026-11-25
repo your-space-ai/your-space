@@ -160,6 +160,16 @@ jobs:
             exit 0
           fi
 
+          # No canary release may carry latest-mac.yml, the file an Alpha Mac app reads (spec 016, the
+          # guard). This workflow never uploads one, and deletes only its own files, so if the canary
+          # prerelease, or a draft an attempt left, holds one, it stops before changing anything, for a
+          # maintainer to find where it came from.
+          retry gh api --paginate "$api/releases?per_page=100" --jq '.[] | select(.tag_name == "canary") | .assets[].name' > "$RUNNER_TEMP/listed"
+          if grep -qx latest-mac.yml "$RUNNER_TEMP/listed"; then
+            echo "::error::The canary prerelease holds latest-mac.yml, which no canary release may carry, so nothing is replaced. Delete it, then re-run."
+            exit 1
+          fi
+
           # The canary prerelease's id. It looks before it creates, so a retry after GitHub failed but
           # made the release anyway takes that one rather than making another. A draft an attempt left
           # is published as it is, and a missing release is created with no files; this build's files
@@ -178,14 +188,6 @@ jobs:
             esac
           }
           id=$(retry canary_release)
-          # No canary release may carry latest-mac.yml, the file an Alpha Mac app reads (spec 016, the
-          # guard). This workflow never uploads one, and deletes only its own files, so if one is there
-          # it stops before changing anything, for a maintainer to find where it came from.
-          retry gh api --paginate "$api/releases/$id/assets?per_page=100" --jq '.[].name' > "$RUNNER_TEMP/listed"
-          if grep -qx latest-mac.yml "$RUNNER_TEMP/listed"; then
-            echo "::error::The canary prerelease holds latest-mac.yml, which no canary release may carry, so nothing is replaced. Delete it, then re-run."
-            exit 1
-          fi
           # The title and notes name this build before any file changes, so if a step below fails, an
           # older build still finds this one recorded, even once --clobber has deleted its package.
           retry gh api --method PATCH "$api/releases/$id" -F prerelease=true -f name="$title" -f body="$notes" --silent
