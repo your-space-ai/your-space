@@ -141,7 +141,13 @@ environment without approval.
 
 **Decided:** every canary build gets its own prerelease, tagged `canary-<date>.<run>` from its
 version's last two parts: `0.1.0-alpha.1.canary.20261125.3` is `canary-20261125.3`. It keeps its
-files. The rolling `canary` prerelease stays, as the shortcut to the newest build. All are kept,
+files. A build's version is fixed for its run. Its date is the day the run was created, not the
+day a job started, and a re-run keeps the run number
+([contexts](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context)),
+so a re-run, even of every job on a later day, builds the same version and finishes the same
+prerelease. The release it follows is read again at the build's commit. If a re-run's version
+still differs from the one its run already published under, as when a release was tagged on that
+commit since, its publish job stops before it changes any release. The rolling `canary` prerelease stays, as the shortcut to the newest build. All are kept,
 with no cleanup, and each is marked prerelease, which GitHub never makes the latest release
 ([GitHub](https://docs.github.com/en/rest/releases/releases)). A build's version-tagged images are
 never deleted either, so every kept build stays installable. Kept builds fill Releases, and each new
@@ -354,6 +360,7 @@ release.
   doesn't install.
 - **FR-004**: Every canary build publishes its own prerelease, `canary-<date>.<run>`, then the
   rolling `canary` prerelease, then the images' `canary` tag, each step retried and safe to re-run.
+  Its version, the date included, is fixed for its run, so a re-run finishes the same prerelease.
   A build's prerelease is on its commit, never the latest release, unchanged after its check except
   for the Mac files, and kept, as are its images. Each canary workflow checks and deletes only its
   own files.
