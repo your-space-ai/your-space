@@ -2,7 +2,7 @@
 // GitHub's pre-filled page and pastes here, see which account it is and whether GitHub still accepts
 // it, and disconnect. It calls the same server actions as the `github` server command (decision 6),
 // and never shows the token again.
-import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
 import { api, errorMessage } from "../apps-api.ts";
 
@@ -31,6 +31,10 @@ const githubQuery = queryOptions({
   refetchOnReconnect: false,
   retry: false,
 });
+
+// Connect and Disconnect share this key: while one is on its way, the other waits, so the page ends
+// on the change the server made last (a refused token shows both).
+const CHANGE = ["github", "change"];
 
 function when(time: string): string {
   return new Date(time).toLocaleString();
@@ -91,7 +95,9 @@ export function GitHub() {
 
 function Connection({ contents, onDisconnected }: { contents: Extract<TokenStatus, { set: true }>; onDisconnected: (data: GithubStatus) => Promise<void> }) {
   const [confirming, setConfirming] = useState(false);
+  const changing = useIsMutating({ mutationKey: CHANGE }) > 0;
   const disconnect = useMutation({
+    mutationKey: CHANGE,
     mutationFn: () => api<GithubStatus>("DELETE", "/api/github"),
     onSuccess: (data) => {
       setConfirming(false);
@@ -126,7 +132,7 @@ function Connection({ contents, onDisconnected }: { contents: Extract<TokenStatu
             GitHub; you do that in your GitHub settings.
           </p>
           <div className="actions">
-            <button type="button" className="danger" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>
+            <button type="button" className="danger" onClick={() => disconnect.mutate()} disabled={changing}>
               Disconnect
             </button>
             <button type="button" className="secondary" onClick={() => setConfirming(false)}>
@@ -135,7 +141,7 @@ function Connection({ contents, onDisconnected }: { contents: Extract<TokenStatu
           </div>
         </div>
       ) : (
-        <button type="button" className="secondary danger-outline" onClick={() => setConfirming(true)}>
+        <button type="button" className="secondary danger-outline" onClick={() => setConfirming(true)} disabled={changing}>
           Disconnect
         </button>
       )}
@@ -153,7 +159,9 @@ function Connect({ reconnect, onConnected }: { reconnect: boolean; onConnected: 
   // The token waits here only until the request takes it. It isn't the mutation's variables, which
   // TanStack Query keeps in its cache after the request.
   const sending = useRef("");
+  const changing = useIsMutating({ mutationKey: CHANGE }) > 0;
   const connect = useMutation({
+    mutationKey: CHANGE,
     mutationFn: () => {
       const value = sending.current;
       sending.current = "";
@@ -204,7 +212,7 @@ function Connect({ reconnect, onConnected }: { reconnect: boolean; onConnected: 
           />
         </label>
         <div>
-          <button type="submit" disabled={connect.isPending}>
+          <button type="submit" disabled={changing}>
             {connect.isPending ? "Connecting…" : reconnect ? "Reconnect" : "Connect"}
           </button>
         </div>
