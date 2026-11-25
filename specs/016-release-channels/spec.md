@@ -313,7 +313,8 @@ and `--version`, a prerelease for every canary build, and daily Mac canaries. Th
 setting, so the setting reaches people with alpha.2. Before the first Mac canary the Account Holder
 creates the second certificate and its API key (decision 4). The owner then installs the first Mac
 canary by hand from the ZIP on its build's prerelease, and it follows Canary from then on
-(decision 2).
+(decision 2). A stored choice outlasts the app it was made in, so if the owner had chosen Alpha in
+an earlier app, they choose Canary once after installing.
 
 The alpha.1 app keeps the GitHub provider. It finds alpha.2 only while alpha.2 is among the newest
 10 entries of the releases feed, which later canary builds push it out of; an alpha.1 app that
@@ -342,8 +343,8 @@ release.
 - **FR-005**: Once a day and when started by hand, a workflow packages the newest Linux canary for
   Apple Silicon and Intel, signs it with the canary certificate, notarizes and staples both apps,
   checks their update ZIPs, and uploads them and `canary-mac.yml` to the build's prerelease; then
-  the rolling prerelease's `canary-mac.yml` lists them by full link. No canary prerelease carries
-  `latest-mac.yml`. It never delays the Linux canary.
+  the rolling prerelease's `canary-mac.yml` lists them by full link, unless it already names a
+  newer build. No canary prerelease carries `latest-mac.yml`. It never delays the Linux canary.
 - **FR-006**: `your-space upgrade --channel alpha|canary`, with an optional `--version <build>`,
   takes that build, downloads its CLI from its own release, checks it against that release's
   `SHA256SUMS`, and runs its `upgrade`. It changes nothing when the installation is already that
@@ -355,16 +356,17 @@ release.
   release is still a draft: `upgrade --channel alpha` and the Mac app on Alpha, with the pinned
   electron-updater, select that `v` release, and Canary selects only `canary-` builds. A failed
   lookup selects nothing and says so. It also checks that no canary prerelease has
-  `latest-mac.yml`. It runs on every pull request that changes
-  the selection, the updater or the canary workflows.
+  `latest-mac.yml`. It runs on every pull request that changes the selection, the updater or the
+  canary workflows.
 - **FR-008**: Leaving Canary waits for the first newer alpha. An older build is reached only by
   restoring the backup taken when the installation left it, and `upgrade` never moves an
   installation backward.
 - **FR-009**: The app's local workspace follows the app on every channel, as today; `upgrade
   --channel` is for CLI installations. A workspace newer than the app is neither started nor
-  upgraded: the app says so, and starts it once its own channel has a build at least that new. A failed workspace upgrade is handled as `upgrade` handles it (2026-11-23): when the
-  previous version is back, the app says so and tries again at its next start; when the rollback
-  stopped for the owner to finish by hand, the app says so and doesn't start the workspace.
+  upgraded: the app says so, and starts it once its own channel has a build at least that new. A
+  failed workspace upgrade is handled as `upgrade` handles it (2026-11-23): when the previous
+  version is back, the app says so and tries again at its next start; when the rollback stopped
+  for the owner to finish by hand, the app says so and doesn't start the workspace.
 - **FR-010**: A version upgrades any older installation with no code for each older version:
   migrations run in order, and release files are replaced whole. A version whose change can't work
   that way declares the oldest version it upgrades from, and its `upgrade` refuses an older
