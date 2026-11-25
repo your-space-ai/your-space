@@ -147,7 +147,9 @@ knowledge base. [Journey 014](https://github.com/your-space-ai/your-space/blob/m
   apps without their files when the remote is unreachable.
 - **Google Drive first, with the operator's own OAuth client.** rclone's shared client ID stops
   working during 2026 ([rclone Drive docs](https://rclone.org/drive/)). The token is encrypted with
-  the data key and moved when the data key changes, which the GitHub connection didn't do
+  the data key and moved when the data key changes, as
+  [journey 015](https://github.com/your-space-ai/your-space/blob/main/specs/015-private-sources/spec.md)
+  now does for the GitHub token; the earlier GitHub connection didn't
   ([Creator workflow deferred](#creator-workflow-deferred)). Any other rclone remote is accepted
   direction, each listed once it passes a both-sides-edit and conflict check.
 - **Every mount is read-write in v1.** No writer role, read-only mount or folder ownership: the owner

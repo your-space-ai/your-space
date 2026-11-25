@@ -186,5 +186,5 @@ These are recorded, not scheduled. Each is opt-in, so a v1 kit never breaks.
   domain, a private address), and what the guide says for the ones Google refuses.
 - Per-knowledge-base size limits, and how a first sync of a large folder shows progress.
 - The Obsidian kit's Compose file: a kit pins a public Compose file, and the image's maintainers
-  publish none. A GitHub connection that reads private repositories is being specified separately;
-  until it lands, the Obsidian demo waits.
+  publish none. [Journey 015](../015-private-sources/spec.md) lets a kit pin a Compose file in a
+  private repository; until it lands, the Obsidian demo waits.
