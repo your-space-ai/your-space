@@ -76,7 +76,7 @@ Compose or the engine gave in `detail` when there was any.
 | `owner_exists` | 2 | `owner create` with an owner |
 | `secret_in_env` | 2 | `secrets replace` for a secret set in `.env` |
 | `download_failed` | 3 | A release file could not be downloaded or read from the selected release folder |
-| `checksum_mismatch` | 2 | The archive failed checksum verification or its packaged image version differs from the CLI version |
+| `checksum_mismatch` | 2 | The archive failed checksum verification or its packaged image version differs from the CLI version, as when the canary prerelease holds a newer canary build than the CLI's |
 | `downgrade_refused` | 2 | `upgrade` in an installation newer than the CLI; `from` and `to` name both versions |
 | `version_unknown` | 2 | `upgrade` in an installation whose `stack.yaml` names no release version |
 | `backup_failed` | 2 | `upgrade` couldn't back up the database; nothing was replaced, and Your Space is started again as before, or, when that fails too, `running: false` and the message says so |
@@ -164,7 +164,7 @@ updates itself; `--json` answers the question as `--yes` does.
 | Command | Compose and server commands, in the installation's folder |
 | --- | --- |
 | `engine check` | Reads the local Docker endpoint, `docker version --format json` and `docker compose version --short` |
-| `init` | Downloads `your-space.tar.gz` and `SHA256SUMS` from the release of the CLI's version, checks the hash, `tar --no-same-owner -xzf`, copies `env.example` to `.env`, sets the setup's lines |
+| `init` | Downloads `your-space.tar.gz` and `SHA256SUMS` from the release of the CLI's version (for a canary build, such as `0.1.0-alpha.1.canary.20261125.42`, from the rolling `canary` prerelease), checks the hash and that `stack.yaml` runs the CLI's version, `tar --no-same-owner -xzf`, copies `env.example` to `.env`, sets the setup's lines |
 | `start` | `docker compose up -d --wait`; then `show-owner --json`, and `create-owner --json` when there is none and owner creation is enabled; `list-apps --json` |
 | `stop` | `docker compose exec -T runtime stop-apps`, then `docker compose stop` |
 | `status` | `docker compose ps --format json`, `show-owner --json`, `list-apps --json` |

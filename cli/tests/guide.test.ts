@@ -4,8 +4,8 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-// The operator documentation: installing, reaching it from other devices, running it, and recovery.
-const guide = ["install/index.md", "install/other-devices.md", "operate/index.md", "operate/recovery.md"]
+// The operator documentation: installing, reaching it from other devices, the canary build, running it, and recovery.
+const guide = ["install/index.md", "install/other-devices.md", "install/canary.md", "operate/index.md", "operate/recovery.md"]
   .map((page) => readFileSync(new URL(`../../docs/${page}`, import.meta.url), "utf8"))
   .join("\n");
 const cli = (args: string[]) => execFileSync(process.execPath, [new URL("../src/index.ts", import.meta.url).pathname, ...args], { encoding: "utf8" });

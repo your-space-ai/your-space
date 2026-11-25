@@ -35,6 +35,7 @@ jobs:
       statuses: read
     outputs:
       version: ${{ steps.validate.outputs.version }}
+      previous: ${{ steps.validate.outputs.previous }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,12 +48,18 @@ jobs:
         run: |
           # Prereleases are alphas or betas: the Mac app's updater (electron-updater) offers an alpha app later
           # alphas, betas and stable releases, and a beta app later betas and stable releases, but no other kind.
-          [[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta)(\.[0-9A-Za-z-]+)*)?$ ]] ||
+          # Each is numbered, such as alpha.2, so a canary build sorts before every later release
+          # (deploy/canary-version.sh).
+          [[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta)\.(0|[1-9][0-9]*))?$ ]] ||
             { echo "::error::Use a version tag such as v0.1.0, v0.1.0-alpha.2 or v0.1.0-beta.1."; exit 1; }
           test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "$GITHUB_SHA"
           releases=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name')
           if grep -Fxq "$TAG" <<< "$releases"; then echo "This tag already has a release."; exit 1; fi
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          # The release notes list the changes since the version tag before this one, never since the
+          # rolling canary prerelease (Canary).
+          previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$TAG^" 2> /dev/null || true)
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
       - name: Require every status and check on the tagged commit to have passed
         env:
           TAG: ${{ inputs.tag }}
@@ -62,9 +69,11 @@ jobs:
           # The latest status of each context (CircleCI, Argos) must be success.
           statuses=$(gh api --paginate "$repo/commits/$GITHUB_SHA/status?per_page=100" --jq '.statuses[] | [.context, .state] | @tsv')
           # Check runs, without those of any Release draft run on this commit, this one included, so a
-          # run that failed doesn't block its retry. As in required checks, skipped and neutral pass.
+          # run that failed doesn't block its retry, nor those of Canary, which publishes main's
+          # builds on its own and may still be running on this commit. As in required checks,
+          # skipped and neutral pass.
           drafts=$(gh api --paginate "$repo/actions/runs?head_sha=$GITHUB_SHA&per_page=100" \
-            --jq '.workflow_runs[] | select(.path == ".github/workflows/release-draft.yml") | .check_suite_id')
+            --jq '.workflow_runs[] | select(.path == ".github/workflows/release-draft.yml" or .path == ".github/workflows/canary.yml") | .check_suite_id')
           checks=$(gh api --paginate "$repo/commits/$GITHUB_SHA/check-runs?per_page=100" \
             --jq '.check_runs[] | [.check_suite.id, .name, .conclusion // .status] | @tsv')
           missing=()
@@ -136,6 +145,7 @@ jobs:
     env:
       TAG: ${{ inputs.tag }}
       VERSION: ${{ needs.check-tag.outputs.version }}
+      PREVIOUS: ${{ needs.check-tag.outputs.previous }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -163,4 +173,5 @@ jobs:
           test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)" = "$GITHUB_SHA"
           options=(--repo "$GITHUB_REPOSITORY" --draft --verify-tag --generate-notes)
           if [[ $VERSION == *-* ]]; then options+=(--prerelease); fi
+          if [[ -n $PREVIOUS ]]; then options+=(--notes-start-tag "$PREVIOUS"); fi
           gh release create "$TAG" "${options[@]}" --title "Your Space $VERSION" "${files[@]}" SHA256SUMS
