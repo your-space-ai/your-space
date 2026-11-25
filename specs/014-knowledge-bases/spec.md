@@ -89,14 +89,22 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
     (`--resilient --recover --max-lock 2m`).
   - The first run copies both ways and deletes nothing (`--resync --resync-mode newer`): a file on
     only one side is copied to the other, and where both sides have a file, the newer copy wins.
+    Files are compared by size, modification time and checksum (`--compare size,modtime,checksum`),
+    so a same-size file with different content isn't taken as unchanged. When both copies have the
+    same modification time but different content, the local copy wins and the Drive copy is
+    replaced, as below.
   - After a stopped run the owner chooses one of two actions. **Resync** runs the same way as the
     first run, so files deleted on one side come back from the other. **Apply these deletions**
     shows the listed deletions and, once the owner confirms, runs that one sync past the limit
-    (`--force`); the next scheduled run has the limit again.
-  - Nothing an overwrite replaces is lost. A local file replaced by a sync is moved to a backup
-    folder in Your Space's sync state, outside the knowledge base (`--backup-dir1`). A Drive file
-    replaced by a sync keeps its earlier version in Drive's version history. The knowledge base's
-    page links the backup folder's files for the last runs.
+    (`--force`); the next scheduled run has the limit again. Just before the forced run, Your Space
+    lists the deletions again without changing anything (`--dry-run`); if the list differs from the
+    one the owner confirmed, it doesn't run and shows the new list for confirmation.
+  - Overwrites keep the replaced copy. A local file replaced by a sync is moved to a backup folder
+    of that run in Your Space's sync state, outside the knowledge base (`--backup-dir1` with a folder
+    per run), so a file replaced in several runs keeps each earlier copy. Backups are kept for 30
+    days. A Drive file replaced by a sync keeps its earlier version only in Drive's own version
+    history, for as long as Drive keeps it (by default 30 days or 100 versions); Your Space keeps no
+    copy of it. The knowledge base's page lists the backed-up files of recent runs.
 - **Conflicts.** When a file changed on both sides since the last run, bisync keeps both: the remote's
   copy is renamed with a conflict suffix. Your Space lists conflict copies on the knowledge base's
   page. Two apps writing the same file locally is not detected: the last write wins, and Drive's
@@ -134,7 +142,11 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   the other side and deletes nothing; **Apply these deletions**, confirmed, deletes them on the other
   side, and the next run stops again over the limit.
 - A resync where both sides changed a file keeps the newer copy, and the replaced local copy is in
-  the backup folder.
+  that run's backup folder. A file replaced locally in two runs has both earlier copies backed up.
+  Two same-size copies with equal modification times and different content end with the local copy
+  on both sides.
+- **Apply these deletions** doesn't run when another file was deleted after the owner confirmed, and
+  shows the new list instead.
 - Rotate the data key: the connection still syncs.
 - With the operator's own client against real Google Drive, on a throwaway folder: connect, sync both
   ways, restart Your Space and sync again after the access token expires, then revoke access in Google
