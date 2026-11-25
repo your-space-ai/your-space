@@ -176,7 +176,7 @@ own file names: the Linux canary's at the Linux files and `SHA256SUMS`, the Mac 
 deleted, even half uploaded. A client treats a build's prerelease without `SHA256SUMS` as not there
 yet.
 
-The Mac canary workflow uploads the two ZIPs and `canary-mac.yml`, which lists them with their
+The Mac canary workflow uploads the two ZIPs, then `canary-mac.yml`, which lists them with their
 SHA-512 digests, to the build's own prerelease. Then it replaces `canary-mac.yml` on the rolling
 prerelease with one that lists the same ZIPs by their full links into the build's prerelease,
 which electron-updater follows as given. Like the Linux canary, it never moves the shortcut back:
@@ -203,7 +203,10 @@ identifiers:
   `canary-mac.yml` names and which can be up to a day behind (decision 3). Any kept build can be
   chosen instead: `your-space upgrade --channel canary --version canary-20261125.3` (the build's
   tag or its full version), and the Mac app lists the kept builds that have Mac files, newest
-  first, reading the list of releases a page at a time as the owner asks for more.
+  first. It takes the `canary-` tags from the matching-refs API and orders them by build
+  number, the tag's last part, never by the order GitHub lists releases in, which isn't
+  guaranteed. It shows each build whose `canary-mac.yml` downloads, a few at a time as the owner
+  asks for more; the downloads aren't API requests.
 
 `--version` needs `--channel` and names a build of that channel: a canary under Alpha, or a `v`
 release under Canary, is refused with nothing changed.
@@ -345,8 +348,8 @@ release.
   decision 5 and reads it with electron-updater's generic provider, with the channel in the feed's
   options and downgrades off. The app is offered only its channel's builds, and says so when
   nothing is newer. A lookup that fails says the app couldn't check, and offers nothing.
-- **FR-003**: The Mac app lists the kept canary builds that have Mac files, newest first, a page of
-  releases at a time. A newer
+- **FR-003**: The Mac app lists the kept canary builds that have Mac files, newest first by build
+  number, never by the order GitHub lists releases in. A newer
   one installs as an update; an older one is a downgrade, which the app explains (FR-008) and
   doesn't install.
 - **FR-004**: Every canary build publishes its own prerelease, `canary-<date>.<run>`, then the
