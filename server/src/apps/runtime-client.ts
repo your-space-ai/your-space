@@ -39,6 +39,11 @@ export interface AppSpec {
    * pulls. The runtime manager sends it as X-Registry-Auth on those lookups and pulls alone.
    */
   registryCredentials?: RegistryCredential[];
+  /**
+   * The knowledge bases the owner gave an app whose kit asks for knowledge, by name, which the runtime
+   * manager mounts in its interface service at `<path>/<name>` (journey 014).
+   */
+  knowledge?: { path: string; bases: string[] } | null;
 }
 
 /** A registry credential (journey 015): `secret` signs `username` in to `registry` for `images`. */
@@ -128,6 +133,10 @@ export interface Runtime {
   denials(project: string): Promise<{ hosts: { host: string; attempts: number; lastSeen: string }[] }>;
   /** Whether the app can be published on bind:port of this machine; `by` names a container that uses it. */
   checkPort(project: string, publish: { port: number; bind: string }): Promise<{ inUse: boolean; by?: string }>;
+  /** Creates a knowledge base's storage, or keeps this installation's own that has its name. */
+  createKnowledge(name: string): Promise<{ created: boolean }>;
+  /** Deletes a knowledge base's storage and its files; refused while an app still mounts it. */
+  deleteKnowledge(name: string): Promise<void>;
 }
 
 function call(method: string, path: string, body?: unknown, onLine?: (line: string) => void, socketPath = RUNTIME_SOCKET, deadlineMs?: number): Promise<{ status: number; text: string }> {
@@ -225,5 +234,7 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
     stats: (project) => json("GET", `${p(project)}/stats`, undefined, socketPath),
     denials: (project) => json("GET", `${p(project)}/denials`, undefined, socketPath),
     checkPort: (project, publish) => json("POST", `${p(project)}/port`, { publish }, socketPath),
+    createKnowledge: (name) => json("POST", "/knowledge", { name }, socketPath),
+    deleteKnowledge: async (name) => void (await json("DELETE", `/knowledge/${encodeURIComponent(name)}`, undefined, socketPath)),
   };
 }

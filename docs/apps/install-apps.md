@@ -291,6 +291,10 @@ docker compose exec server publish-app notes --off
 `install-app <kit-link> --publish`, with the same `--port`, `--bind` and `--link`, installs an app
 published.
 
+**Knowledge.** An app whose kit asks for knowledge can be given your knowledge bases, folders of
+files Your Space keeps, in the review and later on its page. See
+[Share files between apps](knowledge-bases.md).
+
 **Settings.** An app's page shows its settings, the variables its kit defines. Saving restarts the
 app with the new values and keeps its data. A value the kit asks for can be replaced but not
 cleared. Replacing a generated secret, such as a database password, can break the app.

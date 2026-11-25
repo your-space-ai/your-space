@@ -17,9 +17,21 @@ An **app spec**, sent with every request that resolves or applies an app:
   "interface": { "service": "web", "port": 3000 },
   "limits": { "web": { "memory": 1073741824, "cpus": 1 } },
   "egress": ["api.openai.com"],
-  "publish": { "port": 3000, "bind": "127.0.0.1", "frame": true }
+  "publish": { "port": 3000, "bind": "127.0.0.1", "frame": true },
+  "knowledge": { "path": "/knowledge", "bases": ["course-notes"] }
 }
 ```
+
+`knowledge` (optional, journey 014) mounts the knowledge bases the owner gave an app whose kit asks
+for knowledge, by name, in its interface service at `<path>/<name>`, read-write, with `nocopy` so an
+image's files are never copied into one. Each is the external volume
+`ys-knowledge.<installation>.<name>`, which `/apply` first checks is this installation's own; a
+missing one, or one Your Space didn't make, stops the apply with a message. `path` is absolute and
+normalised, isn't `/` and isn't in `/proc`, `/sys` or `/dev`; names are 1 to 40 lower-case letters,
+digits and dashes, each given once. `/check` takes the path with no bases, so the review refuses a
+file whose interface service mounts anything of its own at or inside it. An app's file can never name
+a knowledge base's volume, as a key, a volume's `name` or a mount's source, with or without
+`knowledge`.
 
 `publish` (optional, decision 2026-11-19) adds `ys-publish`, a Caddy of Your Space's that runs Your
 Space's own Caddy's image with `deploy/published.caddyfile`. It listens on `bind:port` of this
@@ -80,6 +92,8 @@ sends it to `/check` or `/apply` (2026-11-24).
 | `GET /apps/{project}/denials` | | `{ hosts: [{ host, attempts, lastSeen }] }` from the egress proxy's log |
 | `POST /apps/{project}/port` | `{ publish: { port, bind } }` | `{ inUse, by? }`: whether the app can be published on `bind:port`. `by` names a running container that publishes it (the app's own Caddy doesn't count); otherwise a short-lived container of Your Space's Caddy's image tries to publish it, and `inUse` without `by` means another program uses it. 502 when the check itself fails, 503 when Your Space's Caddy isn't running |
 | `POST /stop-all` | | Stops every managed app and refuses `/apply` until the runtime manager restarts |
+| `POST /knowledge` | `{ name }` | `{ created }`: creates the knowledge base's volume, labelled `ai.your-space.installation`, `ai.your-space.role=knowledge` and `ai.your-space.knowledge=<name>`, never with a Compose project's labels, and gives its folder to user and group 1000 with mode 2777 in a short-lived container of the runtime manager's own image (no network, only the CHOWN, FOWNER and FSETID capabilities). `created: false` keeps this installation's own volume of that name, with its files; a volume of that name Your Space didn't make is refused with 409 |
+| `DELETE /knowledge/{name}` | | Deletes the knowledge base's volume and its files. 409 while any container mounts it, running or stopped, or when the volume isn't Your Space's; a volume already gone is deleted. Removing an app (`/down`) or deleting its volumes (`DELETE /apps/{project}/volumes`) never deletes a knowledge base's |
 
 Errors: `{ "error": "<code>", "message": "…" }` with status 400 (the spec is refused), 404, 409
 (stopping), 502 (the engine answered with an error) or 503 (the engine can't be reached). Messages

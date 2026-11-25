@@ -24,6 +24,7 @@ import { Agents } from "./pages/Agents.tsx";
 import { Apps } from "./pages/Apps.tsx";
 import { Engine } from "./pages/Engine.tsx";
 import { GitHub } from "./pages/GitHub.tsx";
+import { Knowledge } from "./pages/Knowledge.tsx";
 import { failureKind } from "./errors.ts";
 import { Home } from "./pages/Home.tsx";
 import { NoOwnerYet } from "./pages/NoOwnerYet.tsx";
@@ -111,6 +112,12 @@ const appDetailRoute = createRoute({
   },
 });
 
+const knowledgeRoute = createRoute({
+  getParentRoute: () => signedInRoute,
+  path: "/knowledge",
+  component: Knowledge,
+});
+
 const AppPane = lazyRouteComponent(() => import("./pages/AppPane.tsx"), "AppPane");
 
 const openRoute = createRoute({
@@ -158,7 +165,7 @@ const resetPasswordRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  signedInRoute.addChildren([homeRoute, agentsRoute, appsRoute, appDetailRoute, openRoute, engineRoute, appearanceRoute, githubRoute]),
+  signedInRoute.addChildren([homeRoute, agentsRoute, appsRoute, appDetailRoute, knowledgeRoute, openRoute, engineRoute, appearanceRoute, githubRoute]),
   signInRoute,
   resetPasswordRoute,
 ]);

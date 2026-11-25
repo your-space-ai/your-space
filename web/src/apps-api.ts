@@ -172,6 +172,8 @@ export interface Review {
   publishPort: number | null;
   pane: boolean;
   retained: boolean;
+  /** Where the app finds the knowledge bases it is given, when its kit asks for knowledge. */
+  knowledge: { path: string } | null;
   warning: string;
 }
 
@@ -220,6 +222,8 @@ export interface AppDetail {
   outbound: { host: string; source: "kit" | "owner"; createdAt: string }[];
   requests: { id: string; host: string; state: "pending" | "dismissed"; attempts: number; firstSeen: string; lastSeen: string }[];
   job: Job | null;
+  /** The knowledge bases the app is given and where it finds them, when its kit asks for knowledge. */
+  knowledge: { path: string; bases: { name: string; title: string }[] } | null;
   installedAt: string;
   removedAt: string | null;
 }

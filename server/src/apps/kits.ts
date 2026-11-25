@@ -34,7 +34,7 @@ const NAME = /^[a-z][a-z0-9-]{0,29}$/;
 const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const VARIABLE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const HOST = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
-const TOP_KEYS = new Set(["kit", "source", "name", "title", "interface", "pane", "env", "outbound", "limits"]);
+const TOP_KEYS = new Set(["kit", "source", "name", "title", "interface", "pane", "env", "outbound", "limits", "knowledge"]);
 /** The fields kits named settings in before `env` (2026-11-23). */
 const SETTINGS_FIELDS = new Set(["generate", "derive", "set", "secrets"]);
 const SOURCE_KEYS = new Set(["repo", "path", "commit"]);
@@ -52,6 +52,31 @@ export function parseMemory(value: string | number): number {
   if (!match) throw new KitError(`${String(value)} isn't an amount of memory, like 512M or 1G.`);
   const unit = { k: 1024, m: 1024 ** 2, g: 1024 ** 3 }[match[2]!.toLowerCase() as "k" | "m" | "g"];
   return Math.round(Number(match[1]) * unit);
+}
+
+/** Where Your Space mounts the knowledge bases the owner gives an app, unless its kit names a path. */
+export const DEFAULT_KNOWLEDGE_PATH = "/knowledge";
+/** Folders the container's kernel file systems are at, which a mount can't go in. */
+const SYSTEM_FOLDERS = ["/proc", "/sys", "/dev"];
+
+/**
+ * A kit's `knowledge` (journey 014): the app asks for knowledge bases, mounted in its interface service
+ * at `<path>/<name>`. The path is absolute, isn't `/`, names no `..`, and is kept normalised.
+ */
+export function parseKnowledge(value: unknown): { path: string } {
+  if (!isObject(value)) throw new KitError("knowledge must be a mapping, like { path: /knowledge }, or {} for /knowledge.");
+  for (const key of Object.keys(value)) if (key !== "path") throw new KitError(`knowledge has the unknown field ${key}.`);
+  if (value.path === undefined) return { path: DEFAULT_KNOWLEDGE_PATH };
+  if (typeof value.path !== "string" || !value.path.startsWith("/")) throw new KitError("knowledge.path must be an absolute path in the app's container, like /knowledge.");
+  const parts = value.path.split("/").filter((part) => part !== "" && part !== ".");
+  if (parts.includes("..")) throw new KitError("knowledge.path can't name .., so it stays where the kit says.");
+  const path = `/${parts.join("/")}`;
+  if (path === "/") throw new KitError("knowledge.path can't be /: give a folder, like /knowledge.");
+  if (parts.length > 8 || parts.some((part) => !/^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$/.test(part))) {
+    throw new KitError("knowledge.path must be folder names of letters, digits, dots, dashes and underscores, each not starting with a dot.");
+  }
+  if (SYSTEM_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))) throw new KitError(`knowledge.path can't be in ${path.split("/").slice(0, 2).join("/")}, a system folder.`);
+  return { path };
 }
 
 /** One entry of a kit's `env`: a value, or where the value comes from. */
@@ -161,6 +186,10 @@ export function parseKit(text: string): Kit {
   if (data.pane !== undefined) {
     if (typeof data.pane !== "boolean") throw new KitError("pane must be true or false.");
     kit.pane = data.pane;
+  }
+  if (data.knowledge !== undefined) {
+    kit.knowledge = parseKnowledge(data.knowledge);
+    if (!kit.interface) throw new KitError("knowledge needs an interface: Your Space mounts knowledge bases in the app's interface service.");
   }
   if (data.env !== undefined) {
     if (!isObject(data.env)) throw new KitError("env must map the app's variables to their values.");

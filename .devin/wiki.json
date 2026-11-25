@@ -115,6 +115,11 @@
       "parent": "Apps Subsystem"
     },
     {
+      "title": "Knowledge Bases",
+      "purpose": "Local knowledge bases (journey 014): the knowledge_base and app_knowledge_base tables, the kit's knowledge field, the runtime manager's labelled ys-knowledge volumes and their setup container, the mounts the Docker adapter adds to an app's interface service, and why removing an app or deleting its data never deletes one. Syncing with Google Drive is planned, not built.",
+      "parent": "Apps Subsystem"
+    },
+    {
       "title": "Agent Delegation",
       "purpose": "How external agents get scoped access to apps.",
       "parent": null

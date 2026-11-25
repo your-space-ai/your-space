@@ -54,6 +54,7 @@ outbound:                     # starter hosts, approved when the install is conf
   - api.openai.com
 limits:
   web: { memory: 1536M, cpus: 1 }
+knowledge: { path: /knowledge }  # asks for knowledge bases; path is optional
 ```
 
 **The environment** (decision 2026-11-23). `env` is the app's whole environment: every variable
@@ -99,6 +100,19 @@ file: the values stay encrypted in its database and reach Compose only as its en
 refused with a message that names `env`. Apps installed before keep their settings: Your Space reads
 their stored kits' fields as `env`. Older Your Space versions refuse a kit with `env` as an unknown
 field, so the change needs no new format version; `kit: 1` and `kit: 2` both take it.
+
+**Knowledge** (journey 014, decision 2026-11-25). `knowledge` asks for the owner's knowledge bases,
+folders of files that belong to Your Space, not to any app. The owner picks them in the review and on
+the app's page, and Your Space mounts each in the interface service at `<path>/<name>`, read-write,
+one folder per knowledge base even when there is only one; the app finds them by listing `<path>`.
+`path` is optional and defaults to `/knowledge`. It is an absolute path in the app's container, isn't
+`/`, names no `..`, and isn't in `/proc`, `/sys` or `/dev`; its folders are letters, digits, dots,
+dashes and underscores, not starting with a dot. Your Space keeps it normalised, so `/data/vault/`
+is `/data/vault`. `knowledge: {}` asks for the default path. A kit with `knowledge` needs an
+`interface`, any other field in `knowledge` is refused, and so is a Compose file whose interface
+service mounts anything of its own at or inside the path. A kit without `knowledge` gets no mounts
+and can't be given knowledge bases. Older Your Space versions refuse `knowledge` as an unknown field,
+so the change needs no new format version; `kit: 1` and `kit: 2` both take it.
 
 Every field except `kit` and `source` is optional. A kit given with a Compose file on this machine
 may leave out `source`, and its `source` isn't matched. Any other kit without `source` is refused, as

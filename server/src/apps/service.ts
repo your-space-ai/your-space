@@ -9,9 +9,11 @@ import type { Db } from "../db/client.ts";
 import {
   app,
   appAccessRequest,
+  appKnowledgeBase,
   appOutbound,
   appSetting,
   installJob,
+  knowledgeBase,
   type AppState,
   type EventType,
   type JobStep,
@@ -157,6 +159,8 @@ interface Preview {
   publishPort: number | null;
   pane: boolean;
   retained: boolean;
+  /** Where the app's knowledge bases are mounted, when its kit asks for knowledge (journey 014). */
+  knowledge: { path: string } | null;
 }
 
 export type AppRow = typeof app.$inferSelect;
@@ -546,7 +550,9 @@ export class AppsService {
     // them. A setting the file requires that has no value yet gets a placeholder, so the review shows
     // the file and the owner fills the setting in; installing needs a real value (install).
     const settings = buildSettings(kit, address, previous);
-    let check = await this.checkSigningIn({ project: `ys-${name}`, app: name, compose: source.text, env: this.envOf(settings), interface: kit.interface ?? null, placeholders: true });
+    // The knowledge path goes with the check, so a file that mounts something of its own there is refused.
+    const knowledge = kit.knowledge ? { path: kit.knowledge.path, bases: [] } : null;
+    let check = await this.checkSigningIn({ project: `ys-${name}`, app: name, compose: source.text, env: this.envOf(settings), interface: kit.interface ?? null, placeholders: true, knowledge });
     withFileDefaults(settings, check.variables);
     // A variable the file needs, with no default, is one the kit must define.
     const env = kitEnv(kit);
@@ -591,6 +597,7 @@ export class AppsService {
       publishPort: defaultPort(check.services, kit.interface ?? null),
       pane: kit.pane ?? true,
       retained: Boolean(existing),
+      knowledge: kit.knowledge ?? null,
     };
     this.previews.set(preview.id, preview);
     return this.reviewOf(preview);
@@ -657,6 +664,7 @@ export class AppsService {
       publishPort: p.publishPort,
       pane: p.pane,
       retained: p.retained,
+      knowledge: p.knowledge,
       warning:
         "Installing an app trusts it with everything you put into it. Your Space keeps it away from your other apps, Your Space's own data and this machine, and lets it reach only the internet hosts you approve.",
     };
@@ -668,6 +676,7 @@ export class AppsService {
     reuseData: boolean,
     actorId: string,
     publishWith: unknown = null,
+    knowledgeWith: unknown = [],
   ): Promise<{ name: string; jobId: string; done: Promise<void> }> {
     const p = this.previews.get(previewId);
     if (!p || p.expiresAt < Date.now()) throw new AppError(404, "preview_expired", "This review has expired. Paste the kit's link again.");
@@ -693,7 +702,14 @@ export class AppsService {
     // Then the file is checked again with the owner's values, so its images and changes are the real ones.
     let check = p.check;
     if (placeheld) {
-      check = await this.checkSigningIn({ project: `ys-${p.name}`, app: p.name, compose: p.source.text, env: this.envOf(settings), interface: p.kit.interface ?? null });
+      check = await this.checkSigningIn({
+        project: `ys-${p.name}`,
+        app: p.name,
+        compose: p.source.text,
+        env: this.envOf(settings),
+        interface: p.kit.interface ?? null,
+        knowledge: p.knowledge && { path: p.knowledge.path, bases: [] },
+      });
       if (!check.ok) {
         const reasons = check.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`).join(" ");
         throw new AppError(400, "refused", `Your Space can't run this app with these settings: ${reasons}`, check.refusals);
@@ -708,6 +724,7 @@ export class AppsService {
       publish = publishFrom(publishWith, { port: p.publishPort, bind: DEFAULT_BIND, link: null });
       await this.refuseTakenPort(publish, p.name);
     }
+    const bases = await this.knowledgeBases(p.kit, p.title, knowledgeWith);
 
     this.previews.delete(previewId);
     const appId = await this.db.transaction(async (tx) => {
@@ -743,6 +760,7 @@ export class AppsService {
         id = updated[0].id;
         await tx.delete(appSetting).where(eq(appSetting.appId, id));
         await tx.delete(appOutbound).where(eq(appOutbound.appId, id));
+        await tx.delete(appKnowledgeBase).where(eq(appKnowledgeBase.appId, id));
       } else {
         const inserted = await tx
           .insert(app)
@@ -768,6 +786,10 @@ export class AppsService {
         await tx.insert(appOutbound).values(p.outbound.map((host) => ({ appId: id, host, source: "kit" as const, approvedBy: actorId })));
       }
       await recordEvent(tx, "app.installed", actorId, null, id);
+      if (bases.length) {
+        await tx.insert(appKnowledgeBase).values(bases.map((base) => ({ appId: id, knowledgeBaseId: base.id, grantedBy: actorId })));
+        for (const base of bases) await recordEvent(tx, "knowledge.granted", actorId, null, id, base.id);
+      }
       return id;
     });
     const { jobId, done } = await this.startJob(appId, "install");
@@ -814,6 +836,7 @@ export class AppsService {
     for (const [name, value] of this.linkValues(row)) if (values.has(name)) values.set(name, value);
     const outbound = await this.db.select({ host: appOutbound.host }).from(appOutbound).where(eq(appOutbound.appId, row.id));
     const pins = Object.fromEntries(Object.entries(row.images).map(([ref, { digest }]) => [ref, digest]));
+    const bases = row.kit?.knowledge ? (await this.grants(row.id)).map((base) => base.name) : [];
     return {
       project: `ys-${row.name}`,
       ...(row.kit?.agentAccess ? { appId: row.id } : {}),
@@ -826,7 +849,41 @@ export class AppsService {
       egress: outbound.map((o) => o.host),
       // The app's Caddy replaces its framing rules only where the pane frames it.
       publish: row.publish ? { port: row.publish.port, bind: row.publish.bind, frame: inPane(this.config.publicUrl, row) } : null,
+      knowledge: row.kit?.knowledge ? { path: row.kit.knowledge.path, bases } : null,
     };
+  }
+
+  /** The knowledge bases the owner gave the app, by name. */
+  async grants(appId: string): Promise<{ id: string; name: string; title: string }[]> {
+    return this.db
+      .select({ id: knowledgeBase.id, name: knowledgeBase.name, title: knowledgeBase.title })
+      .from(appKnowledgeBase)
+      .innerJoin(knowledgeBase, eq(appKnowledgeBase.knowledgeBaseId, knowledgeBase.id))
+      .where(eq(appKnowledgeBase.appId, appId))
+      .orderBy(knowledgeBase.name);
+  }
+
+  /**
+   * The knowledge bases a request names for an app, checked: a list of names, each an existing
+   * knowledge base. Only an app whose kit asks for knowledge can be given any (journey 014).
+   */
+  private async knowledgeBases(kit: Kit | null, title: string, input: unknown): Promise<{ id: string; name: string }[]> {
+    const given = input ?? [];
+    if (!Array.isArray(given) || given.some((name) => typeof name !== "string")) {
+      throw new AppError(400, "bad_knowledge", "Send the knowledge bases to give the app as a list of their names.");
+    }
+    const names = [...new Set(given as string[])];
+    if (names.length === 0) return [];
+    if (!kit?.knowledge) throw new AppError(400, "no_knowledge", `${title}'s kit doesn't ask for knowledge, so it can't be given knowledge bases.`);
+    const rows = await this.db.select({ id: knowledgeBase.id, name: knowledgeBase.name }).from(knowledgeBase).where(inArray(knowledgeBase.name, names));
+    const missing = names.filter((name) => !rows.some((row) => row.name === name));
+    if (missing.length) throw new AppError(400, "unknown_knowledge_base", `There is no knowledge base called ${missing.join(", ")}.`);
+    return rows.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** Whether the app has a job running. */
+  isBusy(appId: string): boolean {
+    return this.busy.has(appId);
   }
 
   private async step(jobId: string, message: string): Promise<void> {
@@ -864,7 +921,11 @@ export class AppsService {
       if (kind === "remove") {
         await this.step(jobId, "Stopping and removing the app's containers. Its data is kept.");
         await this.runtime.down(`ys-${row.name}`);
-        await this.db.update(app).set({ state: "removed", desired: "removed", stateReason: null, removedAt: new Date(), updatedAt: new Date() }).where(eq(app.id, appId));
+        // A removed app has no knowledge bases: installing it again gives it the ones the owner picks then.
+        await this.db.transaction(async (tx) => {
+          await tx.update(app).set({ state: "removed", desired: "removed", stateReason: null, removedAt: new Date(), updatedAt: new Date() }).where(eq(app.id, appId));
+          await tx.delete(appKnowledgeBase).where(eq(appKnowledgeBase.appId, appId));
+        });
       } else {
         await this.db.update(app).set({ state: kind === "install" ? "installing" : "starting", stateReason: null, updatedAt: new Date() }).where(eq(app.id, appId));
         const spec = await this.specFor(row);
@@ -1108,6 +1169,7 @@ export class AppsService {
     }
     const fromLink = this.linkValues(row);
     const env = kitEnv(row.kit);
+    const bases = row.kit?.knowledge ? (await this.grants(row.id)).map(({ name, title }) => ({ name, title })) : [];
     return {
       id: row.id,
       name: row.name,
@@ -1140,6 +1202,7 @@ export class AppsService {
       outbound: outbound.map((o) => ({ host: o.host, source: o.source, createdAt: o.createdAt })),
       requests: requests.map((r) => ({ id: r.id, host: r.host, state: r.state, attempts: r.attempts, firstSeen: r.firstSeen, lastSeen: r.lastSeen })),
       job: job ? { id: job.id, kind: job.kind, state: job.state, steps: job.steps, error: job.error } : null,
+      knowledge: row.kit?.knowledge ? { path: row.kit.knowledge.path, bases } : null,
       installedAt: row.createdAt,
       removedAt: row.removedAt,
     };
@@ -1281,6 +1344,28 @@ export class AppsService {
     }
     await this.db.update(app).set({ limits: next, updatedAt: new Date() }).where(eq(app.id, row.id));
     await this.event("app.limits_changed", actorId, row.id);
+    return this.queue(row.id, "apply");
+  }
+
+  /**
+   * Gives the app exactly these knowledge bases (journey 014). Applying it again recreates its
+   * interface service with their folders; its data is kept.
+   */
+  async updateKnowledge(name: string, input: unknown, actorId: string): Promise<{ jobId: string }> {
+    const row = await this.liveRow(name);
+    if (!row.kit?.knowledge) throw new AppError(400, "no_knowledge", `${row.title}'s kit doesn't ask for knowledge, so it can't be given knowledge bases.`);
+    const next = await this.knowledgeBases(row.kit, row.title, input);
+    const current = await this.grants(row.id);
+    const added = next.filter((base) => !current.some((c) => c.id === base.id));
+    const removed = current.filter((base) => !next.some((n) => n.id === base.id));
+    await this.db.transaction(async (tx) => {
+      if (removed.length) {
+        await tx.delete(appKnowledgeBase).where(and(eq(appKnowledgeBase.appId, row.id), inArray(appKnowledgeBase.knowledgeBaseId, removed.map((base) => base.id))));
+      }
+      if (added.length) await tx.insert(appKnowledgeBase).values(added.map((base) => ({ appId: row.id, knowledgeBaseId: base.id, grantedBy: actorId })));
+      for (const base of added) await recordEvent(tx, "knowledge.granted", actorId, null, row.id, base.id);
+      for (const base of removed) await recordEvent(tx, "knowledge.revoked", actorId, null, row.id, base.id);
+    });
     return this.queue(row.id, "apply");
   }
 

@@ -1,0 +1,7 @@
+# The notes fixture's kit that asks for knowledge bases at the default path, /knowledge.
+kit: 1
+source: {repo: ys-fixtures/notes, path: compose.yaml, commit: 1fdb0c1ec6a2a43d67ff3780586d89763909517e}
+name: notes-one
+title: Notes one
+interface: {service: web, port: 8080}
+knowledge: {}

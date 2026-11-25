@@ -9,6 +9,10 @@ import {
   envFiles,
   FRAME_ORIGIN_LABEL,
   imageRef,
+  KNOWLEDGE_NAME,
+  KNOWLEDGE_PREFIX,
+  knowledgeLabels,
+  knowledgeVolume,
   PUBLISH_TARGET,
   resetFiles,
   runsOnce,
@@ -17,6 +21,7 @@ import {
   type CheckResult,
   type EnvFiles,
   type OwnCaddy,
+  validKnowledgePath,
 } from "./adapter.ts";
 import {
   connectNetwork,
@@ -68,6 +73,7 @@ export function validateSpec(body: unknown): AppSpec {
   }
   if (spec.placeholders !== undefined && typeof spec.placeholders !== "boolean") throw new SpecError("Whether the check uses placeholders must be true or false.");
   if (spec.registryCredentials !== undefined) validateCredentials(spec.registryCredentials);
+  if (spec.knowledge !== undefined && spec.knowledge !== null) validateKnowledge(spec.knowledge);
   return { ...spec, installation: INSTALLATION, env } as AppSpec;
 }
 
@@ -96,6 +102,22 @@ function validateCredentials(credentials: unknown): void {
     });
   // Never repeats what it was given: a credential holds a secret.
   if (!valid) throw new SpecError("Each registry credential needs a registry, a user name, a secret and the images it is for.");
+}
+
+/** The knowledge path and the knowledge bases an app is given, each named once. */
+function validateKnowledge(knowledge: unknown): void {
+  const { path, bases } = (typeof knowledge === "object" && knowledge !== null ? knowledge : {}) as { path?: unknown; bases?: unknown };
+  if (typeof path !== "string" || !validKnowledgePath(path)) throw new SpecError("The knowledge path must be an absolute folder, like /knowledge, other than /.");
+  if (!Array.isArray(bases) || bases.length > 100 || bases.some((name) => typeof name !== "string" || !KNOWLEDGE_NAME.test(name))) {
+    throw new SpecError("Knowledge bases must be a list of their names.");
+  }
+  if (new Set(bases).size !== bases.length) throw new SpecError("Each knowledge base can be given to an app once.");
+}
+
+/** A knowledge base's name, as a request gives it. */
+export function validateKnowledgeName(name: string): string {
+  if (!KNOWLEDGE_NAME.test(name)) throw new SpecError("A knowledge base's name is lower-case letters, digits and dashes.");
+  return name;
 }
 
 type Publish = { port: number; bind: string };
@@ -316,6 +338,10 @@ export async function apply(spec: AppSpec, emit: Emit): Promise<void> {
     const signIn = answer.images.filter((i) => i.signIn).map((i) => `${i.ref}: its registry asks for a sign-in, as for a private image.`);
     throw new SpecError([...answer.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`), ...signIn].join(" "));
   }
+  // Compose mounts a knowledge base by its volume's name, so each must be this installation's own.
+  for (const name of spec.knowledge?.bases ?? []) {
+    if (!(await knowledgeOf(name))) throw new EngineError(`The knowledge base ${name} isn't on this machine's engine, so ${spec.app} can't mount it. Take it away from the app, or create it again.`, 409);
+  }
   const services = adapted.services as Record<string, { image: string; restart?: string }>;
   const images = [...new Set(Object.values(services).map((s) => s.image))];
   for (const image of images) {
@@ -531,12 +557,20 @@ async function anonymousVolumeNames(): Promise<Set<string>> {
   return new Set((list.Volumes ?? []).map((v) => v.Name));
 }
 
+/**
+ * The app's own volumes: those Compose made for its project. A knowledge base's volume never is one:
+ * it has no project's label and a name no project's volume has, and it is left out even if it had one.
+ */
 async function appVolumes(project: string): Promise<string[]> {
   const filters = encodeURIComponent(JSON.stringify({ label: [INSTALLATION_LABEL, `com.docker.compose.project=${project}`] }));
   const list = await engineJson<VolumeList>("GET", `/volumes?filters=${filters}`);
-  return (list.Volumes ?? []).map((v) => v.Name);
+  return (list.Volumes ?? []).filter((v) => !isKnowledge(v)).map((v) => v.Name);
 }
 
+/** Whether a volume is a knowledge base's, by its name or its labels, whichever installation's it is. */
+export function isKnowledge(volume: { Name: string; Labels: Record<string, string> | null }): boolean {
+  return volume.Name.startsWith(KNOWLEDGE_PREFIX) || volume.Labels?.["ai.your-space.role"] === "knowledge";
+}
 
 export async function deleteVolumes(project: string): Promise<void> {
   const running = await listContainers([INSTALLATION_LABEL, `com.docker.compose.project=${project}`]);
@@ -545,6 +579,114 @@ export async function deleteVolumes(project: string): Promise<void> {
     const answer = await engine("DELETE", `/volumes/${encodeURIComponent(name)}`);
     if (answer.status >= 400 && answer.status !== 404) throw new EngineError(`Deleting ${name} failed: ${answer.body.trim()}`);
   }
+}
+
+// Knowledge bases (journey 014): volumes that belong to Your Space, which it mounts in the apps the
+// owner gives them to. Removing an app, or deleting its data, never deletes one.
+
+/** The user and group that own a new knowledge base's folder: most self-hosted images run as 1000. */
+export const KNOWLEDGE_OWNER = "1000:1000";
+
+/** This installation's knowledge base volume, or undefined when there is none or it isn't Your Space's. */
+async function knowledgeOf(name: string): Promise<{ Name: string; Labels: Record<string, string> | null } | undefined> {
+  const volume = knowledgeVolume(INSTALLATION, name);
+  const answer = await engine("GET", `/volumes/${encodeURIComponent(volume)}`);
+  if (answer.status === 404) return undefined;
+  if (answer.status >= 400) throw new EngineError(`Reading the knowledge base ${name} failed: ${answer.body.trim().slice(0, 300)}`);
+  const found = JSON.parse(answer.body) as { Name: string; Labels: Record<string, string> | null };
+  const expected = knowledgeLabels(INSTALLATION, name);
+  if (!Object.entries(expected).every(([key, value]) => found.Labels?.[key] === value)) {
+    throw new EngineError(`A volume named ${volume} exists on the engine, but Your Space didn't make it, so it can't be a knowledge base.`, 409);
+  }
+  return found;
+}
+
+/**
+ * A short-lived container that gives a new knowledge base's folder to user and group 1000, writable by
+ * everyone and with the setgid bit, so files any app writes there get group 1000. It runs the runtime
+ * manager's own image, which is on the engine already, with no network and only the capabilities
+ * changing the folder's owner and mode needs.
+ */
+export function knowledgeInit(image: string, volume: string): Record<string, unknown> {
+  return {
+    Image: image,
+    Entrypoint: ["/bin/sh", "-c"],
+    Cmd: [`chown ${KNOWLEDGE_OWNER} /knowledge && chmod 2777 /knowledge`],
+    User: "0:0",
+    Labels: { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "knowledge-init" },
+    NetworkDisabled: true,
+    HostConfig: {
+      NetworkMode: "none",
+      Mounts: [{ Type: "volume", Source: volume, Target: "/knowledge", VolumeOptions: { NoCopy: true } }],
+      ReadonlyRootfs: true,
+      CapDrop: ["ALL"],
+      // Root changes the folder's owner, then its mode, keeping the setgid bit, on a folder it no longer owns.
+      CapAdd: ["CHOWN", "FOWNER", "FSETID"],
+      SecurityOpt: ["no-new-privileges:true"],
+      Memory: 32 * 1024 * 1024,
+      NanoCpus: 250_000_000,
+    },
+  };
+}
+
+/** The image the runtime manager runs, `sha256:…`, which the knowledge bases' helper runs too. */
+async function ownImage(): Promise<string> {
+  const id = await installationContainer("runtime");
+  const detail = id ? await engineJson<{ Image: string }>("GET", `/containers/${id}/json`) : undefined;
+  if (!detail?.Image) throw new EngineError("The runtime manager can't find its own container, so it can't set up the knowledge base.", 503);
+  return detail.Image;
+}
+
+/** Runs `knowledgeInit` on the volume and waits for it to finish. */
+async function initKnowledge(volume: string): Promise<void> {
+  const { Id } = await engineJson<{ Id: string }>("POST", "/containers/create", knowledgeInit(await ownImage(), volume));
+  try {
+    await engineJson("POST", `/containers/${Id}/start`);
+    const { StatusCode } = await engineJson<{ StatusCode: number }>("POST", `/containers/${Id}/wait`);
+    if (StatusCode !== 0) throw new EngineError(`Setting up the knowledge base's folder failed (exit code ${StatusCode}).`);
+  } finally {
+    await engine("DELETE", `/containers/${Id}?force=1`).catch(() => {});
+  }
+}
+
+/**
+ * Creates a knowledge base's volume, labelled as Your Space's and as knowledge, never as an app's or a
+ * Compose project's, and sets up its folder. One that is this installation's already is kept, with its
+ * files, as after Your Space's own data was reset; a volume of that name that isn't is refused.
+ */
+export async function createKnowledge(name: string): Promise<{ created: boolean }> {
+  if (await knowledgeOf(name)) return { created: false };
+  const volume = knowledgeVolume(INSTALLATION, name);
+  await engineJson("POST", "/volumes/create", { Name: volume, Driver: "local", Labels: knowledgeLabels(INSTALLATION, name) });
+  try {
+    await initKnowledge(volume);
+  } catch (error) {
+    // A knowledge base without its folder set up isn't kept, so the next try starts over.
+    await engine("DELETE", `/volumes/${encodeURIComponent(volume)}`).catch(() => {});
+    throw error;
+  }
+  return { created: true };
+}
+
+/** The containers that mount a volume, running or not: the engine keeps a volume any of them uses. */
+async function mountedBy(volume: string): Promise<ContainerSummary[]> {
+  const filters = encodeURIComponent(JSON.stringify({ volume: [volume] }));
+  return engineJson<ContainerSummary[]>("GET", `/containers/json?all=1&filters=${filters}`);
+}
+
+/**
+ * Deletes a knowledge base's volume and its files. Refused while any container mounts it: the server
+ * first takes it away from every app it was given to and applies them again.
+ */
+export async function deleteKnowledge(name: string): Promise<void> {
+  if (!(await knowledgeOf(name))) return;
+  const volume = knowledgeVolume(INSTALLATION, name);
+  const users = await mountedBy(volume);
+  const names = () => [...new Set(users.map((c) => c.Labels["ai.your-space.app"] ?? c.Names[0]?.replace(/^\//, "") ?? c.Id.slice(0, 12)))].join(", ");
+  if (users.length > 0) throw new EngineError(`The knowledge base ${name} is still mounted by ${names()}, so it can't be deleted yet.`, 409);
+  const answer = await engine("DELETE", `/volumes/${encodeURIComponent(volume)}`);
+  if (answer.status === 409) throw new EngineError(`The knowledge base ${name} is still in use, so it can't be deleted yet.`, 409);
+  if (answer.status >= 400 && answer.status !== 404) throw new EngineError(`Deleting the knowledge base ${name} failed: ${answer.body.trim().slice(0, 300)}`);
 }
 
 export interface ServiceState {

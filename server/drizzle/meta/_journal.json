@@ -134,6 +134,13 @@
       "when": 1795741618336,
       "tag": "0018_agent_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795800924512,
+      "tag": "0019_knowledge_bases",
+      "breakpoints": true
     }
   ]
 }

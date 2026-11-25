@@ -1,0 +1,10 @@
+# The notes fixture's kit run as another user than 1000, which still reads and writes the files the
+# other app writes in a knowledge base they share.
+kit: 1
+source: {repo: ys-fixtures/notes, path: compose.yaml, commit: 1fdb0c1ec6a2a43d67ff3780586d89763909517e}
+name: notes-two
+title: Notes two
+interface: {service: web, port: 8080}
+env:
+  APP_USER: "1234"
+knowledge: {path: /knowledge}

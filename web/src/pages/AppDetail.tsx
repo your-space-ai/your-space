@@ -5,6 +5,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { api, appQuery, errorMessage, ownTabLink, STATE_LABEL, type AppDetail as Detail } from "../apps-api.ts";
 import { JobProgress } from "../components/JobProgress.tsx";
+import { KnowledgePicker } from "../components/KnowledgePicker.tsx";
 import { PUBLISH_NOTE, publishBody, PublishFields, type PublishForm } from "../components/PublishFields.tsx";
 
 const MIB = 1024 * 1024;
@@ -50,6 +51,7 @@ export function AppDetail({ name }: { name: string }) {
       ) : (
         <>
           <Settings detail={d} onStarted={started("Applying settings")} />
+          {d.knowledge ? <Knowledge detail={d} onStarted={started("Applying knowledge bases")} /> : null}
           {d.interface ? <Publishing detail={d} onStarted={started("Applying publishing")} /> : null}
           <Outbound detail={d} onStarted={started("Updating internet access")} />
           <Advanced detail={d} onStarted={started("Applying limits")} />
@@ -228,6 +230,51 @@ function Settings({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { j
         <div>
           <button type="submit" disabled={save.isPending || Object.keys(values).length === 0}>
             Save settings
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+/** The knowledge bases the app is given (journey 014): saving recreates its interface service with their folders. */
+function Knowledge({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { jobId: string }) => void }) {
+  const queryClient = useQueryClient();
+  const given = d.knowledge!.bases.map((base) => base.name);
+  const [selected, setSelected] = useState<string[] | null>(null);
+  const picked = selected ?? given;
+  const changed = picked.join(",") !== given.join(",");
+  const save = useMutation({
+    mutationFn: () => api<{ jobId: string }>("PUT", `/api/apps/${d.name}/knowledge`, { bases: picked }),
+    onSuccess: (r) => {
+      setSelected(null);
+      onStarted(r);
+      void queryClient.invalidateQueries({ queryKey: ["apps", d.name] });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge"] });
+    },
+  });
+  return (
+    <section className="card" aria-labelledby="knowledge-heading">
+      <h2 id="knowledge-heading">Knowledge</h2>
+      <p className="muted">
+        The knowledge bases {d.title} can read and write, each a folder in <code>{d.knowledge!.path}</code>.
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate();
+        }}
+      >
+        <KnowledgePicker path={d.knowledge!.path} selected={picked} onChange={setSelected} />
+        {changed ? <p className="muted small">Saving restarts the app's interface service with these folders. Its data is kept.</p> : null}
+        {save.isError ? (
+          <p className="notice error" role="alert">
+            {errorMessage(save.error)}
+          </p>
+        ) : null}
+        <div>
+          <button type="submit" disabled={!changed || save.isPending}>
+            Save knowledge bases
           </button>
         </div>
       </form>

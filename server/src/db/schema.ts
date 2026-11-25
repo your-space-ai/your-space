@@ -69,7 +69,12 @@ export type EventType =
   | "app.request_dismissed"
   | "app.publish_changed"
   | "app.removed"
-  | "app.data_deleted";
+  | "app.data_deleted"
+  | "knowledge.created"
+  | "knowledge.retitled"
+  | "knowledge.deleted"
+  | "knowledge.granted"
+  | "knowledge.revoked";
 
 // Apps (journey 002, data-model.md).
 
@@ -98,6 +103,8 @@ export interface Kit {
   outbound?: string[];
   /** Memory in bytes, parsed from the kit's 512M or 1G. */
   limits?: Record<string, { memory?: number; cpus?: number }>;
+  /** The app asks for knowledge bases, which Your Space mounts at `<path>/<name>` (journey 014). */
+  knowledge?: { path: string };
 }
 
 /** Where a variable in a kit's `env` gets its value. */
@@ -191,6 +198,56 @@ export const app = pgTable(
       sql`${t.state} in ('installing', 'starting', 'running', 'degraded', 'stopped', 'failed', 'removed')`,
     ),
   ],
+);
+
+// Knowledge bases (journey 014): named volumes that belong to Your Space, which the owner gives to apps.
+
+export const knowledgeBase = pgTable(
+  "knowledge_base",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Fixed once it is created: its folder's name in every app given it, and its volume's. */
+    name: text("name").notNull().unique(),
+    title: text("title").notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => actor.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("knowledge_base_name_valid", sql`${t.name} ~ '^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$'`)],
+);
+
+/**
+ * The knowledge base an event is about. A table of its own rather than a column of `event`, which
+ * keeps the shape every earlier schema has: the upgrade tests write and read events at schema 0005.
+ * Deleting the knowledge base removes the link; the event stays.
+ */
+export const eventKnowledgeBase = pgTable("event_knowledge_base", {
+  eventId: uuid("event_id")
+    .primaryKey()
+    .references(() => event.id, { onDelete: "cascade" }),
+  knowledgeBaseId: uuid("knowledge_base_id")
+    .notNull()
+    .references(() => knowledgeBase.id, { onDelete: "cascade" }),
+});
+
+/** A knowledge base the owner gave an app. Removing the app, or deleting the knowledge base, ends it. */
+export const appKnowledgeBase = pgTable(
+  "app_knowledge_base",
+  {
+    appId: uuid("app_id")
+      .notNull()
+      .references(() => app.id, { onDelete: "cascade" }),
+    knowledgeBaseId: uuid("knowledge_base_id")
+      .notNull()
+      .references(() => knowledgeBase.id, { onDelete: "cascade" }),
+    grantedBy: uuid("granted_by")
+      .notNull()
+      .references(() => actor.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.appId, t.knowledgeBaseId] })],
 );
 
 export const appSetting = pgTable(
