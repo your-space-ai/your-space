@@ -167,4 +167,7 @@ On the Docker engine:
 `<installation>` is your installation's Compose project name, `your-space` unless you changed it.
 
 A step that runs longer than 25 minutes, as the first sync of a very large folder can, is stopped,
-and the next sync carries on; so is a sync that runs longer than two hours in all.
+and the next sync carries on with the files that step didn't copy; so is a sync that runs longer
+than two hours in all. A file that is being copied when its step stops is copied again from the
+start, so a single file that takes longer than 25 minutes to copy, as a very large one on a slow
+connection can, never finishes. Keep files that large out of a synced folder.

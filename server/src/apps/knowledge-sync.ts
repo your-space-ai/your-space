@@ -396,14 +396,11 @@ export class KnowledgeSync {
       const waiting = this.again.get(base.id);
       if (waiting) return { done: waiting };
       const current = this.runs.get(base.id);
-      if (!current) return { done: this.started(this.launch(base.id, base.name, row.resync ? "resync" : "sync")) };
+      if (!current) return { done: this.started(this.launch(base.id, base.name, "next")) };
       // A file changed just now may have missed the run under way, so one more follows it. It counts
       // as running until that one ends, so the owner never sees a gap between the two.
       const next = current
-        .then(async () => {
-          const latest = await this.syncRow(base.id);
-          return latest ? this.launch(base.id, base.name, latest.resync ? "resync" : "sync") : undefined;
-        })
+        .then(() => this.launch(base.id, base.name, "next"))
         .catch((error: unknown) => log("warn", "knowledge.sync_failed", { name: base.name, ...errorFields(error) }))
         .finally(() => this.again.delete(base.id));
       this.again.set(base.id, next);
@@ -457,7 +454,7 @@ export class KnowledgeSync {
       // Read when its turn comes: a run of it the owner started while the pass waited may have stopped.
       const row = await this.syncRow(base.id);
       if (!row || row.result === "stopped" || this.isRunning(base.id) || this.held.has(base.id)) continue;
-      await this.launch(base.id, base.name, row.resync ? "resync" : "sync");
+      await this.launch(base.id, base.name, "next");
     }
   }
 
@@ -466,7 +463,7 @@ export class KnowledgeSync {
    * or about to start, while it is held, or once the server stops. Answers the run, or undefined when
    * it didn't start. The check and the start have no wait between them.
    */
-  private launch(id: string, name: string, mode: Mode, confirm?: SyncDeletion[], confirmedBy?: string): Promise<void> | undefined {
+  private launch(id: string, name: string, mode: Mode | "next", confirm?: SyncDeletion[], confirmedBy?: string): Promise<void> | undefined {
     if (this.closed || this.held.has(id) || this.runs.has(id) || this.starting.has(id)) return undefined;
     const run: Promise<void> = this.execute(id, name, mode, confirm, confirmedBy)
       .catch((error: unknown) => log("warn", "knowledge.sync_failed", { name, ...errorFields(error) }))
@@ -477,10 +474,15 @@ export class KnowledgeSync {
     return run;
   }
 
-  private async execute(id: string, name: string, mode: Mode, confirm?: SyncDeletion[], confirmedBy?: string): Promise<void> {
+  /**
+   * A run in `mode`, or for `next`, the run the knowledge base's sync is due: a resync until one has
+   * succeeded, then a sync. Read here, as the run holds the knowledge base, so it is the current one.
+   */
+  private async execute(id: string, name: string, next: Mode | "next", confirm?: SyncDeletion[], confirmedBy?: string): Promise<void> {
     const connection = await this.connection();
     const row = await this.syncRow(id);
     if (!row || !connection?.token || connection.problem) return;
+    const mode: Mode = next !== "next" ? next : row.resync ? "resync" : "sync";
     const startedAt = new Date();
     let outcome: SyncRunResult;
     let clientSecret: string;

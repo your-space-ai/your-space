@@ -448,7 +448,7 @@ describe("a knowledge base's sync", () => {
     runtime.syncAnswers = [{ result: "synced", changed: true }];
     const before = (await syncRow())!.lastRunAt;
     const synced = (await events("knowledge.synced")).length;
-    await stopping.start("notes", { action: "sync" }, owner);
+    const first = await stopping.start("notes", { action: "sync" }, owner);
     for (let i = 0; i < 200 && runtime.syncs.length === 0; i++) await sleep(5);
     let closed = false;
     const closing = stopping.close(5_000).then(() => (closed = true));
@@ -459,6 +459,7 @@ describe("a knowledge base's sync", () => {
     runtime.holdSync = false;
     runtime.releaseSync();
     await closing;
+    await first.done;
     expect(runtime.syncs).toHaveLength(1);
     expect((await syncRow())!.lastRunAt).not.toEqual(before);
     expect((await events("knowledge.synced")).length).toBe(synced + 1);
@@ -466,14 +467,41 @@ describe("a knowledge base's sync", () => {
     // It waits only so long: a run that takes longer is left to the runtime manager.
     const another = new KnowledgeSync(server.apps!);
     runtime.holdSync = true;
-    await another.start("notes", { action: "sync" }, owner);
+    const { done } = await another.start("notes", { action: "sync" }, owner);
     for (let i = 0; i < 200 && runtime.syncs.length === 1; i++) await sleep(5);
     const started = Date.now();
     await another.close(50);
     expect(Date.now() - started).toBeLessThan(2_000);
     runtime.holdSync = false;
     runtime.releaseSync();
+    // Its own run, which the shared instance's status doesn't show.
+    await done;
+  });
+
+  it("picks a run's mode as it starts: a first run that succeeded while Sync now was being asked isn't run again", async () => {
+    runtime.syncs = [];
+    // As before the first run succeeded: the next run is due to be a resync.
+    await t.db.update(knowledgeSync).set({ resync: true });
+    const locker = await t.pool.connect();
+    try {
+      // Sync now waits on the Google connection, as a slow database would make it.
+      await locker.query("begin");
+      await locker.query("lock table google_connection in access exclusive mode");
+      const asked = send("/api/knowledge/notes/sync", { action: "sync" });
+      for (let i = 0; i < 200; i++) {
+        const waiting = await t.pool.query("select count(*)::int as n from pg_locks where not granted and relation = 'google_connection'::regclass");
+        if (waiting.rows[0].n > 0) break;
+        await sleep(10);
+      }
+      // The first run succeeds meanwhile.
+      await t.db.update(knowledgeSync).set({ resync: false });
+      await locker.query("rollback");
+      expect((await asked).status).toBe(202);
+    } finally {
+      locker.release();
+    }
     await settled();
+    expect(runtime.syncs.map((s) => s.request.mode)).toEqual(["sync"]);
   });
 
   it("disconnects the Google connection when Google refuses the token, until the owner signs in again", async () => {
