@@ -1,5 +1,6 @@
 // Turns a GitHub link into one file at an exact commit (component C, FR-003, FR-026): an app's kit,
 // and the Compose file the kit names. Only public repositories; GitHub answers 404 for private ones.
+// It also asks GitHub which account a connection's token belongs to (journey 015).
 
 export class SourceError extends Error {
   /** GitHub has no such repository, ref or file for this machine, as for a private repository. */
@@ -105,6 +106,47 @@ export async function fetchSource(link: string, endpoints: GithubEndpoints = git
   const parsed = parseLink(link);
   const { ref, path, commit } = await resolveRef(fetcher, endpoints, parsed);
   return readResolvedFile(parsed.repo, ref, path, commit, link.trim(), endpoints, fetcher);
+}
+
+/** GitHub doesn't accept a token: it is wrong, expired, deleted or revoked. */
+export class TokenRefusedError extends Error {
+  constructor() {
+    super("GitHub doesn't accept this token.");
+    this.name = "TokenRefusedError";
+  }
+}
+
+// A login is only shown, so any short run of letters, digits, hyphens and underscores will do:
+// managed users' logins end in `_<shortcode>`.
+const LOGIN = /^[A-Za-z0-9_-]{1,100}$/;
+
+/**
+ * The account a token belongs to (`GET /user`, R2): the one request the connection makes besides
+ * reading files. Only this adapter knows how a token is sent. Redirects aren't followed, so the
+ * token goes only to the API it was meant for.
+ */
+export async function githubAccount(token: string, endpoints: GithubEndpoints = githubEndpoints(), fetcher: Fetch = fetch): Promise<{ login: string }> {
+  let res: Response;
+  try {
+    res = await fetcher(`${endpoints.api}/user`, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${token}`,
+        "User-Agent": "your-space",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      redirect: "error",
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    throw new SourceError("GitHub can't be reached right now. Check this machine's internet connection and try again.");
+  }
+  if (res.status === 401) throw new TokenRefusedError();
+  if (rateLimited(res)) throw new SourceError("GitHub is limiting requests from this machine. Try again in a few minutes.");
+  if (!res.ok) throw new SourceError(`GitHub answered ${res.status}. Try again later.`);
+  const body = (await res.json().catch(() => undefined)) as { login?: unknown } | undefined;
+  if (typeof body?.login !== "string" || !LOGIN.test(body.login)) throw new SourceError("GitHub answered with something that isn't an account.");
+  return { login: body.login };
 }
 
 /** A path's segments, each encoded for a URL. */

@@ -83,6 +83,52 @@ the first time. A browser that blocks an app's cookies inside Your Space, as Web
 can on this machine's plain-HTTP setup, can't keep you signed in to the app in a pane; the pane then
 offers a link to open the app in its own tab.
 
+## Private Kits
+
+Your Space can keep a GitHub connection: a token that can only read the repositories you choose,
+for kits in private repositories. Your Space keeps it encrypted on this server, never shows it
+again, and never gives it to apps or agents. Until Your Space reads kits through it, a private kit
+installs with the server command, as above.
+
+**Connect in the dashboard.** Open **GitHub** in the sidebar and choose **Create a token on GitHub**.
+GitHub opens its new fine-grained token page with a name and read access to contents already chosen.
+There:
+
+1. Under **Resource owner**, choose the account or organization your repositories belong to.
+2. Under **Repository access**, choose **Only select repositories**, and pick the repositories with
+   your kits.
+3. Keep **Contents** as **Read-only**: the token needs no other permission. Choose when it expires.
+4. Generate the token, copy it, paste it on Your Space's GitHub page, and choose **Connect**.
+
+The page then shows **Connected as @login**, the GitHub account the token belongs to. Your Space asks
+GitHub about the token only when you connect, open the page or check its status.
+
+**Connect with the server command.** `github connect` asks for the token without showing it, or
+reads it from standard input. It never takes the token on the command line, where it would reach
+your shell history and the list of running processes:
+
+```sh
+docker compose exec server github connect
+docker compose exec -T server github connect < token.txt
+docker compose exec server github status
+```
+
+Each takes `--json`. The page and the command share one connection, so a token connected with either
+shows in both.
+
+**What the token can read.** Only the contents of the repositories you pick, and only to read them.
+A fine-grained token reaches the repositories of one account or organization, not ones where you're
+only an outside collaborator. It expires when you chose, and an organization can require approval
+for such tokens, or block them. When GitHub stops accepting the token, because it expired or you
+deleted it, the GitHub page and `github status` say so: create a new one and connect again, which
+replaces it. They say so too when Your Space can't read the stored token, as when its data key was
+replaced without the one before it.
+
+**Disconnect.** **Disconnect** on the GitHub page, or `docker compose exec server github disconnect`,
+makes Your Space forget the token, and installed apps keep running. Your Space can't delete the token
+at GitHub for you: delete it in your
+[fine-grained tokens](https://github.com/settings/personal-access-tokens) on GitHub too.
+
 ## Publish an App on a Port
 
 Your Space runs apps; your own network setup can reach them. Publishing puts an app's interface on a

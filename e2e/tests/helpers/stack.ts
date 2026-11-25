@@ -127,7 +127,7 @@ export interface LinkOutput {
 }
 
 export async function serverCommand(
-  name: "create-owner" | "reset-link" | "show-secrets" | "install-app" | "list-apps",
+  name: "create-owner" | "reset-link" | "show-secrets" | "install-app" | "list-apps" | "github",
   args: string[] = [],
 ): Promise<{ code: number; json: any; stdout: string; stderr: string }> {
   const result = await compose(["exec", "-T", "server", name, ...args, "--json"], { allowFailure: true });

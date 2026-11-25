@@ -32,6 +32,7 @@ textarea { background: var(--panel); color: var(--fg); font: inherit; }
 .nav-agents::after { inset: 57% 4% 0; border-radius: 50% 50% 16% 16%; }
 .nav-appearance { border: 1.5px solid; border-radius: 50%; background: linear-gradient(130deg, currentColor 49%, transparent 50%); }
 .nav-engine { border: 1.5px solid; border-radius: 3px; background: linear-gradient(transparent 42%, currentColor 42% 54%, transparent 54%); }
+.nav-github { border: 1.5px solid; border-radius: 50%; background: radial-gradient(currentColor 0 26%, transparent 30%); }
 .pane-bar { padding: .55rem .85rem; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 

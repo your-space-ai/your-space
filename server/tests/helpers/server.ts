@@ -7,6 +7,7 @@ import { Handoffs } from "../../src/apps/gate.ts";
 import type { Runtime } from "../../src/apps/runtime-client.ts";
 import { AppsService } from "../../src/apps/service.ts";
 import type { Db } from "../../src/db/client.ts";
+import { GithubConnection } from "../../src/github-connection.ts";
 import { TEST_DATA_KEY, TEST_SECRET } from "./env.ts";
 
 export interface TestServer {
@@ -29,7 +30,13 @@ export interface AppsOptions {
   fetch: typeof fetch;
 }
 
-export async function startServer(db: Db, options: { publicUrl?: string; apps?: AppsOptions } = {}): Promise<TestServer> {
+/** A fetch for tests that don't stand in for GitHub: nothing reaches the real one. */
+const offline: typeof fetch = () => Promise.reject(new TypeError("No GitHub in this test."));
+
+export async function startServer(
+  db: Db,
+  options: { publicUrl?: string; apps?: AppsOptions; github?: { fetch: typeof fetch } } = {},
+): Promise<TestServer> {
   const server: Server = createServer();
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as AddressInfo).port;
@@ -47,7 +54,11 @@ export async function startServer(db: Db, options: { publicUrl?: string; apps?: 
         github: { api: "https://api.github.test", raw: "https://raw.github.test" },
       })
     : undefined;
-  server.on("request", createApp({ auth, db, dataKey: TEST_DATA_KEY, apps: apps ? { service: apps, handoffs } : undefined }));
+  const github = new GithubConnection(db, TEST_DATA_KEY, {
+    endpoints: { api: "https://api.github.test", raw: "https://raw.github.test" },
+    fetch: options.github?.fetch ?? options.apps?.fetch ?? offline,
+  });
+  server.on("request", createApp({ auth, db, dataKey: TEST_DATA_KEY, apps: apps ? { service: apps, handoffs } : undefined, github }));
   return {
     url,
     publicUrl,

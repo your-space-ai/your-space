@@ -154,3 +154,21 @@ export function fakeGithub(files: Record<string, string>): typeof fetch {
     return new Response("", { status: 404 });
   }) as typeof fetch;
 }
+
+/**
+ * A stand-in for GitHub's `GET /user`: each token it knows belongs to an account; it refuses any
+ * other, as GitHub does a wrong, expired or revoked one. `calls` records what each request sent.
+ */
+export function fakeGithubAccounts(accounts: Map<string, string>): { fetch: typeof fetch; calls: { url: string; authorization: string | null }[] } {
+  const calls: { url: string; authorization: string | null }[] = [];
+  const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const authorization = new Headers(init?.headers).get("authorization");
+    calls.push({ url, authorization });
+    if (url !== "https://api.github.test/user") return new Response("", { status: 404 });
+    const login = authorization?.startsWith("Bearer ") ? accounts.get(authorization.slice("Bearer ".length)) : undefined;
+    if (!login) return Response.json({ message: "Bad credentials" }, { status: 401 });
+    return Response.json({ login, id: 1, type: "User" });
+  }) as typeof fetch;
+  return { fetch: fetcher, calls };
+}

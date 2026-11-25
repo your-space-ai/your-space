@@ -4,8 +4,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { operatorActorId } from "../src/actors.ts";
 import { moveSettingsToDataKey } from "../src/apps/keys.ts";
 import { decrypt, encrypt } from "../src/apps/settings.ts";
-import { app, appSetting } from "../src/db/schema.ts";
+import { app, appSetting, sourceCredential } from "../src/db/schema.ts";
+import { GithubConnection } from "../src/github-connection.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
+import { createOwnerWithPassword } from "./helpers/owner.ts";
+import { fakeGithubAccounts } from "./helpers/runtime.ts";
 
 const KEY = "data-key-for-these-tests-only-0123456789abc";
 const NEXT = "next-data-key-for-these-tests-only-01234567";
@@ -72,5 +75,33 @@ describe("moving apps' settings onto the data key", () => {
     const before = await stored();
     expect(await moveSettingsToDataKey(t.db, { dataKey: KEY })).toEqual({ moved: 0, current: 0, unreadable: 1 });
     expect(await stored()).toEqual(before);
+  });
+});
+
+describe("moving the GitHub connection onto the data key (journey 015, decision 3)", () => {
+  const TOKEN = "ys-fixture-contents-token-0001";
+  const github = fakeGithubAccounts(new Map([[TOKEN, "ys-fixture-owner"]]));
+  const endpoints = { api: "https://api.github.test", raw: "https://raw.github.test" };
+  const connection = (dataKey: string) => new GithubConnection(t.db, dataKey, { endpoints, fetch: github.fetch });
+
+  it("moves the token to a replacement data key with everything else, so the connection keeps working", async () => {
+    await createOwnerWithPassword(t.db);
+    await appWith({ SECRET_KEY_BASE: encrypt(KEY, "kept-secret") });
+    await connection(KEY).connect(TOKEN);
+    // The server starting after the rotation, with the replacement and the key it replaced.
+    expect(await moveSettingsToDataKey(t.db, { dataKey: NEXT, previousDataKey: KEY })).toEqual({ moved: 2, current: 0, unreadable: 0 });
+    const [row] = await t.db.select({ token: sourceCredential.token }).from(sourceCredential);
+    expect(decrypt(NEXT, row!.token)).toBe(TOKEN);
+    expect(() => decrypt(KEY, row!.token)).toThrow();
+    // Restarted with only the new key, the connection still works.
+    expect(await moveSettingsToDataKey(t.db, { dataKey: NEXT })).toEqual({ moved: 0, current: 1, unreadable: 0 });
+    expect((await connection(NEXT).status()).contents).toMatchObject({ set: true, login: "ys-fixture-owner", accepted: true });
+  });
+
+  it("leaves a token no key here can read, which shows Reconnect", async () => {
+    await createOwnerWithPassword(t.db);
+    await connection("a-data-key-that-is-gone-0123456789abcdefgh").connect(TOKEN);
+    expect(await moveSettingsToDataKey(t.db, { dataKey: NEXT, previousDataKey: KEY })).toEqual({ moved: 0, current: 0, unreadable: 1 });
+    expect((await connection(NEXT).status()).contents).toMatchObject({ set: true, accepted: false, problem: "unreadable" });
   });
 });

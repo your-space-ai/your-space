@@ -14,6 +14,7 @@ import type { Handoffs } from "./apps/gate.ts";
 import type { AppsService } from "./apps/service.ts";
 
 import { agentRoutes } from "./agents/routes.ts";
+import { githubRoutes, type GithubConnection } from "./github-connection.ts";
 
 export interface AppDeps {
   dataKey?: string;
@@ -21,9 +22,11 @@ export interface AppDeps {
   db: Db;
   /** Apps (journey 002). Left out by tests that don't need a runtime. */
   apps?: { service: AppsService; handoffs: Handoffs };
+  /** The GitHub connection (journey 015). Left out by tests that don't need it. */
+  github?: GithubConnection;
 }
 
-export function createApp({ auth, db, apps, dataKey }: AppDeps): express.Express {
+export function createApp({ auth, db, apps, dataKey, github }: AppDeps): express.Express {
   const app = express();
   app.disable("x-powered-by");
   // Caddy is the one proxy in front of the server.
@@ -66,6 +69,7 @@ export function createApp({ auth, db, apps, dataKey }: AppDeps): express.Express
   if (dataKey) {
     app.use("/api", agentRoutes(auth, db, dataKey));
     if (apps) app.use("/api/kits", kitRoutes(auth, db, apps.service));
+    if (github) app.use("/api/github", githubRoutes(auth, db, github));
   }
   if (apps) app.use("/api", appRoutes(auth, db, apps.service, apps.handoffs));
 

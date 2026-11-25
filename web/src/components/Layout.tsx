@@ -52,6 +52,9 @@ export function Layout() {
               <span className="nav-symbol nav-engine" aria-hidden="true" />Engine
             </Link>
           </li>
+          <li>
+            <Link to="/github" onClick={close}><span className="nav-symbol nav-github" aria-hidden="true" />GitHub</Link>
+          </li>
         </ul>
       </nav>
       <div className="content">

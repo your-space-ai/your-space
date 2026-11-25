@@ -111,7 +111,7 @@
     },
     {
       "title": "Kit Links",
-      "purpose": "Reviewing an app from its kit's link, read from public GitHub, and kit files given to the server command. There is no kit directory.",
+      "purpose": "Reviewing an app from its kit's link, read from public GitHub, and kit files given to the server command. There is no kit directory. The GitHub connection (journey 015): a read-only fine-grained token the owner pastes on the GitHub page or gives to the github server command, stored encrypted under the data key and moved on key rotation.",
       "parent": "Apps Subsystem"
     },
     {
