@@ -26,6 +26,8 @@ For routine operations, use `your-space status --workdir <folder> --json`, `your
 
 ## Test from reviewed source
 
+To run what is on `main` without building it, use the [canary build](canary.md) instead: it is published for every push to `main`, with the same checksums as a release.
+
 From a reviewed checkout with Node.js 26, run the following in the repository root. Use a local Docker engine where you can build and tag the three Your Space images for this version. Keep the same shell and Docker engine for setup.
 
 ```sh

@@ -99,13 +99,14 @@ test("kit grants and exact approvals route real reads to the installed app", asy
   expect(discovered.actions.every((a: { method: string; effect: string }) => a.method === "GET" && a.effect === "read")).toBe(true);
   const installationId = discovered.actions[0].installationId;
   const invoke = (actionId: string, input: unknown) => run(["invoke", installationId, actionId, "--input-stdin"], input);
-  const walk = { id: "3f8a2c1e-5b7d-4e9f-a1c3-6d2b8e4f7a90", revision: 1, title: "Morning walk" };
-  const plants = { id: "9c4e7b2a-1d3f-4a6e-b8c5-2f7a9d1e3b64", revision: 3, title: "Water the plants" };
+  const assignee = { firstName: "Sam" };
+  const walk = { id: "3f8a2c1e-5b7d-4e9f-a1c3-6d2b8e4f7a90", revision: 1, title: "Morning walk", assignee };
+  const plants = { id: "9c4e7b2a-1d3f-4a6e-b8c5-2f7a9d1e3b64", revision: 3, title: "Water the plants", assignee };
 
-  // A read the kit allows runs directly, and only its declared fields come back.
+  // A read the kit allows runs directly, and the app's response comes back unchanged.
   const listed = await invoke("list", {});
   expect(listed.status).toBe("succeeded");
-  expect(listed.result).toEqual([walk, plants]);
+  expect(listed.result).toEqual({ data: { items: [walk, plants] }, totalCount: 2 });
 
   // A read the kit marks ask waits for the owner, who sees the exact input.
   const asked = await invoke("show", { path: { id: walk.id } });

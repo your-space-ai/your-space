@@ -2,7 +2,7 @@ import type pg from "pg";
 import { sampleDenial } from "./denials.ts";
 import type { Db } from "../db/client.ts";
 import { decrypt, encrypt } from "../apps/settings.ts";
-import { agentCredentialHeader, filterAgentResult, renderAgentRequest, type AgentRoute } from "../apps/agent-kit.ts";
+import { agentCredentialHeader, passAgentResult, renderAgentRequest } from "../apps/agent-kit.ts";
 import { dispatchAppAction } from "./transport.ts";
 import {
   AgencyError,
@@ -98,7 +98,7 @@ export async function requestOutcome(db: Db, verifier: string, id: string, dataK
 }
 interface Admission {
   outcome: Outcome;
-  dispatch?: { args: Parameters<typeof dispatchAppAction>[0]; route: AgentRoute; redact: string[] };
+  dispatch?: { args: Parameters<typeof dispatchAppAction>[0]; redact: string[] };
 }
 async function admit(
   client: pg.PoolClient,
@@ -166,7 +166,7 @@ async function admit(
     ...request,
     headers: { ...request.headers, ...agentCredentialHeader(access, secret) },
   };
-  return { outcome, dispatch: { args, route, redact: [secret] } };
+  return { outcome, dispatch: { args, redact: [secret] } };
 }
 async function run(db: Db, dataKey: string, admission: Admission): Promise<Outcome> {
   const { outcome, dispatch } = admission;
@@ -176,7 +176,8 @@ async function run(db: Db, dataKey: string, admission: Admission): Promise<Outco
   try {
     const response = await dispatchAppAction(dispatch.args);
     if (response.status >= 200 && response.status < 300 && response.status !== 202) {
-      result = filterAgentResult(dispatch.route, response.body, dispatch.redact);
+      // The app's JSON response, unchanged, unless it echoes the app credential or is too large.
+      result = passAgentResult(response.body, dispatch.redact);
       status = "succeeded";
     } else if (response.status >= 400 && response.status < 500 && response.status !== 408) status = "refused";
   } catch {

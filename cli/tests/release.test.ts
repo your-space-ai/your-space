@@ -3,8 +3,11 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { describe, expect, it, vi } from "vitest";
-import { checkSum, fetchRelease, parseSums, releasePins, releaseUrl, safeEntries } from "../src/release.ts";
+import { checkSum, fetchRelease, parseSums, pinProblem, releasePins, releaseUrl, safeEntries } from "../src/release.ts";
+import { compareVersions, isCanary, isVersion } from "../src/version.ts";
 
 // Every program the CLI runs, still run for real.
 const ran = vi.hoisted(() => [] as string[][]);
@@ -69,6 +72,118 @@ describe("release files", () => {
     expect(safeEntries("compose.yaml\n../outside\n")).toBe(false);
     expect(safeEntries("/etc/passwd\n")).toBe(false);
     expect(safeEntries("")).toBe(false);
+  });
+});
+
+/** The version the Canary workflow gives a build of main after `tag`, from deploy/canary-version.sh. */
+const canary = (tag: string, day = "20261125", build = "42") =>
+  execFileSync(new URL("../../deploy/canary-version.sh", import.meta.url).pathname, [tag, day, build], { encoding: "utf8" }).trim();
+
+/** your-space.tar.gz with a stack.yaml that runs `version`, and its SHA256SUMS, in `folder`. */
+function bundle(root: string, folder: string, version: string): void {
+  mkdirSync(folder, { recursive: true });
+  const files = mkdtempSync(join(root, "files-"));
+  writeFileSync(join(files, "stack.yaml"), `image: ghcr.io/your-space-ai/your-space-server:${version}\n`);
+  execFileSync("tar", ["-czf", join(folder, "your-space.tar.gz"), "-C", files, "stack.yaml"]);
+  const digest = createHash("sha256").update(readFileSync(join(folder, "your-space.tar.gz"))).digest("hex");
+  writeFileSync(join(folder, "SHA256SUMS"), `${digest}  your-space.tar.gz\n`);
+}
+
+describe("canary builds", () => {
+  it("follow the release before them, with valid Semantic Versioning", () => {
+    expect(canary("v0.1.0-alpha.1")).toBe("0.1.0-alpha.1.canary.20261125.42");
+    expect(canary("v0.1.0-beta.2", "20261201", "7")).toBe("0.1.0-beta.2.canary.20261201.7");
+    // After a stable release, the next patch's, before any of its prereleases.
+    expect(canary("v0.1.0")).toBe("0.1.1-0.canary.20261125.42");
+    for (const tag of ["v0.1.0-alpha.1", "v0.1.0-beta.2", "v0.1.0", "v1.9.9"]) {
+      expect(isVersion(canary(tag)), tag).toBe(true);
+      expect(isCanary(canary(tag)), tag).toBe(true);
+    }
+    // Only numbered alphas and betas: after alpha, a canary (alpha.canary.…) would sort after alpha.1,
+    // and after alpha.1.1 one would sort after alpha.1.2.
+    for (const bad of [["canary"], ["v0.1.0-rc.1"], ["v0.1.0-alpha.01"], ["v0.1.0-alpha"], ["v0.1.0-alpha.1.1"], ["v0.1.0-beta.x"], ["v0.1.0", "01261125"], ["v0.1.0", "20261125", "0"], ["v0.1.0", "20261125", "007"]]) {
+      expect(() => execFileSync(new URL("../../deploy/canary-version.sh", import.meta.url).pathname, [bad[0]!, bad[1] ?? "20261125", bad[2] ?? "1"], { stdio: "pipe" }), bad.join(" ")).toThrow();
+    }
+  });
+
+  it("sort after the release they follow and before any later one, so upgrade moves onto one and on from it", () => {
+    const ordered = [
+      "0.1.0-alpha.1",
+      canary("v0.1.0-alpha.1", "20261125", "9"),
+      canary("v0.1.0-alpha.1", "20261125", "10"),
+      canary("v0.1.0-alpha.1", "20261126", "11"),
+      "0.1.0-alpha.2",
+      canary("v0.1.0-alpha.2", "20261201", "12"),
+      "0.1.0-beta.1",
+      canary("v0.1.0-beta.1", "20261202", "13"),
+      "0.1.0",
+      canary("v0.1.0", "20261203", "14"),
+      "0.1.1-alpha.1",
+      "0.1.1",
+      "0.2.0-alpha.1",
+    ];
+    for (let i = 0; i < ordered.length; i++) {
+      for (let j = 0; j < ordered.length; j++) {
+        expect(Math.sign(compareVersions(ordered[i]!, ordered[j]!)), `${ordered[i]} vs ${ordered[j]}`).toBe(Math.sign(i - j));
+      }
+    }
+  });
+
+  it("are never a release: no release version counts as a canary", () => {
+    for (const version of ["0.1.0", "0.1.0-alpha.1", "0.1.0-beta.2", "1.0.0", "0.1.0-alpha.1+canary"]) expect(isCanary(version), version).toBe(false);
+    expect(isCanary("latest")).toBe(false);
+  });
+
+  it("download from the rolling canary prerelease, and a release from its own", () => {
+    delete process.env.YS_E2E_RELEASES;
+    expect(releaseUrl("0.1.0-alpha.1.canary.20261125.42", "SHA256SUMS")).toBe("https://github.com/your-space-ai/your-space/releases/download/canary/SHA256SUMS");
+    expect(releaseUrl("0.1.0-alpha.1", "SHA256SUMS")).toBe("https://github.com/your-space-ai/your-space/releases/download/v0.1.0-alpha.1/SHA256SUMS");
+  });
+
+  it("say when the canary prerelease has moved on to another build", () => {
+    const mine = "0.1.0-alpha.1.canary.20261125.42";
+    const newer = "0.1.0-alpha.1.canary.20261126.43";
+    expect(pinProblem([mine, mine], mine, false)).toBeNull();
+    expect(pinProblem([newer, newer], mine, false)).toMatch(/^The canary release now holds Your Space 0\.1\.0-alpha\.1\.canary\.20261126\.43, not this CLI's 0\.1\.0-alpha\.1\.canary\.20261125\.42.*Run the canary build/);
+    expect(pinProblem([newer], mine, true)).toBe("The bundled installation files belong to a different CLI version.");
+    expect(pinProblem(["0.1.0-alpha.2"], "0.1.0-alpha.1", false)).toMatch(/doesn't run Your Space 0\.1\.0-alpha\.1/);
+    expect(pinProblem([], "0.1.0-alpha.1", false)).not.toBeNull();
+  });
+
+  it("unpack only the canary build of the CLI's own version, checked against the prerelease's checksums", async () => {
+    const root = mkdtempSync(join(tmpdir(), "your-space-canary-"));
+    const served = join(root, "served");
+    const server = createServer((request, response) => {
+      try {
+        response.end(readFileSync(join(served, decodeURIComponent(new URL(request.url!, "http://x").pathname))));
+      } catch {
+        response.statusCode = 404;
+        response.end();
+      }
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    process.env.YS_E2E_RELEASES = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const mine = "0.1.0-alpha.1.canary.20261125.42";
+      const install = join(root, "install");
+      mkdirSync(install);
+      // A release's own files, under its tag, are never read for a canary.
+      bundle(root, join(served, "v0.1.0-alpha.1"), "0.1.0-alpha.1");
+      bundle(root, join(served, "canary"), "0.1.0-alpha.1.canary.20261126.43");
+      await expect(fetchRelease(mine, install)).rejects.toMatchObject({ code: "checksum_mismatch", message: expect.stringContaining("The canary release now holds") });
+      expect(readdirSync(install)).toEqual([]);
+      bundle(root, join(served, "canary"), mine);
+      writeFileSync(join(served, "canary", "your-space.tar.gz"), "changed");
+      await expect(fetchRelease(mine, install)).rejects.toMatchObject({ code: "checksum_mismatch", message: expect.stringContaining("doesn't match") });
+      expect(readdirSync(install)).toEqual([]);
+      bundle(root, join(served, "canary"), mine);
+      await fetchRelease(mine, install);
+      expect(releasePins(readFileSync(join(install, "stack.yaml"), "utf8"))).toEqual([mine]);
+    } finally {
+      delete process.env.YS_E2E_RELEASES;
+      server.close();
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

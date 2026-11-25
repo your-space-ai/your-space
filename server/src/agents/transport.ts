@@ -1,6 +1,7 @@
 import { request } from "node:http";
 import { isIPv4 } from "node:net";
 import { installedInterface } from "../apps/runtime-client.ts";
+import { AGENT_RESULT_LIMIT } from "../apps/agent-kit.ts";
 
 interface DispatchRequest {
   installation: { id: string; name: string; interfaceService: string; interfacePort: number | null };
@@ -60,7 +61,7 @@ export async function dispatchAppAction(call: DispatchRequest): Promise<{ status
         res.on("error", () => reject(new Error("App response interrupted")));
         res.on("data", (chunk: Buffer) => {
           size += chunk.length;
-          if (size > 256 * 1024) {
+          if (size > AGENT_RESULT_LIMIT) {
             res.destroy();
             reject(new Error("App result exceeds limit"));
             return;

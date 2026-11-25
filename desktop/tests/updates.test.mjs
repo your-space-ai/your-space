@@ -248,11 +248,12 @@ test("Later keeps the downloaded update for the next check or quit, and a failed
 });
 
 // The real electron-updater, with the packaged app-update.yml and feeds from update-feed.mjs, behind a
-// stand-in for GitHub: each release's latest-mac.yml and the releases.atom feed, newest first.
+// stand-in for GitHub: each release's latest-mac.yml and the releases.atom feed, newest first. The
+// rolling `canary` prerelease, which holds a build of main for the CLI, has no Mac app and no feed.
 async function github(t, tags) {
   const dir = await folder(t);
   const feeds = new Map();
-  for (const tag of tags) {
+  for (const tag of tags.filter(tag => tag.startsWith("v"))) {
     const version = tag.slice(1);
     const release = join(dir, tag);
     await mkdir(release);
@@ -272,7 +273,8 @@ async function github(t, tags) {
       requests.push({ url, headers: { ...options.headers } });
       if (url === "https://github.com/your-space-ai/your-space/releases.atom") return atom;
       if (url === "https://github.com/your-space-ai/your-space/releases/latest") {
-        return JSON.stringify({ tag_name: tags.find(tag => !tag.includes("-")) });
+        // GitHub's latest release is never a prerelease.
+        return JSON.stringify({ tag_name: tags.find(tag => tag.startsWith("v") && !tag.includes("-")) });
       }
       if (feeds.has(url)) return feeds.get(url);
       throw Object.assign(new Error("Not found: " + url), { statusCode: 404 });
@@ -330,4 +332,16 @@ test("electron-updater offers an alpha app the stable release and betas, a beta 
   assert.equal(await offered(["v0.1.0-beta.1", "v0.1.0-alpha.2"], "0.1.0-alpha.2"), "0.1.0-beta.1");
   assert.equal(await offered(["v0.1.0-alpha.3", "v0.1.0-beta.1"], "0.1.0-beta.1"), null);
   assert.equal(await offered(["v0.2.0-alpha.1", "v0.1.1", "v0.1.0"], "0.1.0"), "0.1.1");
+});
+
+test("electron-updater skips the rolling canary prerelease, wherever it is in the feed", async t => {
+  const offered = async (tags, version) => {
+    const result = await (await github(t, tags)).app(version).checkForUpdates();
+    return result.isUpdateAvailable ? result.updateInfo.version : null;
+  };
+  assert.equal(await offered(["canary", "v0.1.0-alpha.2", "v0.1.0-alpha.1"], "0.1.0-alpha.1"), "0.1.0-alpha.2");
+  assert.equal(await offered(["canary", "v0.1.0-alpha.1"], "0.1.0-alpha.1"), null);
+  assert.equal(await offered(["canary", "v0.1.0-beta.2", "v0.1.0-beta.1"], "0.1.0-beta.1"), "0.1.0-beta.2");
+  assert.equal(await offered(["canary", "v0.1.1", "v0.1.0"], "0.1.0"), "0.1.1");
+  assert.equal(await offered(["v0.1.0-alpha.2", "canary", "v0.1.0-alpha.1"], "0.1.0-alpha.1"), "0.1.0-alpha.2");
 });
