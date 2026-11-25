@@ -13,10 +13,17 @@
     <header><span class="brand-mark" aria-hidden="true"></span>Your Space</header>
     <main>
       <button type="button" id="back" class="back" hidden><span aria-hidden="true">‹</span> Back</button>
-      <section id="welcome" aria-labelledby="welcome-title">
+      <section id="welcome" class="loading" aria-labelledby="welcome-title">
         <h1 id="welcome-title" tabindex="-1">Open your workspace</h1>
-        <p class="intro">Bring your apps into one personal dashboard. Start here or open one you already use.</p>
-        <div class="choices">
+        <p class="intro" id="welcome-intro">Bring your apps into one personal dashboard. Start here or open one you already use.</p>
+        <div id="saved" hidden>
+          <ul id="saved-list" class="saved-list" aria-labelledby="welcome-title"></ul>
+          <div class="actions">
+            <button type="button" class="secondary" id="add-server">Add a server</button>
+            <button type="button" class="secondary" id="run-here">Run on this Mac</button>
+          </div>
+        </div>
+        <div class="choices" id="first-choices">
           <button type="button" id="local-choice" class="choice">
             <span class="choice-icon computer" aria-hidden="true"></span>
             <span><strong>Run on this Mac</strong><small>Keep your workspace and apps on this computer.</small></span>
@@ -63,6 +70,9 @@
         <form id="remote-form">
           <label for="address">Server address</label>
           <input id="address" type="url" maxlength="2048" placeholder="https://space.example.com" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" required>
+          <label for="server-name">Name <span class="optional">(optional)</span></label>
+          <input id="server-name" maxlength="100" autocomplete="off" spellcheck="false" aria-describedby="server-name-help">
+          <small id="server-name-help">Shown in your list of workspaces. Leave it empty to use the server’s host name.</small>
           <div class="actions"><button type="submit" class="primary">Connect</button></div>
         </form>
       </section>
@@ -78,6 +88,32 @@
           <div class="actions"><button type="submit" class="primary">Continue to password setup</button></div>
         </form>
       </section>
+      <dialog id="manage" aria-labelledby="manage-title">
+        <form id="rename-form">
+          <h2 id="manage-title">Rename or remove</h2>
+          <p class="dialog-address" id="manage-address"></p>
+          <label for="manage-name">Name</label>
+          <input id="manage-name" maxlength="100" autocomplete="off" spellcheck="false" aria-describedby="manage-name-help">
+          <small id="manage-name-help"></small>
+          <p class="dialog-problem" id="manage-problem" role="alert"></p>
+          <div class="actions">
+            <button type="button" class="text-action" id="manage-remove">Remove…</button>
+            <span class="spacer"></span>
+            <button type="button" class="secondary" id="manage-cancel">Cancel</button>
+            <button type="submit" class="primary">Save</button>
+          </div>
+        </form>
+        <div id="confirm-remove" hidden>
+          <h2 id="remove-title">Remove from your list?</h2>
+          <p id="remove-detail"></p>
+          <p class="dialog-problem" id="remove-problem" role="alert"></p>
+          <div class="actions">
+            <span class="spacer"></span>
+            <button type="button" class="secondary" id="remove-cancel">Cancel</button>
+            <button type="button" class="primary" id="remove-confirm">Remove</button>
+          </div>
+        </div>
+      </dialog>
       <div id="feedback">
         <p id="status" role="status" aria-live="polite"></p>
         <p id="problem" role="alert"></p>

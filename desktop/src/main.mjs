@@ -6,7 +6,8 @@ import { launcherTheme } from './appearance.mjs';
 import { createLocalSetup, localSetupError } from './local-setup.mjs';
 import { createQuitControl, stopTimeouts } from './quit.mjs';
 import { createUpdates } from './updates.mjs';
-import { checkWorkspace, lastWorkspace, linkTarget, ownerDestination, rememberWorkspace, webDestination, WorkspaceError, workspaceOrigin, workspacePartition } from './workspace.mjs';
+import { checkWorkspace, createSavedWorkspaces, linkTarget, mostRecent, ownerDestination, savedName, webDestination, WorkspaceError, workspaceOrigin, workspacePartition } from './workspace.mjs';
+import { workspaceMenu } from './workspace-menu.mjs';
 
 const desktop = fileURLToPath(new URL('..', import.meta.url));
 const launcherURL = pathToFileURL(join(desktop, 'renderer/index.html')).href;
@@ -26,10 +27,20 @@ const local = createLocalSetup({
   version: app.getVersion(),
   versionFile: join(app.getPath('userData'), 'local-version.json'),
 });
-const savedFile = join(app.getPath('userData'), 'connection.json');
+// Saved workspaces: a name and an address each. connection.json held the one address earlier versions kept.
+const savedWorkspaces = createSavedWorkspaces({
+  file: join(app.getPath('userData'), 'workspaces.json'),
+  legacyFile: join(app.getPath('userData'), 'connection.json'),
+  onChange: () => buildMenu(),
+});
 let launcher;
-// The workspace window the launcher opened last. Closing it hides it, and the Dock icon shows it again.
+// One window per workspace address, each in that address's own session. Closing one hides it, so the
+// Workspace menu and the Dock icon show it again as it was.
+const windows = new Map();
+// The workspace window used last, which the Dock icon shows when no window is visible.
 let primary;
+// What the launcher shows the next time it asks: the list, the address form, or a saved workspace to open.
+let launcherRequest;
 let busy = false;
 
 // A sheet on a visible window when there is one: on macOS a message box without a parent window
@@ -118,12 +129,14 @@ function secureSession(partition, origin) {
   return browser;
 }
 
-function showLauncher(page = launcherURL) {
-  if (typeof page !== 'string') page = launcherURL;
+function showLauncher(page = launcherURL, request) {
   // While the app stops its local workspace to quit, the launcher shows only that.
   if (quitControl.stopping && page !== stoppingURL) return;
+  if (request) launcherRequest = request;
   if (launcher && !launcher.isDestroyed()) {
+    // A loaded launcher asks for its list again, and for any request; a reloaded one asks as it loads.
     if (launcher.webContents.getURL() !== page) void launcher.loadURL(page).catch(() => {});
+    else if (page === launcherURL) launcher.webContents.send('launcher:refresh');
     launcher.show();
     launcher.focus();
     return;
@@ -172,8 +185,40 @@ function workspaceWindow(browser, origin, workspace = origin, enableLinks = true
   return win;
 }
 
-async function openWorkspace(value, {ownerLink, localInstall = false} = {}) {
+function isWorkspaceWindow(win) {
+  return [...windows.values()].includes(win);
+}
+
+// Shows the window already open for an address, if there is one.
+function focusWorkspace(origin) {
+  const win = windows.get(origin);
+  if (!win || win.isDestroyed()) return false;
+  win.show();
+  win.focus();
+  primary = win;
+  return true;
+}
+
+// The Workspace menu's choice of a saved workspace: its open window, or the launcher opening it, which
+// shows its progress and any problem.
+function switchWorkspace(origin) {
+  if (quitControl.stopping) return;
+  if (focusWorkspace(origin)) {
+    void savedWorkspaces.opened(origin).catch(() => {});
+    return;
+  }
+  showLauncher(launcherURL, {open: origin});
+}
+
+// Opening an address that is saved updates its entry; any other address is added to the list.
+async function openWorkspace(value, {ownerLink, localInstall = false, name} = {}) {
   const origin = workspaceOrigin(value);
+  savedName(name, origin, localInstall);
+  if (!ownerLink && focusWorkspace(origin)) {
+    await savedWorkspaces.opened(origin, {name, local: localInstall});
+    launcher?.hide();
+    return {state: 'ready', origin};
+  }
   const url = ownerLink ? ownerDestination(origin, ownerLink) : origin;
   const browser = secureSession(workspacePartition(origin), origin);
   await checkWorkspace(origin, browser.fetch.bind(browser));
@@ -181,7 +226,7 @@ async function openWorkspace(value, {ownerLink, localInstall = false} = {}) {
   try {
     await win.loadURL(url);
     if (new URL(win.webContents.getURL()).origin !== origin) throw new Error();
-    await rememberWorkspace(savedFile, origin, localInstall);
+    await savedWorkspaces.opened(origin, {name, local: localInstall});
   } catch {
     win.destroy();
     throw new WorkspaceError('open_failed', 'Could not open this workspace. Check the connection and try again.');
@@ -190,16 +235,23 @@ async function openWorkspace(value, {ownerLink, localInstall = false} = {}) {
     win.destroy();
     throw new WorkspaceError('open_failed', 'Your Space is quitting.');
   }
-  // A hidden earlier workspace window could never be shown again; one still open stays open.
-  if (primary && !primary.isDestroyed() && !primary.isVisible()) primary.destroy();
+  // Only the owner link opens an address again while its window is open; it replaces that window.
+  const previous = windows.get(origin);
+  windows.set(origin, win);
+  if (previous && !previous.isDestroyed()) previous.destroy();
   primary = win;
   win.on('close', event => {
-    if (win !== primary || quitControl.quitting) return;
+    // A workspace that is no longer saved can't be shown again, so its window closes for good.
+    if (quitControl.quitting || windows.get(origin) !== win || !savedWorkspaces.current().some(entry => entry.origin === origin)) return;
     // Closing the window keeps the app, and any local workspace, running, as on any Mac.
     event.preventDefault();
     win.hide();
   });
-  win.on('closed', () => { if (primary === win) primary = undefined; });
+  win.on('closed', () => {
+    if (windows.get(origin) === win) windows.delete(origin);
+    if (primary === win) primary = undefined;
+    buildMenu();
+  });
   win.show();
   launcher?.hide();
   return {state: 'ready', origin};
@@ -214,6 +266,48 @@ async function startLocal(input) {
   return {state: 'owner-needed', origin};
 }
 
+// A saved workspace chosen in the launcher. This Mac starts the local workspace with its saved engine,
+// as on launch; a server is opened at its address.
+async function openSaved(value) {
+  const origin = workspaceOrigin(value);
+  const entry = (await savedWorkspaces.list()).find(item => item.origin === origin);
+  if (!entry) throw new WorkspaceError('not_saved', 'This workspace is no longer in your list.');
+  if (!entry.local || windows.has(origin)) return openWorkspace(origin);
+  const {saved: engine} = await local.engines();
+  if (!engine) throw localSetupError('engine_missing');
+  return startLocal({engine: engine.name, expectedSocket: engine.socket});
+}
+
+// Forgets a saved workspace. A hidden window for it closes; one on screen stays until it is closed.
+// This Mac's installation keeps running, and quitting still stops it.
+async function forgetSaved(value) {
+  const origin = workspaceOrigin(value);
+  await savedWorkspaces.remove(origin);
+  const win = windows.get(origin);
+  if (win && !win.isDestroyed() && !win.isVisible()) win.destroy();
+}
+
+// Renaming or removing changes only the list file, so a failure says that, not what local setup says.
+async function changeSaved(change) {
+  try { await change(); } catch (error) {
+    throw error instanceof WorkspaceError ? error : new WorkspaceError('save_failed', 'Your Space could not save your workspaces. Try again.');
+  }
+  return {workspaces: await savedState()};
+}
+
+async function savedState() {
+  const running = local.mayBeRunning();
+  return (await savedWorkspaces.list()).map(entry => ({...entry, running: entry.local && running}));
+}
+
+// The list for the launcher, with what it was asked to show, once.
+async function launcherState() {
+  const request = launcherRequest;
+  launcherRequest = undefined;
+  const workspaces = await savedState();
+  return request ? {workspaces, request} : {workspaces};
+}
+
 async function reopen() {
   // Nothing starts while the app stops its local workspace to quit or update.
   const quitting = () => quitControl.stopping || quitControl.quitting;
@@ -221,7 +315,8 @@ async function reopen() {
   busy = true;
   let openingLocal = false;
   try {
-    const last = await lastWorkspace(savedFile);
+    // The workspace used last opens on launch.
+    const last = mostRecent(await savedWorkspaces.list());
     if (!last) return showLauncher();
     if (!last.local) return await openWorkspace(last.origin);
     // Local Docker startup can take minutes. Show progress while reconnecting on launch.
@@ -253,7 +348,11 @@ function installHandlers() {
       const result = await local.createOwner({name: input?.name, username: input?.username});
       return openWorkspace(result.origin, {ownerLink: result.url === result.origin ? undefined : result.url, localInstall: true});
     },
-    connect: input => openWorkspace(input?.url),
+    connect: input => openWorkspace(input?.url, {name: input?.name}),
+    workspaces: launcherState,
+    open: input => openSaved(input?.origin),
+    rename: input => changeSaved(() => savedWorkspaces.rename(input?.origin, input?.name)),
+    remove: input => changeSaved(() => forgetSaved(input?.origin)),
     openDockerGuide: () => shell.openExternal('https://docs.docker.com/desktop/setup/install/mac-install/'),
   };
   for (const [name, action] of Object.entries(actions)) {
@@ -263,7 +362,7 @@ function installHandlers() {
           frame !== launcher.webContents.mainFrame || frame.url !== launcherURL) {
         return {error: {code: 'forbidden', message: 'Open the desktop launcher to continue.'}};
       }
-      const exclusive = ['start', 'createOwner', 'connect'].includes(name);
+      const exclusive = ['start', 'createOwner', 'connect', 'open'].includes(name);
       if (exclusive && busy) return {error: {code: 'busy', message: 'Wait for the current setup to finish.'}};
       if (exclusive) busy = true;
       try { return await action(input); }
@@ -286,11 +385,13 @@ function buildMenu() {
       {type: 'separator'}, {role: 'hide'}, {role: 'hideOthers'}, {role: 'unhide'},
       {type: 'separator'}, {role: 'quit'},
     ]},
-    {label: 'Workspace', submenu: [
-      {label: 'Choose a workspace…', accelerator: 'CmdOrCtrl+Shift+O', click: showLauncher},
-      {label: 'Reopen last workspace', click: () => void reopen()},
-      {type: 'separator'}, {role: 'close'},
-    ]},
+    {label: 'Workspace', submenu: workspaceMenu({
+      saved: savedWorkspaces.current(),
+      frontmost: [...windows].find(([, win]) => win === BrowserWindow.getFocusedWindow())?.[0],
+      open: switchWorkspace,
+      addServer: () => showLauncher(launcherURL, {view: 'remote'}),
+      manage: () => showLauncher(launcherURL, {view: 'list'}),
+    })},
     {role: 'editMenu'}, {role: 'windowMenu'},
   ]));
 }
@@ -299,6 +400,11 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => { if (app.isReady() && !quitControl.stopping) showLauncher(); });
+  // The menu's check follows the frontmost workspace, and the Dock icon shows the one used last.
+  app.on('browser-window-focus', (event, win) => {
+    if (isWorkspaceWindow(win)) primary = win;
+    buildMenu();
+  });
   app.on('activate', () => {
     if (!app.isReady() || quitControl.stopping || BrowserWindow.getAllWindows().some(win => win.isVisible())) return;
     if (primary && !primary.isDestroyed()) primary.show();
@@ -312,6 +418,7 @@ if (!app.requestSingleInstanceLock()) {
     // Logout, restart and shutdown stop the local workspace with a short bound and no dialog.
     powerMonitor.on('shutdown', () => quitControl.systemEnding());
     await updates.start().catch(() => {});
+    await savedWorkspaces.list().catch(() => {});
     buildMenu();
     void reopen();
   });

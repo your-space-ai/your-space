@@ -93,16 +93,88 @@ export async function checkWorkspace(origin, fetchStatus) {
   }
 }
 
-export async function lastWorkspace(file) {
-  try {
-    const saved = JSON.parse(await readFile(file, 'utf8'));
-    return { origin: workspaceOrigin(saved.origin), local: saved.local === true };
-  }
-  catch { return null; }
+// Saved workspaces are a name and an address each, and nothing about how the server is reached: a
+// tunnel, VPN or proxy is the network's job (decision 2026-11-24). The list keeps the order they
+// were added, so the Workspace menu's ⌘1–⌘9 stay put; "most recent" only picks what opens on launch.
+export const savedLimit = 50;
+const localName = 'This Mac';
+
+// The name shown for a saved address. Empty means the default: the address's host, or This Mac.
+export function savedName(value, origin, local = false) {
+  const address = workspaceOrigin(origin);
+  if (value !== undefined && value !== null && typeof value !== 'string') throw invalidName();
+  const name = (value ?? '').trim();
+  if (!name) return local ? localName : new URL(address).host;
+  if (name.length > 100 || /[\p{Cc}\u2028\u2029\u202a-\u202e\u2066-\u2069]/u.test(name)) throw invalidName();
+  return name;
 }
 
-export async function rememberWorkspace(file, origin, local = false) {
-  const contents = JSON.stringify({origin: workspaceOrigin(origin), local});
+function invalidName() {
+  return new WorkspaceError('invalid_name', 'Enter a name of up to 100 characters on one line, or leave it empty.');
+}
+
+// Keeps the valid entries of a list read from disk, each address once, up to the limit.
+export function parseSaved(data) {
+  const list = [];
+  for (const item of Array.isArray(data?.workspaces) ? data.workspaces : []) {
+    let origin;
+    try { origin = workspaceOrigin(item?.origin); } catch { continue; }
+    if (list.some(entry => entry.origin === origin)) continue;
+    const local = item.local === true;
+    let name;
+    try { name = savedName(item.name, origin, local); } catch { name = savedName('', origin, local); }
+    const lastOpened = Number.isSafeInteger(item.lastOpened) && item.lastOpened > 0 ? item.lastOpened : 0;
+    list.push({name, origin, local, lastOpened});
+    if (list.length === savedLimit) break;
+  }
+  return list;
+}
+
+// Records a successful open: a new address goes to the end of the list, a saved one keeps its place.
+// `local` marks the app's own installation and stays set, so connecting to the same address by hand
+// doesn't make This Mac a plain server. Past the limit, the entry opened longest ago goes, This Mac last.
+export function openedSaved(list, {origin, name, local = false}, time) {
+  origin = workspaceOrigin(origin);
+  const index = list.findIndex(entry => entry.origin === origin);
+  if (index >= 0) {
+    const entry = list[index];
+    const marked = entry.local || local;
+    // An empty name keeps the one already saved.
+    const given = typeof name === 'string' ? name.trim() : name;
+    return list.with(index, {...entry, local: marked, lastOpened: time, name: given ? savedName(given, origin, marked) : entry.name});
+  }
+  const next = [...list, {name: savedName(name, origin, local), origin, local, lastOpened: time}];
+  if (next.length <= savedLimit) return next;
+  const candidates = next.slice(0, -1);
+  const pool = candidates.some(entry => !entry.local) ? candidates.filter(entry => !entry.local) : candidates;
+  const oldest = pool.reduce((a, b) => b.lastOpened < a.lastOpened ? b : a);
+  return next.filter(entry => entry !== oldest);
+}
+
+export function renamedSaved(list, origin, name) {
+  origin = workspaceOrigin(origin);
+  const index = list.findIndex(entry => entry.origin === origin);
+  if (index < 0) throw notSaved();
+  return list.with(index, {...list[index], name: savedName(name, origin, list[index].local)});
+}
+
+// Forgets an address. Nothing on its server, or in the installation on this Mac, changes.
+export function removedSaved(list, origin) {
+  origin = workspaceOrigin(origin);
+  if (!list.some(entry => entry.origin === origin)) throw notSaved();
+  return list.filter(entry => entry.origin !== origin);
+}
+
+function notSaved() {
+  return new WorkspaceError('not_saved', 'This workspace is no longer in your list.');
+}
+
+// The workspace to open on launch: the one opened last, or the first saved when none has a time.
+export function mostRecent(list) {
+  return list.reduce((best, entry) => !best || entry.lastOpened > best.lastOpened ? entry : best, null);
+}
+
+async function writePrivate(file, contents) {
   await mkdir(dirname(file), {recursive: true, mode: 0o700});
   const temporary = file + '.' + randomUUID();
   try {
@@ -111,4 +183,59 @@ export async function rememberWorkspace(file, origin, local = false) {
   } finally {
     await rm(temporary, {force: true});
   }
+}
+
+// The saved list in `file`, written whole and atomically, readable only by this user. On first use it
+// takes over the single address earlier versions kept in `legacyFile`, then deletes that file.
+// Changes run one at a time; `onChange` follows each one that was written.
+export function createSavedWorkspaces({file, legacyFile, now = Date.now, onChange = () => {}}) {
+  let list = [];
+  let loaded;
+  let queue = Promise.resolve();
+
+  async function load() {
+    let text;
+    try { text = await readFile(file, 'utf8'); } catch (error) {
+      if (error?.code !== 'ENOENT') return [];
+      return migrate();
+    }
+    try { return parseSaved(JSON.parse(text)); } catch { return []; }
+  }
+
+  async function migrate() {
+    if (!legacyFile) return [];
+    let saved;
+    try { saved = JSON.parse(await readFile(legacyFile, 'utf8')); } catch { return []; }
+    let origin;
+    try { origin = workspaceOrigin(saved?.origin); } catch { return []; }
+    const migrated = openedSaved([], {origin, local: saved.local === true}, now());
+    await writePrivate(file, JSON.stringify({workspaces: migrated}));
+    await rm(legacyFile, {force: true});
+    return migrated;
+  }
+
+  function serial(change) {
+    const run = queue.then(async () => {
+      loaded ??= load().catch(() => []).then(value => { list = value; });
+      await loaded;
+      if (!change) return list;
+      const next = change(list);
+      await writePrivate(file, JSON.stringify({workspaces: next}));
+      list = next;
+      try { onChange(list); } catch { /* A listener's failure doesn't undo the change. */ }
+      return list;
+    });
+    queue = run.catch(() => {});
+    return run;
+  }
+
+  return {
+    /** The saved list, loading it the first time. */
+    list: () => serial(),
+    /** The list as last loaded or written, for code that can't wait, such as building a menu. */
+    current: () => list,
+    opened: (origin, {name, local} = {}) => serial(value => openedSaved(value, {origin, name, local}, now())),
+    rename: (origin, name) => serial(value => renamedSaved(value, origin, name)),
+    remove: origin => serial(value => removedSaved(value, origin)),
+  };
 }
