@@ -71,8 +71,8 @@ There is no uninstall yet. If you only use **Connect to a server**, removing the
 
 To also remove the workspace this Mac runs, with its apps and their data:
 
-1. Open the app and its local workspace, which starts the workspace again if you quit the app. In that local workspace, select **Remove app**, then **Delete data**, for each app in **Apps**. Do this only in the workspace this Mac runs, at `http://space.localhost:8081` or the address you gave it with `configure`: in a workspace on a server, it would delete that server's apps.
-2. Quit the app, which stops the local workspace. Opening the app again would start it.
+1. Open **This Mac** in the app, which starts the local workspace again if you quit the app. In that local workspace, select **Remove app**, then **Delete data**, for each app in **Apps**. Do this only in the workspace this Mac runs, at `http://space.localhost:8081` or the address you gave it with `configure`: in a workspace on a server, it would delete that server's apps.
+2. Quit the app, which stops the local workspace. Opening the app again would start it if This Mac was the workspace you used last.
 3. In Terminal, run `unset DOCKER_CONTEXT` and `export DOCKER_HOST="unix://<socket>"`, then follow the rest of [Remove Your Space](../operate/index.md#remove-your-space) in the installation folder above, in the same window.
 4. Move the app to the Trash, and delete `~/Library/Application Support/ai.your-space.desktop` and the folders whose names start with `ai.your-space.desktop` in `~/Library/Caches`.
 

@@ -35,3 +35,8 @@ test('with nothing saved or no workspace in front, the menu has no workspace ite
     ['Add a server…', 'Manage workspaces…', 'separator', 'close']);
   assert.equal(workspaceMenu({saved, frontmost: undefined, open() {}, addServer() {}, manage() {}}).some(item => item.checked), false);
 });
+
+test("a name's own & shows as written, since menus read a single & as a mnemonic marker", () => {
+  const [item] = workspaceMenu({saved: [{name: 'R&D && Ops', origin: 'https://rd.example.com'}], open() {}, addServer() {}, manage() {}});
+  assert.equal(item.label, 'R&&D &&&& Ops');
+});

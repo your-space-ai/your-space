@@ -4,7 +4,7 @@ import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/p
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkWorkspace, createSavedWorkspaces, linkTarget, mostRecent, openedSaved, ownerDestination, parseSaved, removedSaved, renamedSaved, savedLimit, savedName, webDestination, workspaceOrigin, workspacePartition } from '../src/workspace.mjs';
+import { checkWorkspace, createSavedWorkspaces, linkTarget, mostRecent, openedSaved, ownerDestination, parseSaved, removedSaved, renamedSaved, savedLimit, savedName, usedSaved, webDestination, workspaceOrigin, workspacePartition } from '../src/workspace.mjs';
 
 test('only HTTPS and loopback HTTP origins are accepted and a workspace has its own session partition', () => {
   for (const address of ['https://workspace.example.com', 'http://127.0.0.1:3001', 'http://[::1]', 'http://space.localhost', 'http://space.localhost:8081']) {
@@ -138,6 +138,17 @@ test('the list keeps the order workspaces were added, and launch opens the one u
   assert.equal(mostRecent([{origin: 'https://a.example.com', lastOpened: 0}, {origin: 'https://b.example.com', lastOpened: 0}]).origin, 'https://a.example.com');
 });
 
+test("bringing a saved workspace's window to the front makes it the one launch opens, and adds nothing", () => {
+  let list = openedSaved([], {origin: 'https://one.example.com'}, 10);
+  list = openedSaved(list, {origin: 'https://two.example.com'}, 20);
+  assert.equal(usedSaved(list, 'https://two.example.com', 30), list);
+  assert.equal(usedSaved(list, 'https://gone.example.com', 30), list);
+  list = usedSaved(list, 'https://one.example.com/', 30);
+  assert.deepEqual(list.map(entry => [entry.origin, entry.lastOpened]), [['https://one.example.com', 30], ['https://two.example.com', 20]]);
+  assert.equal(mostRecent(list).origin, 'https://one.example.com');
+  assert.throws(() => usedSaved(list, 'https://one.example.com/reset-password#token=t', 40), {code: 'invalid_address'});
+});
+
 test('past the limit, adding a workspace forgets the one opened longest ago, never This Mac first', () => {
   let list = openedSaved([], {origin: 'http://space.localhost:8081', local: true}, 1);
   for (let i = 1; i < savedLimit; i++) list = openedSaved(list, {origin: `https://s${i}.example.com`}, 100 + i);
@@ -168,6 +179,13 @@ test('the saved list is written privately and atomically, and changes run one at
     {name: 'This Mac', origin: 'http://space.localhost:8081', local: true, lastOpened: 101},
     {name: 'two.example.com', origin: 'https://two.example.com', local: false, lastOpened: 102},
   ]});
+  // Using a saved workspace is written only when it changes which one launch opens.
+  await store.used('https://two.example.com');
+  await store.used('https://gone.example.com');
+  assert.deepEqual(changes, [1, 2, 3]);
+  await store.used('https://one.example.com');
+  assert.deepEqual(changes, [1, 2, 3, 3]);
+  assert.equal(mostRecent(store.current()).origin, 'https://one.example.com');
   await store.rename('https://two.example.com', 'Home server');
   await store.remove('https://one.example.com');
   await assert.rejects(store.opened('http://space.localhost/reset-password#token=demo'), {code: 'invalid_address'});

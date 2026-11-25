@@ -109,7 +109,7 @@ const updates = createUpdates({
     downloaded: async info => (await message({
       message: `Your Space ${info.version} is ready to install`,
       detail: local.mayBeRunning() ?
-        'Restarting stops your local workspace, updates Your Space, then starts the workspace again on the new version.' :
+        'Restarting stops your local workspace, updates Your Space, then opens the workspace you used last. If that is This Mac, it starts again on the new version.' :
         'Restart Your Space to finish updating, or it updates when you quit.',
       buttons: ['Restart Now', 'Later'], defaultId: 0, cancelId: 1,
     })).response === 0,
@@ -191,8 +191,9 @@ function workspaceWindow(browser, origin, workspace = origin, enableLinks = true
   return win;
 }
 
-function isWorkspaceWindow(win) {
-  return [...windows.values()].includes(win);
+// The address of a workspace's own window, if `win` is one.
+function workspaceOf(win) {
+  return [...windows].find(([, open]) => open === win)?.[0];
 }
 
 // Shows the window already open for an address, if there is one.
@@ -387,7 +388,7 @@ function buildMenu() {
     ]},
     {label: 'Workspace', submenu: workspaceMenu({
       saved: savedWorkspaces.current(),
-      frontmost: [...windows].find(([, win]) => win === BrowserWindow.getFocusedWindow())?.[0],
+      frontmost: workspaceOf(BrowserWindow.getFocusedWindow()),
       open: switchWorkspace,
       addServer: () => showLauncher(launcherURL, {view: 'remote'}),
       manage: () => showLauncher(launcherURL, {view: 'list'}),
@@ -400,11 +401,17 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => { if (app.isReady() && !quitControl.stopping) showLauncher(); });
-  // The menu's check follows the frontmost workspace, and the Dock icon shows the one used last.
+  // The menu's check follows the frontmost workspace, and goes when its window hides. The workspace
+  // used last is the one whose window came to the front last: the Dock icon shows it, and launch opens it.
   app.on('browser-window-focus', (event, win) => {
-    if (isWorkspaceWindow(win)) primary = win;
+    const origin = workspaceOf(win);
+    if (origin) {
+      primary = win;
+      void savedWorkspaces.used(origin).catch(() => {});
+    }
     buildMenu();
   });
+  app.on('browser-window-blur', () => buildMenu());
   app.on('activate', () => {
     if (!app.isReady() || quitControl.stopping || BrowserWindow.getAllWindows().some(win => win.isVisible())) return;
     if (primary && !primary.isDestroyed()) primary.show();

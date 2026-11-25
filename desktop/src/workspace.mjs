@@ -174,6 +174,15 @@ export function mostRecent(list) {
   return list.reduce((best, entry) => !best || entry.lastOpened > best.lastOpened ? entry : best, null);
 }
 
+// Records that a saved workspace was used, as when its window comes to the front, so launch opens it.
+// An address that isn't saved stays off the list, and the list is unchanged when it is already the most recent.
+export function usedSaved(list, origin, time) {
+  origin = workspaceOrigin(origin);
+  const index = list.findIndex(entry => entry.origin === origin);
+  if (index < 0 || mostRecent(list) === list[index]) return list;
+  return list.with(index, {...list[index], lastOpened: time});
+}
+
 async function writePrivate(file, contents) {
   await mkdir(dirname(file), {recursive: true, mode: 0o700});
   const temporary = file + '.' + randomUUID();
@@ -187,8 +196,9 @@ async function writePrivate(file, contents) {
 
 // The saved list in `file`, written whole and atomically, readable only by this user. On first use it
 // takes over the single address earlier versions kept in `legacyFile`, then deletes that file.
-// Changes run one at a time; `onChange` follows each one that was written. A list that can't be read
-// isn't taken as empty: reading, and every change, fails until it can be, so no write replaces it.
+// Changes run one at a time, and one that changes nothing isn't written; `onChange` follows each one
+// that is. A list that can't be read isn't taken as empty: reading, and every change, fails until it
+// can be, so no write replaces it.
 export function createSavedWorkspaces({file, legacyFile, now = Date.now, onChange = () => {}}) {
   let list = [];
   let loaded = false;
@@ -232,6 +242,7 @@ export function createSavedWorkspaces({file, legacyFile, now = Date.now, onChang
       }
       if (!change) return list;
       const next = change(list);
+      if (next === list) return list;
       await writePrivate(file, JSON.stringify({workspaces: next}));
       list = next;
       try { onChange(list); } catch { /* A listener's failure doesn't undo the change. */ }
@@ -247,6 +258,7 @@ export function createSavedWorkspaces({file, legacyFile, now = Date.now, onChang
     /** The list as last loaded or written, for code that can't wait, such as building a menu. */
     current: () => list,
     opened: (origin, {name, local} = {}) => serial(value => openedSaved(value, {origin, name, local}, now())),
+    used: origin => serial(value => usedSaved(value, origin, now())),
     rename: (origin, name) => serial(value => renamedSaved(value, origin, name)),
     remove: origin => serial(value => removedSaved(value, origin)),
   };

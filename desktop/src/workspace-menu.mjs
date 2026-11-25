@@ -12,7 +12,8 @@
  */
 export function workspaceMenu({saved, frontmost, open, addServer, manage}) {
   const workspaces = saved.map((entry, index) => ({
-    label: entry.name,
+    // Menus read a single & as a mnemonic marker and drop it, so a name's own & is doubled.
+    label: entry.name.replaceAll('&', '&&'),
     type: 'checkbox',
     checked: entry.origin === frontmost,
     ...(index < 9 ? {accelerator: 'CmdOrCtrl+' + (index + 1)} : {}),
