@@ -4,9 +4,11 @@
 
 **Created**: 2026-11-25
 
-**Status**: Decided. The owner settled all ten decisions on 2026-11-25. The pull request check on
-migrations (decision 8, FR-011) delivered 2026-11-25 in
-[PR #132](https://github.com/your-space-ai/your-space/pull/132); the rest ships in alpha.2.
+**Status**: Decided. The owner settled all ten decisions on 2026-11-25. Delivered 2026-11-25: the
+pull request check on migrations (decision 8, FR-011) in
+[PR #132](https://github.com/your-space-ai/your-space/pull/132), and Canary's `channel.json`
+(FR-004) in [PR #135](https://github.com/your-space-ai/your-space/pull/135). The rest ships in
+alpha.2.
 
 **Input**: The owner, on 2026-11-25: "in the desktop app, should be a setting to choose which
 release channel to follow for updates, and yes you can add the flag in the cli."

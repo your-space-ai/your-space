@@ -187,6 +187,49 @@ describe("canary builds", () => {
   });
 });
 
+/** The channel.json deploy/channel-json.sh writes for a channel's build; it throws when the script refuses. */
+const channelJson = (...args: string[]) =>
+  execFileSync(new URL("../../deploy/channel-json.sh", import.meta.url).pathname, args, { encoding: "utf8", stdio: "pipe" });
+const commit = "69525a9569f68a39b76598af86662a04b6fb2886";
+
+describe("channel.json", () => {
+  it("names a channel's build and its commit, in the one form every client reads", () => {
+    expect(channelJson("canary", canary("v0.1.0-alpha.1"), commit)).toBe(`{"channel":"canary","version":"0.1.0-alpha.1.canary.20261125.42","commit":"${commit}"}\n`);
+    expect(JSON.parse(channelJson("alpha", "0.1.0-alpha.2", commit))).toEqual({ channel: "alpha", version: "0.1.0-alpha.2", commit });
+  });
+
+  it("names only a canary for Canary and never one for Alpha, telling them apart as the CLI does", () => {
+    const versions = [
+      "0.1.0", "0.1.0-alpha.1", "0.1.0-beta.2", "1.0.0", "0.1.0-alpha.1+canary", "0.1.0-alpha.1.canaryx.1",
+      canary("v0.1.0-alpha.1"), canary("v0.1.0"), canary("v0.1.0-beta.2"), "0.1.0-canary", "0.1.0-alpha.canary.1+build.5",
+      "01.0.0", "0.1.0-alpha.01", "0.1.0-", "0.1", "v0.1.0", "latest", "",
+    ];
+    for (const version of versions) {
+      for (const channel of ["alpha", "canary"]) {
+        const accepted = isVersion(version) && isCanary(version) === (channel === "canary");
+        if (accepted) expect(JSON.parse(channelJson(channel, version, commit))).toEqual({ channel, version, commit });
+        else expect(() => channelJson(channel, version, commit), `${channel} ${version}`).toThrow();
+      }
+    }
+  });
+
+  it("refuses another channel and a commit that isn't a full one", () => {
+    for (const bad of [["beta", "0.1.0-beta.1", commit], ["Canary", canary("v0.1.0-alpha.1"), commit], ["canary", canary("v0.1.0-alpha.1"), commit.slice(0, 7)], ["canary", canary("v0.1.0-alpha.1"), commit.toUpperCase()], ["alpha", "0.1.0-alpha.2", `${commit}0`]]) {
+      expect(() => channelJson(...bad), bad.join(" ")).toThrow();
+    }
+  });
+
+  it("is recorded, as the Canary workflow writes it, for the test that Alpha clients never get a canary", () => {
+    const recorded = readFileSync(new URL("../../shared/release-channels/fixtures/canary/channel.json", import.meta.url), "utf8");
+    const named = JSON.parse(recorded) as { channel: string; version: string; commit: string };
+    expect(channelJson(named.channel, named.version, named.commit)).toBe(recorded);
+    expect(named.channel).toBe("canary");
+    // A canary whose version contains -alpha. and sorts after the release it follows.
+    expect(named.version).toContain("-alpha.");
+    expect(compareVersions(named.version, "0.1.0-alpha.1")).toBeGreaterThan(0);
+  });
+});
+
 describe("the guide's steps", () => {
   it("unpack the release as the CLI does, owned by whoever unpacks it", () => {
     const guide = readFileSync(new URL("../../docs/install/manual.md", import.meta.url), "utf8");

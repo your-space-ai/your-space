@@ -18,7 +18,7 @@ later one, and from a canary on to the next release, the same way it moves betwe
 | What | Where |
 | --- | --- |
 | Server, web and runtime images, tagged with the canary's version | GHCR, for Linux AMD64 and ARM64. The `canary` tag points at the newest build; `latest` stays on the newest release |
-| `your-space-linux-x64` and `your-space-linux-arm64`, the npm package as `your-space-ai-cli-<version>.tgz`, the Compose bundle `your-space.tar.gz`, and `SHA256SUMS` | The [canary prerelease](https://github.com/your-space-ai/your-space/releases/tag/canary) on GitHub, which each build replaces |
+| `your-space-linux-x64` and `your-space-linux-arm64`, the npm package as `your-space-ai-cli-<version>.tgz`, the Compose bundle `your-space.tar.gz`, `SHA256SUMS`, and `channel.json`, which names the build's version and commit | The [canary prerelease](https://github.com/your-space-ai/your-space/releases/tag/canary) on GitHub, which each build replaces |
 
 There is no canary of the Mac app, and none on npm. Leave the Mac app's own local workspace on its
 release: the app doesn't start a workspace newer than itself.
