@@ -80,7 +80,7 @@ docker compose exec runtime stop-apps
 `install-app` prints the review, installs, and waits until the app is running or failed; exit status
 0 or 1. Every app installs with a kit, and the kit names the app's Compose file on GitHub at an
 exact commit, where the command reads it ([kit format](kit-format.md)). The command takes the kit's GitHub link, or `--kit` with a kit on this
-machine, which Your Space can't read from GitHub when its repository is private: `-` reads it from
+machine, which needs no GitHub connection: `-` reads it from
 standard input (`--kit - < kit.yaml`), and any other value is the kit file. The command runs in the
 server's container, so a path is one inside it; standard input is how a file on the host gets
 there. A kit on this machine is checked like one from GitHub and recorded as `sha256:<digest>`; it

@@ -83,7 +83,7 @@ export function parseLink(link: string): FileLink {
   } catch {
     throw new SourceError("That isn't a link. Paste the GitHub link to the app's kit.");
   }
-  const segments = decodedSegments(url.pathname);
+  const segments = hasDotPart(link.trim()) ? null : decodedSegments(url.pathname);
   if (segments && url.protocol === "https:" && url.hostname === "github.com") {
     const [owner, name, kind, ...rest] = segments;
     if (owner && name && NAME.test(owner) && NAME.test(name) && (kind === "blob" || kind === "raw") && rest.length >= 2) {
@@ -97,6 +97,15 @@ export function parseLink(link: string): FileLink {
   throw new SourceError(
     "Your Space installs an app from its kit, a file in a GitHub repository. Open the kit on GitHub and paste its link, like https://github.com/owner/repo/blob/main/kit.yaml.",
   );
+}
+
+/**
+ * Whether a link's path, as written, has a `.` or `..` part, `%2e` for a dot included, which the
+ * URL parser would resolve away before the parts are checked.
+ */
+function hasDotPart(link: string): boolean {
+  const path = link.replace(/^[^:/?#]*:\/\/[^/\\?#]*/, "").split(/[?#]/)[0]!;
+  return path.split(/[/\\]/).some((part) => /^(\.|%2e){1,2}$/i.test(part));
 }
 
 /** A link's path parts, decoded, or null when one doesn't decode or isn't a single plain part. */
@@ -131,8 +140,9 @@ async function get(fetcher: Fetch, url: string, accept: string, credential?: Sou
   }
 }
 
+/** GitHub's primary rate limit (no requests remaining) or a secondary one (a 403 or 429 with Retry-After). */
 function rateLimited(res: Response): boolean {
-  return res.status === 429 || (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0");
+  return res.status === 429 || (res.status === 403 && (res.headers.get("x-ratelimit-remaining") === "0" || res.headers.has("retry-after")));
 }
 
 /** GitHub's answer to a request with the credential, when it isn't one the caller reads. */

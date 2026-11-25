@@ -35,6 +35,7 @@ describe("private kits through the GitHub connection", () => {
   let calls: { url: string; authorization: string | null; accept: string | null }[];
   let refused: Set<string>;
   let answer: ((url: URL, token: string | null) => Response | undefined) | undefined;
+  let hold: ((url: string) => Promise<void>) | undefined;
   let files: typeof fetch;
   const lines: string[] = [];
 
@@ -43,6 +44,7 @@ describe("private kits through the GitHub connection", () => {
     calls = [];
     refused = new Set();
     answer = undefined;
+    hold = undefined;
     files = fakeGithub(
       {
         "ys-fixtures/plain/compose.yaml": COMPOSE,
@@ -58,6 +60,7 @@ describe("private kits through the GitHub connection", () => {
     // GitHub refuses a refused token on `GET /user` too.
     const github: typeof fetch = async (input, init) => {
       const answer = await files(input, init);
+      await hold?.(String(input));
       return answer.status === 404 && String(input).endsWith("/user") ? accounts.fetch(input, init) : answer;
     };
     server = await startServer(t.db, { apps: { runtime: new FakeRuntime(), fetch: github } });
@@ -190,6 +193,14 @@ describe("private kits through the GitHub connection", () => {
         400,
         { error: "source", message: "GitHub is limiting requests from this machine. Try again in a few minutes." },
       ],
+      // A secondary rate limit has requests left, and says when to retry.
+      [
+        "secondary rate limit",
+        (_url, token) =>
+          token ? Response.json({ message: "You have exceeded a secondary rate limit." }, { status: 403, headers: { "retry-after": "60", "x-ratelimit-remaining": "4999" } }) : undefined,
+        400,
+        { error: "source", message: "GitHub is limiting requests from this machine. Try again in a few minutes." },
+      ],
       // Every ref answers 404, but the repository's latest commit is there: the ref is what's missing.
       [
         "missing ref",
@@ -225,11 +236,35 @@ describe("private kits through the GitHub connection", () => {
       "https://github.com/ys-fixtures/private-kits/blob/main/k%2F..%2F..%2F..%2F..%2F..%2Fuser%2Frepos",
       `https://github.com/ys-fixtures/catalog/blob/main/x%2F..%2F..%2F..%2F..%2Fys-fixtures%2Fplain%2F${COMMIT}%2Fcompose.yaml`,
       "https://raw.githubusercontent.com/ys-fixtures/private-kits/main/..%2Fkit.yaml",
+      // %2e%2e parts the URL parser resolves would read ys-fixtures/private-other under this link.
+      "https://github.com/ys-fixtures/private-kits/blob/main/%2e%2e/%2e%2e/%2e%2e/private-other/blob/main/kit.yaml",
     ]) {
       const { status, json } = await review(link);
       expect([link, status, json.error]).toEqual([link, 400, "source"]);
     }
     expect(calls).toEqual([]);
+  });
+
+  it("keeps a refusal that a read begun before it finishes after", async () => {
+    await connect();
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let reached!: () => void;
+    const held = new Promise<void>((resolve) => (reached = resolve));
+    // The first read's file answers while GitHub still accepts the token, then waits.
+    hold = async (url) => {
+      if (!url.includes("/contents/")) return;
+      hold = undefined;
+      reached();
+      await released;
+    };
+    const first = review(PRIVATE_LINK);
+    await held;
+    refused.add(TOKEN);
+    expect((await review(PRIVATE_LINK)).json.error).toBe("token_refused");
+    release();
+    expect((await first).status).toBe(200);
+    expect((await stored()).refusedAt).not.toBeNull();
   });
 
   it("marks a token GitHub refuses, shows Reconnect, and still installs a public kit", async () => {
