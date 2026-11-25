@@ -57,10 +57,14 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   volume and the remote folder: unprivileged, with no FUSE, no volume plugin and no engine access.
   Apps read the local volume, so they work offline and at local speed. Your Space serves the files
   from rclone's copy, never by calling the Google API for an app.
-- **One sync service that is always on.** A single long-running Your Space service syncs every
-  synced knowledge base continuously, rather than a new container for each run. It talks only to the
-  server, over a private socket, and holds the Google tokens in memory only. The owner: "rclone just
-  constantly bisync the contents". The design it replaces is under [Considered](#considered).
+- **One rclone that is always on, and nothing else.** A single long-running container runs stock
+  rclone's remote-control server (`rclone rcd`), with its configuration in memory only, listening
+  on a private socket only the server can reach. The server drives it through rclone's own remote
+  control API: it creates each knowledge base's Drive remote there, so tokens stay in rclone's
+  memory, and starts each bisync there. Your Space adds no sync daemon or file watcher of its own.
+  The owner: "rclone just constantly bisync the contents", and "can that be achieved natively with
+  rclone or are we adding more infra for this?". The designs it replaces are under
+  [Considered](#considered).
 - **Google Drive is the first remote, through the operator's own OAuth client.** rclone's shared
   client ID stops working during 2026, so each operator registers a client. The setup guide says to
   set the OAuth app to *In production*: an app left in *Testing* gets refresh tokens that expire
@@ -116,29 +120,32 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
 - **Scope of a sync.** A sync covers exactly the chosen Drive folder, never the whole Drive. Native
   Google Docs, Sheets and Slides are skipped (`--drive-skip-gdocs`): they have no file to edit
   locally and stay in Drive only. Empty folders sync too.
-- **The sync service.** One container for all synced knowledge bases, run by the runtime manager for
-  Your Space: unprivileged, with no engine access and no FUSE. It mounts each synced knowledge base's
-  volume and a state volume of its own, and talks only to the server, over a Unix socket in a volume
-  only the two of them share, as the runtime manager does. Connecting or disconnecting a knowledge
-  base changes its mounts, so the runtime manager recreates it then; a run under way is stopped
-  first, as below. The service keeps each knowledge base's status, last run, stopped run with its
-  deletion list, conflicts and backups in its state volume, so a server restart loses none of them:
-  the server reads them when it starts and records the runs it missed.
-- **When it syncs.** Continuously. A change in a knowledge base's folder starts a sync a few seconds
-  after the changes stop. Drive can't notify a self-hosted server, so the service checks Drive about
-  once a minute. Runs of one knowledge base never overlap (bisync's lock); **Sync now** starts one
-  at once, or right after the one under way. A run stopped by the safety checks stops the automatic
-  runs of that knowledge base until the owner chooses an action.
-- **Stopping.** Stopping Your Space signals the service, which interrupts runs under way the way
-  bisync expects (an interrupt, then `--recover` on the next run), so the next start resumes cleanly.
-  Restarting only the server doesn't stop a run.
+- **The sync service.** One container for all synced knowledge bases, run by the runtime manager
+  for Your Space: the stock rclone image running `rclone rcd`, unprivileged, with no engine access
+  and no FUSE. It mounts each synced knowledge base's volume and a volume for bisync's state and the
+  backups, and its remote control listens only on a Unix socket in a volume only it and the server
+  share, protected by file permissions, as the runtime manager's socket is. Connecting or
+  disconnecting a knowledge base changes its mounts, so the runtime manager recreates it then; a run
+  under way is stopped first, as below.
+- **When it syncs.** About once a minute for each synced knowledge base, and at once on **Sync
+  now**: the server's timer starts each run through the remote control (`sync/bisync`, run in the
+  background), with the options listed under sync safety. Runs of one knowledge base never overlap:
+  the server starts none while one is under way, and bisync's lock is the backstop. Drive can't
+  notify a self-hosted server, and rclone has no built-in watcher of local files, so a change waits
+  for the next run. A run stopped by the safety checks stops the automatic runs of that knowledge
+  base until the owner chooses an action.
+- **Run results.** The server records each run's result, conflicts and backups, reading them from
+  rclone over the same socket. A run keeps going when only the server restarts; rclone keeps a
+  finished run's result for an hour, and the server reads the runs it missed when it starts.
+- **Stopping.** Stopping Your Space stops runs under way through the remote control before rclone
+  stops, and the next run resumes with `--recover`.
 - **Credentials.** The Google token is encrypted with the data key ([journey 009](../009-encrypt-stored-data/spec.md))
   and moved with app settings when the data key changes, so rotating the key doesn't break sync. The
-  server hands each knowledge base's client and token to the sync service over its socket when the
-  service starts and when they change. The service keeps them in memory and gives them only to the
-  rclone process of a run. They are never written to a file, never put in a container's environment
-  or configuration, and never given to an app. A restarted service has none until the server hands
-  them over again.
+  server creates each knowledge base's Drive remote in rclone's in-memory configuration over the
+  socket (`config/create`), with its client and token, when the sync service starts and when they
+  change. rclone keeps them and the access tokens it refreshes in memory only. They are never written
+  to a file, never put in a container's environment or configuration, and never given to an app. A
+  restarted sync service has none until the server creates the remotes again.
 - **Network.** The sync service reaches only Google's sign-in and Drive hosts, through an outbound
   proxy of its own. Apps reach nothing new.
 - **Failure.** When Google refuses the token or the client changes, the knowledge base shows sync as
@@ -170,13 +177,13 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   on both sides.
 - **Apply these deletions** doesn't run when another file was deleted after the owner confirmed, and
   shows the new list instead.
-- Without **Sync now**: a file an app writes reaches the fixture remote within seconds, and a file
-  added to the remote reaches the apps on the next Drive check (tests shorten the interval).
+- Without **Sync now**: a file an app writes reaches the fixture remote, and a file added to the
+  remote reaches the apps, on the next timed run (tests shorten the interval).
 - Restart only the server during a run: the run finishes, and the page then shows its result and its
   events are recorded. Stop Your Space during a run: the next start finishes it without a resync.
 - The token is in no file in the sync service's volumes, and in no container's environment or
   configuration (`docker inspect`). Restart the sync service: it syncs again once the server has
-  handed it the token.
+  created its remotes again.
 - Rotate the data key: the connection still syncs.
 - With the operator's own client against real Google Drive, on a throwaway folder: connect, sync both
   ways, restart Your Space and sync again after the access token expires, then revoke access in Google
@@ -191,7 +198,7 @@ order.
    field, the install review's picker, the app page's editor and the mounts. Result: two fixture apps
    see each other's files.
 2. **Synced knowledge bases.** The Google connection with the operator's client, the encrypted token
-   and its key rotation, the sync service and how it hands over tokens, continuous sync, status,
+   and its key rotation, the rclone sync service and the remotes the server creates in it, the timed runs, status,
    conflicts, Sync now, Resync and Apply these deletions, and the operator guide. Result: a knowledge base syncs with a fixture remote in tests, and the page
    shows its status and conflicts.
 
@@ -202,6 +209,10 @@ order.
   engine keeps in the container's configuration while it exists; a container started every five
   minutes for each knowledge base; edits took up to five minutes to arrive; and a run's result was
   lost when the server restarted during it, since only the server kept it.
+- **A sync service of Your Space's own**, with a file watcher that starts a run seconds after a
+  local change (the second design, 2026-11-25). Not chosen: it adds a daemon to build and maintain
+  where stock `rclone rcd` already runs bisync, holds remotes in memory and reports jobs. A local
+  watcher stays later direction.
 - **A live mount** (`rclone mount`). Not chosen: it needs FUSE and extra privileges in a container,
   and leaves apps without their files when the remote is unreachable.
 
@@ -214,6 +225,8 @@ These are recorded, not scheduled. Each is opt-in, so a v1 kit never breaks.
 - **Many writers.** A copy per writer merged with git: a worktree per writer, `git merge-file` or
   `merge=union` for Markdown, a conflict copy for binary files, and possibly gitwatch to commit
   automatically.
+- **Faster local changes.** Starting a run seconds after an app changes a file, with a watcher of the
+  knowledge base's folder, if a minute proves too slow.
 - **Live same-file editing.** An SDK or CRDTs, for apps that edit the same file at once.
 - **More remotes.** Any rclone remote, each listed once it passes the both-sides-edit and conflict
   check. Uploading files from the browser.

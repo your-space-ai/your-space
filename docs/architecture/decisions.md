@@ -139,11 +139,12 @@ mount, and only Your Space adds the mount. Removing an app, and deleting its dat
 knowledge base. [Journey 014](https://github.com/your-space-ai/your-space/blob/main/specs/014-knowledge-bases/spec.md)
 
 - **Local and synced.** A local knowledge base is only the volume. A synced one adds a two-way sync
-  with a remote folder: `rclone bisync`, run continuously against the local volume by one
-  long-running sync service of Your Space's own, unprivileged, with no FUSE, no volume plugin and no
-  engine access. It talks only to the server, over a private socket, and holds the remote's tokens
-  in memory only. A new container for each scheduled run was built first and replaced at the owner's
-  decision. Apps never mount the
+  with a remote folder: `rclone bisync` against the local volume, about once a minute, run by one
+  long-running container of stock `rclone rcd`, unprivileged, with no FUSE, no volume plugin and no
+  engine access. Its configuration is in memory only, and its remote control listens only on a
+  private socket the server uses to create remotes and start runs, so the remote's tokens are never
+  in a file or a container's environment. Your Space adds no sync daemon of its own. A new container
+  for each scheduled run was built first and replaced at the owner's decision. Apps never mount the
   remote and Your Space never serves an app's files from the Google API: the owner: "YS server should
   manage rclone on behalf of the user and serve from rclone, not serve directly from the google api".
   A live mount was rejected because it needs FUSE and extra privileges in a container, and leaves
@@ -705,7 +706,7 @@ of technical parts. The [glossary](../glossary.md) records the terms.
 
 **Decision update (2026-11-03):** Certificate requests the built-in proxy makes for an owner-configured domain are part of HTTPS setup, not reporting. This qualifies the bullet above on automatic outbound requests: with a domain configured, these certificate requests are the only automatic outbound requests besides update checks. (2026-11-23: the Mac app's update check is the only one so far, and **Check for Updates Automatically** turns it off; the server and CLI have none.)
 
-**Decision update (2026-11-25):** A knowledge base the owner connects to a remote folder syncs with it continuously ([Knowledge bases](#knowledge-bases)). Those sync requests go only to the remote the owner chose, carry only the owner's files, and stop when the owner disconnects it; they are an action the owner started, not reporting.
+**Decision update (2026-11-25):** A knowledge base the owner connects to a remote folder syncs with it about once a minute ([Knowledge bases](#knowledge-bases)). Those sync requests go only to the remote the owner chose, carry only the owner's files, and stop when the owner disconnects it; they are an action the owner started, not reporting.
 
 ### Documentation
 
