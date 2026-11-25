@@ -116,9 +116,10 @@ jobs:
 
   migrations:
     # Migrations on main stay as merged, and a new one comes after every earlier one (spec 016,
-    # decision 8). A pull request is compared with main as it is when this runs, not the base its
-    # event names, so a stacked or re-run pull request is checked against what it would merge into.
-    # On main, each push is compared with the commit before it, as an alarm.
+    # decision 8). A pull request is compared with main as it is when this runs, which the checkout
+    # fetches with every branch, not the base its event names, so a stacked or re-run pull request
+    # is checked against what it would merge into. On main, each push is compared with the commit
+    # before it, as an alarm.
     name: Migration order
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-24.04
@@ -140,7 +141,6 @@ jobs:
           BEFORE: ${{ github.event.before }}
         run: |
           if [[ $EVENT == pull_request ]]; then
-            git fetch --no-tags origin main
             node server/scripts/check-migrations.mjs origin/main "$HEAD_SHA"
           elif [[ ! $BEFORE =~ ^0*$ ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
             node server/scripts/check-migrations.mjs "$BEFORE" "$HEAD_SHA"

@@ -11,10 +11,12 @@ const SCRIPT = fileURLToPath(new URL("../scripts/check-migrations.mjs", import.m
 const DIR = "server/drizzle";
 const JOURNAL = `${DIR}/meta/_journal.json`;
 const MAIN_WHEN = 1795530850233;
+const DAY = 24 * 60 * 60 * 1000;
 
-// Git without the machine's configuration (commit signing, hooks, default branch).
+// Git without the machine's configuration (commit signing, hooks, default branch), and without a
+// GIT_DIR or GIT_WORK_TREE inherited from a hook, which would point it at the outer repository.
 const ENV = {
-  ...process.env,
+  ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_"))),
   GIT_CONFIG_GLOBAL: "/dev/null",
   GIT_CONFIG_NOSYSTEM: "1",
   GIT_AUTHOR_NAME: "Test",
@@ -108,7 +110,7 @@ describe.skipIf(!HAS_GIT && !process.env.GITHUB_ACTIONS)("check-migrations", () 
     expect(run()).toMatchObject({ status: 1, err: expect.stringContaining(`${DIR}/meta/0000_snapshot.json, on main, is changed.`) });
   });
 
-  it("refuses a merged migration deleted or renamed", () => {
+  it("refuses a merged migration renamed", () => {
     git("mv", `${DIR}/0001_theme_mode.sql`, `${DIR}/0001_mode.sql`);
     setJournal(journal().map((e) => (e.idx === 1 ? { ...e, tag: "0001_mode" } : e)));
     commit("Rename a merged migration");
@@ -118,10 +120,25 @@ describe.skipIf(!HAS_GIT && !process.env.GITHUB_ACTIONS)("check-migrations", () 
     expect(result.err).toContain(`${DIR}/0001_theme_mode.sql, on main, is deleted or renamed.`);
   });
 
-  it("refuses a change to a merged journal entry", () => {
-    setJournal(journal().map((e) => (e.idx === 1 ? { ...e, breakpoints: false } : e)));
+  it("refuses a merged migration deleted", () => {
+    setJournal(journal().filter((e) => e.idx !== 1));
+    rmSync(join(repo, `${DIR}/0001_theme_mode.sql`));
+    rmSync(join(repo, `${DIR}/meta/0001_snapshot.json`));
+    commit("Delete a merged migration");
+    const result = run();
+    expect(result.status).toBe(1);
+    expect(result.err).toContain("The journal entry for 0001_theme_mode, on main, is missing.");
+    expect(result.err).toContain(`${DIR}/0001_theme_mode.sql, on main, is deleted or renamed.`);
+    expect(result.err).toContain(`${DIR}/meta/0001_snapshot.json, on main, is deleted or renamed.`);
+  });
+
+  it.each([
+    ["breakpoints", false, "true to false"],
+    ["version", "8", '"7" to "8"'],
+  ])("refuses a change to a merged journal entry's %s", (field, value, change) => {
+    setJournal(journal().map((e) => (e.idx === 1 ? { ...e, [field]: value } : e)));
     commit("Change a merged entry");
-    expect(run()).toMatchObject({ status: 1, err: expect.stringContaining("breakpoints changed from true to false") });
+    expect(run()).toMatchObject({ status: 1, err: expect.stringContaining(`${field} changed from ${change}`) });
   });
 
   it.each([
@@ -131,6 +148,13 @@ describe.skipIf(!HAS_GIT && !process.env.GITHUB_ACTIONS)("check-migrations", () 
     migrate("old_stamp", when);
     commit("Add a migration with an old stamp");
     expect(run()).toMatchObject({ status: 1, err: expect.stringContaining(`0002_old_stamp is stamped ${when}, not after ${MAIN_WHEN}`) });
+  });
+
+  it("refuses a new migration stamped more than a day from now", () => {
+    const when = Date.now() + 2 * DAY;
+    migrate("future", when);
+    commit("Add a migration stamped in two days");
+    expect(run()).toMatchObject({ status: 1, err: expect.stringContaining(`0002_future is stamped ${when}, more than a day after`) });
   });
 
   it("refuses new migrations whose stamps go backward", () => {
@@ -171,6 +195,19 @@ describe.skipIf(!HAS_GIT && !process.env.GITHUB_ACTIONS)("check-migrations", () 
     expect(run()).toMatchObject({ status: 1, err: expect.stringContaining(`0002_knowledge_bases has no new ${DIR}/0002_knowledge_bases.sql.`) });
   });
 
+  it("refuses a new migration without its snapshot", () => {
+    migrate("knowledge_bases", MAIN_WHEN + 1);
+    rmSync(join(repo, `${DIR}/meta/0002_snapshot.json`));
+    commit("Add a migration without its snapshot");
+    expect(run()).toMatchObject({ status: 1, err: expect.stringContaining(`0002_knowledge_bases has no new ${DIR}/meta/0002_snapshot.json.`) });
+  });
+
+  it("refuses a new snapshot without a journal entry", () => {
+    write(`${DIR}/meta/0009_snapshot.json`, "{}\n");
+    commit("Add a snapshot alone");
+    expect(run()).toMatchObject({ status: 1, err: expect.stringContaining(`${DIR}/meta/0009_snapshot.json has 0 new journal entries, not 1.`) });
+  });
+
   it("passes a stacked branch whose base adds a migration, checked against main", () => {
     migrate("knowledge_bases", MAIN_WHEN + 1);
     commit("The lower pull request's migration");
@@ -201,6 +238,15 @@ describe.skipIf(!HAS_GIT && !process.env.GITHUB_ACTIONS)("check-migrations", () 
     expect(run("main", "feature")).toMatchObject({ status: 0, out: expect.stringContaining("3 as merged, 0 new after them") });
   });
 
+  it("passes a branch behind main that adds a file under server/drizzle that isn't a migration", () => {
+    write(`${DIR}/README.md`, "Generated by drizzle-kit.\n");
+    commit("A note beside the migrations");
+    git("switch", "-q", "main");
+    migrate("knowledge_bases", MAIN_WHEN + 1);
+    commit("Main takes a migration");
+    expect(run("main", "feature")).toMatchObject({ status: 0, out: expect.stringContaining("3 as merged, 0 new after them") });
+  });
+
   it("refuses a branch overtaken by a migration on main until it is rebased and stamped again", () => {
     migrate("source_credential", MAIN_WHEN + 20);
     commit("This branch's migration");
@@ -217,6 +263,19 @@ describe.skipIf(!HAS_GIT && !process.env.GITHUB_ACTIONS)("check-migrations", () 
     migrate("source_credential", MAIN_WHEN + 60);
     commit("This branch's migration, generated again");
     expect(run("main", "feature")).toMatchObject({ status: 0, out: expect.stringContaining("3 as merged, 1 new after them") });
+  });
+
+  it("fails closed when it can't compare", () => {
+    expect(run("main", "no-such-branch")).toMatchObject({ status: 2, err: expect.stringContaining("Couldn't compare the migrations") });
+  });
+
+  it.each([
+    ["isn't JSON", "{\n"],
+    ["has no entries list", '{ "version": "7" }\n'],
+  ])("fails closed on a journal that %s", (_, text) => {
+    write(JOURNAL, text);
+    commit("Break the journal");
+    expect(run()).toMatchObject({ status: 2, err: expect.stringContaining("Couldn't compare the migrations") });
   });
 
   it("compares a push with the commit before it", () => {
