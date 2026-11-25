@@ -40,7 +40,7 @@ others, as noted.
 | 5 | Where does a Mac canary app find its updates? | `canary-mac.yml` on the rolling `canary` prerelease, read with electron-updater's generic provider |
 | 6 | What does `upgrade --channel` run? | It hands over to the newest build's own CLI, so an installation still moves to the version of the CLI that runs it |
 | 7 | How does an installation leave Canary for a release? | Forward only: it moves at the first release newer than its build; going back now stays a manual restore |
-| 8 | Do migrations on `main` stay as they were merged? | Yes: a check refuses a change to a merged migration and a new one stamped before `main`'s newest |
+| 8 | Do migrations on `main` stay as they were merged? | Yes: a check refuses a change to a merged migration and a new one not stamped after every earlier one |
 | 9 | Which backups does `upgrade` keep when it runs often? | The newest 5, plus the newest backup taken from a release |
 | 10 | Which release carries this? | alpha.2, with the owner installing the first Mac canary by hand |
 
@@ -248,7 +248,7 @@ to CLI canaries (2026-11-25); the app's setting puts it one click away.
 
 | Option | How | Trade-offs |
 | --- | --- | --- |
-| **A. Merged migrations stay as merged** | A pull request check refuses a change to a migration already on `main`, and a new one stamped before `main`'s newest | Leaving Canary stays safe for the data. Also protects upgrades between releases from an out-of-order stamp. A mistake is fixed with a new migration |
+| **A. Merged migrations stay as merged** | A pull request check refuses a change to a migration already on `main`, and a new one not stamped strictly after every earlier one | Leaving Canary stays safe for the data. Also protects upgrades between releases from an out-of-order stamp. A mistake is fixed with a new migration |
 | B. Accept it | The Canary warning and the canary page say the next release may not upgrade a canary's database | Nothing to build. A skipped migration shows only when something breaks |
 | C. Detect at start | The server compares the recorded migrations' hashes with its own and refuses a database that differs | Catches it. The installation is then stuck until a manual restore |
 
@@ -301,11 +301,14 @@ Written for the recommendations; each changes with its decision.
   CLI's `upgrade`, and changes nothing when the installation is already
   that new or newer. Plain `upgrade` is unchanged.
 - **FR-006**: The app's local workspace follows the app on every channel, as today; `upgrade
-  --channel` is for CLI installations. A workspace newer than the app isn't started, and the app
-  names a channel with a build at least that new. A workspace upgrade that fails puts the previous
-  version back; the app says so and tries again at its next start.
+  --channel` is for CLI installations. A workspace newer than the app is neither started nor
+  upgraded: the app names a channel with a build at least that new, or says no Mac build is that
+  new yet. A failed workspace upgrade is handled as `upgrade` handles it (2026-11-23): when the
+  previous version is back, the app says so and tries again at its next start; when the rollback
+  stopped for the owner to finish by hand, the app says so and doesn't start the workspace.
 - **FR-007**: A pull request check refuses a change to a migration already on `main`, and a new
-  migration stamped before `main`'s newest.
+  migration not stamped strictly after every migration before it, since Drizzle skips one stamped
+  at or before the newest it recorded.
 - **FR-008**: After a successful upgrade, `upgrade` keeps the newest five backups and the newest
   taken from a release, and lists what it deleted.
 - **FR-009**: The canary page, the Mac guide, the release guide and the decision record describe
