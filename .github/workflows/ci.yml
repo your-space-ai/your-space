@@ -114,6 +114,40 @@ jobs:
           fail-on-scopes: runtime, development, unknown
           comment-summary-in-pr: never
 
+  migrations:
+    # Migrations on main stay as merged, and a new one comes after every earlier one (spec 016,
+    # decision 8). A pull request is compared with main as it is when this runs, not the base its
+    # event names, so a stacked or re-run pull request is checked against what it would merge into.
+    # On main, each push is compared with the commit before it, as an alarm.
+    name: Migration order
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Migrations follow main's
+        env:
+          EVENT: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [[ $EVENT == pull_request ]]; then
+            git fetch --no-tags origin main
+            node server/scripts/check-migrations.mjs origin/main "$HEAD_SHA"
+          elif [[ ! $BEFORE =~ ^0*$ ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            node server/scripts/check-migrations.mjs "$BEFORE" "$HEAD_SHA"
+          else
+            echo "This push has no earlier commit to compare with."
+          fi
+
   check:
     needs: scope
     if: needs.scope.outputs.code == 'true'
@@ -212,7 +246,7 @@ jobs:
   contribution:
     name: Contribution checks
     if: always()
-    needs: [scope, check, setups, browser]
+    needs: [scope, migrations, check, setups, browser]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     permissions: {}
@@ -220,6 +254,8 @@ jobs:
       - name: Required checks completed
         env:
           SCOPE: ${{ needs.scope.result }}
+          RUN_MIGRATIONS: ${{ github.event_name != 'workflow_dispatch' }}
+          MIGRATIONS: ${{ needs.migrations.result }}
           RUN_CODE: ${{ needs.scope.outputs.code }}
           CODE: ${{ needs.check.result }}
           RUN_SETUPS: ${{ needs.scope.outputs.setups }}
@@ -234,6 +270,7 @@ jobs:
               *) echo "$3 was scheduled=$1 and returned $2" >&2; return 1 ;;
             esac
           }
+          expect_result "$RUN_MIGRATIONS" "$MIGRATIONS" "Migration order"
           expect_result "$RUN_CODE" "$CODE" "Workspace checks"
           expect_result "$RUN_SETUPS" "$SETUPS" "Compose setups"
           expect_result "$RUN_BROWSER" "$BROWSER" "Chromium"

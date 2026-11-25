@@ -64,6 +64,9 @@ Space only through its public APIs and contracts.
 - Describe your pull request with the [template](.github/pull_request_template.md).
 - Run the [local checks](#run-the-local-checks) for your change before pushing.
 - Keep each pull request to one change.
+- Migrations are append-only: never change one already on `main`; add a new one with
+  `npm run db:generate --workspace server -- --name <name>`, stamped after `main`'s
+  ([migration order](docs/maintainers/contributor-ci.md#migration-order)).
 - Look for **Contribution checks**. For code changes it includes unit tests, typechecks and
   builds. Public code PRs also exercise Compose and Chromium on disposable GitHub-hosted
   runners. A change to CI configuration (`.github/`, `.circleci/`) or documentation alone skips
