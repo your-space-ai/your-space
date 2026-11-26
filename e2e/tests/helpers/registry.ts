@@ -20,9 +20,12 @@ function push(socketPath: string, name: string, tag: string, auth: string): Prom
         res.setEncoding("utf8");
         res.on("data", (chunk: string) => (body += chunk));
         res.on("end", () => {
-          const events = body.split("\n").filter(Boolean).map((line) => JSON.parse(line) as { error?: string; aux?: { Digest?: string } });
+          const events = body.split("\n").filter(Boolean).map((line) => JSON.parse(line) as { error?: string; status?: string; aux?: { Digest?: string } });
           const failed = res.statusCode !== 200 ? body : events.find((e) => e.error)?.error;
-          const digest = events.find((e) => e.aux?.Digest)?.aux?.Digest;
+          // The classic image store reports the digest in its result; the containerd image store only in
+          // the "<tag>: digest: <digest> size: <n>" line both print.
+          const printed = (e: { status?: string }) => /^\S+: digest: (sha256:[0-9a-f]{64}) size: \d+$/.exec(e.status ?? "")?.[1];
+          const digest = events.find((e) => e.aux?.Digest)?.aux?.Digest ?? events.map(printed).find(Boolean);
           if (failed || !digest) reject(new Error(`Pushing ${name}:${tag} failed: ${failed ?? body}`));
           else resolve(digest);
         });
