@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Everything not set here keeps CodeRabbit's defaults.
+reviews:
+  auto_review:
+    # A pull request stays a draft until review is clean, so CodeRabbit reviews drafts; CircleCI's
+    # browser tests wait until it is marked ready.
+    drafts: true
+    # A draft can take many rounds of fixes, so reviews never pause after a number of commits.
+    auto_pause_after_reviewed_commits: 0
+    # Journeys arrive as stacks of pull requests, each based on the one below it.
+    base_branches:
+      - ".*"

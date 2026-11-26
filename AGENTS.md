@@ -61,14 +61,19 @@ browser tests run on CircleCI, on every pull request in a stack: in Chromium on 
 in Chromium, Firefox and WebKit on `main`. A pull request whose code (its git tree) already passed
 them doesn't run them again, and neither does a change to CI configuration (`.github/`,
 `.circleci/`) or documentation alone, on a pull request or on `main`: its browser tests, Arm checks
-and Compose setups stop early or are skipped, and count as passed. The Compose setups checks run on
+and Compose setups stop early or are skipped, and count as passed. On a pull request, a push that
+changes only those files since the branch last passed the browser tests or Arm checks doesn't run
+them again either. The Compose setups checks run on
 GitHub Actions; in a stack, only the pull request based on `main` runs them, and the ones above it
 run them when they reach `main`. A
 draft runs only the GitHub Actions checks: CircleCI's jobs, the browser tests and the Argos
-screenshots included, run when it is marked ready for review. Keep a pull request a draft until its
-reviewer is ready to review it, so that changes merged below it don't cost extra runs. Code review
-runs on drafts too: fix its findings before marking a draft ready. Argos's screenshots are
-Chromium's, and a change to documents alone, or a run skipped because its code already passed,
+screenshots included, run when it is marked ready for review. CodeRabbit reviews drafts. So open a
+pull request as a draft and keep it one until it is complete, code and implementation, and every
+CodeRabbit finding is fixed or answered with its thread resolved; only then mark it ready. On a
+ready pull request, fix only browser test failures. Anything else, such as a new review finding, a
+design change or more implementation, turns it back into a draft until it is done. The
+[pr-review-flow skill](.agents/skills/pr-review-flow/SKILL.md) gives the steps. Argos's screenshots
+are Chromium's, and a change to documents alone, or a run skipped because its code already passed,
 uploads none.
 
 Every pull request reports **Contribution checks**, which verifies DCO sign-offs and that migrations

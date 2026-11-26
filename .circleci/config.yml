@@ -92,21 +92,74 @@ commands:
       Stops the job early, as passed, when only CI configuration (.github/, .circleci/) or
       documentation changed, since its tests would run the same code again. main compares its last
       commit, because pull requests merge into it as one squashed commit; any other branch compares
-      everything since main.
+      everything since main. With since-last-pass, a branch other than main also stops when only
+      those files changed since the job last passed on that branch.
+    parameters:
+      since-last-pass:
+        type: boolean
+        default: false
     steps:
+      - when:
+          condition:
+            and:
+              - << parameters.since-last-pass >>
+              - not:
+                  equal: [main, << pipeline.git.branch >>]
+          steps:
+            - run:
+                # The key is a checksum of the job and branch, so any branch name makes a valid key
+                # and one branch's prefix never matches another branch.
+                name: Last pass on this branch
+                command: echo "$CIRCLE_JOB $CIRCLE_BRANCH" | tee /tmp/last-pass-key
+            - restore_cache:
+                # The newest pass on this branch, saved by remember-pass.
+                keys:
+                  - last-pass-v1-{{ checksum "/tmp/last-pass-key" }}-
       - run:
           name: Product changes
           command: |
+            product=(. ':!.github/' ':!.circleci/' ':!*.md' ':!docs/' ':!specs/' ':!.specify/')
             if [ "${CIRCLE_BRANCH:-}" = main ]; then
               range=HEAD~1...HEAD
             else
               git fetch -q origin main && range=origin/main...HEAD
             fi
             # A commit git can't find counts as a change, so the job runs.
-            if git diff --quiet "$range" -- . ':!.github/' ':!.circleci/' ':!*.md' ':!docs/' ':!specs/' ':!.specify/'; then
+            if git diff --quiet "$range" -- "${product[@]}"; then
               echo "Only CI configuration or documentation changed, so this job stops here and passes."
               circleci-agent step halt
+              exit 0
             fi
+            # The last pass on this branch counts only if it is still in this commit's history, so
+            # a rebase or a force push runs the job again.
+            [ -f /tmp/last-pass/commit ] || exit 0
+            pass=$(cat /tmp/last-pass/commit)
+            if [[ $pass =~ ^[0-9a-f]{40}$ ]] && git cat-file -e "$pass^{commit}" 2>/dev/null &&
+              git merge-base --is-ancestor "$pass" HEAD &&
+              git diff --quiet "$pass" HEAD -- "${product[@]}"; then
+              echo "Only CI configuration or documentation changed since commit $pass passed this job in $(cat /tmp/last-pass/build), so this job stops here and passes."
+              circleci-agent step halt
+            fi
+
+  remember-pass:
+    description: >-
+      Saves the commit that passed the job, for product-changes with since-last-pass to compare the
+      branch's next commits with. main saves nothing, since it always runs.
+    steps:
+      - unless:
+          condition:
+            equal: [main, << pipeline.git.branch >>]
+          steps:
+            - run:
+                name: Remember this commit passed
+                command: |
+                  mkdir -p /tmp/last-pass
+                  echo "$CIRCLE_SHA1" > /tmp/last-pass/commit
+                  echo "$CIRCLE_BUILD_URL" > /tmp/last-pass/build
+            - save_cache:
+                key: last-pass-v1-{{ checksum "/tmp/last-pass-key" }}-{{ .Revision }}
+                paths:
+                  - /tmp/last-pass
 
 jobs:
   check-arm64:
@@ -116,7 +169,8 @@ jobs:
     steps:
       - ready-pull-request
       - checkout
-      - product-changes
+      - product-changes:
+          since-last-pass: true
       - run:
           name: PostgreSQL 18
           command: |
@@ -130,6 +184,7 @@ jobs:
             docker run --rm --network host -v "$PWD":/repo -w /repo -e CI=true \
               -e TEST_DATABASE_URL=postgres://yourspace:yourspace@127.0.0.1:5432/yourspace \
               node:26-slim sh -c 'npm ci && npm run typecheck && npm test && npm run build --workspace cli && cli/scripts/executable.sh arm64 && cli/dist/your-space-linux-arm64 --version'
+      - remember-pass
 
   e2e:
     machine:
@@ -142,7 +197,8 @@ jobs:
     steps:
       - ready-pull-request
       - checkout
-      - product-changes
+      - product-changes:
+          since-last-pass: true
       - run:
           # A pull request runs the journeys in Chromium, whose screenshots Argos compares; main runs
           # them in Firefox and WebKit too, so a bug only those browsers show turns up after the
@@ -254,6 +310,7 @@ jobs:
                 key: e2e-pass-v1-{{ checksum "/tmp/e2e-pass-key" }}
                 paths:
                   - /tmp/e2e-pass
+      - remember-pass
 
   e2e-arm64:
     machine:
@@ -292,7 +349,8 @@ parameters:
 
 workflows:
   # Every pull request and every push to main; the job stops early on drafts, on changes to CI
-  # configuration or documentation alone, and on code that already passed it.
+  # configuration or documentation alone, since main or since the branch last passed it, and on
+  # code that already passed it.
   e2e:
     jobs:
       - e2e
