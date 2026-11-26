@@ -6,7 +6,9 @@
 
 **Status**: Decided. The owner settled all ten decisions on 2026-11-25. The pull request check on
 migrations (decision 8, FR-011) delivered 2026-11-25 in
-[PR #132](https://github.com/your-space-ai/your-space/pull/132); the rest ships in alpha.2.
+[PR #132](https://github.com/your-space-ai/your-space/pull/132). Canary's `channel.json` (FR-004)
+is built in [PR #135](https://github.com/your-space-ai/your-space/pull/135), in review. The rest
+ships in alpha.2.
 
 **Input**: The owner, on 2026-11-25: "in the desktop app, should be a setting to choose which
 release channel to follow for updates, and yes you can add the flag in the cli."
@@ -174,6 +176,12 @@ lists releases. Both releases are prereleases, which GitHub never makes the late
   canary workflow checks and deletes only its own files: the Linux canary its Linux files,
   `SHA256SUMS` and `channel.json`, the Mac canary `canary-mac.yml` and the `your-space-macos-*`
   ZIPs.
+
+Each `channel.json` is one line of JSON and a newline, as `deploy/channel-json.sh` writes it:
+`{"channel":"canary","version":"0.1.0-alpha.1.canary.20261125.5","commit":"69525a9569f68a39b76598af86662a04b6fb2886"}`.
+`channel` is `alpha` or `canary`, `version` is the build's version in Semantic Versioning, a canary
+in Canary's file and never one in Alpha's, and `commit` is the full 40-character commit the build
+was made from.
 
 ### The Mac App's Feed
 
