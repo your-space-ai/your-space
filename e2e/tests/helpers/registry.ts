@@ -18,6 +18,8 @@ function push(socketPath: string, name: string, tag: string, auth: string): Prom
       (res) => {
         let body = "";
         res.setEncoding("utf8");
+        // A connection the engine closes mid-push ends the response with an error, not "end".
+        res.once("error", reject);
         res.on("data", (chunk: string) => (body += chunk));
         res.on("end", () => {
           const events = body.split("\n").filter(Boolean).map((line) => JSON.parse(line) as { error?: string; status?: string; aux?: { Digest?: string } });
