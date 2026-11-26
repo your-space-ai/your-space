@@ -726,7 +726,11 @@ export class KnowledgeSync {
     const list = await rc.call<{ executeId: string; runningIds?: number[] }>("job/list");
     for (const id of list.runningIds ?? []) {
       // Every call is a job of rclone's, this one among them; a run's is in a group of Your Space's.
-      const job = await rc.call<RcJob>("job/status", { jobid: id }).catch(() => undefined);
+      // Only a job rclone forgot since the list isn't under way: any other failure says nothing of it.
+      const job = await rc.call<RcJob>("job/status", { jobid: id }).catch((error: unknown) => {
+        if (error instanceof RcError && /job not found/i.test(error.message)) return undefined;
+        throw error;
+      });
       if (job && !job.finished && job.group?.startsWith("knowledge/")) return { executeId: list.executeId, running: id };
     }
     return { executeId: list.executeId, running: undefined };

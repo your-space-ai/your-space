@@ -757,6 +757,23 @@ describe("a knowledge base's sync", () => {
     expect(await status()).toMatchObject({ result: "synced", ties: ["same.md"] });
   });
 
+  it("starts no run while it can't tell whether its rclone runs a job of a run", async () => {
+    rc.hold = true;
+    await rc.rcFor("notes").call("sync/copy", { srcFs: "/knowledge/notes", dstFs: "kb-notes:", _async: true, _group: "knowledge/notes/run/ties/stray" });
+    // Asked about the jobs under way, rclone's answer for that one is cut short.
+    rc.failures.set("job/status", new RcError("unexpected EOF", 500));
+    const runs = rc.started().length;
+    await due("notes");
+    await tick();
+    expect(rc.started().length).toBe(runs);
+    await tick();
+    expect(rc.started().length).toBe(runs);
+    rc.finish();
+    rc.hold = false;
+    await settled();
+    expect(rc.started().length).toBe(runs + 1);
+  });
+
   it("records a run that finished while the server was stopped once it starts again: rclone keeps the result", async () => {
     // The server that starts the run, and stops: nothing stops the run in rclone.
     const stopping = new KnowledgeSync(server.apps!);
