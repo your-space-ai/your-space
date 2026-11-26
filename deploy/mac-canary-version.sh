@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Chooses the build the Mac canary packages (spec 016, decision 3, FR-005), in the Mac canary
-# workflow's version job, from a checkout of main with its history:
+# workflow's version job, from a checkout of the run's commit on main with its history:
 #   deploy/mac-canary-version.sh
 # The build is the newest Linux canary, the one the rolling `canary` prerelease holds, which channel.json
 # names (deploy/channel-json.sh) once its images are pushed and its install test has passed. It
 # requires that build's SHA256SUMS beside it, so the Linux canary isn't replacing its files, and its
-# commit on main. It builds nothing when the prerelease's canary-mac.yml already lists that build or a
+# commit on main and the checkout's: every later job checks out the run's commit, so the scripts that
+# build, sign, check and publish the build are the ones it was built from, and a run on main runs no
+# other commit's code. It builds nothing when the build is of an older commit on main, as until main's
+# newest commit has a Linux canary, when the prerelease's canary-mac.yml already lists that build or a
 # newer one, or when either Linux file is missing; a canary-mac.yml that isn't there yet is the first
 # Mac canary.
 #
@@ -93,6 +96,11 @@ fi
 if ! git merge-base --is-ancestor "$commit" origin/main; then
   echo "::error::$commit, which the canary prerelease's channel.json names, isn't on main, so no Mac canary is built." >&2
   exit 1
+fi
+# And the run's own commit, the one every later job checks out.
+run_commit=$(git rev-parse HEAD)
+if [[ $commit != "$run_commit" ]]; then
+  skip "The canary prerelease's channel.json names $commit, not this run's commit, $run_commit, the newest on main when it started: no Mac canary is built."
 fi
 
 # The build canary-mac.yml lists: its first line, as update-feed.mjs writes it, which must name a

@@ -3,7 +3,7 @@ name: Build macOS app
 # Builds the Apple Silicon and Intel apps, packs each in a DMG and tests installing it, and checks the
 # in-app updater's ZIP and feed made from the same app. It runs on
 # pull requests that touch the desktop app or what it bundles, Release macOS app calls it with
-# the release tag, and Mac canary with a canary's commit and version. It never signs with the
+# the release tag, and Mac canary with a canary's version. It never signs with the
 # Developer ID and has no access to signing secrets. Its feeds are written in a scratch folder that no
 # artifact holds: the signing jobs write the ones that ship.
 
@@ -26,11 +26,7 @@ on:
         required: false
         type: string
         default: ''
-      # Mac canary's: the commit to build and the canary's version.
-      ref:
-        required: false
-        type: string
-        default: ''
+      # Mac canary's: the canary's version, of the commit it runs on.
       version:
         required: false
         type: string
@@ -59,14 +55,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
-          # Mac canary's runs on main check out its commit, so they neither restore nor save a cache.
-          cache: ${{ inputs.ref == '' && 'npm' || '' }}
-          package-manager-cache: ${{ inputs.ref == '' }}
+          cache: npm
       - run: npm ci
       - name: Build the ZIP preview and exercise the DMG installation
         env:

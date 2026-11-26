@@ -38,18 +38,23 @@ const feedFor = build => `version: '${build}'\nfiles:\n${zips(build).map(name =>
 // The version job's tests need git, which the Node image the Arm check runs these in doesn't have.
 const withGit = spawnSync("git", ["--version"]).status === 0 ? {} : { skip: "git isn't installed" };
 
-/** A git checkout whose origin/main holds one commit, and another commit that isn't on main. */
+/**
+ * A git checkout of the run's commit, onMain, the newest of origin/main's two, with an older commit on
+ * main and another commit that isn't on main.
+ */
 function checkout(t) {
   const dir = mkdtempSync(join(tmpdir(), "ys-mac-canary-git-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const ident = { GIT_AUTHOR_NAME: "test", GIT_AUTHOR_EMAIL: "test", GIT_COMMITTER_NAME: "test", GIT_COMMITTER_EMAIL: "test" };
   const git = (...args) => execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", ...args], { cwd: dir, encoding: "utf8", env: { ...gitless(), ...ident } }).trim();
   git("init", "-q");
+  git("commit", "-q", "--allow-empty", "-m", "older");
+  const olderOnMain = git("rev-parse", "HEAD");
   git("commit", "-q", "--allow-empty", "-m", "main");
   const onMain = git("rev-parse", "HEAD");
   git("update-ref", "refs/remotes/origin/main", onMain);
-  git("commit", "-q", "--allow-empty", "-m", "elsewhere");
-  return { dir, onMain, offMain: git("rev-parse", "HEAD") };
+  const offMain = git("commit-tree", "-p", onMain, "-m", "elsewhere", `${onMain}^{tree}`);
+  return { dir, onMain, olderOnMain, offMain };
 }
 // The environment without anything that would point git at another repository.
 function gitless() {
@@ -147,6 +152,15 @@ test("the version job builds nothing when canary-mac.yml already lists that buil
     assert.deepEqual(output, { build: "false" }, listed);
     assert.match(stdout, new RegExp(`already lists ${listed.replaceAll(".", "\\.")}`));
   }
+});
+
+test("the version job builds nothing when channel.json names an older commit on main than the run's", withGit, t => {
+  const repo = checkout(t);
+  const gh = github(t, { canary: [[{}, linuxFiles(version, repo.olderOnMain)]] });
+  const { status, stderr, stdout, output } = gh.version(repo.dir);
+  assert.equal(status, 0, stderr);
+  assert.deepEqual(output, { build: "false" });
+  assert.match(stdout, new RegExp(`names ${repo.olderOnMain}, not this run's commit, ${repo.onMain}`));
 });
 
 test("the version job builds nothing when channel.json isn't there, or SHA256SUMS is missing or another build's", withGit, t => {

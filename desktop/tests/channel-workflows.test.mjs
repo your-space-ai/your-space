@@ -230,15 +230,18 @@ test("the Mac canary runs only on main once MACOS_CANARY_ENABLED is set, and eve
   assert.match(version, /^ {10}fetch-depth: 0$/m, "the version script checks the build's commit against main's history");
   for (const name of ["build", "sign", "verify", "publish"]) assert.match(job(macCanary, name), /^ {4}needs: (?:version|\[version, [\w-]+\])$/m, name);
   assert.match(job(macCanary, "build"), /^ {4}if: needs\.version\.outputs\.build == 'true'$/m);
-  // The canary's commit and version, from the version job, never inline in a script.
-  assert.match(job(macCanary, "build"), /^ {6}ref: \$\{\{ needs\.version\.outputs\.commit \}\}\n {6}version: \$\{\{ needs\.version\.outputs\.version \}\}$/m);
-  // The jobs after it check out that commit too, so what signs, checks and publishes a build is what
-  // built it; only the version job reads main's newest commit.
+  // The canary's version, from the version job, never inline in a script.
+  assert.match(job(macCanary, "build"), /^ {4}with:\n {6}version: \$\{\{ needs\.version\.outputs\.version \}\}$/m);
+  // The version job takes only a build of the run's own commit, and every job checks that commit out,
+  // so what builds, signs, checks and publishes a build is what it was built from, and a run on main
+  // runs no other commit's code.
   for (const name of ["sign", "verify", "publish"]) {
     const checkouts = [...job(macCanary, name).matchAll(/^ {6}- uses: actions\/checkout@.*\n {8}with:\n((?: {10}.*\n)+)/gm)].map(([, options]) => options);
-    assert.deepEqual(checkouts, ["          ref: ${{ needs.version.outputs.commit }}\n          persist-credentials: false\n"], name);
+    assert.deepEqual(checkouts, ["          persist-credentials: false\n"], name);
   }
-  assert.doesNotMatch(job(macCanary, "version"), /^ {10}ref:/m);
+  for (const path of [macCanary, ".github/workflows/macos-app-build.yml"]) {
+    assert.doesNotMatch(code(path), /^ +ref:|inputs\.ref\b|outputs\.commit\b/m, path);
+  }
   for (const name of jobs(macCanary)) {
     for (const [, script] of job(macCanary, name).matchAll(/^ {8}run: (\|\n(?: {10}.*\n?)+|.+)/gm)) assert.doesNotMatch(script, /\$\{\{/, name);
   }
