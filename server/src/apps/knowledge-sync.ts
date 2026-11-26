@@ -570,40 +570,43 @@ export class KnowledgeSync {
   private async advance(startNext: boolean): Promise<boolean> {
     const rows = await this.rows();
     const active = rows.find((r) => r.job);
-    const executeId = await this.ready(rows, Boolean(active));
+    const bases = this.bases(rows);
+    // The service runs with exactly these knowledge bases: started once after the server starts, and
+    // again when they change, never while a run is under way. Changes go through `changeService`.
+    if (this.service?.bases !== bases.join(",") && !(active && this.service)) await this.startOrWait(bases);
     if (active) {
-      if (executeId === undefined) return true;
-      await this.follow(active, executeId);
+      await this.follow(active, bases);
       return Boolean((await this.syncRow(active.knowledgeBaseId))?.job);
     }
-    if (!startNext || this.pausing > 0 || this.closed || executeId === undefined) return false;
+    if (!startNext || this.pausing > 0 || this.closed) return false;
     const connection = await this.connection();
     if (!connection?.token || connection.problem) return false;
     const next = this.next(rows);
-    if (next) await this.begin(next, connection, executeId);
+    if (!next) return false;
+    // rclone is asked only when a run starts: each call it answers is kept for an hour.
+    const executeId = await this.instance();
+    if (executeId === undefined) {
+      // Not running, as after Your Space stopped: it is started again, and the run waits for the next tick.
+      await this.startOrWait(bases, true);
+      return false;
+    }
+    await this.begin(next, connection, executeId);
     return false;
   }
 
   /**
-   * Makes sure the sync's service runs with every synced knowledge base that isn't held, and answers
-   * its rclone's instance, or undefined while it can't be reached. A run under way is never stopped
-   * for it: the service changes only through `changeService`, and the same knowledge bases leave it as
-   * it is.
+   * Starts the sync's service with these knowledge bases, unless that failed less than
+   * SERVICE_RETRY_MS ago; `unreachable` when its rclone didn't answer, as one that stopped.
    */
-  private async ready(rows: Row[], busy: boolean): Promise<string | undefined> {
-    const bases = this.bases(rows);
-    const reached = await this.instance();
-    if (reached !== undefined && (this.service?.bases === bases.join(",") || (busy && this.service))) return reached;
-    if (bases.length === 0 && reached === undefined && this.service?.bases === "") return undefined;
-    if (Date.now() - this.serviceFailed < SERVICE_RETRY_MS) return reached;
+  private async startOrWait(bases: string[], unreachable = false): Promise<void> {
+    if (Date.now() - this.serviceFailed < SERVICE_RETRY_MS) return;
+    if (!unreachable && bases.length === 0 && this.service?.bases === "") return;
     try {
       await this.startService(bases);
     } catch (error) {
       this.serviceFailed = Date.now();
       log("warn", "knowledge.sync_service_failed", errorFields(error));
-      return reached;
     }
-    return this.instance();
   }
 
   /** The knowledge bases the service mounts: every synced one, except those leaving it. */
@@ -740,16 +743,18 @@ export class KnowledgeSync {
    * interrupted; one still under way past RUN_LIMIT_MS is stopped as Ctrl+C stops rclone; one that
    * finished goes on to the run's next step, or is recorded.
    */
-  private async follow(row: Row, executeId: string): Promise<void> {
+  private async follow(row: Row, bases: string[]): Promise<void> {
     const job = row.job!;
     let status: RcJob | undefined;
-    if (job.executeId === executeId) {
-      try {
-        status = await this.rc.call<RcJob>("job/status", { jobid: job.id });
-      } catch (error) {
-        if (!(error instanceof RcError) || error.status === 503 || error.status === 504) return;
-      }
+    try {
+      status = await this.rc.call<RcJob>("job/status", { jobid: job.id });
+    } catch (error) {
+      if (!(error instanceof RcError)) throw error;
+      // rclone isn't running, as after Your Space stopped: it is started again, and its answer then
+      // says whether it still has the job.
+      if (error.status === 503 || error.status === 504) return this.startOrWait(bases, true);
     }
+    // One rclone no longer has, or a job of the same number of a restarted rclone: interrupted.
     if (!status || status.executeId !== job.executeId) return this.interrupted(row, job);
     if (!status.finished) {
       if (Date.now() - Date.parse(job.startedAt) > RUN_LIMIT_MS) {
@@ -851,7 +856,8 @@ export class KnowledgeSync {
     const subject = { id: row.knowledgeBaseId, name: row.name };
     if (ran.result === "busy") {
       // bisync's lock: another run of it, as one a restarted rclone left, holds it until it expires.
-      await this.db.update(knowledgeSync).set({ job: null }).where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
+      // Nothing else is recorded, and the next run is due a minute later.
+      await this.db.update(knowledgeSync).set({ job: null, lastRunAt: new Date(job.startedAt) }).where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
       log("warn", "knowledge.sync_locked", { name: row.name });
       return;
     }

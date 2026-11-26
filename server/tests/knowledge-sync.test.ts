@@ -373,6 +373,28 @@ describe("a knowledge base's sync", () => {
     expect(rc.started().length).toBe(before + 1);
   });
 
+  it("asks rclone nothing while no run is due, as each call it answers is kept for an hour", async () => {
+    await settled();
+    await settled("recipes");
+    const calls = rc.calls.length;
+    for (let i = 0; i < 5; i++) await tick();
+    expect(rc.calls.length).toBe(calls);
+  });
+
+  it("records nothing of a run bisync's lock refused, which is due again a minute later", async () => {
+    const before = (await status())!;
+    rc.answers = [{ success: false, error: "bisync aborted", lines: [{ level: "error", msg: "prior lock file found: /state/notes/bisync/x.lck" }] }];
+    await due("notes");
+    await tick();
+    await tick();
+    const after = (await syncRow())!;
+    expect(after).toMatchObject({ job: null, result: before.result });
+    expect(Date.now() - after.lastRunAt!.getTime()).toBeLessThan(10_000);
+    const runs = rc.started().length;
+    await tick();
+    expect(rc.started().length).toBe(runs);
+  });
+
   it("records each run against Your Space, the owner's actions against the owner, and only runs that changed something", async () => {
     const before = (await events("knowledge.synced")).length;
     await due();

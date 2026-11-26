@@ -16,7 +16,6 @@ import {
   runFolder,
   runTime,
   sameDeletions,
-  secretValues,
   SYNC_MARKER,
   tieCopyParams,
   tiesOf,
@@ -47,10 +46,6 @@ describe("a knowledge base's remote", () => {
 
   it("is the browser tests' volume folder only when the runtime manager says so, with the same client and token", () => {
     expect(remoteConfig(remote, true)).toEqual({ type: "alias", parameters: { remote: `/remote/${remote.folderId}`, client_id: remote.clientId, client_secret: remote.clientSecret, token: TOKEN } });
-  });
-
-  it("lists every secret it holds, the token's parts included", () => {
-    expect(secretValues(remote)).toEqual([remote.clientSecret, TOKEN, "ya29.access-secret", "1//refresh-secret"]);
   });
 });
 

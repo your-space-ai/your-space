@@ -59,18 +59,6 @@ export function remoteConfig(remote: DriveRemote, fixture: boolean): { type: str
   return { type: "drive", parameters: { ...credentials, scope: "drive", root_folder_id: remote.folderId, skip_gdocs: true, skip_shortcuts: true } };
 }
 
-/** Every secret of a remote, which nothing the server logs or answers may hold. */
-export function secretValues(remote: DriveRemote): string[] {
-  const values = [remote.clientSecret, remote.token];
-  try {
-    const token = JSON.parse(remote.token) as Record<string, unknown>;
-    for (const key of ["access_token", "refresh_token", "id_token"]) if (typeof token[key] === "string") values.push(token[key]);
-  } catch {
-    // Not JSON: the whole of it is listed already.
-  }
-  return values.filter((v) => v.length > 0);
-}
-
 /**
  * A bisync run between the knowledge base's Drive folder and the knowledge base, with bisync's own
  * checks: the marker at both roots, the deletion limit, the lock that expires if a run dies, recovery

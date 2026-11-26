@@ -166,6 +166,8 @@ asks the runtime manager for the service with every synced knowledge base, then,
   `/state/<name>/backups` after a run that changed something, and at least hourly, and
   `operations/purge` of backup folders older than 30 days.
 
-A job under way past two hours is stopped with `POST /knowledge-sync/restart`. The server never
-stops a job with `job/stop`: rclone cancels it at once, and after the first run that follows a
-resync that leaves listings bisync can't recover without a resync.
+A job under way past two hours is stopped with `POST /knowledge-sync/restart`. Nothing stops a job
+with `job/stop`, which cancels a bisync at once and always leaves listings only `recover` can use;
+stopping rclone with `SIGINT` lets bisync shut down gracefully first, and the runtime manager, which
+doesn't mount the socket, can do it. Either way, a run interrupted before bisync has a backup of its
+listings, as the first run after a resync, can need another resync.

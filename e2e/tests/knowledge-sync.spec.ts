@@ -470,10 +470,11 @@ test("a run that stops over more than 500 deletions shows the first 500, and app
 });
 
 test("the client secret and token are in rclone's memory only: in no container's configuration, file or log", async () => {
-  // rclone has them, for the remote the server made over its socket.
-  const remote = await docker(["exec", RCLONE, "rclone", "rc", "--unix-socket", "/run/ys-sync/rc.sock", "config/get", `name=kb-${KB}`]);
-  expect(remote.stdout).toContain("e2e-refresh-token");
-  expect(remote.stdout).toContain(CLIENT_SECRET);
+  // rclone has them, for the remote the server made over its socket before the knowledge base's
+  // next run: rclone was started again without the last one disconnected, and with no remote.
+  const remote = () => docker(["exec", RCLONE, "rclone", "rc", "--unix-socket", "/run/ys-sync/rc.sock", "config/get", `name=kb-${KB}`]).then((r) => r.stdout);
+  await expect.poll(remote, { timeout: 30_000 }).toContain("e2e-refresh-token");
+  expect(await remote()).toContain(CLIENT_SECRET);
   // No container of the installation has them in its environment, command or labels: not rclone's,
   // whose configuration the engine keeps on disk, nor the server's or the runtime manager's.
   const ids = new Set<string>();
@@ -561,8 +562,8 @@ test("stopping Your Space during a run stops rclone gracefully, and the next sta
   await expect.poll(() => bigRow("job is not null"), { timeout: 60_000, intervals: [100] }).toBe("t");
   // As `your-space stop` does: the apps and the sync first, then Your Space.
   await compose(["exec", "-T", "runtime", "stop-apps"]);
-  expect((await docker(["inspect", RCLONE, "--format", "{{.State.Running}}"], false)).stdout.trim()).toBe("false");
-  expect((await docker(["logs", "--tail", "20", RCLONE], false)).stderr).toContain("Signal received: interrupt");
+  // Stopped by SIGINT: rclone exits with 130 once bisync has shut down.
+  expect((await docker(["inspect", RCLONE, "--format", "{{.State.Running}} {{.State.ExitCode}}"], false)).stdout.trim()).toBe("false 130");
   await compose(["stop"]);
   await up();
   // The server starts rclone again, and the next run copies the rest: no resync is asked of the owner.
