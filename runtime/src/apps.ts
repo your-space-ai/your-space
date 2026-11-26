@@ -637,15 +637,33 @@ async function ownImage(): Promise<string> {
   return detail.Image;
 }
 
-/** Runs `knowledgeInit` on the volume and waits for it to finish. */
+/**
+ * Runs `knowledgeInit` on the volume and waits for it to finish. A helper the engine couldn't remove
+ * still mounts the volume, so the setup fails: deleting the knowledge base removes it first.
+ */
 async function initKnowledge(volume: string): Promise<void> {
   const { Id } = await engineJson<{ Id: string }>("POST", "/containers/create", knowledgeInit(await ownImage(), volume));
+  let failed: unknown;
   try {
     await engineJson("POST", `/containers/${Id}/start`);
     const { StatusCode } = await engineJson<{ StatusCode: number }>("POST", `/containers/${Id}/wait`);
     if (StatusCode !== 0) throw new EngineError(`Setting up the knowledge base's folder failed (exit code ${StatusCode}).`);
-  } finally {
-    await engine("DELETE", `/containers/${Id}?force=1`).catch(() => {});
+  } catch (error) {
+    failed = error;
+  }
+  const removed = await engine("DELETE", `/containers/${Id}?force=1`).catch(() => undefined);
+  if (failed) throw failed;
+  if (!removed || (removed.status >= 400 && removed.status !== 404)) {
+    throw new EngineError("The knowledge base's folder was set up, but the container that set it up couldn't be removed. Try again.");
+  }
+}
+
+/** Removes this installation's knowledge-base setup containers left on the volume, as when the engine couldn't remove one. */
+async function removeLeftInits(volume: string): Promise<void> {
+  for (const left of await mountedBy(volume)) {
+    if (left.Labels["ai.your-space.installation"] !== INSTALLATION || left.Labels["ai.your-space.role"] !== "knowledge-init") continue;
+    const answer = await engine("DELETE", `/containers/${left.Id}?force=1`);
+    if (answer.status >= 400 && answer.status !== 404) throw new EngineError(`Removing the knowledge base's setup container failed: ${answer.body.trim().slice(0, 300)}`);
   }
 }
 
@@ -711,6 +729,7 @@ export async function knowledgeUsers(name: string): Promise<{ apps: string[] }> 
 export async function deleteKnowledge(name: string): Promise<void> {
   if (!(await knowledgeOf(name))) return;
   const volume = knowledgeVolume(INSTALLATION, name);
+  await removeLeftInits(volume);
   const users = await mountedBy(volume);
   const names = () => [...new Set(users.map((c) => c.Labels["ai.your-space.app"] ?? c.Names[0]?.replace(/^\//, "") ?? c.Id.slice(0, 12)))].join(", ");
   if (users.length > 0) throw new EngineError(`The knowledge base ${name} is still mounted by ${names()}, so it can't be deleted yet.`, 409);

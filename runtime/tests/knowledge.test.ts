@@ -160,6 +160,8 @@ let initExit: number;
 let initExits: number[];
 /** Whether the engine fails to delete a volume, as when it stopped answering. */
 let volumeDeleteFails: boolean;
+/** Whether the engine fails to remove the setup container. */
+let initDeleteFails: boolean;
 
 function matches(labels: Record<string, string>, filters: string[]): boolean {
   return filters.every((filter) => {
@@ -176,6 +178,7 @@ beforeEach(() => {
   initExit = 0;
   initExits = [];
   volumeDeleteFails = false;
+  initDeleteFails = false;
   vi.mocked(engineModule.engineJson).mockImplementation(async (method, path, body) => {
     calls.push(`${method} ${path.split("?")[0]}`);
     if (path === "/containers/runtime-id/json") return { Image: "sha256:runtime" } as never;
@@ -216,7 +219,12 @@ beforeEach(() => {
         return volumes.delete(name) ? { status: 204, body: "" } : { status: 404, body: "" };
       }
     }
-    if (method === "DELETE" && path.startsWith("/containers/init-id")) return { status: 204, body: "" };
+    if (method === "DELETE" && path.startsWith("/containers/init-id")) return initDeleteFails ? { status: 500, body: "the engine failed" } : { status: 204, body: "" };
+    if (method === "DELETE" && path.startsWith("/containers/")) {
+      const id = path.slice("/containers/".length).split("?")[0];
+      containers = containers.filter((c) => c.Id !== id);
+      return { status: 204, body: "" };
+    }
     // Every image is on the engine already, so an apply pulls nothing.
     if (method === "GET" && path.startsWith("/images/")) return { status: 200, body: "{}" };
     throw new Error(`unexpected ${method} ${path}`);
@@ -307,6 +315,21 @@ describe("a knowledge base's volume", () => {
     await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("still mounted by notes") });
     expect(volumes.has(NOTES)).toBe(true);
     containers.pop();
+    await deleteKnowledge("notes");
+    expect(volumes.has(NOTES)).toBe(false);
+  });
+
+  it("isn't set up while its setup container can't be removed, and a setup container left on it doesn't keep it from being deleted", async () => {
+    initDeleteFails = true;
+    await expect(createKnowledge("notes")).rejects.toThrow(/couldn't be removed/);
+    // As the engine left it: stopped, and mounting the volume. Another installation's isn't removed.
+    const left = (id: string, installation: string) => ({ Id: id, Names: [`/${id}`], State: "exited", Status: "Exited (0)", Labels: { "ai.your-space.installation": installation, "ai.your-space.role": "knowledge-init" }, volumes: [NOTES] });
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    containers.push(left("left-id", INSTALLATION), left("theirs-id", "someone-else"));
+    await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409 });
+    expect(calls).toContain("DELETE /containers/left-id");
+    expect(calls).not.toContain("DELETE /containers/theirs-id");
+    containers = containers.filter((c) => c.Id !== "theirs-id");
     await deleteKnowledge("notes");
     expect(volumes.has(NOTES)).toBe(false);
   });
