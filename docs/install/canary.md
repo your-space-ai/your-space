@@ -102,9 +102,13 @@ point `upgrade --channel` at that workspace: the app moves it.
 Install the first Mac canary by hand: download the ZIP for your Mac from the
 [canary prerelease](https://github.com/your-space-ai/your-space/releases/tag/canary), open it to
 unpack `Your Space.app`, quit Your Space if it's open, and drag the new app to Applications in place
-of the old one. A canary with no channel stored yet, on a new Mac or over 0.1.0-alpha.1, follows
-Canary from its first start; installed over an app already set to Alpha, it stays on Alpha until
-you choose Canary. Later canaries come as updates.
+of the old one. Replace an app only with a newer canary: the version in the ZIP's name must be newer
+than the one **Your Space › About Your Space** shows. The newest Mac canary can be older than the
+app, such as in the day after a release, and an older app doesn't start a local workspace that a
+newer one upgraded; wait for a later Mac canary then. From 0.1.0-alpha.2 on, choosing Canary in the
+menu, as above, offers only a canary newer than the app. A canary with no channel stored yet, on a
+new Mac or over 0.1.0-alpha.1, follows Canary from its first start; installed over an app already
+set to Alpha, it stays on Alpha until you choose Canary. Later canaries come as updates.
 
 To leave Canary, choose **Update Channel › Alpha**. The app stays on its canary build, says "You'll
 move to Alpha with the next alpha", and moves to the first alpha newer than it, usually the next
