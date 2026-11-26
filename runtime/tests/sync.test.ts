@@ -306,13 +306,27 @@ describe("running the sync's containers", () => {
     expect(composed).toEqual([]);
   });
 
+  it("leaves the running rclones as they are when it refuses the knowledge bases asked for", async () => {
+    await ensureSyncService(["notes"]);
+    const before = composed.length;
+    await expect(ensureSyncService(["missing"])).rejects.toMatchObject({ status: 404 });
+    expect(composed.slice(before)).toEqual([]);
+    expect(containers.map((c) => [c.Labels["ai.your-space.knowledge"], c.State])).toEqual([["notes", "running"]]);
+  });
+
   it("holds the knowledge bases while it starts, so none of them is deleted under it", async () => {
     let release: () => void = () => {};
     holdUp = new Promise((resolve) => (release = resolve));
     const starting = ensureSyncService(["notes"]);
-    for (let i = 0; i < 50 && !composed.some((c) => c.args.includes("up")); i++) await new Promise((r) => setTimeout(r, 5));
-    await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409 });
-    release();
+    try {
+      for (let i = 0; i < 200 && !composed.some((c) => c.args.includes("up")); i++) await new Promise((r) => setTimeout(r, 5));
+      expect(composed.some((c) => c.args.includes("up"))).toBe(true);
+      await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409 });
+    } finally {
+      // Let go even when a check failed, so the start ends and the next test's changes aren't queued behind it.
+      release();
+      await starting.catch(() => {});
+    }
     await starting;
     // Mounted by the sync's container, it isn't deleted, nor is its state removed.
     await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("is still synced") });

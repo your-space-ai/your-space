@@ -338,17 +338,20 @@ export function ensureSyncService(knowledgeBases: string[]): Promise<SyncService
     if (isStopping()) throw new EngineError(STOPPING, 409);
     const names = [...new Set(knowledgeBases)].sort();
     const before = await rcloneContainers();
-    await stopRclones([...before.keys()].filter((n) => !names.includes(n)));
+    const gone = [...before.keys()].filter((n) => !names.includes(n));
     if (names.length === 0) {
+      await stopRclones(gone);
       if (await projectExists()) {
         const down = await docker(["compose", "-p", syncProject(), "down", "--remove-orphans"]);
         if (down.code !== 0) throw new EngineError(`Stopping the sync failed: ${down.stderr.trim().slice(-600)}`);
       }
       return syncService();
     }
+    // Held and checked before any rclone stops: a request refused leaves the running ones as they are.
     const release = holdKnowledgeBases(names);
     try {
       for (const name of names) if (!(await knowledgeOf(name))) throw new EngineError(`The knowledge base ${name} isn't on this machine's engine.`, 404);
+      await stopRclones(gone);
       const rclone = rcloneImage();
       const proxy = await squidImage();
       await ensureImage(rclone);

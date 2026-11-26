@@ -830,6 +830,8 @@ export function deleteKnowledgeState(name: string): Promise<void> {
 async function removeKnowledgeState(name: string): Promise<void> {
   if (!(await knowledgeStateOf(name))) return;
   const volume = knowledgeStateVolume(INSTALLATION, name);
+  // Set up as a knowledge base's folder is, so a setup container may be left on it too.
+  await removeLeftInits(volume);
   const answer = await engine("DELETE", `/volumes/${encodeURIComponent(volume)}`);
   if (answer.status === 409) throw new EngineError(`The knowledge base ${name} is still synced, so its sync can't be removed yet.`, 409);
   if (answer.status >= 400 && answer.status !== 404) throw new EngineError(`Removing the sync of ${name} failed: ${answer.body.trim().slice(0, 300)}`);
