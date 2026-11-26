@@ -50,8 +50,11 @@ export function run(program: string, args: string[], options: RunOptions = {}): 
     const done = () => {
       for (const signal of signals) process.off(signal, forward);
     };
-    child.stdout?.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-    child.stderr?.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+    // Decoded as a stream, so a character split between two reads stays whole.
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => (stdout += chunk));
+    child.stderr?.on("data", (chunk: string) => (stderr += chunk));
     child.on("error", (error) => {
       done();
       reject(error);
