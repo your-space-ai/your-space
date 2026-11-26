@@ -940,9 +940,10 @@ export class KnowledgeSync {
    *
    * Once for each interruption: the row's `interrupted` is spent as the resync starts. A resync that
    * fails, as while offline, is recorded as failed; if the next run still needs one, it stops for the
-   * owner. Only a resync that never ran, finding bisync's lock or refused by Google, or one
-   * interrupted in turn, as a new interruption, gives another; one stopped for its time limit
-   * doesn't, so a resync longer than that can't start again every two hours.
+   * owner. Only a resync that never ran, finding bisync's lock or refused by Google, or never
+   * started, as its marker couldn't be checked, or one interrupted in turn, as a new interruption,
+   * gives another; one stopped for its time limit doesn't, so a resync longer than that can't start
+   * again every two hours.
    *
    * Never past the safety check: Your Space's marker must be at both roots, as bisync's access check
    * asks of a resync too. Unlike the owner's Resync, this one puts no marker back; without it, the run
@@ -950,8 +951,18 @@ export class KnowledgeSync {
    */
   private async resyncItself(row: Row, job: SyncJob): Promise<void> {
     const rc = this.rcFor(row.name);
-    const here = await this.stat(rc, localPath(row.name));
-    const there = await this.stat(rc, `${remoteName(row.name)}:`);
+    let here: boolean;
+    let there: boolean;
+    try {
+      here = await this.stat(rc, localPath(row.name));
+      there = await this.stat(rc, `${remoteName(row.name)}:`);
+    } catch (error) {
+      if (!(error instanceof RcError)) throw error;
+      // As while offline, or Google refusing the token: the run failed, or is unauthorized, and the
+      // interruption still gives its resync to the next run.
+      log("warn", "knowledge.sync_resync_check_failed", { name: row.name, ...errorFields(error) });
+      return this.finish(row, job, outcome(false, [], error.message), [], { changed: false });
+    }
     if (!here || !there) {
       const side = here ? "remote" : "local";
       log("warn", "knowledge.sync_resync_refused", { name: row.name, side });

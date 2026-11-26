@@ -1164,6 +1164,38 @@ describe("a knowledge base's sync", () => {
     expect(await status()).toMatchObject({ result: "synced" });
   });
 
+  it("gives an interruption its resync again when Your Space's own didn't run: bisync's lock, Google's refusal, or a marker it couldn't check", async () => {
+    await interruptRun();
+    const resyncs = (await events("knowledge.resync_requested")).length;
+    // Its resync finds bisync's lock: nothing is recorded, and the next run is due a minute later.
+    rc.answers = [needsResync, { success: false, error: "bisync aborted", lines: [{ level: "error", msg: "prior lock file found: /state/notes/bisync/x.lck" }] }];
+    await due("notes");
+    await recorded(sync());
+    expect(await syncRow()).toMatchObject({ job: null, result: "failed", interrupted: true });
+    // Google refuses it: the owner reconnects, and the interruption still gives a resync.
+    rc.answers = [needsResync, { success: false, error: "bisync aborted", lines: [{ level: "error", msg: "Bisync critical error: couldn't fetch token: invalid_grant: maybe token expired?" }] }];
+    await due("notes");
+    await recorded(sync());
+    expect(await status()).toMatchObject({ result: "unauthorized", disconnected: true });
+    expect((await syncRow())!.interrupted).toBe(true);
+    expect(await signInWithGoogle()).toBe(`${server.publicUrl}/knowledge?google=connected`);
+    // Its marker can't be checked, as while offline: a failed run, and no resync starts.
+    rc.answers = [needsResync];
+    rc.failures.set("operations/stat", new RcError("Failed to stat: dial tcp: i/o timeout", 500));
+    const runs = rc.started().length;
+    await due("notes");
+    await recorded(sync());
+    expect(await syncRow()).toMatchObject({ job: null, result: "failed", interrupted: true });
+    expect(rc.started().slice(runs).map((j) => Boolean(j.params.resync))).toEqual([false]);
+    // The next run's resync runs.
+    rc.answers = [needsResync, { lines: [ok] }];
+    await due("notes");
+    await recorded(sync());
+    expect(rc.started().slice(runs).map((j) => Boolean(j.params.resync))).toEqual([false, false, true]);
+    expect(await syncRow()).toMatchObject({ result: "synced", interrupted: false });
+    expect((await events("knowledge.resync_requested")).length).toBe(resyncs + 3);
+  });
+
   it("still syncs after the data key is replaced: the client secret and token move to the new key", async () => {
     const previous = "previous-data-key-for-these-tests-012345678";
     const row = (await connection())!;
