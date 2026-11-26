@@ -196,10 +196,11 @@ export function signInFor(ref: string, credentials: RegistryCredential[] = []): 
 /**
  * A registry's own words for a sign-in, as the engine passes them on: GHCR's `…: denied`, Docker Hub's
  * `denied: requested access to the resource is denied`, Quay's `unauthorized: …`, and a registry with a
- * password's `no basic auth credentials`. Not the engine's own `permission denied` or an authorization
- * plugin's `authorization denied by plugin`, which a sign-in doesn't fix.
+ * password's `no basic auth credentials`. An engine on the containerd image store words a refused pull
+ * `pull access denied for …`. Not the engine's own `permission denied` or an authorization plugin's
+ * `authorization denied by plugin`, which a sign-in doesn't fix.
  */
-const SIGN_IN = /(^|: )(denied|unauthorized)(:|$)|requested access to the resource is denied|authentication required|no basic auth credentials/im;
+const SIGN_IN = /(^|: )(denied|unauthorized)(:|$)|requested access to the resource is denied|pull access denied|authentication required|no basic auth credentials/im;
 
 /**
  * Whether a registry, through the engine, wants a sign-in for an image or refused the one given: the

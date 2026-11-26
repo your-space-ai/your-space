@@ -81,6 +81,9 @@ describe("which requests a registry credential signs in", () => {
     expect(engine.wantsSignIn(403, "errors:\ndenied: requested access to the resource is denied\nunauthorized: authentication required\n")).toBe(true);
     expect(engine.wantsSignIn(401, "unauthorized: access to the requested resource is not authorized")).toBe(true);
     expect(engine.wantsSignIn(500, 'Head "http://127.0.0.1:5591/v2/owner/app/manifests/1": no basic auth credentials')).toBe(true);
+    // An engine on the containerd image store words a refused pull its own way (moby's daemon/containerd).
+    expect(engine.wantsSignIn(404, "pull access denied for ghcr.io/owner/app, repository does not exist or may require 'docker login'")).toBe(true);
+    expect(engine.wantsSignIn(403, "error from registry: denied")).toBe(true);
     expect(engine.wantsSignIn(500, "toomanyrequests: You have reached your pull rate limit")).toBe(false);
     expect(engine.wantsSignIn(404, "manifest unknown: manifest unknown")).toBe(false);
     // The engine's own refusals, which a sign-in doesn't fix: a layer it can't write, and an
