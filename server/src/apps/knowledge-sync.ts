@@ -675,7 +675,9 @@ export class KnowledgeSync {
   private async advance(knowledgeBaseId: string): Promise<void> {
     if (this.closed || this.held.has(knowledgeBaseId)) return;
     const row = await this.rowOf(knowledgeBaseId);
-    if (!row || !this.service?.bases.includes(row.name)) return;
+    // Read once: another knowledge base's step may find the containers gone meanwhile.
+    const service = this.service;
+    if (!row || !service?.bases.includes(row.name)) return;
     if (row.job) return this.follow(row);
     if (!this.isNext(row)) return;
     const connection = await this.connection();
@@ -683,7 +685,7 @@ export class KnowledgeSync {
     // rclone is asked only when a run starts: each call it answers is kept for an hour.
     const executeId = await this.instance(row);
     if (executeId === undefined) return;
-    await this.begin(row, connection, executeId);
+    await this.begin(row, connection, executeId, service.fixture);
   }
 
   /** Whether the knowledge base's next run is now: one the owner asked for, or it is due and didn't stop for safety. */
@@ -745,7 +747,7 @@ export class KnowledgeSync {
    * has succeeded. Its remote is made in rclone first, when this rclone hasn't it for the current
    * client, token and folder.
    */
-  private async begin(row: Row, connection: Connection, executeId: string): Promise<void> {
+  private async begin(row: Row, connection: Connection, executeId: string, fixture: boolean): Promise<void> {
     const requested = row.requested;
     // Sync now before a first resync has succeeded is that resync: there are no listings to sync from.
     const asked: SyncMode = requested?.mode ?? "sync";
@@ -759,7 +761,7 @@ export class KnowledgeSync {
     const run = runFolder(startedAt);
     const job: Omit<SyncJob, "id" | "executeId" | "step"> = { mode, startedAt: startedAt.toISOString(), run, connectedAt: connection.connectedAt?.toISOString() ?? null, ...(requested && asked !== "sync" ? { by: requested.by } : {}) };
     try {
-      await this.remote(row, connection, executeId);
+      await this.remote(row, connection, executeId, fixture);
       if (mode === "resync") await this.markers(row.name);
       const step = mode === "resync" ? "resync" : mode === "force" ? "preview" : "sync";
       await this.launch(row, { ...job, step }, bisyncParams(row.name, run, { resync: mode === "resync", force: mode === "force", dryRun: mode === "force" }));
@@ -770,9 +772,11 @@ export class KnowledgeSync {
     }
   }
 
-  /** Makes the knowledge base's remote in its rclone, unless that rclone has it for this connection and folder. */
-  private async remote(row: Row, connection: Connection, executeId: string): Promise<void> {
-    const fixture = this.service!.fixture;
+  /**
+   * Makes the knowledge base's remote in its rclone, unless that rclone has it for this connection and
+   * folder: on Drive, or in the browser tests' stand-in when the containers said they are theirs.
+   */
+  private async remote(row: Row, connection: Connection, executeId: string, fixture: boolean): Promise<void> {
     const version = `${connection.clientId} ${connection.updatedAt.toISOString()} ${row.folderId} ${fixture}`;
     const known = this.remotes.get(row.knowledgeBaseId);
     if (known?.executeId === executeId && known.version === version) return;
