@@ -1,0 +1,3 @@
+#!/bin/sh
+# The GitHub connection: docker compose exec server github connect | status | disconnect [--json]
+exec node "$(dirname "$(readlink -f "$0")")/../src/commands/github.ts" "$@"

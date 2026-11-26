@@ -333,6 +333,25 @@ export const workspaceAppearance = pgTable("workspace_appearance", {
   themes: jsonb("themes").$type<{ id: string; theme: Theme }[]>().notNull(),
 }, (t) => [check("workspace_appearance_mode_valid", sql`${t.mode} in ('system', 'light', 'dark')`)]);
 
+/**
+ * The workspace's source credential (journey 015): what lets Your Space read a file it can't read
+ * anonymously. Its first adapter is a fine-grained GitHub token with Contents read, which the owner
+ * pastes. One per workspace (R6).
+ */
+export const sourceCredential = pgTable("source_credential", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().unique().references(() => organization.id, { onDelete: "cascade" }),
+  /** AES-256-GCM ciphertext under the data key (spec 009); never returned or logged. */
+  token: text("token").notNull(),
+  /** The account GitHub said the token belongs to, the last time it answered. */
+  account: text("account").notNull(),
+  /** When GitHub last accepted the token. */
+  workedAt: timestamp("worked_at", { withTimezone: true }).notNull(),
+  /** When GitHub refused the token on its latest use; null while it works. */
+  refusedAt: timestamp("refused_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const ownerLayout = pgTable("owner_layout", {
   workspaceId: uuid("workspace_id").notNull().references(() => organization.id, {onDelete:"cascade"}),
   ownerId: uuid("owner_id").notNull().references(() => actor.id, {onDelete:"cascade"}),

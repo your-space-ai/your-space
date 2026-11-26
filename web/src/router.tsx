@@ -1,7 +1,8 @@
 import { paneSearch } from "./pane-layout.ts";
 // Routes (T032, T038): /sign-in, / (home), and /reset-password. "No owner yet" and failures are
 // states of the root route, not routes of their own (research R12). Journey 002 adds the signed-in
-// layout around home, /apps, /apps/$name, /open/$name (an app's pane) and /engine.
+// layout around home, /apps, /apps/$name, /open/$name (an app's pane) and /engine; journey 015
+// adds /github.
 import type { QueryClient } from "@tanstack/react-query";
 import {
   createRootRouteWithContext,
@@ -22,6 +23,7 @@ import { AppDetail } from "./pages/AppDetail.tsx";
 import { Agents } from "./pages/Agents.tsx";
 import { Apps } from "./pages/Apps.tsx";
 import { Engine } from "./pages/Engine.tsx";
+import { GitHub } from "./pages/GitHub.tsx";
 import { failureKind } from "./errors.ts";
 import { Home } from "./pages/Home.tsx";
 import { NoOwnerYet } from "./pages/NoOwnerYet.tsx";
@@ -128,6 +130,12 @@ const engineRoute = createRoute({
   component: Engine,
 });
 
+const githubRoute = createRoute({
+  getParentRoute: () => signedInRoute,
+  path: "/github",
+  component: GitHub,
+});
+
 const NOTICES: SignInNotice[] = ["password_set", "signed_out", "expired"];
 
 const signInRoute = createRoute({
@@ -150,7 +158,7 @@ const resetPasswordRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  signedInRoute.addChildren([homeRoute, agentsRoute, appsRoute, appDetailRoute, openRoute, engineRoute, appearanceRoute]),
+  signedInRoute.addChildren([homeRoute, agentsRoute, appsRoute, appDetailRoute, openRoute, engineRoute, appearanceRoute, githubRoute]),
   signInRoute,
   resetPasswordRoute,
 ]);

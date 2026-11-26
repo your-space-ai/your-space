@@ -317,6 +317,8 @@ Your Space's database is PostgreSQL, which doesn't encrypt what it stores: anyon
   encrypted by Your Space with the data key, AES-256-GCM. The data key is kept apart from the
   database, in the `ys-secrets` volume or in `.env`, so a copy of the database alone doesn't reveal
   them.
+- **The GitHub connection's token** is encrypted with the data key the same way, and is never shown
+  again.
 - **Passwords and set-password links** are never stored: only one-way hashes of them are.
 - **Sessions** can't be used from a copy of the database alone: a sign-in cookie is also signed
   with the auth secret, which is in `ys-secrets`.

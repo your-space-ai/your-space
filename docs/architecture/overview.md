@@ -90,6 +90,11 @@ The signed-in dashboard arranges installed app panes in a resizable grid. A name
   manager resolves, checks, and pins it → after the owner confirms, it starts the app's Compose
   project. A Compose file's link alone is refused. A kit in a private repository goes to the
   server command as a file instead.
+- **Connecting GitHub (015):** the owner pastes a fine-grained token, Contents read on the
+  repositories they choose, on the GitHub page or into the `github` server command → the server asks
+  GitHub's API which account it belongs to (`GET /user`) → stores it encrypted under the data key,
+  and moves it with everything else when the data key is replaced. The server asks again only when
+  the owner opens the page or checks its status; nothing reads repositories through it yet.
 - **An app reaching the internet:** app → its egress proxy → approved host, or a denial the
   runtime manager reads and the server turns into an access request.
 - **An agent.** The CLI sends the agent’s key and requested action to the server through the edge.

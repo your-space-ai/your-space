@@ -12,6 +12,7 @@ import { createGate, Handoffs } from "./apps/gate.ts";
 import { socketRuntime } from "./apps/runtime-client.ts";
 import { moveSettingsToDataKey } from "./apps/keys.ts";
 import { AppsService } from "./apps/service.ts";
+import { GithubConnection } from "./github-connection.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 /** The gate's listener: only Caddy reaches it (deploy/Caddyfile). */
@@ -91,7 +92,8 @@ try {
 const auth = createAuth({ config, db });
 const handoffs = new Handoffs();
 const apps = new AppsService(db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey });
-const app = createApp({ auth, db, dataKey: config.dataKey, apps: { service: apps, handoffs } });
+const github = new GithubConnection(db, config.dataKey);
+const app = createApp({ auth, db, dataKey: config.dataKey, apps: { service: apps, handoffs }, github });
 const gate = createGate({ db, publicUrl: config.publicUrl, authSecret: config.authSecret, handoffs });
 const gateServer: Server = gate.listen(GATE_PORT, "0.0.0.0");
 
