@@ -6,6 +6,7 @@ import { useState, type FormEvent } from "react";
 import { api, ApiError, appsQuery, errorMessage, ownTabLink, shortDigest, STATE_LABEL, type AppList, type FileRead, type Review } from "../apps-api.ts";
 import { JobProgress } from "../components/JobProgress.tsx";
 import { KnowledgePicker } from "../components/KnowledgePicker.tsx";
+import { knowledgeQuery } from "../knowledge-api.ts";
 import { PUBLISH_NOTE, publishBody, PublishFields, type PublishForm } from "../components/PublishFields.tsx";
 import { DeleteData } from "./AppDetail.tsx";
 
@@ -96,6 +97,10 @@ function Install() {
   const [publishing, setPublishing] = useState(false);
   const [publish, setPublish] = useState<PublishForm>({ port: "", bind: "127.0.0.1", link: "" });
   const [knowledge, setKnowledge] = useState<string[]>([]);
+  // A pick of a knowledge base deleted since, as in another tab, is dropped once the list shows it
+  // gone, as on the app's page, so the install never asks for it.
+  const catalog = useQuery({ ...knowledgeQuery, enabled: Boolean(review?.knowledge) });
+  const picked = catalog.data ? knowledge.filter((name) => catalog.data.knowledgeBases.some((base) => base.name === name)) : knowledge;
   const [installing, setInstalling] = useState<{ name: string; title: string; jobId: string } | null>(null);
   const [finished, setFinished] = useState<boolean | null>(null);
 
@@ -119,7 +124,7 @@ function Install() {
         settings: Object.fromEntries(Object.entries(values).filter(([, v]) => v !== "")),
         reuseData: r.retained ? reuse : false,
         ...(publishing ? { publish: publishBody(publish) } : {}),
-        ...(r.knowledge ? { knowledge } : {}),
+        ...(r.knowledge ? { knowledge: picked } : {}),
       }),
     onSuccess: (data, r) => {
       setInstalling({ name: data.name, title: r.title, jobId: data.jobId });
@@ -180,7 +185,7 @@ function Install() {
           setPublishing={setPublishing}
           publish={publish}
           setPublish={setPublish}
-          knowledge={knowledge}
+          knowledge={picked}
           setKnowledge={setKnowledge}
           onInstall={() => install.mutate(review)}
           onCancel={() => setReview(null)}
@@ -409,7 +414,7 @@ function ReviewPanel(props: {
             {review.title} asks for knowledge bases. Each one you give it is a folder it can read and write, in{" "}
             <code>{review.knowledge.path}</code>. You can change them later on its page.
           </p>
-          <KnowledgePicker path={review.knowledge.path} selected={props.knowledge} onChange={props.setKnowledge} />
+          <KnowledgePicker path={review.knowledge.path} selected={props.knowledge} onChange={props.setKnowledge} disabled={props.installing} />
         </section>
       ) : null}
 
