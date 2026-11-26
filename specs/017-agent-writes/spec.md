@@ -233,8 +233,11 @@ characters, and Your Space keeps it with the request, unique per agent, installa
   making a second record. On a create route without one, the agent doesn't resend after an
   `unknown` outcome; it reports the request ID for the owner to check in the app. The kit guide
   says which routes are which.
-- An update names the fields it sets, so sending it again sets the same values; the agent may
-  resend it under a new operation ID after reading the record.
+- An update isn't safe to repeat just because it is an update: an app may read a value as an
+  operation, such as an increment. So an update is sent again after an `unknown` outcome only on a
+  route the kit guide says sets the values it is given, as Twenty's `PATCH` does, and only after the
+  agent has read the record and found its fields don't already hold the values it sent. On any other
+  update route the agent doesn't resend; it reports the request ID for the owner to check.
 
 This needs nothing from the app beyond what Twenty does today. Operation IDs aren't sent to the
 app.
@@ -355,7 +358,8 @@ agent writes before alpha.2, and the onboarding runs there.
   the same agent, installation and route returns the first request and its outcome, and sends
   nothing; with other input it is a `409` conflict. Your Space never resends a write. The agent
   guide says a create is resent after an `unknown` outcome only on a route that requires a record
-  ID the app keeps unique.
+  ID the app keeps unique, and an update only on a route that sets the values it is given, once a
+  read shows they weren't applied.
 - **FR-004**: A write's outcome is `succeeded` for a 2xx other than `202`, `conflict` for a `409`
   or `412`, `refused` for another 4xx, and `unknown` for a `202`, a timeout, a 5xx or a broken
   connection. A 2xx whose
