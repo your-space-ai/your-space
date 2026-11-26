@@ -220,7 +220,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### Agent connections and workflows
 
-- [ ] **Agent writes** · *Later direction*
+- [ ] **Agent writes (017)** · *Later direction*. Requested again by the owner on 2026-11-26; scope and timing are open. [Agent writes spec](https://github.com/your-space-ai/your-space/blob/main/specs/017-agent-writes/spec.md)
 
   **Cut from the alpha (2026-11-23):** [Alpha scope](architecture/decisions.md#alpha-scope).
 
