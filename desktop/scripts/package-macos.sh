@@ -43,7 +43,7 @@ rm "$resources/default_app.asar"
 cp "$root/desktop/package.json" "$resources/app/"
 ditto --norsrc --noextattr "$root/desktop/src" "$resources/app/desktop/src"
 if [[ -d $root/desktop/renderer ]]; then ditto --norsrc --noextattr "$root/desktop/renderer" "$resources/app/desktop/renderer"; fi
-# The updater, bundled into the sealed archive with its packages' notices, and the GitHub releases it reads.
+# The updater, bundled into the sealed archive with its packages' notices, and the Alpha feed it reads by default.
 "$node_bin" "$root/desktop/scripts/bundle-updater.mjs" "$resources/app/desktop/vendor/electron-updater.cjs" \
   "$resources/licenses/Updater-NOTICES.txt"
 cp "$root/desktop/app-update.yml" "$resources/app-update.yml"

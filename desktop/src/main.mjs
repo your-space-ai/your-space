@@ -6,6 +6,7 @@ import { launcherTheme } from './appearance.mjs';
 import { createLocalSetup, localSetupError } from './local-setup.mjs';
 import { createQuitControl, stopTimeouts } from './quit.mjs';
 import { createUpdates } from './updates.mjs';
+import { checkFailedDetail, chooseChannel, updateMenu, upToDateMessage } from './update-menu.mjs';
 import { checkWorkspace, createSavedConnections, linkTarget, mostRecent, ownerDestination, savedName, webDestination, WorkspaceError, workspaceOrigin, workspacePartition } from './workspace.mjs';
 import { connectionMenu } from './connection-menu.mjs';
 
@@ -60,6 +61,9 @@ function message(options, parent = BrowserWindow.getFocusedWindow() ?? BrowserWi
 const quitControl = createQuitControl({
   needsStop: () => local.mayBeRunning(),
   stop: signal => local.stop({ timeout: stopTimeouts.quit, signal }),
+  // A downloaded update the owner put off, of the channel followed now, installs once the app has quit.
+  pendingUpdate: () => updates.installsAtQuit,
+  stageUpdate: signal => updates.stageAtQuit(signal),
   onStopping: () => {
     busy = true;
     for (const win of BrowserWindow.getAllWindows()) if (win !== launcher) win.hide();
@@ -85,19 +89,20 @@ const updates = createUpdates({
   // Only the packaged app carries the updater and the app-update.yml it reads (package-macos.sh).
   load: () => app.isPackaged ? createRequire(import.meta.url)(join(desktop, 'vendor/electron-updater.cjs')).autoUpdater : null,
   settingsFile: join(app.getPath('userData'), 'updates.json'),
+  version: app.getVersion(),
   beforeInstall: install => quitControl.beforeInstall(install),
   squirrel: nativeUpdater,
   ui: {
     unavailable: () => message({ message: 'Updates work only in the installed app',
       detail: 'This copy of Your Space runs from its source, so it doesn’t check for new versions.' }),
-    upToDate: () => message({ message: 'Your Space is up to date', detail: `Version ${app.getVersion()} is the newest available.` }),
+    upToDate: channel => message(upToDateMessage(app.getVersion(), channel)),
     busy: () => message({ message: 'Your Space is already checking for updates' }),
-    failed: (error, stage) => message({
+    failed: (error, stage, channel) => message({
       type: 'warning',
       message: {check: 'Your Space could not check for updates', download: 'Your Space could not download the update',
         install: 'Your Space could not install the update'}[stage],
-      detail: (stage === 'install' ?
-        'macOS didn’t accept the downloaded version. Download Your Space again from its GitHub releases.' :
+      detail: ({install: 'macOS didn’t accept the downloaded version. Download Your Space again from its GitHub releases.',
+        check: checkFailedDetail(channel)}[stage] ??
         'Check your internet connection, then try again from Your Space › Check for Updates…') +
         (typeof error?.code === 'string' && /^ERR_[A-Z_]+$/.test(error.code) ? ` (${error.code})` : ''),
     }),
@@ -382,9 +387,17 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {label: app.name, submenu: [
       {role: 'about'},
-      {label: 'Check for Updates…', click: () => void updates.check()},
-      {label: 'Check for Updates Automatically', type: 'checkbox', checked: updates.automatic,
-        click: item => void updates.setAutomatic(item.checked).catch(() => {}).finally(buildMenu)},
+      ...updateMenu({
+        automatic: updates.automatic, channel: updates.channel, version: app.getVersion(), installing: updates.installing,
+        check: () => void updates.check(),
+        setAutomatic: automatic => void updates.setAutomatic(automatic).catch(() => {}).finally(buildMenu),
+        // A radio item shows the choice before it is made, so the menu is rebuilt from the setting either way.
+        choose: channel => void chooseChannel(channel, {
+          current: updates.channel, version: app.getVersion(),
+          ask: async options => (await message(options)).response,
+          setChannel: choice => updates.setChannel(choice),
+        }).catch(() => {}).finally(buildMenu),
+      }),
       {type: 'separator'}, {role: 'services'},
       {type: 'separator'}, {role: 'hide'}, {role: 'hideOthers'}, {role: 'unhide'},
       {type: 'separator'}, {role: 'quit'},

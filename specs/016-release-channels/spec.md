@@ -6,10 +6,13 @@
 
 **Status**: Decided. The owner settled all ten decisions on 2026-11-25. The pull request check on
 migrations (decision 8, FR-011) delivered 2026-11-25 in
-[PR #132](https://github.com/your-space-ai/your-space/pull/132). Canary's `channel.json` (FR-004)
-is built in [PR #135](https://github.com/your-space-ai/your-space/pull/135), in review. The `alpha`
-feed (FR-003) is built in [PR #136](https://github.com/your-space-ai/your-space/pull/136), in
-review, and first runs when alpha.2 is published. The rest ships in alpha.2.
+[PR #132](https://github.com/your-space-ai/your-space/pull/132). Built in PRs
+[#135](https://github.com/your-space-ai/your-space/pull/135) (Canary's `channel.json`, FR-004),
+[#136](https://github.com/your-space-ai/your-space/pull/136) (the `alpha` feed, FR-003),
+[#137](https://github.com/your-space-ai/your-space/pull/137) (the daily Mac canary, FR-005),
+[#138](https://github.com/your-space-ai/your-space/pull/138) (`upgrade --channel`, FR-006) and
+[#139](https://github.com/your-space-ai/your-space/pull/139) (the Mac app's setting, FR-001, FR-002
+and FR-009), all for alpha.2; live checks pending.
 
 **Input**: The owner, on 2026-11-25: "in the desktop app, should be a setting to choose which
 release channel to follow for updates, and yes you can add the flag in the cli."

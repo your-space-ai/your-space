@@ -1,0 +1,6 @@
+# electron-updater's settings, which the packager copies to Contents/Resources/app-update.yml:
+# releases of this repository on GitHub, and a download cache named after the app.
+provider: github
+owner: your-space-ai
+repo: your-space
+updaterCacheDirName: ai.your-space.desktop-updater
