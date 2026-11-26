@@ -127,8 +127,10 @@ commit, as Release draft does, so a run on `main` runs no other commit's code. O
 commit has no Linux canary yet, because its Canary run is still going or failed, the run builds
 nothing rather than packaging the build before it. A later run catches up once its own commit has
 a Linux canary; while the Linux canary keeps failing, every run builds nothing. A run that waited
-behind an earlier one still packages its own commit, even if `main` has moved on since: that build
-is on `main` and is newer than the Mac canary before it, and the next run packages the newer one.
+behind an earlier one packages its own commit only while the `canary` prerelease still holds that
+commit's Linux canary, which is on `main` and newer than the Mac canary before it. Once a newer
+commit's Linux canary has replaced it, the waiting run builds nothing, and the next run started on
+a commit whose Linux canary is there packages that one.
 
 Standard GitHub-hosted runners, the `macos-15` and `macos-15-intel` ones the release uses included,
 are free on public repositories
