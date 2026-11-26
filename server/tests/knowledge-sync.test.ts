@@ -823,6 +823,164 @@ describe("a knowledge base's sync", () => {
     expect(await status()).toMatchObject({ result: "synced" });
   });
 
+  // bisync's answer when it can't carry on without a resync, as after rclone was killed during the first run after connecting.
+  const needsResync = {
+    success: false,
+    error: "bisync aborted",
+    lines: [
+      { level: "error", msg: "Bisync critical error: cannot find prior Path1 or Path2 listings, likely due to critical error on prior run" },
+      { level: "error", msg: "Bisync aborted. Error is retryable without --resync due to --resilient mode." },
+    ],
+  };
+  /** Interrupts notes' next run, as when Your Space stops during it: its rclone restarts and forgets it. */
+  async function interruptRun(): Promise<void> {
+    rc.hold = true;
+    await due("notes");
+    await tick();
+    expect((await syncRow())!.job).toMatchObject({ step: "sync", mode: "sync" });
+    rc.restart("notes");
+    await tick();
+    rc.hold = false;
+    expect(await syncRow()).toMatchObject({ job: null, result: "failed", interrupted: true });
+  }
+  /** Ticks `sync` until notes' run is recorded. */
+  async function recorded(sync: KnowledgeSync): Promise<void> {
+    for (let i = 0; i < 10; i++) {
+      await sync.tick();
+      if (!(await syncRow())!.job) return;
+    }
+    throw new Error("The run wasn't recorded.");
+  }
+  /** The calls since `from` that put Your Space's marker on a side. */
+  const markersMade = (from: number) => rc.calls.slice(from).filter((c) => c.command === "operations/uploadfile" || c.command === "operations/copyfile");
+  /** Resyncs notes as the owner, so a test ends with it synced. */
+  async function resyncAsOwner(): Promise<void> {
+    rc.answers = [{ lines: [ok] }];
+    expect((await send("/api/knowledge/notes/sync", { action: "resync" })).status).toBe(202);
+    await settled();
+    expect(await status()).toMatchObject({ result: "synced" });
+  }
+
+  it("finishes an interrupted run that bisync can carry on only with a resync by resyncing itself, putting no marker back, also after a restart and bisync's lock", async () => {
+    rc.markers.add("/knowledge/notes");
+    rc.markers.add("kb-notes:");
+    await interruptRun();
+    const resyncs = (await events("knowledge.resync_requested")).length;
+    const stops = (await events("knowledge.sync_stopped")).length;
+    const calls = rc.calls.length;
+    const runs = rc.started().length;
+    // The next server: bisync's lock first, then a run that can't carry on without a resync, then that resync.
+    rc.answers = [{ success: false, error: "bisync aborted", lines: [{ level: "error", msg: "prior lock file found: /state/notes/bisync/x.lck" }] }, needsResync, { lines: [copied("back.md"), ok] }];
+    const next = new KnowledgeSync(server.apps!);
+    await due("notes");
+    await recorded(next);
+    expect(await syncRow()).toMatchObject({ job: null, result: "failed", interrupted: true });
+    await due("notes");
+    await recorded(next);
+    const steps = rc.started().slice(runs);
+    expect(steps).toHaveLength(3);
+    expect(steps[1]!.params.resync).toBeUndefined();
+    // The same run's next step: its backup folder, and a resync as the first run's, the newer copy winning.
+    expect(steps[2]!.params).toMatchObject({ ...bisyncParams("notes", "x", { resync: true }), backupDir2: steps[1]!.params.backupDir2 });
+    expect(markersMade(calls)).toEqual([]);
+    expect(rc.calls.slice(calls).filter((c) => c.command === "operations/stat").map((c) => c.params.fs)).toEqual(["/knowledge/notes", "kb-notes:"]);
+    expect(await status()).toMatchObject({ running: false, result: "synced", reason: null, firstRun: false });
+    expect((await syncRow())!.interrupted).toBe(false);
+    // Against Your Space, as each run is; nothing stopped for the owner.
+    expect((await events("knowledge.resync_requested")).slice(resyncs)).toEqual([{ actorId: operator, knowledgeBase: "notes" }]);
+    expect((await events("knowledge.sync_stopped")).length).toBe(stops);
+
+    // Without an interruption since, a run that needs a resync stops for the owner.
+    rc.answers = [needsResync];
+    await due("notes");
+    await recorded(next);
+    expect(await status()).toMatchObject({ result: "stopped", reason: "resync" });
+    expect(rc.started().slice(runs + 3).map((j) => Boolean(j.params.resync))).toEqual([false]);
+    expect((await events("knowledge.resync_requested")).length).toBe(resyncs + 1);
+    await next.close();
+    await resyncAsOwner();
+  });
+
+  it("never resyncs by itself past a missing marker: the run stops for the owner, and the marker isn't put back", async () => {
+    rc.markers.add("/knowledge/notes");
+    rc.markers.delete("kb-notes:");
+    await interruptRun();
+    const resyncs = (await events("knowledge.resync_requested")).length;
+    const stops = (await events("knowledge.sync_stopped")).length;
+    const calls = rc.calls.length;
+    const runs = rc.started().length;
+    rc.answers = [needsResync];
+    await due("notes");
+    await recorded(sync());
+    expect(rc.started().slice(runs).map((j) => Boolean(j.params.resync))).toEqual([false]);
+    expect(markersMade(calls)).toEqual([]);
+    expect(await status()).toMatchObject({ result: "stopped", reason: "marker", side: "remote", detail: expect.stringContaining("didn't resync by itself") });
+    expect((await syncRow())!.interrupted).toBe(false);
+    expect((await events("knowledge.resync_requested")).length).toBe(resyncs);
+    expect((await events("knowledge.sync_stopped")).slice(stops)).toEqual([{ actorId: operator, knowledgeBase: "notes" }]);
+    // The owner's Resync puts it back.
+    await resyncAsOwner();
+    expect(rc.markers.has("kb-notes:")).toBe(true);
+  });
+
+  it("resyncs by itself once for each interruption: one that fails leaves the next run that needs a resync to the owner", async () => {
+    await interruptRun();
+    const runs = rc.started().length;
+    // The resync fails, as while offline: recorded as failed, and the interruption's resync is spent.
+    rc.answers = [needsResync, { success: false, error: "couldn't connect", lines: [{ level: "error", msg: "Failed to bisync: dial tcp: i/o timeout" }] }];
+    await due("notes");
+    await recorded(sync());
+    expect(rc.started().slice(runs).map((j) => Boolean(j.params.resync))).toEqual([false, true]);
+    expect(await syncRow()).toMatchObject({ result: "failed", interrupted: false });
+    // The next run, a minute later, still can't carry on: it stops for the owner, with no resync of its own.
+    rc.answers = [needsResync];
+    await due("notes");
+    await recorded(sync());
+    expect(rc.started().slice(runs).map((j) => Boolean(j.params.resync))).toEqual([false, true, false]);
+    expect(await status()).toMatchObject({ result: "stopped", reason: "resync" });
+    await resyncAsOwner();
+  });
+
+  it("gives a resync of its own that was interrupted in turn another, but not one stopped for its time limit", async () => {
+    await interruptRun();
+    // A server of its own, which hasn't restarted an rclone for a run past its time yet.
+    const own = new KnowledgeSync(server.apps!);
+    // Its resync is interrupted too: a new interruption, which gives a resync again.
+    rc.hold = true;
+    rc.answers = [needsResync];
+    await due("notes");
+    await own.tick();
+    rc.finish();
+    rc.answers = [{ lines: [ok] }];
+    await own.tick();
+    expect(await syncRow()).toMatchObject({ job: { step: "resync", mode: "resync", auto: true }, interrupted: false });
+    rc.restart("notes");
+    await own.tick();
+    expect(await syncRow()).toMatchObject({ job: null, result: "failed", interrupted: true });
+    // That resync runs past its time: its rclone is restarted to stop it, and no other follows.
+    rc.answers = [needsResync];
+    await due("notes");
+    await own.tick();
+    rc.finish();
+    rc.answers = [{ lines: [ok] }];
+    await own.tick();
+    const row = (await syncRow())!;
+    expect(row.job).toMatchObject({ step: "resync", auto: true });
+    await t.db.update(knowledgeSync).set({ job: { ...row.job!, startedAt: new Date(Date.now() - RUN_LIMIT_MS - 1_000).toISOString() } }).where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
+    await own.tick();
+    await own.tick();
+    expect(await syncRow()).toMatchObject({ job: null, result: "failed", interrupted: false, message: expect.stringContaining("longer than 2 hours") });
+    rc.hold = false;
+    const runs = rc.started().length;
+    rc.answers = [needsResync];
+    await due("notes");
+    await recorded(own);
+    expect(rc.started().slice(runs).map((j) => Boolean(j.params.resync))).toEqual([false]);
+    expect(await status()).toMatchObject({ result: "stopped", reason: "resync" });
+    await own.close();
+    await resyncAsOwner();
+  });
+
   it("stops a run past its time by restarting its own rclone as Ctrl+C stops it, says so, then carries on", async () => {
     // Recipes synced, as an earlier test's run of it stopped.
     await send("/api/knowledge/recipes/sync", { action: "sync" });

@@ -13,8 +13,10 @@
 // bisync runs, and the server reads each run's deletions, ties and reason from it, so each rclone runs
 // one bisync at a time. A run's job is kept on its knowledge base's row, so a server that restarts
 // meanwhile reads its result from rclone, which keeps it for an hour, and records it. A run that stops
-// for safety waits for the owner. Connecting, disconnecting, resyncing and applying deletions are the
-// owner's; each run is Your Space's own.
+// for safety waits for the owner, with one exception (2026-11-26): after an interruption, a run that
+// bisync can carry on only with a resync is finished by a resync Your Space runs itself, once for
+// each interruption. Connecting, disconnecting, resyncing and applying deletions are the owner's; each
+// run, and that resync, is Your Space's own.
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { operatorActorId, recordEvent } from "../actors.ts";
@@ -842,9 +844,9 @@ export class KnowledgeSync {
    * Starts a job in the knowledge base's rclone, in the background, and keeps it on its row. A run's
    * next step waits while rclone runs a job of a run that the row doesn't name, as one rclone started
    * when keeping it on the row failed: that step is taken again once it ends, so no two overlap.
-   * `checked` when the caller has just seen none.
+   * `checked` when the caller has just seen none; `set` is saved on the row with the job.
    */
-  private async launch(row: Row, job: Omit<SyncJob, "id" | "executeId">, params: Record<string, unknown>, checked = false): Promise<void> {
+  private async launch(row: Row, job: Omit<SyncJob, "id" | "executeId">, params: Record<string, unknown>, checked = false, set: Partial<SyncRow> = {}): Promise<void> {
     if (!checked) {
       const { running } = await this.jobsOf(row.name);
       if (running !== undefined) {
@@ -858,7 +860,7 @@ export class KnowledgeSync {
     const started = await this.rcFor(row.name).call<{ jobid: number; executeId: string }>(command, { ...params, _async: true, _group: group });
     await this.db
       .update(knowledgeSync)
-      .set({ job: { ...job, id: started.jobid, executeId: started.executeId } })
+      .set({ ...set, job: { ...job, id: started.jobid, executeId: started.executeId } })
       .where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
   }
 
@@ -914,10 +916,11 @@ export class KnowledgeSync {
    * was up. A dry run before deletions changed nothing: the deletions wait for the owner, confirmed by
    * the same run. Any other run may have changed files, so it is recorded as one that failed, against
    * Your Space, and deletions the owner confirmed as theirs; it is due again at once, and carries on
-   * with `recover`. A Resync the owner asked for then runs again, in its turn.
+   * with `recover`, or, when bisync can carry on only with a resync, with one Your Space runs itself
+   * (`resyncItself`). A Resync the owner asked for then runs again, in its turn.
    */
   private async interrupted(row: Row, job: SyncJob): Promise<void> {
-    log("warn", "knowledge.sync_interrupted", { name: row.name, step: job.step, limited: Boolean(job.limited) });
+    log("warn", "knowledge.sync_interrupted", { name: row.name, step: job.step, limited: Boolean(job.limited), auto: Boolean(job.auto) });
     if (job.step === "preview") {
       await this.db.update(knowledgeSync).set({ job: null }).where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
       return;
@@ -925,8 +928,39 @@ export class KnowledgeSync {
     const requested: SyncRequested | null = job.mode === "resync" && job.by ? { mode: "resync", by: job.by, at: new Date().toISOString(), again: true } : null;
     const message = job.limited
       ? `The sync took longer than ${RUN_LIMIT_MS / 3_600_000} hours, so Your Space stopped it. The next sync carries on from there; a file that takes longer than that to copy never finishes.`
-      : "The sync was interrupted, as when Your Space or its sync stopped. The next sync carries on from there.";
+      : "The sync was interrupted, as when Your Space or its sync stopped. The next sync carries on from there, resyncing by itself if it must.";
     await this.finish(row, job, { result: "failed", message }, [], { changed: true, listed: false, interrupted: true, requested });
+  }
+
+  /**
+   * After an interruption, bisync can't carry on without a resync, as when rclone was killed during
+   * the first run after connecting, before bisync kept a backup of its listings: Your Space runs that
+   * resync itself, as the next step of the same run, rather than stop for the owner (2026-11-26). It copies both ways and deletes nothing, the newer copy
+   * winning, with every other check of a resync; at worst a file deleted on one side comes back.
+   *
+   * Once for each interruption: the row's `interrupted` is spent as the resync starts. A resync that
+   * fails, as while offline, is recorded as failed; if the next run still needs one, it stops for the
+   * owner. Only a resync that never ran, finding bisync's lock or refused by Google, or one
+   * interrupted in turn, as a new interruption, gives another; one stopped for its time limit
+   * doesn't, so a resync longer than that can't start again every two hours.
+   *
+   * Never past the safety check: Your Space's marker must be at both roots, as bisync's access check
+   * asks of a resync too. Unlike the owner's Resync, this one puts no marker back; without it, the run
+   * stops for the owner, as a missing marker always does.
+   */
+  private async resyncItself(row: Row, job: SyncJob): Promise<void> {
+    const rc = this.rcFor(row.name);
+    const here = await this.stat(rc, localPath(row.name));
+    const there = await this.stat(rc, `${remoteName(row.name)}:`);
+    if (!here || !there) {
+      const side = here ? "remote" : "local";
+      log("warn", "knowledge.sync_resync_refused", { name: row.name, side });
+      const message = `Your Space didn't resync by itself to finish the interrupted sync: its marker file, ${SYNC_MARKER}, is missing ${side === "local" ? "in the knowledge base" : "in the Drive folder"}.`;
+      return this.finish(row, job, { result: "stopped", reason: "marker", side, message }, [], { changed: false });
+    }
+    await this.launch(row, { ...job, mode: "resync", step: "resync", auto: true }, bisyncParams(row.name, job.run, { resync: true }), false, { interrupted: false });
+    await recordEvent(this.db, "knowledge.resync_requested", await operatorActorId(this.db), null, null, { id: row.knowledgeBaseId, name: row.name });
+    log("warn", "knowledge.sync_resyncing", { name: row.name });
   }
 
   /** A job ended: the run's next step starts, or the run is recorded. */
@@ -964,6 +998,11 @@ export class KnowledgeSync {
         }
         return this.launch(row, { ...job, step: "force" }, bisyncParams(row.name, job.run, { force: true }));
       }
+      case "sync":
+        // Only a run after an interruption, and only where bisync itself says a resync is needed: any
+        // stop of its checks comes first, as `outcome` reads them.
+        if (job.mode === "sync" && row.interrupted && ended.result === "stopped" && ended.reason === "resync") return this.resyncItself(row, job);
+        return this.finish(row, job, ended, lines, { changed });
       default:
         return this.finish(row, job, ended, lines, { changed });
     }
@@ -1031,9 +1070,10 @@ export class KnowledgeSync {
         job.by && job.mode !== "sync"
           ? { mode: job.mode, by: job.by, at: new Date().toISOString(), again: true, ...(job.mode === "force" ? { run: startedAt.toISOString(), count: row.deletions.length } : {}) }
           : null;
+      // A resync Your Space started itself never ran, so the interruption it was for still gives one.
       await this.db
         .update(knowledgeSync)
-        .set({ job: null, lastRunAt: startedAt, ...(again ? { requested: again } : {}) })
+        .set({ job: null, lastRunAt: startedAt, ...(again ? { requested: again } : {}), ...(job.auto ? { interrupted: true } : {}) })
         .where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
       log("warn", "knowledge.sync_locked", { name: row.name, again: Boolean(again) });
       return;
@@ -1075,6 +1115,10 @@ export class KnowledgeSync {
           ...(synced ? { lastSyncedAt: new Date() } : {}),
           ...(synced && job.mode === "resync" ? { resync: false, ties: (extra.ties ?? []).slice(0, 500) } : {}),
           ...(extra.requested ? { requested: extra.requested } : {}),
+          // An interruption gives one resync of Your Space's own, until a run syncs or stops for the
+          // owner; a resync of its own stopped for its time limit gives none, and one Google refused
+          // never ran, so its interruption still gives it.
+          ...(extra.interrupted ? { interrupted: !(job.auto && job.limited) } : synced || stopped ? { interrupted: false } : job.auto && ran.result === "unauthorized" ? { interrupted: true } : {}),
         })
         .where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId))
         .returning({ id: knowledgeSync.knowledgeBaseId });

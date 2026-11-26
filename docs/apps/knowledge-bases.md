@@ -40,12 +40,14 @@ others.
 
 ## Files and users
 
-A knowledge base and its files belong to Your Space, which lends them to the apps you give it: the
-apps use the files but don't own them. Your Space mounts a knowledge base read-write in every app
-given it. A new knowledge base's folder belongs to user and group 1000, Your Space's, is writable by
-everyone, and gives new files its group, so apps running as any user can create files there.
-Between apps, a file keeps the permissions the app that wrote it gave it: an app running as another
-user may not be able to change it.
+Your Space mounts a knowledge base read-write in every app given it. What an app can do with each
+file there depends on the file's permissions and the user the app runs as. A new knowledge base's
+folder belongs to user and group 1000, is writable by everyone, and gives new files its group, so
+apps running as different users can all create files there. An app running as another user than
+1000 may not be able to change a file another user wrote; most self-hosted images run as user 1000.
+The sync with Google Drive runs as user 1000 too, so in a synced knowledge base it can't change the
+files, or write into the folders, of an app that runs as another user with the usual umask of 022:
+that sync fails with a permission error and is tried again a minute later, and nothing is deleted.
 
 When two apps change the same file, the last one to write it wins. Your Space doesn't merge them.
 
@@ -115,4 +117,10 @@ service. The app finds them by listing `<path>`. The path must be absolute, isn'
 `..`. It is at most 8 folders deep, each 1 to 64 letters, digits, dots, dashes and underscores,
 starting with a letter, digit or underscore. The app's own file can't mount anything at or inside it. See the
 [kit format](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
+
+An app that writes into knowledge bases should run as user 1000, or with a umask of 002, so that the
+files and folders it makes stay writable by their group: other apps, and the sync with Google Drive,
+which runs as user 1000, can then change them. Otherwise a sync can't change the app's files or
+write into the folders it made: that sync fails with a permission error and is tried again a minute
+later, and nothing is deleted.
 

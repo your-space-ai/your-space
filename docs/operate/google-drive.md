@@ -92,6 +92,11 @@ The knowledge base's page shows when it last synced, and what to do when a sync 
   storage, outside the knowledge base, where apps don't see it. The page lists them. A Drive file a
   sync replaces is kept in that file's version history in Drive, for as long as Drive keeps it.
 - Two apps writing the same file in the knowledge base aren't detected: the last write wins.
+- The sync runs as user 1000. Apps that write into a synced knowledge base should run as user
+  1000, as most self-hosted images do, or with a umask of 002, so that the files and folders they
+  make stay writable by their group. Otherwise the sync can't change such an app's files or write
+  into the folders it made: that sync fails with a permission error and is tried again a minute
+  later, and nothing is deleted.
 
 ## When a sync stops
 
@@ -115,8 +120,13 @@ rather than guess. Your files stay as they are on both sides, and apps keep work
 
 A sync that fails for another reason, such as no internet connection, or that was interrupted, as
 when Your Space stopped during it, is tried again a minute later, or at once after an interruption,
-and carries on from where it stopped. Each knowledge base syncs on its own, so a long first sync of
-one doesn't hold up the others. **Sync now** during a sync of the same knowledge base runs once
+and carries on from where it stopped. When the sync after an interruption can carry on only with a
+resync, as when the first sync after connecting was cut off without a graceful stop, such as by a
+power cut, Your Space runs that resync itself rather than wait for you: it copies both ways and
+deletes nothing, the newer copy winning, so at worst a file deleted on one side comes back from the
+other. It does this once for each interruption, and never without the marker file on both sides;
+otherwise the sync stops and waits for **Resync**. Each knowledge base syncs on its own, so a long
+first sync of one doesn't hold up the others. **Sync now** during a sync of the same knowledge base runs once
 more after it. Disconnecting or deleting a synced knowledge base stops its sync under way; no sync
 of it starts meanwhile.
 
@@ -165,9 +175,10 @@ during an update, and the server records its result, and what it changed, when i
 Stopping your apps (`docker compose exec runtime stop-apps`, which `your-space stop` runs) stops
 each rclone as Ctrl+C stops it, so a sync under way shuts down gracefully, and the next sync carries
 on from there; the knowledge base's page shows the interrupted sync as one that didn't finish. A
-sync interrupted during the first sync after a resync can't always carry on, and then asks for
-**Resync** again. Connecting a knowledge base starts its container; disconnecting or deleting it
-stops and removes it; the other containers run on.
+sync cut off without that graceful stop during the first sync after connecting can carry on only
+with a resync, which Your Space then runs itself, as [When a sync stops](#when-a-sync-stops) says.
+Connecting a knowledge base starts its container; disconnecting or deleting it stops and removes
+it; the other containers run on.
 
 On the Docker engine:
 

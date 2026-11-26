@@ -17,6 +17,7 @@ CREATE TABLE "knowledge_sync" (
 	"connected_by" uuid NOT NULL,
 	"connected_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"resync" boolean DEFAULT true NOT NULL,
+	"interrupted" boolean DEFAULT false NOT NULL,
 	"last_run_at" timestamp with time zone,
 	"last_synced_at" timestamp with time zone,
 	"result" text,

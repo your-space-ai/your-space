@@ -621,24 +621,94 @@ test("a run goes on when only the server restarts, and the next server records i
   await expect(main).toHaveAttribute("data-sync-result", "synced");
 });
 
-test("stopping Your Space during a run stops rclone gracefully, and the next start carries the run on without a resync", async ({ page }) => {
-  test.setTimeout(400_000);
-  await bigHere(`mkdir second && cd second && seq 1 ${MANY} | while read i; do echo $i > g-$i; done`);
+/** A job of the big knowledge base's rclone: only its state, as its result holds the run's whole log. */
+async function bigJob(id: number): Promise<{ finished: boolean; success: boolean }> {
+  const said = await docker(["exec", rcloneOf(BIG), "sh", "-c", `rclone rc --unix-socket /run/ys-sync/rc.sock job/status jobid=${id} | grep -E '"(finished|success)":'`]);
+  return { finished: said.stdout.includes('"finished": true'), success: said.stdout.includes('"success": true') };
+}
+/** The big knowledge base's events of a type, those of one kind of actor if given. */
+const bigEvents = async (type: string, kind?: string) =>
+  Number(
+    (
+      await sql(
+        `select count(*) from event e join event_knowledge_base k on k.event_id = e.id join actor a on a.id = e.actor_id where e.type = '${type}' and k.name = '${BIG}'${kind ? ` and a.kind = '${kind}'` : ""}`,
+      )
+    )[0],
+  );
+
+/**
+ * Makes the big knowledge base's next run the first after a resync, copying many new files. `resync`
+ * starts one: the owner's Resync, or connecting the knowledge base again. It is under way when the
+ * server stops, rclone finishes it, and the files are made in `folder` before the server starts
+ * again, so no run comes between. Answers once the run that copies them is under way.
+ */
+async function firstRunAfterResync(page: Page, folder: string, resync: () => Promise<void>): Promise<void> {
+  await asOwner(page);
+  const asked = new Date().toISOString();
+  await resync();
+  const resyncJob = () => bigRow(`case when s.job->>'mode' = 'resync' and (s.job->>'startedAt')::timestamptz > '${asked}' then s.job end`);
+  await expect.poll(async () => (await resyncJob()) ?? null, { timeout: 60_000, intervals: [100] }).not.toBeNull();
+  await compose(["stop", "server"]);
+  const kept = await resyncJob();
+  expect(kept, "The resync was still on the row when the server stopped.").toBeTruthy();
+  const job = JSON.parse(kept!) as { id: number };
+  await expect.poll(async () => (await bigJob(job.id)).finished, { timeout: 240_000, intervals: [1_000] }).toBe(true);
+  expect((await bigJob(job.id)).success).toBe(true);
+  await bigHere(`mkdir ${folder} && cd ${folder} && seq 1 ${MANY} | while read i; do echo $i > ${folder}-$i; done`);
   const made = new Date().toISOString();
-  // A run that copies them all is under way when Your Space stops, not one that started before they were there.
+  await up();
+  // The next server records the resync, and the run after it copies the files.
   await expect.poll(async () => (await runSince(made)) ?? null, { timeout: 60_000, intervals: [100] }).not.toBeNull();
+  expect(await bigRow("resync")).toBe("f");
+}
+/** The owner's Resync of the big knowledge base: refused while a timed run is under way, so asked again until it comes between two. */
+const ownersResync = (page: Page) => async () => {
+  const resyncNow = async () => (await page.request.post(`/api/knowledge/${BIG}/sync`, { data: { action: "resync" }, headers: { origin: ORIGIN } })).status();
+  await expect.poll(resyncNow, { timeout: 120_000, intervals: [200] }).toBe(202);
+};
+
+test("stopping Your Space during the first run after a resync stops rclone gracefully, and the next start finishes the run by itself", async ({ page }) => {
+  test.setTimeout(600_000);
+  const stopped = await bigEvents("knowledge.sync_stopped");
+  await firstRunAfterResync(page, "second", ownersResync(page));
   // As `your-space stop` does: the apps and the sync first, then Your Space.
   await compose(["exec", "-T", "runtime", "stop-apps"]);
   // Stopped by SIGINT: rclone exits with 130 once bisync has shut down.
   expect((await docker(["inspect", rcloneOf(BIG), "--format", "{{.State.Running}} {{.State.ExitCode}}"], false)).stdout.trim()).toBe("false 130");
   await compose(["stop"]);
   await up();
-  // The server starts rclone again, and the next run copies the rest: no resync is asked of the owner.
+  // The server starts rclone again, and the next run copies the rest; nothing is asked of the owner.
   await arrives(() => bigThere("ls second | wc -l"), String(MANY), 240_000);
-  await expect.poll(() => bigRow("result"), { timeout: 60_000 }).toBe("synced");
-  expect(await bigRow("resync")).toBe("f");
+  await expect.poll(() => bigRow("result"), { timeout: 120_000 }).toBe("synced");
+  expect(await bigEvents("knowledge.sync_stopped")).toBe(stopped);
+});
+
+test("a run whose rclone was killed during the first run after connecting is finished by a resync Your Space runs itself", async ({ page }) => {
+  test.setTimeout(900_000);
+  const stopped = await bigEvents("knowledge.sync_stopped");
+  const resyncs = await bigEvents("knowledge.resync_requested", "operator");
+  // Connected again, its sync state starts over: bisync has no listings of earlier runs to recover
+  // from, as after an owner's Resync it has, so a run killed now can carry on only with a resync.
+  await firstRunAfterResync(page, "third", async () => {
+    expect((await page.request.delete(`/api/knowledge/${BIG}/sync`, { headers: { origin: ORIGIN } })).status()).toBe(204);
+    expect((await page.request.put(`/api/knowledge/${BIG}/sync`, { data: { folder: BIG_FOLDER }, headers: { origin: ORIGIN } })).status()).toBe(202);
+  });
+  // Killed while it copies, as when the machine loses power: bisync saves nothing, and its lock holds
+  // for two minutes.
+  await expect.poll(async () => Number(await bigThere("ls third 2>/dev/null | wc -l")), { timeout: 60_000, intervals: [200] }).toBeGreaterThan(0);
+  await docker(["kill", rcloneOf(BIG)], false);
+  await compose(["stop"]);
+  await up();
+  // The next start records the run as interrupted and waits out the lock; then bisync can't carry on
+  // without a resync, so Your Space runs one, which copies the rest. Nothing is asked of the owner.
+  await arrives(() => bigThere("ls third | wc -l"), String(MANY), 480_000);
+  await expect.poll(() => bigRow("result"), { timeout: 120_000 }).toBe("synced");
+  expect(await bigEvents("knowledge.resync_requested", "operator")).toBe(resyncs + 1);
+  expect(await bigEvents("knowledge.sync_stopped")).toBe(stopped);
+  expect(await bigRow("interrupted")).toBe("f");
   await asOwner(page);
   await page.goto(`/knowledge/${BIG}`);
+  await expect(page.locator('main[data-state="knowledge-base"]')).toHaveAttribute("data-sync-result", "synced");
   await page.getByRole("button", { name: "Disconnect", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Disconnect" }).click();
   await expect(page.getByLabel("Drive folder link")).toBeVisible({ timeout: 60_000 });

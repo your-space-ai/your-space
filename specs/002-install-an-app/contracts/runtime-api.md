@@ -92,7 +92,7 @@ sends it to `/check` or `/apply` (2026-11-24).
 | `GET /apps/{project}/stats` | | `{ services: [{ name, memory, memoryLimit, cpuPercent }] }` |
 | `GET /apps/{project}/denials` | | `{ hosts: [{ host, attempts, lastSeen }] }` from the egress proxy's log |
 | `POST /apps/{project}/port` | `{ publish: { port, bind } }` | `{ inUse, by? }`: whether the app can be published on `bind:port`. `by` names a running container that publishes it (the app's own Caddy doesn't count); otherwise a short-lived container of Your Space's Caddy's image tries to publish it, and `inUse` without `by` means another program uses it. 502 when the check itself fails, 503 when Your Space's Caddy isn't running |
-| `POST /stop-all` | | Stops every managed app and refuses `/apply` until the runtime manager restarts. The knowledge bases' sync too: each knowledge base's rclone container is stopped as Ctrl+C stops rclone (`SIGINT`, killed after 100 seconds), all together, so a bisync under way shuts down gracefully and saves its state, then their proxy; `PUT /knowledge-sync` and `POST /knowledge-sync/{name}/restart` answer 409 from then on |
+| `POST /stop-all` | | Stops every managed app and refuses `/apply` until the runtime manager restarts. The knowledge bases' sync too: each knowledge base's rclone container is stopped as Ctrl+C stops rclone (`SIGINT`, killed after 100 seconds), all together, so a bisync under way shuts down gracefully and saves its state, then their proxy; `PUT /knowledge-sync` and `POST /knowledge-sync/{name}/restart` answer 409 from then on. 502 when the sync's Compose project can't be stopped, after the apps were, so `stop-apps` exits 1 |
 | `POST /knowledge` | `{ name }` | `{ created }`: creates the knowledge base's volume, labelled `ai.your-space.installation`, `ai.your-space.role=knowledge` and `ai.your-space.knowledge=<name>`, never with a Compose project's labels, and gives its folder to user and group 1000 with mode 2777 in a short-lived container of the runtime manager's own image (no network, only the CHOWN, FOWNER and FSETID capabilities). `created: false` keeps this installation's own volume of that name, with its files, and sets up its folder's owner and mode again, so a volume an earlier try made but didn't set up is set up now; a volume of that name Your Space didn't make is refused with 409. A new volume whose folder can't be set up is deleted |
 | `GET /knowledge/{name}` | | `{ apps, syncing }`: the apps of this installation whose containers mount the knowledge base's volume, running or stopped, by their `ai.your-space.app` label, `[]` when there is no such volume; and whether it has a sync container, or is being started with one. The server asks before deleting a knowledge base, so it applies each again without it, even one it has no grant for, and takes it out of the sync first. 409 when the volume isn't Your Space's |
 | `DELETE /knowledge/{name}` | | Deletes the knowledge base's volume and its files, and its sync state volume when it has one. 409 while any container mounts it, running or stopped, the sync's included, or when either volume isn't Your Space's, before anything is deleted; a volume already gone is deleted. Removing an app (`/down`) or deleting its volumes (`DELETE /apps/{project}/volumes`) never deletes a knowledge base's, or its sync state |
@@ -157,25 +157,33 @@ socket, for that knowledge base only:
   `/knowledge/<name>` (Path2): `workdir: /state/<name>/bisync`, `checkAccess`, `checkFilename:
   .your-space-sync`, `maxDelete: 50`, `resilient`, `recover`, `maxLock: 2m`, `compare:
   size,modtime,checksum`, `conflictResolve: path2`, `createEmptySrcDirs`, and `backupDir2` set to a
-  folder of the run in `/state/<name>/backups`. A resync adds `resync` and `resyncMode: newer`,
-  after the marker is put at both roots (`operations/stat`, `operations/uploadfile`,
-  `operations/copyfile`); applying deletions runs `force` with `dryRun` first, then `force` only if
+  folder of the run in `/state/<name>/backups`. A resync adds `resync` and `resyncMode: newer`.
+  The first run's and the owner's Resync come after the marker is put at both roots
+  (`operations/stat`, `operations/uploadfile`, `operations/copyfile`); the resync the server runs
+  itself to finish an interrupted run puts none back, and starts only when `operations/stat` finds
+  it at both. Applying deletions runs `force` with `dryRun` first, then `force` only if
   the dry run's deletions are exactly those the server kept. When a resync leaves only ties, files
   with the same size and time but different content, `sync/copy` from the knowledge base to the
   remote with `_config: { UpdateOlder: true, CheckSum: true }` and an anchored `_filter.IncludeRule`
   for each, at most 40 a copy, read back with `core/transferred`, then the same resync again.
-- `job/list`, and `job/status` of each job it says is running, before a run starts: every call is a
-  job of rclone's, and a run's job is in a `knowledge/` group, so no run starts while one the server
-  doesn't follow is under way, as one a server started just before it stopped.
+- `job/list`, and `job/status` of each job it says is running, before a run starts and before each
+  later step of a run (a resync's tie copies and its second pass, applying deletions after their dry
+  run, the resync that finishes an interrupted run): every call is a job of rclone's, and a run's job
+  is in a `knowledge/` group, so no run, and no next step of one, starts while a job the server
+  doesn't follow is under way, as one a server started just before it stopped, or while rclone can't
+  say whether one is; the step is taken again at a later tick.
 - `job/status` for the job under way, which the knowledge base's row keeps (`knowledge_sync.job`),
-  so a server that restarted reads it again. A job rclone no longer has, as after it restarted, was
-  interrupted: it is recorded as a failed run, except a dry run before applying deletions, which
-  leaves the deletions for the owner. An answer that fails otherwise than with `job not found` leaves
-  the job to be asked about again. The job's `output.output` is bisync's log at INFO, from which the
-  server reads the deletions, ties and the reason a run stopped; rclone keeps one log for its whole
-  process while a bisync runs, so each knowledge base's rclone runs one bisync at a time; the
-  knowledge bases' runs go on side by side. `core/stats-delete` drops a finished job's counts. Calls
-  about jobs, remotes and rclone itself wait 30 seconds; listings and copies wait five minutes.
+  so a server that restarted reads it again. A job rclone no longer has, as after it restarted,
+  was interrupted: it is recorded as a failed run, except a dry run before applying deletions,
+  which leaves the deletions for the owner. When the next run's bisync then needs a resync
+  (`cannot find prior Path1 or Path2 listings`, `Must run --resync`), the server runs that resync
+  itself as the run's next step, once for each interruption (journey 014, 2026-11-26). An answer
+  that fails otherwise than with `job not found` leaves the job to be asked about again. The job's
+  `output.output` is bisync's log at INFO, from which the server reads the deletions, ties and the
+  reason a run stopped; rclone keeps one log for its whole process while a bisync runs, so each
+  knowledge base's rclone runs one bisync at a time; the knowledge bases' runs go on side by side.
+  `core/stats-delete` drops a finished job's counts. Calls about jobs, remotes and rclone itself
+  wait 30 seconds; listings and copies wait five minutes.
 - `operations/list` of `/knowledge/<name>` (filtered to `**.conflict[0-9]*`) after a run that
   changed something, and at least hourly; of `/state/<name>/backups`'s run folders (`dirsOnly`),
   then of each, newest first, until 500 files are listed, as rclone keeps every answer for an hour;
@@ -187,5 +195,6 @@ Disconnecting or deleting a knowledge base stops its rclone with `SIGINT`, which
 way, and removes the container; no other knowledge base's container changes. Nothing stops a job
 with `job/stop`, which cancels a bisync at once and always leaves listings only `recover` can use;
 stopping rclone with `SIGINT` lets bisync shut down gracefully first, and the runtime manager, which
-doesn't mount the sockets, can do it. Either way, a run interrupted before bisync has a backup of its
-listings, as the first run after a resync, can need another resync.
+doesn't mount the sockets, can do it. A run cut off before bisync has a backup of its listings, as
+when rclone is killed during the first run after connecting, needs a resync, which the server then
+runs itself, as above.

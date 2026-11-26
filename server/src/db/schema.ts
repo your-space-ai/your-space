@@ -317,6 +317,8 @@ export interface SyncJob {
   ties?: { pending: string[]; replaced: string[] };
   /** Set once the run was past its time and its rclone was restarted to stop it. */
   limited?: boolean;
+  /** A resync Your Space started itself, to finish an interrupted run that bisync could carry on only so. */
+  auto?: boolean;
 }
 
 /** A run the owner asked for, waiting for the run under way to end. */
@@ -348,6 +350,11 @@ export const knowledgeSync = pgTable(
     connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
     /** The next run copies both ways and deletes nothing: the first run, until one succeeds. */
     resync: boolean("resync").notNull().default(true),
+    /**
+     * A run was interrupted since the last one that synced or stopped, and Your Space hasn't resynced
+     * for it yet: when bisync can carry on only with a resync, Your Space runs that resync itself, once.
+     */
+    interrupted: boolean("interrupted").notNull().default(false),
     lastRunAt: timestamp("last_run_at", { withTimezone: true }),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
     result: text("result", { enum: ["synced", "stopped", "unauthorized", "failed"] }),

@@ -1,5 +1,5 @@
 {
-  "id": "cd4f4b34-2af6-4261-8f78-98f3d55154c1",
+  "id": "71aaa791-78b9-4647-a66a-e2274a0da475",
   "prevId": "bac2aa49-7907-4c5b-b3d1-87149c27ab59",
   "version": "7",
   "dialect": "postgresql",
@@ -2308,6 +2308,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
+        },
+        "interrupted": {
+          "name": "interrupted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "last_run_at": {
           "name": "last_run_at",
