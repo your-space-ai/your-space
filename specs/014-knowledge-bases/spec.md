@@ -6,9 +6,9 @@ picks, mounted as folders in its file system, and reads and writes them as ordin
 knowledge base can also be kept in two-way sync with a folder in Google Drive, so the same files are
 on Drive, in every app that mounts them, and on the owner's other devices.
 
-**Status: draft, 2026-11-25.** This rewrite replaces the 2026-11-24 draft of views over Drive read
-through an SDK. Decisions below were made with the owner on 2026-11-25. Open questions are listed at
-the end.
+**Status: draft, 2026-11-26.** This rewrite replaces the 2026-11-24 draft of views over Drive read
+through an SDK. Decisions below were made with the owner on 2026-11-25 and 2026-11-26. Open
+questions are listed at the end.
 
 **Motivating use case (later, out of scope here).** A flashcard app links each card to the source
 file it came from in a knowledge base, so an answer can bring that source along as context. Journey
@@ -45,7 +45,7 @@ interface service, always one folder per knowledge base, even when there is only
 them by listing `<path>`. The kit names no volume, token or address. An app like Obsidian opens
 `/knowledge` as its vault, and each knowledge base is a top-level folder in it.
 
-## Decisions (2026-11-25)
+## Decisions (2026-11-25, 2026-11-26)
 
 - **A knowledge base is a volume Your Space owns.** It is a named volume that belongs to Your Space,
   not to any app, and it is the one kind of shared volume an app may mount. Apps' Compose files still
@@ -57,11 +57,14 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   volume and the remote folder: unprivileged, with no FUSE, no volume plugin and no engine access.
   Apps read the local volume, so they work offline and at local speed. Your Space serves the files
   from rclone's copy, never by calling the Google API for an app.
-- **One rclone that is always on, and nothing else.** A single long-running container runs stock
-  rclone's remote-control server (`rclone rcd`), with its configuration in memory only, listening
-  on a private socket only the server can reach. The server drives it through rclone's own remote
-  control API: it creates each knowledge base's Drive remote there, so tokens stay in rclone's
-  memory, and starts each bisync there. Your Space adds no sync daemon or file watcher of its own.
+- **One rclone for each synced knowledge base, always on, and nothing else.** Each synced knowledge
+  base has a long-running container of its own that runs stock rclone's remote-control server
+  (`rclone rcd`), with its configuration in memory only, listening on a private socket only the
+  server can reach. It mounts only that knowledge base: rclone follows a symbolic link to a folder
+  when it writes, so one container for all of them would let an app make a sync write into another
+  app's knowledge base (2026-11-26). The server drives each through rclone's own remote control API:
+  it creates the knowledge base's Drive remote there, so tokens stay in rclone's memory, and starts
+  each bisync there. Your Space adds no sync daemon or file watcher of its own.
   The owner: "rclone just constantly bisync the contents", and "can that be achieved natively with
   rclone or are we adding more infra for this?". The designs it replaces are under
   [Considered](#considered).
@@ -83,18 +86,24 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   lowercase letters, digits and hyphens. Changing an app's knowledge bases recreates its interface
   service. Removing an app, and deleting its data, never deletes a knowledge base.
 - **File ownership.** A new knowledge base's folder belongs to user and group 1000, is writable by
-  everyone, and gives new files its group. Sync runs as user 1000. An app that runs as another user
-  can create files but may not be able to change files another user wrote; most self-hosted images
-  default to user 1000.
+  everyone, and gives new files its group. Sync runs as user 1000. An app that writes into a
+  knowledge base should run as user 1000, as most self-hosted images do, or with a umask of 002, so
+  the files and folders it makes stay writable by their group (2026-11-26). Otherwise sync may not
+  be able to change the app's files or write into folders it made: that run fails with a permission
+  error, and the next run tries again; nothing is deleted. Likewise an app that runs as another user
+  can create files but may not be able to change files another user wrote.
 - **Sync safety.** Deleting the owner's files on Drive is the worst failure here, so every run uses
-  bisync's own checks and stops for the owner rather than guess:
+  bisync's own checks and stops for the owner rather than guess, with one exception: the resync Your
+  Space runs by itself to finish an interrupted run (see **Interrupted runs**). The checks:
   - A marker file at both roots (`--check-access`), so an empty or replaced volume, or an unreachable
     folder, never reads as "everything was deleted".
   - The default limit on deletions per run (`--max-delete 50`, half the files). A run over it stops
     and lists the deletions it would make.
   - bisync's refusal to sync with an empty side outside the first run.
   - Only one run per knowledge base at a time, with a lock that expires if a run dies
-    (`--resilient --recover --max-lock 2m`).
+    (`--resilient --recover --max-lock 2m`). A run that finds the lock held changes nothing and is
+    tried again a minute later. An owner's **Resync** or **Apply these deletions** that finds it
+    held is kept for that next run, and the deletions to apply are listed again first, as below.
   - The first run copies both ways and deletes nothing (`--resync --resync-mode newer`): a file on
     only one side is copied to the other, and where both sides have a file, the newer copy wins.
     Files are compared by size, modification time and checksum (`--compare size,modtime,checksum`),
@@ -117,42 +126,61 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   copy is renamed with a conflict suffix. Your Space lists conflict copies on the knowledge base's
   page. Two apps writing the same file locally is not detected: the last write wins, and Drive's
   version history is the fallback.
-- **Scope of a sync.** A sync covers exactly the chosen Drive folder, never the whole Drive. Native
-  Google Docs, Sheets and Slides are skipped (`--drive-skip-gdocs`): they have no file to edit
-  locally and stay in Drive only. Empty folders sync too.
-- **The sync service.** One container for all synced knowledge bases, run by the runtime manager
+- **Scope of a sync.** A sync covers exactly the chosen Drive folder, never the whole Drive: the
+  folder is the root of the knowledge base's Drive remote. Native Google Docs, Sheets and Slides are
+  skipped (`skip_gdocs`): they have no file to edit locally and stay in Drive only. Drive shortcuts
+  are skipped too (`skip_shortcuts`): a shortcut to a folder lists that folder's files, wherever they
+  are in the Drive, so following it would copy files from outside the chosen folder into the
+  knowledge base. The OAuth scope is `drive`, because with `drive.file` rclone sees only the files it
+  created itself, not those already in the folder. Empty folders sync too.
+- **The sync containers.** One container for each synced knowledge base, run by the runtime manager
   for Your Space: the stock rclone image running `rclone rcd`, unprivileged, with no engine access
-  and no FUSE. It mounts each synced knowledge base's volume and a volume for bisync's state and the
-  backups, and its remote control listens only on a Unix socket in a volume only it and the server
-  share, protected by file permissions, as the runtime manager's socket is. Connecting or
-  disconnecting a knowledge base changes its mounts, so the runtime manager recreates it then; a run
-  under way is stopped first, as below.
-- **When it syncs.** About once a minute for each synced knowledge base, and at once on **Sync
-  now**: the server's timer starts each run through the remote control (`sync/bisync`, run in the
-  background), with the options listed under sync safety. Runs of one knowledge base never overlap:
-  the server starts none while one is under way, and bisync's lock is the backstop. Drive can't
-  notify a self-hosted server, and rclone has no built-in watcher of local files, so a change waits
-  for the next run. A run stopped by the safety checks stops the automatic runs of that knowledge
-  base until the owner chooses an action.
+  and no FUSE. It mounts only that knowledge base's volume, its own sync state (bisync's listings and
+  the backups) and its own socket's folder. rclone writes through a symbolic link to a folder, so a
+  container that mounted other knowledge bases would let an app given this one make a sync write
+  into another's, or over another's state or socket. Its remote control listens only on a Unix socket
+  in that folder, in a volume only the server mounts whole, protected by file permissions, as the
+  runtime manager's socket is. Connecting or disconnecting a knowledge base adds or removes its
+  container only; the others keep running.
+- **When it syncs.** About once a minute for each synced knowledge base, on its own timer, and at
+  once on **Sync now**: the server starts each run through that knowledge base's remote control
+  (`sync/bisync`, run in the background), with the options listed under sync safety. Runs of one
+  knowledge base never overlap: the server starts none while one is under way, and bisync's lock is
+  the backstop. Different knowledge bases sync side by side. Drive can't notify a self-hosted
+  server, and rclone has no built-in watcher of local files, so a change waits for the next run. A
+  run stopped by the safety checks stops the automatic runs of that knowledge base until the owner
+  chooses an action.
 - **Run results.** The server records each run's result, conflicts and backups, reading them from
-  rclone over the same socket. A run keeps going when only the server restarts; rclone keeps a
-  finished run's result for an hour, and the server reads the runs it missed when it starts.
-- **Stopping.** Stopping Your Space stops runs under way through the remote control before rclone
-  stops, and the next run resumes with `--recover`.
+  the knowledge base's rclone over its socket. A run keeps going when only the server restarts;
+  rclone keeps a finished run's result for an hour, and the server reads the runs it missed when it
+  starts.
+- **Stopping.** Stopping Your Space stops each sync container with SIGINT, which starts bisync's
+  graceful shutdown: it finishes or cancels the transfers under way and saves its state for the next
+  run. The server doesn't stop runs through the remote control (`job/stop`). Disconnecting a
+  knowledge base stops its container the same way.
+- **Interrupted runs.** A run that was interrupted, as when Your Space or its sync container
+  stopped, is recorded as failed, and the next run carries on from where it was (`--recover`). When
+  bisync can finish an interrupted run only with a resync, as when it was the first run after a
+  resync, Your Space runs that resync itself (`--resync --resync-mode newer`, with the same checks)
+  instead of stopping for the owner (2026-11-26). The newer copy of each file wins, so nothing is
+  lost; at worst a file deleted on one side comes back from the other.
 - **Credentials.** The Google token is encrypted with the data key ([journey 009](../009-encrypt-stored-data/spec.md))
   and moved with app settings when the data key changes, so rotating the key doesn't break sync. The
-  server creates each knowledge base's Drive remote in rclone's in-memory configuration over the
-  socket (`config/create`), with its client and token, when the sync service starts and when they
+  server creates each knowledge base's Drive remote in its rclone's in-memory configuration over its
+  socket (`config/create`), with the client and token, when that container starts and when they
   change. rclone keeps them and the access tokens it refreshes in memory only. They are never written
   to a file, never put in a container's environment or configuration, and never given to an app. A
-  restarted sync service has none until the server creates the remotes again.
-- **Network.** The sync service reaches only Google's sign-in and Drive hosts, through an outbound
-  proxy of its own. Apps reach nothing new.
+  restarted sync container has none until the server creates its remote again.
+- **Network.** The sync containers reach only Google's sign-in and Drive hosts, through an outbound
+  proxy of their own. Apps reach nothing new.
 - **Failure.** When Google refuses the token or the client changes, the knowledge base shows sync as
   disconnected with **Reconnect**; the files stay, and apps keep working on the local copy.
-- **The actual actor.** Creating, deleting, connecting and granting a knowledge base is recorded
-  against the owner; each sync run that changed files, stopped or failed against Your Space. Runs
-  that change nothing aren't recorded one by one; the page shows when the last one finished.
+- **The actual actor.** Creating, deleting, connecting and granting a knowledge base, and applying
+  deletions the owner confirmed, are recorded against the owner; each sync run that changed files,
+  stopped or failed against Your Space. An interrupted run may have changed files, so it is recorded
+  as failed. An interrupted **Apply these deletions** is still recorded as the owner's applied
+  deletions, since some may have been made. Runs that change nothing aren't recorded one by one; the
+  page shows when the last one finished.
 
 ## Acceptance
 
@@ -180,14 +208,17 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
 - Without **Sync now**: a file an app writes reaches the fixture remote, and a file added to the
   remote reaches the apps, on the next timed run (tests shorten the interval).
 - Restart only the server during a run: the run finishes, and the page then shows its result and its
-  events are recorded. Stop Your Space during a run: the next start finishes it without a resync.
-- The token is in no file in the sync service's volumes, and in no container's environment or
-  configuration (`docker inspect`). Restart the sync service: it syncs again once the server has
-  created its remotes again.
+  events are recorded. Stop Your Space during a run: the run is recorded as failed, and the next
+  start finishes it, resyncing by itself if bisync needs that.
+- Two synced knowledge bases sync through containers of their own. An app given only one of them
+  puts a symbolic link in it to where the other would be mounted: no sync writes into the other.
+- The token is in no file in the sync containers' volumes, and in no container's environment or
+  configuration (`docker inspect`). Restart a knowledge base's sync container: it syncs again once
+  the server has created its remote again.
 - Rotate the data key: the connection still syncs.
 - With the operator's own client against real Google Drive, on a throwaway folder: connect, sync both
-  ways, restart Your Space and sync again after the access token expires, then revoke access in Google
-  and see **Reconnect**.
+  ways, see that a shortcut in the folder to a folder outside it isn't synced, restart Your Space and
+  sync again after the access token expires, then revoke access in Google and see **Reconnect**.
 
 ## Delivery slices
 
@@ -198,9 +229,10 @@ order.
    field, the install review's picker, the app page's editor and the mounts. Result: two fixture apps
    see each other's files.
 2. **Synced knowledge bases.** The Google connection with the operator's client, the encrypted token
-   and its key rotation, the rclone sync service and the remotes the server creates in it, the timed runs, status,
-   conflicts, Sync now, Resync and Apply these deletions, and the operator guide. Result: a knowledge base syncs with a fixture remote in tests, and the page
-   shows its status and conflicts.
+   and its key rotation, the rclone sync containers and the remotes the server creates in them, the
+   timed runs, status, conflicts, Sync now, Resync and Apply these deletions, and the operator
+   guide. Result: a knowledge base syncs with a fixture remote in tests, and the page shows its
+   status and conflicts.
 
 ## Considered
 
@@ -213,6 +245,12 @@ order.
   local change (the second design, 2026-11-25). Not chosen: it adds a daemon to build and maintain
   where stock `rclone rcd` already runs bisync, holds remotes in memory and reports jobs. A local
   watcher stays later direction.
+- **One `rclone rcd` container for all synced knowledge bases** (the third design, 2026-11-25).
+  Replaced on 2026-11-26 by a container for each: rclone writes through a symbolic link to a folder,
+  so an app given one knowledge base could link to where another was mounted in the shared container
+  and have a sync write into it, or over its sync state. And connecting or disconnecting any
+  knowledge base changed the container's mounts, so it was recreated and every run under way was
+  stopped.
 - **A live mount** (`rclone mount`). Not chosen: it needs FUSE and extra privileges in a container,
   and leaves apps without their files when the remote is unreachable.
 

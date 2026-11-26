@@ -139,23 +139,44 @@ mount, and only Your Space adds the mount. Removing an app, and deleting its dat
 knowledge base. [Journey 014](https://github.com/your-space-ai/your-space/blob/main/specs/014-knowledge-bases/spec.md)
 
 - **Local and synced.** A local knowledge base is only the volume. A synced one adds a two-way sync
-  with a remote folder: `rclone bisync` against the local volume, about once a minute, run by one
-  long-running container of stock `rclone rcd`, unprivileged, with no FUSE, no volume plugin and no
-  engine access. Its configuration is in memory only, and its remote control listens only on a
-  private socket the server uses to create remotes and start runs, so the remote's tokens are never
-  in a file or a container's environment. Your Space adds no sync daemon of its own. A new container
-  for each scheduled run was built first and replaced at the owner's decision. Apps never mount the
-  remote and Your Space never serves an app's files from the Google API: the owner: "YS server should
-  manage rclone on behalf of the user and serve from rclone, not serve directly from the google api".
+  with a remote folder: `rclone bisync` against the local volume, about once a minute for each
+  knowledge base, run by a long-running container of stock `rclone rcd` of its own, unprivileged,
+  with no FUSE, no volume plugin and no engine access. Its configuration is in memory only, and its
+  remote control listens only on a private socket the server uses to create the remote and start
+  runs, so the remote's tokens are never in a file or a container's environment. Your Space adds no
+  sync daemon of its own. A new container for each scheduled run was built first and replaced at the
+  owner's decision. Apps never mount the remote and Your Space never serves an app's files from the
+  Google API: the owner: "YS server should manage rclone on behalf of the user and serve from rclone,
+  not serve directly from the google api".
   A live mount was rejected because it needs FUSE and extra privileges in a container, and leaves
   apps without their files when the remote is unreachable.
+- **A sync container for each knowledge base (owner decision, 2026-11-26).** Each container mounts
+  only its own knowledge base, its sync state and its own socket's folder. This supersedes one
+  container for all synced knowledge bases (2026-11-25): rclone writes through a symbolic link to a
+  folder, so in a shared container an app given one knowledge base could have a sync write into
+  another app's knowledge base. Connecting or disconnecting one knowledge base now leaves the others'
+  runs alone.
+- **Stopping and recovery (owner decisions, 2026-11-26).** Stopping Your Space stops each sync
+  container with SIGINT, bisync's graceful shutdown, so a run under way saves its state and the next
+  run carries on from it. An interrupted run is recorded as failed, as it may have changed files;
+  deletions the owner confirmed are recorded as theirs even when their run was interrupted. When
+  bisync can finish an interrupted run only with a resync, as for the first run after a resync, Your
+  Space runs that resync itself, the newer copy winning: nothing is lost, and at worst a deleted file
+  comes back. This replaces stopping for the owner in that case. Every other run that bisync's checks
+  stop still waits for the owner. A run that finds bisync's lock held is tried again a minute later.
+- **Files apps write (owner decision, 2026-11-26).** Sync runs as user 1000, so an app that writes
+  into a knowledge base should run as user 1000 or with a umask of 002. Otherwise sync may be unable
+  to write into folders the app made; that run fails and the next one tries again, deleting nothing.
 - **Google Drive first, with the operator's own OAuth client.** rclone's shared client ID stops
   working during 2026 ([rclone Drive docs](https://rclone.org/drive/)). The token is encrypted with
   the data key and moved when the data key changes, as
   [journey 015](https://github.com/your-space-ai/your-space/blob/main/specs/015-private-sources/spec.md)
   now does for the GitHub token; the earlier GitHub connection didn't
-  ([Creator workflow deferred](#creator-workflow-deferred)). Any other rclone remote is accepted
-  direction, each listed once it passes a both-sides-edit and conflict check.
+  ([Creator workflow deferred](#creator-workflow-deferred)). The OAuth scope is `drive`, as rclone
+  sees only its own files with `drive.file`; the chosen folder is the remote's root and shortcuts are
+  skipped (`skip_shortcuts`), so a sync never reaches outside the folder (2026-11-26). Any other
+  rclone remote is accepted direction, each listed once it passes a both-sides-edit and conflict
+  check.
 - **Every mount is read-write in v1.** No writer role, read-only mount or folder ownership: the owner
   doesn't want a solution before there is a problem. Two apps writing the same file locally means the
   last write wins; bisync's conflict copies cover only local against remote, and the remote's version
