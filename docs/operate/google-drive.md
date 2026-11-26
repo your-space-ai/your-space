@@ -93,10 +93,11 @@ The knowledge base's page shows when it last synced, and what to do when a sync 
   sync replaces is kept in that file's version history in Drive, for as long as Drive keeps it.
 - Two apps writing the same file in the knowledge base aren't detected: the last write wins.
 - The sync runs as user 1000. Apps that write into a synced knowledge base should run as user
-  1000, as most self-hosted images do, or with a umask of 002, so that the files and folders they
-  make stay writable by their group. Otherwise the sync can't change such an app's files or write
-  into the folders it made: that sync fails with a permission error and is tried again a minute
-  later, and nothing is deleted.
+  1000, as most self-hosted images do, or keep the files and folders they make writable by their
+  group. A umask of 002 does that for files and folders made with the usual modes, but not for a
+  mode the app sets itself, like `0700`. Otherwise the sync can't change such an app's files or
+  write into the folders it made: that sync fails with a permission error and is tried again a
+  minute later, and nothing is deleted.
 
 ## When a sync stops
 
@@ -187,10 +188,13 @@ On the Docker engine:
   by its time, with the files that sync replaced at their paths in the knowledge base.
   Disconnecting or deleting the knowledge base deletes it; removing an app or deleting its data
   never does. To keep the replaced files before you disconnect or delete it, copy them out into an
-  archive in the current folder, here for the knowledge base `notes`:
+  archive in the current folder, here for the knowledge base `notes`. The archive is written under
+  another name first, so a copy that fails keeps an earlier archive; list it before you disconnect
+  or delete the knowledge base:
 
   ```sh
-  docker run --rm -v ys-knowledge.your-space.notes.sync:/sync:ro alpine tar -cf - -C /sync backups > notes-backups.tar
+  docker run --rm -v ys-knowledge.your-space.notes.sync:/sync:ro alpine tar -cf - -C /sync backups > notes-backups.tar.part && mv notes-backups.tar.part notes-backups.tar
+  tar -tf notes-backups.tar
   ```
 - `<installation>_knowledge-sync`: the Compose project of the sync: each knowledge base's rclone
   container, `<installation>_knowledge-sync-rclone-<name>-1`, and their outbound proxy. It starts with

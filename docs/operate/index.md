@@ -262,9 +262,10 @@ that server's apps. Otherwise they say when to quit the app and how to reach its
    already stopped, as after quitting the Mac app, its apps are too: skip the first command. The
    second command removes the sync of [synced knowledge bases](google-drive.md), rclone's containers
    and their outbound proxy, with their two networks: a Compose project of its own that `down -v`
-   doesn't touch, named after the installation's Compose project (`your-space` unless you changed
-   it). It comes first, as rclone's containers mount a volume of Your Space's, and it does nothing if
-   no knowledge base was ever synced. If `.env` sets `YS_ENGINE_SOCKET`, it is on that engine: the
+   doesn't touch, named after the installation's Compose project: `your-space` unless you changed
+   it, and if you did, put that name in place of `your-space` in `your-space_knowledge-sync`. It comes
+   first, as rclone's containers mount a volume of Your Space's, and it does nothing if no knowledge
+   base was ever synced. If `.env` sets `YS_ENGINE_SOCKET`, it is on that engine: the
    commands for leftovers below remove it.
 
    ```sh

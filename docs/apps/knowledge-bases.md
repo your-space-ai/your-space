@@ -118,9 +118,10 @@ service. The app finds them by listing `<path>`. The path must be absolute, isn'
 starting with a letter, digit or underscore. The app's own file can't mount anything at or inside it. See the
 [kit format](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
 
-An app that writes into knowledge bases should run as user 1000, or with a umask of 002, so that the
-files and folders it makes stay writable by their group: other apps, and the sync with Google Drive,
-which runs as user 1000, can then change them. Otherwise a sync can't change the app's files or
+An app that writes into knowledge bases should run as user 1000, or keep the files and folders it
+makes writable by their group: other apps, and the sync with Google Drive, which runs as user 1000,
+can then change them. A umask of 002 does that for files and folders made with the usual modes, but
+not for a mode the app sets itself, like `0700`. Otherwise a sync can't change the app's files or
 write into the folders it made: that sync fails with a permission error and is tried again a minute
 later, and nothing is deleted.
 
