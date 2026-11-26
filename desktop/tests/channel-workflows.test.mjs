@@ -2,8 +2,12 @@
 // only Release publish writes to the `alpha` release, through deploy/alpha-feed.sh, and nothing a
 // canary workflow runs uploads latest-mac.yml, the file an Alpha Mac app reads. A canary's version
 // contains -alpha. and sorts after the alpha it follows, so either would offer Alpha apps a canary.
+// And the Mac canary's own rules (FR-005, decision 4): it runs only on main once switched on, only its
+// signing job reaches the canary's signing secrets, with no npm packages, and each canary workflow
+// deletes only its own files on the shared prerelease.
 // They read the files as text, so each check also runs on a planted offender to show it can fail.
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
@@ -59,8 +63,8 @@ function everything() {
 }
 
 /** A workflow's job, as the lines from its key to the next job's. */
-function job(path, name) {
-  const lines = code(path).split("\n");
+function job(path, name, text) {
+  const lines = code(path, text).split("\n");
   const start = lines.indexOf(`  ${name}:`);
   assert.notEqual(start, -1, `${path} has no ${name} job`);
   const end = lines.findIndex((line, i) => i > start && /^ {2}[\w-]+:$/.test(line));
@@ -119,6 +123,32 @@ test("only deploy/alpha-feed.sh writes to the alpha release", () => {
   }
 });
 
+/** A workflow's jobs, by name, in order. */
+const jobs = path => [...code(path).split("jobs:\n")[1].matchAll(/^ {2}([\w-]+):$/gm)].map(([, name]) => name);
+
+// Two files the Mac canary runs name latest-mac.yml without being able to put it on a release, which
+// these checks show of their text. Build macOS app, which every Mac build calls, checks an unsigned
+// app's feed, latest-mac.yml unless it builds a canary, in scratch folders it never hands on: it can't
+// write to a release, and its artifacts are only the packages and the DMG candidates.
+// test-update-zip.sh only reads a feed.
+const keepsFeedsToItself = {
+  ".github/workflows/macos-app-build.yml": text => {
+    const problems = [];
+    if (!/^permissions:\n {2}contents: read$/m.test(text)) problems.push("its permissions aren't contents: read");
+    if (/contents: write|secrets[.:]/.test(text) || writesReleases.test(text)) problems.push("it can write to a release or reads secrets");
+    for (const [, folder] of text.matchAll(/^\s+path: (.+)$/gm)) {
+      if (!/^\$\{\{ runner\.temp \}\}\/(packages|signing-input)\/$/.test(folder)) problems.push(`it hands on ${folder}`);
+    }
+    for (const line of text.split("\n").filter(line => /update-feed\.mjs|latest-mac\.yml|canary-mac\.yml/.test(line))) {
+      const folders = [...line.matchAll(/\$RUNNER_TEMP\/([\w-]+)/g)].map(([, folder]) => folder);
+      if (!folders.length || folders.some(folder => !/^update(-[\w-]+)?$/.test(folder))) problems.push(`its feed goes outside its scratch folders: ${line.trim()}`);
+    }
+    return problems;
+  },
+  "desktop/scripts/test-update-zip.sh": text =>
+    /\bgh\s|\bcurl\b|update-feed|>\s*"?\$feed\b/.test(text) || writesReleases.test(text) ? ["it does more than read the feed"] : [],
+};
+
 // Whether a workflow or script, and everything it runs, could put latest-mac.yml on a release: it runs
 // update-feed.mjs without --channel canary, names latest-mac.yml other than to stop on finding it, or
 // uploads files by a pattern. update-feed.mjs itself never writes latest-mac.yml for a canary build.
@@ -126,6 +156,10 @@ function uploadsLatestMac(start, texts) {
   const problems = [];
   for (const path of runs(start, texts)) {
     if (path === "desktop/scripts/update-feed.mjs") continue;
+    if (keepsFeedsToItself[path]) {
+      problems.push(...keepsFeedsToItself[path](code(path, texts?.[path] ?? read(path))).map(problem => `${path}: ${problem}`));
+      continue;
+    }
     for (const line of code(path, texts?.[path] ?? read(path)).split("\n")) {
       if (/update-feed\.mjs/.test(line) && !/update-feed\.mjs["']?\s+--channel\s+canary\b/.test(line)) problems.push(`${path}: ${line.trim()}`);
       if (/latest-mac\.yml/.test(line) && !/\bgrep\b|::error::/.test(line)) problems.push(`${path}: ${line.trim()}`);
@@ -139,6 +173,7 @@ function uploadsLatestMac(start, texts) {
 test("nothing a canary workflow runs uploads latest-mac.yml", () => {
   const canaries = workflows.filter(path => /canary/i.test(path) || /^name:.*canary/im.test(read(path)));
   assert.ok(canaries.includes(".github/workflows/canary.yml"));
+  assert.ok(canaries.includes(".github/workflows/canary-macos.yml"));
   for (const path of canaries) assert.deepEqual(uploadsLatestMac(path), [], path);
   // Release draft does make and upload latest-mac.yml, so the check finds it there.
   assert.notDeepEqual(uploadsLatestMac(".github/workflows/release-draft.yml"), []);
@@ -155,4 +190,101 @@ test("nothing a canary workflow runs uploads latest-mac.yml", () => {
   }
   const allowed = { ".github/workflows/planted-canary.yml": 'jobs:\n  mac:\n    steps:\n      - run: |\n          node desktop/scripts/update-feed.mjs --channel canary "$VERSION" macos arm64 x64\n          gh release upload canary macos/canary-mac.yml --clobber\n' };
   assert.deepEqual(uploadsLatestMac(".github/workflows/planted-canary.yml", allowed), []);
+
+  // Build macOS app and test-update-zip.sh pass only while they keep their feeds to themselves.
+  const build = read(".github/workflows/macos-app-build.yml");
+  const planted = (path, text) => uploadsLatestMac(".github/workflows/planted-canary.yml", {
+    ".github/workflows/planted-canary.yml": "jobs:\n  build:\n    uses: ./.github/workflows/macos-app-build.yml\n",
+    [path]: text,
+  });
+  assert.deepEqual(planted(".github/workflows/macos-app-build.yml", build), []);
+  for (const [from, to] of [
+    ["path: ${{ runner.temp }}/signing-input/", "path: ${{ runner.temp }}/update/"],
+    ["path: ${{ runner.temp }}/packages/", "path: ${{ runner.temp }}/"],
+    ["permissions:\n  contents: read", "permissions:\n  contents: write"],
+    ['"$RUNNER_TEMP/update/latest-mac.yml" "$RUNNER_TEMP/update-canary/canary-mac.yml"', '"$RUNNER_TEMP/update/latest-mac.yml" "$RUNNER_TEMP/signing-input/latest-mac.yml"'],
+    ['node desktop/scripts/update-feed.mjs "$version" "$RUNNER_TEMP/update"', 'node desktop/scripts/update-feed.mjs "$version" "$RUNNER_TEMP/packages"'],
+    ["      - run: npm ci\n", "      - run: npm ci\n      - run: gh release upload canary \"$RUNNER_TEMP/update/canary-mac.yml\"\n"],
+  ]) {
+    assert.ok(build.includes(from), from);
+    assert.notDeepEqual(planted(".github/workflows/macos-app-build.yml", build.replace(from, to)), [], to);
+  }
+  const check = read("desktop/scripts/test-update-zip.sh");
+  assert.deepEqual(planted("desktop/scripts/test-update-zip.sh", check), []);
+  for (const line of ['gh release upload canary "$feed"', 'cp "$work/feed" "$feed"\necho x > "$feed"', 'node desktop/scripts/update-feed.mjs "$version" "$(dirname "$zip")" arm64']) {
+    assert.notDeepEqual(planted("desktop/scripts/test-update-zip.sh", `${check}\n${line}\n`), [], line);
+  }
+});
+
+const macCanary = ".github/workflows/canary-macos.yml";
+
+test("the Mac canary runs only on main once MACOS_CANARY_ENABLED is set, and every job waits for that check", () => {
+  assert.match(read(macCanary), /^on:\n {2}schedule:\n {4}- cron: '[\d* ]+'\n {2}workflow_dispatch:\n\n/m, "once a day and by hand, never for a pull request or a push");
+  assert.match(code(macCanary), /^permissions:\n {2}contents: read$/m);
+  assert.match(code(macCanary), /^concurrency:\n {2}group: canary-macos\n {2}cancel-in-progress: false$/m);
+  assert.deepEqual(jobs(macCanary), ["version", "build", "sign", "verify", "publish"]);
+  const version = job(macCanary, "version");
+  // A repository variable: a job's condition can't read an environment's variables.
+  assert.match(version, /^ {4}if: github\.repository == 'your-space-ai\/your-space' && github\.ref == 'refs\/heads\/main' && vars\.MACOS_CANARY_ENABLED == 'true'$/m);
+  assert.match(version, /^ {10}test "\$GITHUB_REF" = refs\/heads\/main\n {10}deploy\/mac-canary-version\.sh$/m);
+  assert.match(version, /^ {10}fetch-depth: 0$/m, "the version script checks the build's commit against main's history");
+  for (const name of ["build", "sign", "verify", "publish"]) assert.match(job(macCanary, name), /^ {4}needs: (?:version|\[version, [\w-]+\])$/m, name);
+  assert.match(job(macCanary, "build"), /^ {4}if: needs\.version\.outputs\.build == 'true'$/m);
+  // The canary's commit and version, from the version job, never inline in a script.
+  assert.match(job(macCanary, "build"), /^ {6}ref: \$\{\{ needs\.version\.outputs\.commit \}\}\n {6}version: \$\{\{ needs\.version\.outputs\.version \}\}$/m);
+  for (const name of jobs(macCanary)) {
+    for (const [, script] of job(macCanary, name).matchAll(/^ {8}run: (\|\n(?: {10}.*\n?)+|.+)/gm)) assert.doesNotMatch(script, /\$\{\{/, name);
+  }
+});
+
+test("only the Mac canary's sign job reaches the macos-canary environment, and it runs no npm packages", () => {
+  const environments = workflows.flatMap(path => jobs(path).flatMap(name => [...job(path, name).matchAll(/^ {4}environment: (\S+)$/gm)].map(([, environment]) => `${path} ${name} ${environment}`)));
+  assert.deepEqual(environments.filter(entry => entry.endsWith(" macos-canary")), [`${macCanary} sign macos-canary`]);
+  assert.deepEqual(environments.filter(entry => entry.startsWith(macCanary)), [`${macCanary} sign macos-canary`], "the release's environment isn't used here");
+  for (const name of jobs(macCanary).filter(name => name !== "sign")) assert.doesNotMatch(job(macCanary, name), /secrets[.:]|environment:/, `${name} reads no secrets`);
+  assert.doesNotMatch(code(macCanary), /secrets: inherit/, "the unsigned build it calls gets no secrets");
+
+  // Neither the job nor anything it runs starts npm or npx, and setup-node restores no package cache.
+  const sign = job(macCanary, "sign");
+  const npm = /(?:^|[\s"'(;&|])(?:npm|npx)(?=$|[\s"');&|])/m;
+  for (const path of runs("sign-job.yml", { "sign-job.yml": sign })) assert.doesNotMatch(code(path, path === "sign-job.yml" ? sign : undefined), npm, path);
+  assert.match(sign, /^ {10}package-manager-cache: false$/m);
+  assert.doesNotMatch(sign, /^ +cache:/m);
+  assert.match(sign, /desktop\/scripts\/notarize-macos\.sh --update-only "\$\{candidates\[@\]\}" "\$out"\n {10}node desktop\/scripts\/update-feed\.mjs --channel canary "\$VERSION" "\$out" arm64 x64$/m);
+  assert.match(sign, /^ {8}if: always\(\)\n {8}run: \|\n {10}security delete-keychain /m, "the keychain and keys are always deleted");
+  for (const planted of ["      - run: npm ci", "        run: npx --yes something", '        run: node x.mjs && npm run build', "        with:\n          cache: npm"]) {
+    const text = `${sign}\n${planted}\n`;
+    assert.ok(npm.test(text) || /^ +cache:/m.test(text), planted);
+  }
+  assert.doesNotMatch(code("planted.yml", "          package-manager-cache: false\n      # no npm packages"), npm, "a comment or the cache setting isn't npm");
+});
+
+test("the Mac canary uploads only its build's two ZIPs and canary-mac.yml, from its publish job", () => {
+  for (const name of jobs(macCanary)) assert.equal(/contents: write/.test(job(macCanary, name)), name === "publish", name);
+  const publish = job(macCanary, "publish");
+  assert.match(publish, /^ {8}run: deploy\/mac-canary-publish\.sh "\$VERSION" "\$RUNNER_TEMP\/notarized"$/m);
+  assert.doesNotMatch(publish, /environment:/);
+  // What it uploads, it names: one gh release upload, called for the two ZIPs and then canary-mac.yml.
+  const script = code("deploy/mac-canary-publish.sh");
+  assert.equal(script.match(/gh release upload/g).length, 1);
+  assert.match(script, /^zips=\("your-space-macos-arm64-\$version\.zip" "your-space-macos-x64-\$version\.zip"\)$/m);
+  assert.deepEqual([...script.matchAll(/^ *retry upload (.+)$/gm)].map(([, files]) => files), ['"${zips[@]}"', "canary-mac.yml"]);
+  assert.doesNotMatch(script, /\bgh api\b[^\n]*uploads\.github\.com/);
+});
+
+test("each canary workflow checks and deletes only its own files on the canary prerelease", () => {
+  const linuxOwn = read(".github/workflows/canary.yml").match(/^ *own='([^']+)'$/m)[1];
+  const macOwn = `canary-mac\\.yml|${read("deploy/mac-canary-publish.sh").match(/^own_zip='([^']+)'$/m)[1]}`;
+  const owned = (own, names) =>
+    execFileSync("bash", ["-c", 'own=$1; shift; for name; do if [[ $name =~ ^($own)$ ]]; then echo "$name"; fi; done', "-", own, ...names], { encoding: "utf8" }).split("\n").filter(Boolean);
+  const build = "0.1.0-alpha.2.canary.20261201.60";
+  const linux = ["your-space.tar.gz", `your-space-ai-cli-${build}.tgz`, "your-space-linux-x64", "your-space-linux-arm64", "your-space-linux-licenses.txt", "SHA256SUMS", "channel.json"];
+  const mac = [`your-space-macos-arm64-${build}.zip`, `your-space-macos-x64-${build}.zip`, "canary-mac.yml"];
+  const neither = ["latest-mac.yml", `your-space-macos-arm64-${build}.dmg`, `your-space-macos-x64-${build}.zip.sha256`, "xcanary-mac.yml"];
+  assert.deepEqual(owned(linuxOwn, [...linux, ...mac, ...neither]), linux);
+  assert.deepEqual(owned(macOwn, [...linux, ...mac, ...neither]), mac);
+  // The Mac canary deletes in two places only: a half-uploaded file of a name it is about to upload,
+  // and a Mac ZIP canary-mac.yml doesn't list. Its tests (mac-canary.test.mjs) check both.
+  assert.equal(code("deploy/mac-canary-publish.sh").match(/--method DELETE/g).length, 2);
+  assert.doesNotMatch(code("deploy/mac-canary-publish.sh"), /--method PATCH|--method POST|gh release (?:create|edit|delete)\b/, "it never creates, edits or deletes the prerelease");
 });

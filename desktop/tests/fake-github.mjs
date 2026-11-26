@@ -1,12 +1,14 @@
-// A stand-in for GitHub's releases, for the tests of deploy/alpha-feed.sh. The tests put a `gh`, a
-// `curl` and a `sleep` first on PATH that each run this file with their own name, so the script runs
-// unchanged and never reaches GitHub. It keeps the releases in $FAKE_GITHUB/state.json, each file's
+// A stand-in for GitHub's releases, for the tests of deploy/alpha-feed.sh and the Mac canary's
+// deploy/mac-canary-version.sh and deploy/mac-canary-publish.sh. The tests put a `gh`, a `curl` and a
+// `sleep` first on PATH that each run this file with their own name, so the script runs unchanged and
+// never reaches GitHub. It keeps the releases in $FAKE_GITHUB/state.json, each file's
 // contents in $FAKE_GITHUB/assets/, and every call in state.calls. It answers only the calls the
 // script makes, as GitHub and gh 2 do, and fails loudly on any other, so a change to the script that
 // these tests don't cover shows up here.
 //
 // state.fail holds failures to inject, each { call, status, times, apply }: the first `times` calls
-// whose description starts with `call` fail with that HTTP status, after making their change anyway
+// whose description starts with `call` fail with that HTTP status (a release command's description
+// ends with the files it names, so one upload can be picked out), after making their change anyway
 // when `apply` is set, as a call GitHub answers with an error can still have made its release. An
 // upload with `apply: "delete"` deletes the file it replaces and then fails, as gh's --clobber does
 // when the upload after its delete fails.
@@ -56,6 +58,7 @@ const jq = {
   ".id": value => [value.id],
   ".body": value => [value.body ?? ""],
   '.[] | select(.tag_name == "alpha") | "\\(.draft) \\(.id)"': value => value.filter(release => release.tag_name === "alpha").map(release => `${release.draft} ${release.id}`),
+  '.[] | select(.tag_name == "canary") | "\\(.draft) \\(.id)"': value => value.filter(release => release.tag_name === "canary").map(release => `${release.draft} ${release.id}`),
   '.[] | "\\(.id) \\(.state) \\(.name)"': value => value.map(item => `${item.id} ${item.state} ${item.name}`),
 };
 
@@ -139,8 +142,8 @@ function ghRelease() {
     else if (!arg.startsWith("-")) files.push(arg);
     else return unsupported();
   }
-  const call = `gh release ${command} ${tag}`;
-  state.calls.push(`${call} ${[...patterns, ...files.map(file => basename(file))].join(" ")}`);
+  const call = `gh release ${command} ${tag} ${[...patterns, ...files.map(file => basename(file))].join(" ")}`;
+  state.calls.push(call);
   const failure = injected(call);
   if (failure && !failure.apply) return finish(1, { err: `HTTP ${failure.status}: Server Error (https://api.github.com/${api}/releases)\n` });
   const release = byTag(tag);

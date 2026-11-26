@@ -1,0 +1,216 @@
+name: Mac canary
+
+# Once a day, and when started by hand on main, packages the newest Linux canary as the Mac app for
+# Apple Silicon and Intel, signs it with the canary's own Developer ID certificate, notarizes and
+# staples both apps, checks their update ZIPs, and adds them, then canary-mac.yml, which lists them,
+# to the rolling `canary` prerelease (spec 016, decisions 3 and 4; docs/maintainers/releasing.md,
+# Mac canary builds). The build is the one the prerelease's channel.json names, at that build's
+# commit and version, whose images are pushed and whose install test passed; nothing runs when
+# canary-mac.yml already lists it or a newer one. It ships no DMG and publishes nothing else: it
+# never uploads latest-mac.yml, the file an Alpha Mac app reads, never touches the prerelease's
+# title, notes or Linux files, and deletes only older Mac ZIPs. Every job runs on a GitHub-hosted
+# runner. Only the sign job is in the `macos-canary` environment, whose secrets hold the canary
+# certificate and its App Store Connect API key, and nothing runs until a maintainer sets the
+# MACOS_CANARY_ENABLED repository variable to true.
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One Mac canary at a time, which always finishes. Its group is its own, so it never waits for the
+# Linux canary, nor the Linux canary for it.
+concurrency:
+  group: canary-macos
+  cancel-in-progress: false
+
+jobs:
+  # A job's condition can read a repository variable, but not an environment's before a job declares
+  # the environment, so the switch is a repository variable.
+  version:
+    if: github.repository == 'your-space-ai/your-space' && github.ref == 'refs/heads/main' && vars.MACOS_CANARY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      build: ${{ steps.version.outputs.build }}
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          package-manager-cache: false
+      - id: version
+        run: |
+          # Only main publishes. The job's condition compares without regard to case; this doesn't.
+          test "$GITHUB_REF" = refs/heads/main
+          deploy/mac-canary-version.sh
+
+  # Unsigned, with no secrets, at the canary's commit and with its version. It hands the signing job
+  # the DMG candidates it install-tested.
+  build:
+    needs: version
+    if: needs.version.outputs.build == 'true'
+    uses: ./.github/workflows/macos-app-build.yml
+    with:
+      ref: ${{ needs.version.outputs.commit }}
+      version: ${{ needs.version.outputs.version }}
+
+  sign:
+    needs: [version, build]
+    runs-on: macos-15
+    environment: macos-canary
+    # A new key's first submissions can wait hours in Apple's review; 360 is GitHub's maximum.
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Node alone for update-feed.mjs: no npm packages and no restored cache next to the signing keys.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: macos-signing-input-*
+          path: ${{ runner.temp }}/macos-input
+          merge-multiple: true
+      - name: Load the canary's Developer ID certificate into a temporary keychain
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          KEYCHAIN=$RUNNER_TEMP/canary-signing.keychain-db
+          CERT_FILE=$RUNNER_TEMP/canary-signing.p12
+          APPLE_API_KEY_PATH=$RUNNER_TEMP/canary-notary-key.p8
+          keychain_password=$(openssl rand -base64 32)
+          echo "::add-mask::$keychain_password"
+          printf '%s' "$MACOS_CERT_P12_BASE64" | base64 --decode > "$CERT_FILE"
+          printf '%s' "$APPLE_API_KEY_P8_BASE64" | base64 --decode > "$APPLE_API_KEY_PATH"
+          security create-keychain -p "$keychain_password" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$keychain_password" "$KEYCHAIN"
+          security import "$CERT_FILE" -k "$KEYCHAIN" -f pkcs12 -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$CERT_FILE"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
+          # The SHA-1 of the one Developer ID Application identity imported above.
+          identity=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/"Developer ID Application: / { print $2; exit }')
+          [[ -n $identity ]] || { echo '::error::No Developer ID Application identity in MACOS_CERT_P12_BASE64.'; exit 1; }
+          {
+            echo "MACOS_SIGN_IDENTITY=$identity"
+            echo "APPLE_API_KEY_PATH=$APPLE_API_KEY_PATH"
+          } >> "$GITHUB_ENV"
+      - name: Sign, notarize and staple each app, and make its update ZIP and canary-mac.yml
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          input="$RUNNER_TEMP/macos-input"
+          out="$RUNNER_TEMP/macos-canary"
+          candidates=()
+          for arch in arm64 x64; do
+            name="your-space-macos-$arch-$VERSION-candidate.dmg"
+            (cd "$input" && shasum -a 256 -c "$name.sha256")
+            candidates+=("$input/$name")
+          done
+          # Both apps are submitted before either is waited for, so Apple's reviews overlap.
+          desktop/scripts/notarize-macos.sh --update-only "${candidates[@]}" "$out"
+          node desktop/scripts/update-feed.mjs --channel canary "$VERSION" "$out" arm64 x64
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notarized-macos-canary
+          path: ${{ runner.temp }}/macos-canary/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 5
+      - name: Delete the temporary keychain and decoded keys
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/canary-signing.keychain-db" 2> /dev/null || true
+          rm -f "$RUNNER_TEMP/canary-signing.p12" "$RUNNER_TEMP/canary-notary-key.p8"
+          rm -rf "$RUNNER_TEMP/macos-input" "$RUNNER_TEMP/macos-canary"
+
+  # Without the environment, so the repository's npm packages run away from the signing keys: each
+  # update ZIP on a Mac of its architecture.
+  verify:
+    name: Check the notarized update ZIP (${{ matrix.arch }})
+    needs: [version, sign]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notarized-macos-canary
+          path: ${{ runner.temp }}/notarized
+      - name: Check the update ZIP against canary-mac.yml, its Developer ID signature and its ticket
+        run: |
+          update="your-space-macos-$ARCH-$VERSION.zip"
+          (cd "$RUNNER_TEMP/notarized" && shasum -a 256 -c "$update.sha256")
+          desktop/scripts/test-update-zip.sh --notarized --feed canary-mac.yml "$RUNNER_TEMP/notarized/$update" "$ARCH" "$VERSION"
+      # The signing job runs only its own processor's CLI, so the Intel CLI first runs under its
+      # signature here, as a release's does when its DMG is installed.
+      - name: Run the signed app's CLI
+        run: |
+          ditto -x -k "$RUNNER_TEMP/notarized/your-space-macos-$ARCH-$VERSION.zip" "$RUNNER_TEMP/open"
+          test "$(desktop/scripts/cli-version.sh "$RUNNER_TEMP/open/Your Space.app")" = "$VERSION"
+
+  # Safe to re-run when it fails: it looks at what an earlier attempt left before each change.
+  publish:
+    needs: [version, verify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notarized-macos-canary
+          path: ${{ runner.temp }}/notarized
+      - name: Add the Mac canary to the canary prerelease
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: deploy/mac-canary-publish.sh "$VERSION" "$RUNNER_TEMP/notarized"

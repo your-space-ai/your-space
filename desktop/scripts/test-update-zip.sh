@@ -1,15 +1,24 @@
 #!/bin/bash
-# Checks an update ZIP the way the in-app updater uses it: latest-mac.yml in the same folder lists it
-# with its SHA-512 and size, and it unpacks to a sealed app of the right architecture and version
-# with the updater's settings. With --notarized, the app must also carry the Developer ID signature
-# Squirrel.Mac requires, a stapled ticket and Gatekeeper's approval.
+# Checks an update ZIP the way the in-app updater uses it: the feed in the same folder lists it with
+# its SHA-512 and size, and it unpacks to a sealed app of the right architecture and version with the
+# updater's settings. The feed is latest-mac.yml, a release's, unless --feed names another, such as
+# canary-mac.yml, the Mac canary's. With --notarized, the app must also carry the Developer ID
+# signature Squirrel.Mac requires, a stapled ticket and Gatekeeper's approval. It only reads the feed.
 set -euo pipefail
-notarized=false
-if [[ ${1:-} == --notarized ]]; then notarized=true; shift; fi
-if [[ $(uname -s) != Darwin || $# != 3 || ! -f $1 ]]; then
-  echo 'Usage on macOS: test-update-zip.sh [--notarized] UPDATE.zip arm64|x64 VERSION' >&2
+usage() {
+  echo 'Usage on macOS: test-update-zip.sh [--notarized] [--feed NAME-mac.yml] UPDATE.zip arm64|x64 VERSION' >&2
   exit 2
-fi
+}
+notarized=false
+feed_name=latest-mac.yml
+while [[ ${1:-} == --* ]]; do
+  case $1 in
+    --notarized) notarized=true; shift ;;
+    --feed) (($# >= 2)) || usage; feed_name=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+[[ $(uname -s) == Darwin && $# == 3 && -f $1 && $feed_name =~ ^[a-z]+-mac\.yml$ ]] || usage
 zip=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 version=$3
 case $2 in
@@ -19,16 +28,16 @@ case $2 in
 esac
 name="your-space-macos-$2-$version.zip"
 [[ $(basename "$zip") == "$name" ]] || { echo "Expected $name." >&2; exit 1; }
-feed="$(dirname "$zip")/latest-mac.yml"
+feed="$(dirname "$zip")/$feed_name"
 root=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-grep -Fxq "version: '$version'" "$feed" || { echo "latest-mac.yml isn't for $version." >&2; exit 1; }
+grep -Fxq "version: '$version'" "$feed" || { echo "$feed_name isn't for $version." >&2; exit 1; }
 sha512=$(openssl dgst -sha512 -binary "$zip" | openssl base64 -A)
 size=$(wc -c < "$zip" | tr -d ' ')
 grep -A2 -Fx "  - url: $name" "$feed" | diff - <(printf '%s\n' "  - url: $name" "    sha512: '$sha512'" "    size: $size") ||
-  { echo "latest-mac.yml doesn't list $name with its digest and size." >&2; exit 1; }
+  { echo "$feed_name doesn't list $name with its digest and size." >&2; exit 1; }
 
 # Squirrel.Mac unpacks the update with ditto, as here.
 ditto -x -k "$zip" "$work"

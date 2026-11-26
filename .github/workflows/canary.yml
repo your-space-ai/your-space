@@ -11,7 +11,9 @@ name: Canary
 # published it points the images' `canary` tag at the build, so the images never run ahead of the
 # files. It checks and deletes only its own files there, never another workflow's, such as a Mac
 # canary's, and stops before changing any if the prerelease holds latest-mac.yml, which no canary
-# release may carry. It never moves `latest`, publishes nothing to npm, and builds no Mac app.
+# release may carry. It never moves `latest` and publishes nothing to npm. It builds no Mac app
+# itself: Mac canary (canary-macos.yml), a workflow of its own, packages the newest build once a day
+# and adds its update ZIPs and canary-mac.yml to the same prerelease.
 on:
   push:
     branches: [main]

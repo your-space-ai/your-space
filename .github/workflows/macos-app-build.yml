@@ -2,8 +2,10 @@ name: Build macOS app
 
 # Builds the Apple Silicon and Intel apps, packs each in a DMG and tests installing it, and checks the
 # in-app updater's ZIP and feed made from the same app. It runs on
-# pull requests that touch the desktop app or what it bundles, and Release macOS app calls it with
-# the release tag. It never signs with the Developer ID and has no access to signing secrets.
+# pull requests that touch the desktop app or what it bundles, Release macOS app calls it with
+# the release tag, and Mac canary with a canary's commit and version. It never signs with the
+# Developer ID and has no access to signing secrets. Its feeds are written in a scratch folder that no
+# artifact holds: the signing jobs write the ones that ship.
 
 on:
   pull_request:
@@ -18,9 +20,20 @@ on:
       - .github/workflows/release-macos-app.yml
   workflow_call:
     inputs:
+      # Release macOS app's: the release's tag, such as v0.1.0-alpha.2.
       release_tag:
-        required: true
+        required: false
         type: string
+        default: ''
+      # Mac canary's: the commit to build and the canary's version.
+      ref:
+        required: false
+        type: string
+        default: ''
+      version:
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: macos-app-build-${{ github.event.pull_request.number || github.run_id }}
@@ -45,6 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -54,8 +68,10 @@ jobs:
       - name: Build the ZIP preview and exercise the DMG installation
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
+          CANARY_VERSION: ${{ inputs.version }}
         run: |
           version=${RELEASE_TAG#v}
+          if [[ -z $version ]]; then version=$CANARY_VERSION; fi
           if [[ -z $version ]]; then version=$(node -p 'require("./desktop/package.json").version'); fi
           desktop/scripts/package-macos.sh "$version" "$RUNNER_TEMP/packages"
           name="your-space-macos-${{ matrix.arch }}-$version-preview.zip"
@@ -69,14 +85,26 @@ jobs:
           desktop/scripts/create-dmg.sh "$app" "$RUNNER_TEMP/signing-input/$dmg"
           desktop/scripts/test-dmg-install.sh "$RUNNER_TEMP/signing-input/$dmg" "${{ matrix.arch }}" "$version"
           (cd "$RUNNER_TEMP/signing-input" && shasum -a 256 "$dmg" > "$dmg.sha256")
-          # The updater's ZIP and latest-mac.yml, as the signing job makes them from the notarized app.
+          # The updater's ZIP and its feed, as the signing job makes them from the notarized app: a canary's
+          # canary-mac.yml, which update-feed.mjs writes only for a canary, and otherwise latest-mac.yml.
           update="your-space-macos-${{ matrix.arch }}-$version.zip"
           mkdir -p "$RUNNER_TEMP/update"
           cp "$RUNNER_TEMP/packages/$name" "$RUNNER_TEMP/update/$update"
-          node desktop/scripts/update-feed.mjs "$version" "$RUNNER_TEMP/update" "${{ matrix.arch }}"
-          desktop/scripts/test-update-zip.sh "$RUNNER_TEMP/update/$update" "${{ matrix.arch }}" "$version"
+          if [[ -n $CANARY_VERSION ]]; then
+            node desktop/scripts/update-feed.mjs --channel canary "$version" "$RUNNER_TEMP/update" "${{ matrix.arch }}"
+            desktop/scripts/test-update-zip.sh --feed canary-mac.yml "$RUNNER_TEMP/update/$update" "${{ matrix.arch }}" "$version"
+          else
+            node desktop/scripts/update-feed.mjs "$version" "$RUNNER_TEMP/update" "${{ matrix.arch }}"
+            desktop/scripts/test-update-zip.sh "$RUNNER_TEMP/update/$update" "${{ matrix.arch }}" "$version"
+            # The same feed under the Mac canary's name, alone beside the ZIP, so pull requests exercise
+            # the --feed check that Mac canary's verify jobs run on canary-mac.yml.
+            mkdir -p "$RUNNER_TEMP/update-canary"
+            ln "$RUNNER_TEMP/update/$update" "$RUNNER_TEMP/update-canary/$update"
+            cp "$RUNNER_TEMP/update/latest-mac.yml" "$RUNNER_TEMP/update-canary/canary-mac.yml"
+            desktop/scripts/test-update-zip.sh --feed canary-mac.yml "$RUNNER_TEMP/update-canary/$update" "${{ matrix.arch }}" "$version"
+          fi
       - name: Offer the private ZIP preview
-        if: github.event.repository.private && !inputs.release_tag
+        if: github.event.repository.private && !inputs.release_tag && !inputs.version
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-preview-${{ matrix.arch }}
@@ -85,7 +113,7 @@ jobs:
           compression-level: 0
           retention-days: 5
       - name: Hand the tested image to the signing job
-        if: inputs.release_tag != ''
+        if: inputs.release_tag != '' || inputs.version != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-signing-input-${{ matrix.arch }}
