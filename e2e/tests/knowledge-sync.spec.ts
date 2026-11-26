@@ -603,9 +603,12 @@ test("a run goes on when only the server restarts, and the next server records i
   await expect.poll(async () => (await status()).finished, { timeout: 240_000, intervals: [1_000] }).toBe(true);
   expect((await status()).success).toBe(true);
   await up();
-  // The next server reads the run's result from rclone, and records it as that run's.
-  await expect.poll(() => bigRow(`job is null and last_run_at = '${job.startedAt}'::timestamptz`), { timeout: 60_000 }).toBe("t");
-  expect(await synced()).toBeGreaterThan(before);
+  // The next server reads the run's result from rclone, and records it as that run's: the files it
+  // copied, as no later run copies anything, and not as a run that was interrupted. The knowledge
+  // base is due again at once, so the row soon shows a later run.
+  await expect.poll(synced, { timeout: 60_000 }).toBeGreaterThan(before);
+  expect(await bigRow(`job is null or job->>'startedAt' <> '${job.startedAt}'`)).toBe("t");
+  expect(await sql(`select count(*) from event e join event_knowledge_base k on k.event_id = e.id where e.type = 'knowledge.sync_failed' and k.name = '${BIG}'`)).toEqual(["0"]);
   await arrives(() => bigThere(`ls first | wc -l`), String(MANY), 240_000);
   await asOwner(page);
   await page.goto(`/knowledge/${BIG}`);
