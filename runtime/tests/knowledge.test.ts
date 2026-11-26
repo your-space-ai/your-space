@@ -438,20 +438,27 @@ describe("a knowledge base's volume", () => {
     volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
     volumes.set(state, knowledgeSyncLabels(INSTALLATION, "notes"));
     const release = holdKnowledgeBases(["notes", "recipes"]);
-    expect(await knowledgeUsers("notes")).toEqual({ apps: [], syncing: true });
-    await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409 });
-    await expect(deleteKnowledgeState("notes")).rejects.toMatchObject({ status: 409 });
-    // Nor held twice: a second start of the sync with one of them waits its turn.
-    expect(() => holdKnowledgeBases(["recipes"])).toThrow(/being synced/);
-    release();
+    try {
+      expect(await knowledgeUsers("notes")).toEqual({ apps: [], syncing: true });
+      await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409 });
+      await expect(deleteKnowledgeState("notes")).rejects.toMatchObject({ status: 409 });
+      // Nor held twice: a second start of the sync with one of them waits its turn.
+      expect(() => holdKnowledgeBases(["recipes"])).toThrow(/being synced/);
+    } finally {
+      // Let go even when a check failed, so the tests after it hold nothing of this one's.
+      release();
+    }
     await deleteKnowledgeState("notes");
     expect([...volumes.keys()]).toEqual([NOTES]);
     // A deletion holds it in turn.
     let finish: () => void = () => {};
     const deleting = holdingKnowledge("notes", "delete", () => new Promise<void>((resolve) => (finish = resolve)));
-    expect(() => holdKnowledgeBases(["notes"])).toThrow(/being deleted/);
-    finish();
-    await deleting;
+    try {
+      expect(() => holdKnowledgeBases(["notes"])).toThrow(/being deleted/);
+    } finally {
+      finish();
+      await deleting;
+    }
   });
 
   it("is never deleted with an app's data", async () => {

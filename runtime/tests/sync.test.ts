@@ -165,6 +165,8 @@ describe("running the sync's containers", () => {
   let holdUp: Promise<void> | undefined;
   /** A Compose command that fails, by its subcommand, as on an engine that stopped answering. */
   let composeFails: string | undefined;
+  /** Your Space's server, on this engine unless the apps run on another. */
+  let server: engineModule.ContainerSummary[];
   let created = 0;
 
   beforeEach(() => {
@@ -177,11 +179,13 @@ describe("running the sync's containers", () => {
     containers = [];
     holdUp = undefined;
     composeFails = undefined;
+    server = [{ Id: "server-id", Names: [], State: "running", Status: "", Labels: {} }];
     vi.mocked(engineModule.engineInfo).mockResolvedValue({ reachable: true, arch: "amd64", connection: "unix:///var/run/docker.sock" });
     vi.mocked(engineModule.inspectImage).mockResolvedValue({ ref: "ubuntu/squid:latest", registry: "docker.io", digest: "sha256:squid", platforms: [], runsHere: true });
     vi.mocked(engineModule.pullImage).mockResolvedValue();
     vi.mocked(engineModule.listContainers).mockImplementation(async (labels) => {
       if (labels.includes("com.docker.compose.service=runtime")) return [{ Id: "runtime-id", Names: [], State: "running", Status: "", Labels: {} }];
+      if (labels.includes("com.docker.compose.service=server")) return server;
       if (labels.some((l) => l === `com.docker.compose.project=${syncProject()}`)) return containers.filter((c) => !labels.includes("ai.your-space.knowledge") || c.Labels["ai.your-space.knowledge"]);
       // What mounts a knowledge base: the sync's container, when it runs.
       return [];
@@ -208,6 +212,7 @@ describe("running the sync's containers", () => {
         return {} as never;
       }
       if (method === "GET" && path === "/containers/runtime-id/json") return { Image: "sha256:runtime" } as never;
+      if (method === "GET" && path === "/containers/server-id/json") return { HostConfig: { UsernsMode: "" } } as never;
       if (method === "GET" && path.startsWith("/containers/json?")) {
         const wanted = JSON.parse(decodeURIComponent(path.split("filters=")[1]!)) as { volume: string[] };
         return containers.filter((c) => c.Mounts?.some((m) => wanted.volume.includes(m.Name ?? ""))) as never;
@@ -228,7 +233,7 @@ describe("running the sync's containers", () => {
       if (composeFails && args.includes(composeFails)) return { code: 1, stdout: "", stderr: "the engine failed" };
       // Compose as it treats services: one named is the only one changed; a container whose service
       // is unchanged keeps its ID; one whose service is gone is removed.
-      const named = args.slice(args.findIndex((a) => a === "up" || a === "stop" || a === "restart") + 1).filter((a) => a.startsWith("rclone-"));
+      const named = args.slice(args.findIndex((a) => a === "up" || a === "stop" || a === "restart" || a === "rm") + 1).filter((a) => a.startsWith("rclone-"));
       if (args.includes("up") && !args.includes("--no-recreate")) {
         await holdUp;
         const services = Object.entries(entry.file!.services).filter(([service]) => service.startsWith("rclone-"));
@@ -242,6 +247,7 @@ describe("running the sync's containers", () => {
         });
       }
       if (args.includes("down")) containers = [];
+      if (args.includes("rm")) containers = containers.filter((c) => !named.includes(c.Labels["com.docker.compose.service"]!));
       if (args.includes("stop")) containers = containers.map((c) => (named.length === 0 || named.includes(c.Labels["com.docker.compose.service"]!) ? { ...c, State: "exited" } : c));
       return { code: 0, stdout: "", stderr: "" };
     });
@@ -304,6 +310,31 @@ describe("running the sync's containers", () => {
     volumes.set(knowledgeStateVolume(INSTALLATION, "notes"), { "ai.your-space.installation": "someone-else" });
     await expect(ensureSyncService(["notes"])).rejects.toMatchObject({ status: 409 });
     expect(composed).toEqual([]);
+  });
+
+  it("removes a container it added that didn't get ready, so the next try waits for it again", async () => {
+    composeFails = "--wait";
+    await expect(ensureSyncService(["notes"])).rejects.toThrow(/Starting the sync failed/);
+    expect(composed.at(-1)!.args.slice(-4)).toEqual(["rm", "-f", "-s", "rclone-notes"]);
+    expect(containers).toEqual([]);
+    composeFails = undefined;
+    await ensureSyncService(["notes"]);
+    expect(composed.at(-1)!.args).toContain("--wait");
+  });
+
+  it("refuses to sync when Your Space's server isn't on the engine, as with apps on another one", async () => {
+    server = [];
+    await expect(ensureSyncService(["notes"])).rejects.toMatchObject({ status: 503, message: expect.stringContaining("YS_ENGINE_SOCKET") });
+    expect(composed).toEqual([]);
+  });
+
+  it("stops nothing when a change fails before its containers are ready", async () => {
+    await ensureSyncService(["notes"]);
+    const before = composed.length;
+    vi.mocked(engineModule.engineJson).mockRejectedValueOnce(new Error("the engine failed"));
+    await expect(ensureSyncService(["recipes"])).rejects.toThrow();
+    expect(composed.slice(before).filter((c) => c.args.includes("stop"))).toEqual([]);
+    expect(containers.map((c) => [c.Labels["ai.your-space.knowledge"], c.State])).toEqual([["notes", "running"]]);
   });
 
   it("leaves the running rclones as they are when it refuses the knowledge bases asked for", async () => {

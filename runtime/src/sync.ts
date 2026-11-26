@@ -247,8 +247,9 @@ async function ensureImage(image: string): Promise<void> {
 async function serverUserns(): Promise<boolean> {
   const id = await installationContainer("server");
   if (!id) return false;
-  const detail = await engineJson<{ HostConfig?: { UsernsMode?: string } }>("GET", `/containers/${encodeURIComponent(id)}/json`).catch(() => undefined);
-  return detail?.HostConfig?.UsernsMode === "host";
+  // A failed read stops the change rather than guess: the volumes' owners follow the answer.
+  const detail = await engineJson<{ HostConfig?: { UsernsMode?: string } }>("GET", `/containers/${encodeURIComponent(id)}/json`);
+  return detail.HostConfig?.UsernsMode === "host";
 }
 
 /**
@@ -277,8 +278,15 @@ async function ensureVolume(volume: string, labels: Record<string, string>, mode
   }
 }
 
-/** The ys-sync volume of Your Space's own Compose project, which the server mounts too. */
+/**
+ * The ys-sync volume of Your Space's own Compose project, which the server mounts too. Only on the
+ * engine Your Space's server runs on: with apps on another engine (YS_ENGINE_SOCKET), a volume there
+ * isn't the server's, so knowledge bases can't sync.
+ */
 export async function socketVolume(): Promise<string> {
+  if (!(await installationContainer("server"))) {
+    throw new EngineError("Knowledge bases sync only when apps run on the engine Your Space's server runs on, and YS_ENGINE_SOCKET points at another.", 503);
+  }
   const filters = encodeURIComponent(JSON.stringify({ label: [`com.docker.compose.project=${INSTALLATION}`, `com.docker.compose.volume=${SOCKET_VOLUME_KEY}`] }));
   const { Volumes } = await engineJson<{ Volumes: { Name: string }[] | null }>("GET", `/volumes?filters=${filters}`);
   const volume = Volumes?.[0]?.Name;
@@ -347,11 +355,10 @@ export function ensureSyncService(knowledgeBases: string[]): Promise<SyncService
       }
       return syncService();
     }
-    // Held and checked before any rclone stops: a request refused leaves the running ones as they are.
+    // Held and checked before any rclone stops.
     const release = holdKnowledgeBases(names);
     try {
       for (const name of names) if (!(await knowledgeOf(name))) throw new EngineError(`The knowledge base ${name} isn't on this machine's engine.`, 404);
-      await stopRclones(gone);
       const rclone = rcloneImage();
       const proxy = await squidImage();
       await ensureImage(rclone);
@@ -367,12 +374,23 @@ export function ensureSyncService(knowledgeBases: string[]): Promise<SyncService
       if (fixture) await ensureVolume(fixtureVolume(), { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "sync-fixture" }, "2777");
       // Checked again once the images and volumes are ready, which can take long: a stop may have begun.
       if (isStopping()) throw new EngineError(STOPPING, 409);
+      // Only now, with everything ready, so a change that fails before leaves the running ones as
+      // they are; then Compose removes them.
+      await stopRclones(gone);
       const file = syncServiceFile({ squid: proxy, rclone, socketVolume: socket, knowledgeBases: names, fixture, usernsHost });
       // Every container as the file says, without waiting for the others: one that doesn't answer, as
       // one hung, never holds up another knowledge base's.
       await compose(file, ["up", "-d", "--remove-orphans", "--pull", "never"]);
       const added = names.filter((n) => !before.has(n));
-      if (added.length > 0) await compose(file, ["up", "-d", "--wait", "--no-recreate", "--pull", "never", ...added.map(rcloneService)]);
+      if (added.length > 0) {
+        try {
+          await compose(file, ["up", "-d", "--wait", "--no-recreate", "--pull", "never", ...added.map(rcloneService)]);
+        } catch (error) {
+          // Removed, so the next try makes them again and waits for them: one left would pass as ready.
+          await compose(file, ["rm", "-f", "-s", ...added.map(rcloneService)]).catch(() => {});
+          throw error;
+        }
+      }
     } finally {
       release();
     }
