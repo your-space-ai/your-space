@@ -127,8 +127,10 @@ jobs:
   # to the `alpha` release, and only once the stranger check has passed, so the feed never names a
   # release a stranger can't install. It runs the release's own deploy/alpha-feed.sh, from the tag,
   # with Node and no npm packages. One runs at a time, so two releases published together never
-  # interleave, and either order leaves the feed on the newer one. Safe to re-run: it changes nothing
-  # once the feed names this release or a newer one. npm and images don't wait for it.
+  # interleave, and either order leaves the feed on the newer one. GitHub keeps only one job waiting
+  # in the group, so a third release published meanwhile cancels the waiting one, which a maintainer
+  # re-runs if its release is the newest (docs/maintainers/releasing.md). Safe to re-run: it changes
+  # nothing once the feed names this release or a newer one. npm and images don't wait for it.
   alpha-feed:
     needs: stranger
     if: github.repository == 'your-space-ai/your-space' && startsWith(github.event.release.tag_name, 'v')

@@ -2,15 +2,15 @@
 # Points the Alpha channel's feed at a published release (spec 016, decision 5, FR-003):
 #   deploy/alpha-feed.sh v0.1.0-alpha.2
 # Release publish runs it, and nothing else does, once the release has passed its stranger check.
-# The feed is the rolling `alpha` prerelease, at a fixed address, which holds two files and nothing
-# else: latest-mac.yml, which the Mac app on Alpha reads and which lists the release's two update
-# ZIPs by their full links into the `v` release (desktop/scripts/channel-feed.mjs), and
-# channel.json, which names the release for `your-space upgrade --channel alpha`
-# (deploy/channel-json.sh). It never points the feed at an older release than the one it names, and
-# never at a canary.
+# The feed is the rolling `alpha` prerelease, at a fixed address, which holds two files:
+# latest-mac.yml, which the Mac app on Alpha reads and which lists the release's two update ZIPs by
+# their full links into the `v` release (desktop/scripts/channel-feed.mjs), and channel.json, which
+# names the release for `your-space upgrade --channel alpha` (deploy/channel-json.sh). It never
+# points the feed at a release older than either file names, and never at a canary.
 #
-# Safe to re-run: it changes nothing once the feed names this release or a newer one, it looks for
-# the `alpha` prerelease before it creates one, and --clobber replaces a file an attempt uploaded.
+# Safe to re-run: it changes nothing once channel.json names this release or a newer one, or
+# latest-mac.yml lists a newer one, it looks for the `alpha` prerelease before it creates one, and
+# --clobber replaces a file an attempt uploaded.
 # Each call to GitHub is retried while GitHub answers with a server error (deploy/gh-retry.sh).
 # latest-mac.yml goes up first and channel.json last, each checked once it is there, so channel.json
 # names this release only once the Mac app's feed is this release's. It needs bash, curl, gh, Node,
@@ -48,18 +48,18 @@ version=${tag#v}
 commit=$(retry gh api "$api/commits/$tag" --jq .sha)
 "$root/deploy/channel-json.sh" alpha "$version" "$commit" > "$work/channel.json"
 
-# The feed's channel.json at its fixed address, as clients read it, saved as $work/named.json. Only
-# GitHub's 404 means there is none yet: no `alpha` prerelease, only a draft an attempt left, or no
-# channel.json on it. Any other answer stops, so a moment's failure never lets an older release in.
-fetch_named() {
-  local code
-  rm -f "$work/named.json"
+# One of the feed's files at its fixed address, as clients read it, saved as $work/feed-NAME. Only
+# GitHub's 404 means there is none: no `alpha` prerelease, only a draft an attempt left, or no such
+# file on it. Any other answer stops, so a moment's failure never lets an older release in.
+fetch_feed() {
+  local name=$1 code
+  rm -f "$work/feed-$name"
   code=$(curl --silent --show-error --location --proto '=https' --max-time 60 \
-    --output "$work/named.json" --write-out '%{http_code}' "$feed/channel.json") || return 1
+    --output "$work/feed-$name" --write-out '%{http_code}' "$feed/$name") || return 1
   case $code in
     200) ;;
-    404) rm -f "$work/named.json" ;;
-    *) echo "HTTP $code from $feed/channel.json" >&2; return 1 ;;
+    404) rm -f "$work/feed-$name" ;;
+    *) echo "HTTP $code from $feed/$name" >&2; return 1 ;;
   esac
 }
 
@@ -67,15 +67,15 @@ fetch_named() {
 # the one form deploy/channel-json.sh writes, or nothing changes, for a maintainer to look.
 named_version() {
   local fields channel named named_commit
-  [[ -f $work/named.json ]] || return 0
+  [[ -f $work/feed-channel.json ]] || return 0
   if fields=$(node -e '
       const named = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
       const values = [named.channel, named.version, named.commit];
       if (!values.every(value => typeof value === "string")) process.exit(1);
-      console.log(values.join("\n"));' "$work/named.json" 2> /dev/null) &&
+      console.log(values.join("\n"));' "$work/feed-channel.json" 2> /dev/null) &&
     { read -r channel && read -r named && read -r named_commit; } <<< "$fields" &&
     [[ $channel == alpha ]] &&
-    "$root/deploy/channel-json.sh" alpha "$named" "$named_commit" 2> /dev/null | cmp -s - "$work/named.json"; then
+    "$root/deploy/channel-json.sh" alpha "$named" "$named_commit" 2> /dev/null | cmp -s - "$work/feed-channel.json"; then
     echo "$named"
   else
     echo "::error::The alpha feed's channel.json isn't one deploy/channel-json.sh writes for Alpha, so nothing is replaced. Find what wrote it at $feed/channel.json, then re-run." >&2
@@ -83,24 +83,60 @@ named_version() {
   fi
 }
 
-# Succeeds when the feed already names this release or a newer one, by Semantic Versioning's
-# precedence as the CLI compares versions (cli/src/version.ts, which Node runs as it is). Any
-# failure to read or compare stops the script rather than counting as an older feed.
+# The version the feed's latest-mac.yml lists, or nothing when there is none: its first line, as
+# channel-feed.mjs writes it, which must name a version that isn't a canary's (channel-json.sh checks
+# it as it does channel.json's), or nothing changes, for a maintainer to look.
+listed_version() {
+  local first='' pattern="^version: '([^']+)'\$"
+  [[ -f $work/feed-latest-mac.yml ]] || return 0
+  IFS= read -r first < "$work/feed-latest-mac.yml" || true
+  if [[ $first =~ $pattern ]] && "$root/deploy/channel-json.sh" alpha "${BASH_REMATCH[1]}" "$commit" > /dev/null 2>&1; then
+    echo "${BASH_REMATCH[1]}"
+  else
+    echo "::error::The alpha feed's latest-mac.yml doesn't list an Alpha release as deploy/alpha-feed.sh writes it, so nothing is replaced. Find what wrote it at $feed/latest-mac.yml, then re-run." >&2
+    return 1
+  fi
+}
+
+# Prints 1, 0 or -1 as a version the feed names is newer than, the same as or older than this
+# release's, by Semantic Versioning's precedence as the CLI compares versions (cli/src/version.ts,
+# which Node runs as it is), and fails when it can't compare them.
+order() {
+  local result
+  if result=$(node --input-type=module -e '
+      import { pathToFileURL } from "node:url";
+      const [file, other, version] = process.argv.slice(1);
+      const { compareVersions } = await import(pathToFileURL(file));
+      console.log(Math.sign(compareVersions(other, version)) || 0);' "$root/cli/src/version.ts" "$1" "$version") &&
+    [[ $result =~ ^(1|0|-1)$ ]]; then
+    echo "$result"
+  else
+    echo "::error::Couldn't compare $1, which the alpha feed names, with $version." >&2
+    return 1
+  fi
+}
+
+# Succeeds when the feed's channel.json already names this release or a newer one, or its
+# latest-mac.yml lists a newer one. latest-mac.yml goes up first, so an attempt for a newer release
+# that stopped before channel.json was replaced leaves it ahead; the feed is then left for that
+# release's own re-run to finish. Any failure to read or compare stops the script rather than
+# counting as an older feed.
 covered() {
-  local named status=0
-  retry fetch_named || exit 1
+  local named listed named_order=-1 listed_order=-1
+  retry fetch_feed channel.json || exit 1
+  retry fetch_feed latest-mac.yml || exit 1
   named=$(named_version) || exit 1
-  [[ -n $named ]] || return 1
-  node --input-type=module -e '
-    import { pathToFileURL } from "node:url";
-    const [file, named, version] = process.argv.slice(1);
-    const { compareVersions } = await import(pathToFileURL(file));
-    process.exit(compareVersions(named, version) >= 0 ? 0 : 10);' "$root/cli/src/version.ts" "$named" "$version" || status=$?
-  case $status in
-    0) say "The alpha feed already names $named, so it stays as it is for $tag." ;;
-    10) return 1 ;;
-    *) echo "::error::Couldn't compare $named, which the alpha feed names, with $version." >&2; exit 1 ;;
-  esac
+  listed=$(listed_version) || exit 1
+  if [[ -n $named ]]; then named_order=$(order "$named") || exit 1; fi
+  if [[ -n $listed ]]; then listed_order=$(order "$listed") || exit 1; fi
+  if ((named_order >= 0)); then
+    say "The alpha feed already names $named, so it stays as it is for $tag."
+  elif ((listed_order > 0)); then
+    say "The alpha feed's latest-mac.yml already lists $listed, so it stays as it is for $tag."
+    echo "::warning::The alpha feed's channel.json doesn't name $listed yet, so an attempt for it stopped part way: re-run v$listed's alpha-feed job in Release publish to finish." >&2
+  else
+    return 1
+  fi
 }
 
 if covered; then exit 0; fi
@@ -140,7 +176,10 @@ if covered; then exit 0; fi
 
 # Replaces one of the feed's files and checks it downloads unchanged. Any file an upload left half
 # there (not "uploaded") is deleted first: GitHub refuses the next upload of its name (HTTP 422)
-# until it is. A file already gone (HTTP 404) counts as deleted.
+# until it is. A file already gone (HTTP 404) counts as deleted. --clobber deletes the old file
+# before it uploads the new one, so for a moment the file is missing: a Mac app on Alpha checking
+# then says it couldn't check, and the CLI stops with nothing changed. A run that stops in between
+# leaves it missing until a re-run, and covered() reads both files, so no older release moves in.
 replace() {
   local name=$1 asset state listed
   gh api --paginate "$api/releases/$id/assets?per_page=100" --jq '.[] | "\(.id) \(.state) \(.name)"' > "$work/listed" || return 1

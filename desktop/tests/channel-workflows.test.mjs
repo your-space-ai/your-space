@@ -15,10 +15,13 @@ const isFile = path => existsSync(join(root, path)) && statSync(join(root, path)
 const workflows = readdirSync(join(root, ".github/workflows")).filter(name => /\.ya?ml$/.test(name)).map(name => `.github/workflows/${name}`);
 const listed = dir => existsSync(join(root, dir)) ? readdirSync(join(root, dir)).map(name => `${dir}/${name}`).filter(isFile) : [];
 
-/** The text of a file without its comments, so a comment that names a file isn't counted as using it. */
+/**
+ * The text of a file without its comments, so a comment that names a file isn't counted as using it,
+ * and with a shell command continued over several lines (a line ending in \) on one.
+ */
 function code(path, text = read(path)) {
   const marker = /\.(m?js|cjs|ts)$/.test(path) ? /(^|\s)\/\/.*$/ : /(^|\s)#.*$/;
-  return text.split("\n").map(line => line.replace(marker, "")).join("\n");
+  return text.split("\n").map(line => line.replace(marker, "")).join("\n").replace(/\\\n\s*/g, " ");
 }
 
 /** Every repository file a workflow or script runs, calls or sources, and those files' own, with it. */
@@ -44,7 +47,8 @@ function runs(start, texts = {}) {
 // The alpha release, as a script or workflow names it to write to it or read it.
 const namesAlpha = /releases\/(?:download|tag|tags)\/alpha\b|\brelease\s+(?:upload|create|edit|delete|download|view)\s+["']?alpha\b|tag_name\s*(?:==?|:)\s*["']?alpha\b|refs\/tags\/alpha\b/;
 // A change to a GitHub release: gh's release commands and API calls that write, or an action that does.
-const writesReleases = /\bgh\s+release\s+(?:upload|create|edit|delete)\b|\bgh\s+api\b[^\n]*(?:--method|-X)\s*(?:POST|PATCH|PUT|DELETE)\b|softprops\/action-gh-release|ncipollo\/release-action|actions\/github-script/;
+// gh api sends a POST when it is given a field or an input file, with no method named.
+const writesReleases = /\bgh\s+release\s+(?:upload|create|edit|delete)\b|\bgh\s+api\b[^\n]*(?:(?:--method|-X)[\s=]*["']?(?:POST|PATCH|PUT|DELETE)\b|\s(?:-[fF]|--(?:raw-)?field\b|--input\b))|softprops\/action-gh-release|ncipollo\/release-action|actions\/github-script/;
 const writesAlpha = (path, text) => namesAlpha.test(code(path, text)) && writesReleases.test(code(path, text));
 
 /** Every workflow and every script in the folders scripts live in, with everything they run. */
@@ -93,12 +97,26 @@ test("only deploy/alpha-feed.sh writes to the alpha release", () => {
   for (const planted of [
     "gh release upload alpha latest-mac.yml --clobber",
     "gh api --method POST repos/x/y/releases -f tag_name=alpha",
+    "gh api --method=DELETE repos/x/y/git/refs/tags/alpha",
+    "gh api -XPATCH repos/x/y/releases/tags/alpha",
+    // No method named: gh api sends a POST for a field or an input file.
+    "gh api repos/x/y/releases -f tag_name=alpha",
+    "gh api repos/x/y/releases -F tag_name=alpha -F prerelease=true",
+    "gh api repos/x/y/releases --raw-field tag_name=alpha",
+    "gh api repos/x/y/releases/tags/alpha --input release.json",
+    "gh api \\\n    repos/x/y/releases \\\n    -f tag_name=alpha",
     "gh api -X PATCH \"$api/releases/$id\" # the one at releases/tags/alpha",
   ]) {
     const comment = planted.includes("#");
     assert.equal(writesAlpha("planted.sh", `run: |\n  ${planted}\n`), !comment, planted);
   }
-  assert.equal(writesAlpha("planted.sh", "curl -sSf https://github.com/o/r/releases/download/alpha/channel.json\n"), false, "reading the feed isn't writing it");
+  for (const reading of [
+    "curl -sSf https://github.com/o/r/releases/download/alpha/channel.json",
+    "gh api repos/x/y/releases/tags/alpha --jq .id",
+    "gh release download alpha --pattern channel.json",
+  ]) {
+    assert.equal(writesAlpha("planted.sh", `run: |\n  ${reading}\n`), false, `${reading}: reading the feed isn't writing it`);
+  }
 });
 
 // Whether a workflow or script, and everything it runs, could put latest-mac.yml on a release: it runs

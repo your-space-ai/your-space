@@ -8,7 +8,8 @@
 // state.fail holds failures to inject, each { call, status, times, apply }: the first `times` calls
 // whose description starts with `call` fail with that HTTP status, after making their change anyway
 // when `apply` is set, as a call GitHub answers with an error can still have made its release.
-// state.served lists answers for the feed's fixed address, one per read, before the releases count.
+// state.served lists answers for each of the feed's files at its fixed address, by file name, one per
+// read, before the releases count.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
@@ -188,9 +189,9 @@ function curl() {
   const failure = injected(`curl ${url}`);
   let status = 404;
   let body = "Not Found";
-  const served = state.served?.shift();
   const match = /^https:\/\/github\.com\/your-space-ai\/your-space\/releases\/download\/([^/]+)\/([^/]+)$/.exec(url);
   if (!match) return unsupported();
+  const served = state.served?.[match[2]]?.shift();
   if (failure) ({ status, body } = { status: failure.status, body: "Server Error" });
   else if (served) ({ status, body } = served);
   else {

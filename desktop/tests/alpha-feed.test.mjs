@@ -25,6 +25,8 @@ const alphaChannel = readFileSync(join(fixtures, "alpha/channel.json"), "utf8");
 const { version, commit } = JSON.parse(alphaChannel);
 const releaseFeed = alphaFeed.replaceAll(`https://github.com/your-space-ai/your-space/releases/download/v${version}/`, "");
 const channelJson = (channel, named, at) => `${JSON.stringify({ channel, version: named, commit: at })}\n`;
+// The feed's latest-mac.yml as the script writes it for another release.
+const feedFor = other => alphaFeed.replaceAll(version, other);
 const sha256 = data => createHash("sha256").update(data).digest("hex");
 
 /** A stand-in for GitHub holding the published v0.1.0-alpha.2 release and any `alpha` releases given. */
@@ -193,12 +195,54 @@ test("a latest-mac.yml that doesn't match the release's SHA256SUMS stops before 
 });
 
 test("the feed is read again just before writing, and a newer release named meanwhile is kept", t => {
-  const gh = github(t, { served: [{ status: 404, body: "Not Found" }, { status: 200, body: channelJson("alpha", "0.1.0-alpha.3", commit) }] });
+  const gh = github(t, { served: { "channel.json": [{ status: 404, body: "Not Found" }, { status: 200, body: channelJson("alpha", "0.1.0-alpha.3", commit) }] } });
   const { status, stderr, stdout, calls } = gh.run();
   assert.equal(status, 0, stderr);
   assert.match(stdout, /already names 0\.1\.0-alpha\.3/);
   assert.equal(calls.filter(call => call === `curl ${feed}`).length, 2);
   assert.deepEqual(calls.filter(call => call.startsWith("gh release upload")), []);
+});
+
+// An attempt for a newer release that stopped between its two uploads leaves latest-mac.yml listing
+// that release while channel.json names an older one, or none, since --clobber deletes a file before
+// it uploads its replacement. An older release's run then leaves the feed alone too.
+test("a feed whose latest-mac.yml lists a newer release is left as it is, whatever its channel.json names", t => {
+  const newer = feedFor("0.1.0-alpha.3");
+  for (const named of [[], [["channel.json", channelJson("alpha", "0.1.0-alpha.1", commit)]]]) {
+    const gh = github(t, { alpha: [[{}, [["latest-mac.yml", newer], ...named]]] });
+    const { status, stderr, stdout, calls } = gh.run();
+    assert.equal(status, 0, stderr);
+    assert.match(stdout, /latest-mac\.yml already lists 0\.1\.0-alpha\.3/);
+    assert.match(stderr, /::warning::.*re-run v0\.1\.0-alpha\.3's alpha-feed job/);
+    assert.deepEqual(writes(calls), []);
+    assert.equal(gh.served("latest-mac.yml"), newer);
+  }
+});
+
+test("an attempt for this release that stopped between its two uploads is finished by a re-run", t => {
+  for (const named of [[], [["channel.json", channelJson("alpha", "0.1.0-alpha.1", commit)]]]) {
+    const gh = github(t, { alpha: [[{}, [["latest-mac.yml", alphaFeed], ...named]]] });
+    const { status, stderr, calls } = gh.run();
+    assert.equal(status, 0, stderr);
+    assert.equal(gh.served("latest-mac.yml"), alphaFeed);
+    assert.equal(gh.served("channel.json"), alphaChannel);
+    assert.ok(calls.includes("gh release upload alpha channel.json"));
+  }
+});
+
+test("a latest-mac.yml the feed can't be read for, or that doesn't name an Alpha release as the script writes it, stops before anything changes", t => {
+  const gh = github(t, { alpha: [[{}, [["latest-mac.yml", alphaFeed]]]], fail: [{ call: `curl ${feed.replace("channel.json", "latest-mac.yml")}`, status: 500, times: 5 }] });
+  const { status, calls } = gh.run();
+  assert.notEqual(status, 0);
+  assert.deepEqual(writes(calls), []);
+
+  for (const listed of ["Not Found", "version: 0.1.0-alpha.3\n", "", `version: '0.1.0-alpha.2.canary.20261201.60'\n`, "version: '0.1'\n", `files:\n${feedFor("0.1.0-alpha.3")}`]) {
+    const other = github(t, { alpha: [[{}, [["latest-mac.yml", listed]]]] });
+    const result = other.run();
+    assert.notEqual(result.status, 0, listed);
+    assert.match(result.stderr, /latest-mac\.yml doesn't list an Alpha release/, listed);
+    assert.deepEqual(writes(result.calls), [], listed);
+  }
 });
 
 test("a canary's tag, or a tag that isn't a version, never reaches the alpha feed", t => {
