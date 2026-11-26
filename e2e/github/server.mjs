@@ -19,6 +19,7 @@ const ACCOUNTS = new Map([[CONTENTS_TOKEN, "ys-fixture-owner"]]);
 // a fixture's commit stays the tree id of its files.
 const PRIVATE = new Map([
   ["ys-fixtures/private-kits", [CONTENTS_TOKEN]],
+  ["ys-fixtures/private-app", [CONTENTS_TOKEN]],
   ["ys-fixtures/private-other", []],
 ]);
 // Tokens deleted at the stand-in, as an owner deletes one at GitHub: GitHub refuses them from then on.

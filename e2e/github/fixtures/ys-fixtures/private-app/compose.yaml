@@ -1,0 +1,10 @@
+# A Compose file in a private repository (journey 015): the stand-in shows it only to the
+# connection's token. traefik/whoami (MIT) echoes each request it receives.
+services:
+  web:
+    image: traefik/whoami:latest
+    ports:
+      - "8000:80"
+    environment:
+      GREETING: ${GREETING:-hello}
+      API_TOKEN: ${API_TOKEN:-published-default-token}

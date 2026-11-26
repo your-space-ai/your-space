@@ -187,7 +187,7 @@ function Connect({ reconnect, onConnected }: { reconnect: boolean; onConnected: 
           GitHub opens its new token page, with a name and read access to contents already chosen.
         </li>
         <li>Under Resource owner, choose the account or organization your repositories belong to.</li>
-        <li>Under Repository access, choose Only select repositories, and pick the ones with your kits.</li>
+        <li>Under Repository access, choose Only select repositories, and pick the ones with your kits and their Compose files.</li>
         <li>Choose when it expires, then generate the token and copy it.</li>
       </ol>
       <details>

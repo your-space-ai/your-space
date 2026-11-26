@@ -151,7 +151,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
   - [x] Connect GitHub with a fine-grained token, Contents read on chosen repositories, from the dashboard's GitHub page or the `github` server command, and manage it from either. Verified in Chromium against the stand-in GitHub; the run against real GitHub is the last item. (2026-11-25, [PR #130](https://github.com/your-space-ai/your-space/pull/130))
   - [x] Install from a kit in a private repository through that connection, in the web client and with the server command; the Compose file it pins stays public until the next item. Verified in Chromium against the stand-in GitHub; the run against real GitHub is the last item. (2026-11-25, [PR #131](https://github.com/your-space-ai/your-space/pull/131))
-  - [ ] Install from a kit whose Compose file is in a private repository.
+  - [x] Install from a kit whose Compose file is in a private repository, the kit's own or another one, in the web client and with the server command, `install-app --kit -` included. Verified in Chromium against the stand-in GitHub; the run against real GitHub is the last item. (2026-11-25, [PR #133](https://github.com/your-space-ai/your-space/pull/133))
   - [ ] Pull private images from GHCR with an optional classic token limited to `read:packages`.
   - [ ] Keep the connection through a data-key rotation, and keep public installs working when it is broken.
   - [ ] Run it against real GitHub with a disposable account.

@@ -149,7 +149,7 @@ function refusal(res: Response, repo: string, credential: SourceCredential): Err
   if (res.status === 401) return new TokenRefusedError();
   // GitHub redirects a renamed or transferred repository's API requests to its new place.
   if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) {
-    return new SourceError(`GitHub says ${repo} has moved: it was renamed or transferred. Use the link from its new place on GitHub.`);
+    return new RepositoryMovedError(`GitHub says ${repo} has moved: it was renamed or transferred. Use the link from its new place on GitHub.`);
   }
   if (rateLimited(res)) return new SourceError("GitHub is limiting requests from this machine. Try again in a few minutes.");
   // An organization can require approving a fine-grained token, block such tokens, or require
@@ -158,9 +158,17 @@ function refusal(res: Response, repo: string, credential: SourceCredential): Err
   return new SourceError(`GitHub answered ${res.status}. Try again later.`);
 }
 
-function notVisible(repo: string, credential: SourceCredential): SourceError {
+/** A renamed or transferred repository, which GitHub redirects; the redirect isn't followed with the token. */
+class RepositoryMovedError extends SourceError {}
+
+/**
+ * GitHub doesn't show the repository to the credential. For a kit, the fix may be the pasted link; for
+ * the Compose file a kit pins, it is the kit's `source.repo`.
+ */
+function notVisible(repo: string, credential: SourceCredential, compose = false): SourceError {
+  const [owner, name] = repo.split("/");
   return new SourceError(
-    `GitHub doesn't show ${repo} to your GitHub connection (@${credential.login}). Check the link, and that the token can read ${repo}: at GitHub, its resource owner must be ${repo.split("/")[0]}, and its repositories must include ${repo.split("/")[1]}. An organization may also need to approve the token.`,
+    `GitHub doesn't show ${repo}${compose ? ", where the kit's Compose file is," : ""} to your GitHub connection (@${credential.login}). Check ${compose ? "the kit's source.repo" : "the link"}, and that the token can read ${repo}: at GitHub, its resource owner must be ${owner}, and its repositories must include ${name}. An organization may also need to approve the token.`,
     "not_visible",
   );
 }
@@ -222,21 +230,80 @@ export async function fetchSourceWith(
 ): Promise<SourceFile> {
   const parsed = parseLink(link);
   const { ref, path, commit } = await resolveRef(fetcher, endpoints, parsed, credential);
-  const res = await get(fetcher, `${endpoints.api}/repos/${parsed.repo}/contents/${encodePath(path)}?ref=${commit}`, "application/vnd.github.raw+json", credential);
+  return readWith(credential, parsed.repo, ref, path, commit, link.trim(), endpoints, fetcher);
+}
+
+/**
+ * The Compose file a kit pins, `path` in `repo` at exactly `commit`, read through the source credential
+ * (R2), as fetchSourceWith reads a kit: the commits API confirms the commit, and the contents API gives
+ * the file at it. A token GitHub refuses throws TokenRefusedError.
+ */
+export async function fetchPinnedFileWith(
+  credential: SourceCredential,
+  repo: string,
+  path: string,
+  commit: string,
+  endpoints: GithubEndpoints = githubEndpoints(),
+  fetcher: Fetch = fetch,
+): Promise<SourceFile> {
+  await resolvePinned(fetcher, endpoints, repo, path, commit, credential);
+  try {
+    return await readWith(credential, repo, commit, path, commit, pinnedLink(repo, path, commit), endpoints, fetcher);
+  } catch (error) {
+    throw composeMiss(error, repo, commit, credential);
+  }
+}
+
+/** The file at a commit the credential's token resolved, read with the contents API as raw text. */
+async function readWith(
+  credential: SourceCredential,
+  repo: string,
+  ref: string,
+  path: string,
+  commit: string,
+  link: string,
+  endpoints: GithubEndpoints,
+  fetcher: Fetch,
+): Promise<SourceFile> {
+  const res = await get(fetcher, `${endpoints.api}/repos/${repo}/contents/${encodePath(path)}?ref=${commit}`, "application/vnd.github.raw+json", credential);
   // The commit resolved through the token, so the repository is visible: a 404 is the file.
-  if (res.status === 404) throw new SourceError(`There is no file ${path} in ${parsed.repo} at ${ref}.`, "no_file");
-  if (!res.ok) throw refusal(res, parsed.repo, credential);
+  if (res.status === 404) throw new SourceError(`There is no file ${path} in ${repo} at ${ref}.`, "no_file");
+  if (!res.ok) throw refusal(res, repo, credential);
   const text = await fileText(res, path);
-  return {
-    link: link.trim(),
-    repo: parsed.repo,
-    ref,
-    path,
-    commit,
-    text,
-    pinnedLink: `https://github.com/${parsed.repo}/blob/${commit}/${encodePath(path)}`,
-    read: { read: "connection", login: credential.login },
-  };
+  return { link, repo, ref, path, commit, text, pinnedLink: pinnedLink(repo, path, commit), read: { read: "connection", login: credential.login } };
+}
+
+/**
+ * Whether GitHub shows the commit a kit pins, anonymously or to the credential: the commits API is
+ * asked for exactly that commit, once. It throws the miss: `not_found` when public GitHub doesn't show
+ * the repository, as for a private one; `no_ref` when the repository is there but not the commit; and
+ * through the credential, `not_visible` when GitHub doesn't show it the repository.
+ */
+async function resolvePinned(fetcher: Fetch, endpoints: GithubEndpoints, repo: string, path: string, commit: string, credential?: SourceCredential): Promise<void> {
+  let resolved: string;
+  try {
+    // The path as one part, so the commit is the only ref tried.
+    ({ commit: resolved } = await resolveRef(fetcher, endpoints, { repo, rest: [commit, path] }, credential));
+  } catch (error) {
+    throw composeMiss(error, repo, commit, credential);
+  }
+  // A branch or tag can be named like a commit; the kit pins the commit itself.
+  if (resolved !== commit) throw new SourceError(`GitHub answered ${commit} in ${repo} with another commit, ${resolved}.`);
+}
+
+/**
+ * A problem reading the Compose file a kit pins, worded for what fixes it: the kit's `source`, not a
+ * link the owner pasted.
+ */
+function composeMiss(error: unknown, repo: string, commit: string, credential?: SourceCredential): unknown {
+  if (error instanceof RepositoryMovedError) {
+    return new RepositoryMovedError(`GitHub says ${repo}, where the kit's Compose file is, has moved: it was renamed or transferred. Point the kit's source.repo at its new place.`);
+  }
+  if (!(error instanceof SourceError)) return error;
+  if (error.miss === "no_ref") return new SourceError(`Your Space can't find the commit the kit pins, ${commit}, in ${repo}.`, "no_ref");
+  if (error.miss === "not_found") return new SourceError(`Your Space can't find ${repo}, where the kit's Compose file is, on public GitHub.`, "not_found");
+  if (error.miss === "not_visible" && credential) return notVisible(repo, credential, true);
+  return error;
 }
 
 /** GitHub doesn't accept a token: it is wrong, expired, deleted or revoked. */
@@ -294,9 +361,25 @@ function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
-export function fetchPinnedFile(repo: string, path: string, commit: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
-  const link = `https://github.com/${repo}/blob/${commit}/${encodePath(path)}`;
-  return readResolvedFile(repo, commit, path, commit, link, endpoints, fetcher);
+/** The link to a file at a commit, as the record keeps it. */
+function pinnedLink(repo: string, path: string, commit: string): string {
+  return `https://github.com/${repo}/blob/${commit}/${encodePath(path)}`;
+}
+
+/**
+ * The Compose file a kit pins, read anonymously from public GitHub's raw files. They answer 404 alike
+ * for a repository GitHub doesn't show without a token, a commit it doesn't have and a file that isn't
+ * there, so a 404 asks the commits API which: only the miss `not_found`, a repository public GitHub
+ * doesn't show, may be read again through the connection (R1).
+ */
+export async function fetchPinnedFile(repo: string, path: string, commit: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
+  try {
+    return await readResolvedFile(repo, commit, path, commit, pinnedLink(repo, path, commit), endpoints, fetcher);
+  } catch (error) {
+    if (!(error instanceof SourceError && error.miss === "no_file")) throw error;
+    await resolvePinned(fetcher, endpoints, repo, path, commit);
+    throw error;
+  }
 }
 
 async function readResolvedFile(repo: string, ref: string, path: string, commit: string, link: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
@@ -304,7 +387,7 @@ async function readResolvedFile(repo: string, ref: string, path: string, commit:
   if (res.status === 404) throw new SourceError(`There is no file ${path} in ${repo} at ${ref}.`, "no_file");
   if (!res.ok) throw new SourceError(`GitHub answered ${res.status} for the file. Try again later.`);
   const text = await fileText(res, path);
-  return { link, repo, ref, path, commit, text, pinnedLink: `https://github.com/${repo}/blob/${commit}/${encodePath(path)}`, read: { read: "anonymous" } };
+  return { link, repo, ref, path, commit, text, pinnedLink: pinnedLink(repo, path, commit), read: { read: "anonymous" } };
 }
 
 /** A file's text: at most 256 KiB of UTF-8, however it was read. */

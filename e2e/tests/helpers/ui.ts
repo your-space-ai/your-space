@@ -22,3 +22,18 @@ export async function signIn(page: Page, username: string, password = PASSWORD):
     page.getByRole("button", { name: "Sign in" }).click(),
   ]);
 }
+
+/** Reviews the app the kit at a GitHub link defines, on the Apps page. */
+export async function reviewKit(page: Page, link: string): Promise<void> {
+  await page.goto("/apps");
+  await page.getByLabel("Link to the app's kit").fill(link);
+  await page.getByRole("button", { name: "Review", exact: true }).click();
+}
+
+/** Installs the reviewed app and waits until its install succeeds. */
+export async function installReviewed(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Install", exact: true }).click();
+  const job = page.locator("section.job");
+  await expect(job).toHaveAttribute("data-job-state", /succeeded|failed/, { timeout: 120_000 });
+  expect(await job.getAttribute("data-job-state"), (await job.textContent()) ?? "").toBe("succeeded");
+}

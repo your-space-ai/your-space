@@ -158,6 +158,8 @@ export interface Review {
   source: { link: string; repo: string; path: string; ref: string; commit: string; pinnedLink: string; read: FileRead | null };
   /** The kit the app installs with; a kit on GitHub also gives its repository, path and commit. */
   kit: { source: string; repo?: string; path?: string; commit?: string; read: FileRead | null };
+  /** The repository other than the kit's own that the review read the Compose file from through the GitHub connection, or null. */
+  readsRepository: string | null;
   ok: boolean;
   services: { name: string; image: string; interface: boolean; ports: number[]; published: { target: number; host: number }[]; volumes: string[]; dependsOn: string[] }[];
   images: { ref: string; digest?: string; runsHere: boolean }[];

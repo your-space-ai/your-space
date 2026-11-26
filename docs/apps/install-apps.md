@@ -55,19 +55,19 @@ source:
 A kit kept in the app's own repository names an earlier commit than its own, since a file can't
 name the commit it is in: commit the Compose file, then the kit with that commit.
 
-Your Space reads kits and Compose files from public GitHub, and a kit in a private repository
-through your GitHub connection (see [Private kits](#private-kits)).
+Your Space reads kits and Compose files from public GitHub, and a kit or Compose file in a private
+repository through your GitHub connection (see [Private kits](#private-kits)).
 
 From the server, `docker compose exec server install-app <kit-link>` does the same, through the same
-connection. A kit file on this machine needs no connection, and names the app's Compose file and its
-commit in a public repository: `docker compose exec -T server install-app --kit - < kit.yaml`.
+connection. A kit file on this machine needs no connection for itself, and the Compose file it names
+is read like any other: `docker compose exec -T server install-app --kit - < kit.yaml`.
 
-The app's Compose file is always the one its kit names in a public repository on GitHub. When an
-app's own file is in a private repository or doesn't fit Your Space's rules, for example because it
-builds its images or mounts folders of this machine, put a Compose file that fits in a public
-repository and point the kit's `source` at it. Your Space no longer installs a Compose file given on
-this machine (`install-app --compose`); an app installed that way before keeps running from the file
-stored with it.
+The app's Compose file is always the one its kit names on GitHub, in a public repository or a
+private one your connection can read. When an app's own file doesn't fit Your Space's rules, for
+example because it builds its images or mounts folders of this machine, put a Compose file that fits
+in a repository of your own and point the kit's `source` at it. Your Space no longer installs a
+Compose file given on this machine (`install-app --compose`); an app installed that way before keeps
+running from the file stored with it.
 
 Installing an app trusts it with everything you put into it. Your Space keeps it away from your
 other apps, Your Space's own data and this machine, and controls who can reach it, but it can't see
@@ -85,9 +85,8 @@ offers a link to open the app in its own tab.
 ## Private Kits
 
 Your Space can keep a GitHub connection: a token that can only read the repositories you choose,
-for kits in private repositories. Your Space keeps it encrypted on this server, never shows it
-again, and never gives it to apps or agents. The Compose file a private kit names must still be in a
-public repository for now.
+for kits, and the Compose files they name, in private repositories. Your Space keeps it encrypted on
+this server, never shows it again, and never gives it to apps or agents.
 
 **Connect in the dashboard.** Open **GitHub** in the sidebar and choose **Create a token on GitHub**.
 GitHub opens its new fine-grained token page with a name and read access to contents already chosen.
@@ -95,7 +94,7 @@ There:
 
 1. Under **Resource owner**, choose the account or organization your repositories belong to.
 2. Under **Repository access**, choose **Only select repositories**, and pick the repositories with
-   your kits.
+   your kits and their Compose files.
 3. Keep **Contents** as **Read-only**: the token needs no other permission. Choose when it expires.
 4. Generate the token, copy it, paste it on Your Space's GitHub page, and choose **Connect**.
 
@@ -128,23 +127,38 @@ replaced without the one before it.
 `docker compose exec server install-app <kit-link>`. Your Space reads it from public GitHub first,
 without the connection, and only when GitHub answers that there's no such repository does it read
 the kit again through the connection: it resolves the link's branch to a commit with GitHub's commits
-API and reads the kit at that commit with the contents API. A public kit never uses the connection,
-so it installs the same with no connection, or with one GitHub no longer accepts. The review labels
+API and reads the kit at that commit with the contents API. Reading a public kit never uses the
+connection, so a public kit whose Compose file is public too installs the same with no connection,
+or with one GitHub no longer accepts. The review labels
 the kit **Private · read with your GitHub connection (@login)**, and the installed app records, for
 its kit and its Compose file, whether each was read anonymously or through the connection, and with
 which account.
 
-When a private kit can't be read, the review says why and, when the connection is the fix, links
-to the GitHub page:
+**Install a kit whose Compose file is private.** A kit's `source` can name a Compose file in a
+private repository, the kit's own or another one. Your Space reads it the same way, at the commit
+`source.commit` pins: from public GitHub first, and through the connection only when GitHub answers
+that there's no such repository. The review labels the Compose file **Private** too, and when it is in
+a repository other than the kit's, it says so: "This kit reads `owner/repo` with your GitHub
+connection." Give the token each private repository the kit reads; a token reaches one account or
+organization, so a private kit and its private Compose file must belong to the same one.
+`install-app --kit -` reads a private Compose file
+through the connection as well; without a connection it still installs a kit file whose Compose file
+is public.
 
-- **Not connected:** public GitHub doesn't show the kit. Connect GitHub with a token that can read
-  its repository.
+When a private kit or Compose file can't be read, the review says why and, when the connection is
+the fix, links to the GitHub page:
+
+- **Not connected:** public GitHub doesn't show the kit, or the Compose file it names. Connect GitHub
+  with a token that can read its repository.
 - **GitHub doesn't show the repository to your connection:** the token's resource owner or
   repositories don't include it, or an organization hasn't approved the token. Edit the token at
   GitHub, or connect another one.
-- **There is no file at that commit:** the repository and branch are there, but not the kit's path.
+- **There is no file at that commit:** the repository and branch are there, but not the kit's path,
+  or the Compose file's path at the commit the kit pins.
+- **The commit the kit pins isn't there:** the Compose file's repository doesn't have
+  `source.commit`. Fix the kit's `source`.
 - **The repository has moved:** it was renamed or transferred. Paste the kit's link from its new
-  place on GitHub.
+  place on GitHub, or, for a Compose file, point the kit's `source` there.
 - **GitHub no longer accepts the token:** it expired, or you deleted or revoked it. Your Space marks
   it, and the GitHub page and `github status` show **Reconnect**.
 - **No data key here can read the token:** as when the data key was replaced without the one before

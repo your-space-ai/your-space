@@ -13,8 +13,8 @@ function kitLink(value: unknown): string {
 
 /**
  * The review of an app from its kit's link: the only way the web client installs an app (decision
- * 2026-11-23). It reads public GitHub, and a kit in a private repository through the GitHub
- * connection, as the server command does (journey 015).
+ * 2026-11-23). It reads public GitHub, and a kit or Compose file in a private repository through the
+ * GitHub connection, as the server command does (journey 015).
  */
 export function kitRoutes(auth: Auth, db: Db, apps: AppsService) {
   const router = Router();
