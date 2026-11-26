@@ -563,9 +563,11 @@ describe("a knowledge base's sync", () => {
     rc.restart();
     await tick();
     const after = (await syncRow())!;
-    // Nothing is recorded of it: the next run carries on with recover.
-    expect(after).toMatchObject({ job: null, result: was.result, lastRunAt: was.lastRunAt });
+    // Nothing is recorded of it, and it is due again a minute later: the next run carries on with recover.
+    expect(after).toMatchObject({ job: null, result: was.result });
+    expect(after.lastRunAt!.getTime()).toBeGreaterThan(was.lastRunAt!.getTime());
     rc.hold = false;
+    await due("notes");
     await tick();
     expect(rc.calls.filter((c) => c.command === "config/create").length).toBe(made + 1);
     expect(rc.remotes.get("kb-notes")).toMatchObject({ type: "drive" });
@@ -573,19 +575,34 @@ describe("a knowledge base's sync", () => {
     expect(await status()).toMatchObject({ result: "synced" });
   });
 
-  it("stops a run past its time as Ctrl+C stops rclone, which the next run carries on from", async () => {
+  it("stops a run past its time as Ctrl+C stops rclone, lets the knowledge bases that waited run, then carries on", async () => {
+    // Recipes synced, as an earlier test's run of it stopped.
+    await send("/api/knowledge/recipes/sync", { action: "sync" });
+    await settled("recipes");
+    expect(await status("recipes")).toMatchObject({ result: "synced" });
     rc.hold = true;
     await due();
     await tick();
+    expect(rc.running().map((j) => j.params.path2)).toEqual(["/knowledge/notes"]);
     const row = (await syncRow())!;
-    await t.db.update(knowledgeSync).set({ job: { ...row.job!, startedAt: new Date(Date.now() - RUN_LIMIT_MS - 1_000).toISOString() } });
+    await t.db.update(knowledgeSync).set({ job: { ...row.job!, startedAt: new Date(Date.now() - RUN_LIMIT_MS - 1_000).toISOString() } }).where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
     const restarts = runtime.syncRestarts;
     await tick();
     expect(runtime.syncRestarts).toBe(restarts + 1);
     await tick();
     expect((await syncRow())!.job).toBeNull();
+    // The other knowledge base, which waited, runs next; the stopped run's is due again a minute later.
+    await tick();
+    expect(rc.running().map((j) => j.params.path2)).toEqual(["/knowledge/recipes"]);
     rc.hold = false;
+    rc.finish();
+    await settled("recipes");
+    await tick();
+    // The restarted rclone has run nothing of notes yet: it is due a minute after the interruption.
+    expect(rc.started().filter((j) => j.params.path2 === "/knowledge/notes")).toHaveLength(0);
+    await due("notes");
     await settled();
+    expect(await status()).toMatchObject({ result: "synced" });
   });
 
   it("changes the sync's service for another knowledge base once the run under way ends, then makes the remotes again", async () => {

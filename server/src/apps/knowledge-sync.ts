@@ -656,10 +656,11 @@ export class KnowledgeSync {
   /** The next run: one the owner asked for, then the knowledge base due longest, none stopped for safety. */
   private next(rows: Row[]): Row | undefined {
     const free = rows.filter((r) => !this.held.has(r.knowledgeBaseId));
-    const asked = free.filter((r) => r.requested).sort((a, b) => a.requested!.at.localeCompare(b.requested!.at))[0];
+    const asked = free.filter((r) => r.requested && !r.requested.again).sort((a, b) => a.requested!.at.localeCompare(b.requested!.at))[0];
     if (asked) return asked;
+    // A Resync asked for again after an interruption runs when its knowledge base is due, as others do.
     const now = Date.now();
-    const due = free.filter((r) => r.result !== "stopped" && (!r.lastRunAt || now - r.lastRunAt.getTime() >= this.intervalMs));
+    const due = free.filter((r) => (r.requested?.again || r.result !== "stopped") && (!r.lastRunAt || now - r.lastRunAt.getTime() >= this.intervalMs));
     return due.sort((a, b) => (a.lastRunAt?.getTime() ?? 0) - (b.lastRunAt?.getTime() ?? 0))[0];
   }
 
@@ -757,9 +758,12 @@ export class KnowledgeSync {
     // One rclone no longer has, or a job of the same number of a restarted rclone: interrupted.
     if (!status || status.executeId !== job.executeId) return this.interrupted(row, job);
     if (!status.finished) {
-      if (Date.now() - Date.parse(job.startedAt) > RUN_LIMIT_MS) {
+      if (Date.now() - Date.parse(job.startedAt) > RUN_LIMIT_MS && Date.now() - this.serviceFailed >= SERVICE_RETRY_MS) {
         log("warn", "knowledge.sync_limit", { name: row.name });
-        await this.apps.runtime.restartSyncService().catch((error: unknown) => log("warn", "knowledge.sync_restart_failed", errorFields(error)));
+        await this.apps.runtime.restartSyncService().catch((error: unknown) => {
+          this.serviceFailed = Date.now();
+          log("warn", "knowledge.sync_restart_failed", errorFields(error));
+        });
       }
       return;
     }
@@ -770,13 +774,17 @@ export class KnowledgeSync {
   }
 
   /**
-   * A run's job rclone no longer has, as after it restarted: the run was interrupted, and nothing is
-   * recorded of it. The next run carries on with `recover`; a Resync the owner asked for is asked for
-   * again, as one it was unsure of; deletions they confirmed wait for them to confirm again.
+   * A run's job rclone no longer has, as after it restarted or the run's time was up: the run was
+   * interrupted, and nothing is recorded of it. Its knowledge base is due again a minute later, so the
+   * others, which waited for it, run first. The next run carries on with `recover`; a Resync the owner
+   * asked for then runs again, in its turn; deletions they confirmed wait for them to confirm again.
    */
   private async interrupted(row: Row, job: SyncJob): Promise<void> {
-    const requested: SyncRequested | null = job.mode === "resync" && job.by ? { mode: "resync", by: job.by, at: new Date().toISOString() } : null;
-    await this.db.update(knowledgeSync).set({ job: null, ...(requested ? { requested } : {}) }).where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
+    const requested: SyncRequested | null = job.mode === "resync" && job.by ? { mode: "resync", by: job.by, at: new Date().toISOString(), again: true } : null;
+    await this.db
+      .update(knowledgeSync)
+      .set({ job: null, lastRunAt: new Date(), ...(requested ? { requested } : {}) })
+      .where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
     log("warn", "knowledge.sync_interrupted", { name: row.name, step: job.step });
   }
 

@@ -325,6 +325,8 @@ export interface SyncRequested {
   /** For deletions: the stopped run they were confirmed by, and how many. */
   run?: string;
   count?: number;
+  /** Asked for again after a run of it was interrupted: it waits its turn among the runs due. */
+  again?: boolean;
 }
 
 /**
