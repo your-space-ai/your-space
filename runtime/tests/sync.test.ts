@@ -178,7 +178,7 @@ describe("running the sync's containers", () => {
     holdUp = undefined;
     composeFails = undefined;
     vi.mocked(engineModule.engineInfo).mockResolvedValue({ reachable: true, arch: "amd64", connection: "unix:///var/run/docker.sock" });
-    vi.mocked(engineModule.inspectImage).mockResolvedValue({ ref: "ubuntu/squid:latest", digest: "sha256:squid", platforms: [], runsHere: true });
+    vi.mocked(engineModule.inspectImage).mockResolvedValue({ ref: "ubuntu/squid:latest", registry: "docker.io", digest: "sha256:squid", platforms: [], runsHere: true });
     vi.mocked(engineModule.pullImage).mockResolvedValue();
     vi.mocked(engineModule.listContainers).mockImplementation(async (labels) => {
       if (labels.includes("com.docker.compose.service=runtime")) return [{ Id: "runtime-id", Names: [], State: "running", Status: "", Labels: {} }];
