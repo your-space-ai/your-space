@@ -133,6 +133,9 @@ export function createUpdates({ load, settingsFile, version, beforeInstall, ui, 
   // and can't take it back; from then on the channel stays. Only Squirrel's refusal clears it.
   let handed = false;
   let stagingPromise;
+  // Set once the app quits with an update to stage: the local workspace may still be stopping under
+  // the Dock's progress bar, so staging no longer clears it.
+  let quitting = false;
   squirrel?.on('update-downloaded', () => { staged = true; });
 
   function track(call) {
@@ -171,9 +174,8 @@ export function createUpdates({ load, settingsFile, version, beforeInstall, ui, 
 
   // Waits for staging, at most `staging` milliseconds or until the signal aborts, with a progress
   // bar on the Dock icon meanwhile. A timeout doesn't release the channel: Squirrel may still stage
-  // the update, and then installs it at quit. At quit the bar stays until the app has quit, since
-  // the local workspace may still be stopping under it.
-  function whenStaged(signal, { atQuit = false } = {}) {
+  // the update, and then installs it at quit. Once the app quits, the bar stays until it has quit.
+  function whenStaged(signal) {
     if (staged) return Promise.resolve();
     let timer;
     let abort;
@@ -187,7 +189,7 @@ export function createUpdates({ load, settingsFile, version, beforeInstall, ui, 
     return Promise.race([stage(), limit]).finally(() => {
       timers.clearTimeout(timer);
       signal?.removeEventListener('abort', abort);
-      if (!atQuit) ui.progress(-1);
+      if (!quitting) ui.progress(-1);
     });
   }
 
@@ -381,7 +383,8 @@ export function createUpdates({ load, settingsFile, version, beforeInstall, ui, 
      */
     async stageAtQuit(signal) {
       if (phase !== 'ready' || staged) return;
-      await whenStaged(signal, { atQuit: true }).catch(() => {});
+      quitting = true;
+      await whenStaged(signal).catch(() => {});
     },
     get automatic() { return settings.automatic; },
     get channel() { return settings.channel; },

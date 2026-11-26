@@ -592,6 +592,17 @@ test("at quit, a downloaded update of the channel followed now is staged, so it 
   assert.equal(updates.installsAtQuit, false, "staged: Squirrel.Mac installs it as the app quits");
   assert.deepEqual(installs, [], "quitting doesn't relaunch");
 
+  // A quit while Restart Now stages waits for the same staging, and neither clears the bar.
+  const late = new FakeSquirrel({ answer: "later" });
+  const both = setup(t, dir, { updater: new FakeUpdater([available("0.1.0-alpha.2")]), squirrel: late });
+  const restarting = both.updates.check();
+  await until(() => late.calls.includes("stage"));
+  const quitting = both.updates.stageAtQuit(new AbortController().signal);
+  late.emit("update-downloaded", {});
+  await Promise.all([restarting, quitting]);
+  assert.deepEqual(late.calls, ["stage"], "staged once");
+  assert.deepEqual(both.shown.slice(-3), ["ready 0.1.0-alpha.2", "progress 2", "progress 2"], "the workspace's stop keeps the bar");
+
   // A quit cut short leaves it unstaged, and never rejects.
   const slow = new FakeSquirrel({ answer: "later" });
   const other = setup(t, dir, { updater: new FakeUpdater([available("0.1.0-alpha.2")]), squirrel: slow, answers: { restart: false } });
