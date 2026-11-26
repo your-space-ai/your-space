@@ -106,8 +106,11 @@ export const KNOWLEDGE_NAME = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
  * folder name can't start with a dot.
  */
 export const KNOWLEDGE_PATH = /^(?:\/[A-Za-z0-9_][A-Za-z0-9._-]{0,63}){1,8}$/;
-/** Folders the container's kernel file systems are at, which a mount can't go in. */
-const SYSTEM_FOLDERS = ["/proc", "/sys", "/dev"];
+/**
+ * Folders the container's kernel file systems are at, and the files Docker mounts in every container,
+ * which a mount can't go in.
+ */
+const SYSTEM_FOLDERS = ["/proc", "/sys", "/dev", "/etc/resolv.conf", "/etc/hosts", "/etc/hostname"];
 
 /** The volume that holds a knowledge base of this installation. */
 export function knowledgeVolume(installation: string, name: string): string {

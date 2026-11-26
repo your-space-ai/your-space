@@ -27,7 +27,8 @@ for knowledge, by name, in its interface service at `<path>/<name>`, read-write,
 image's files are never copied into one. Each is the external volume
 `ys-knowledge.<installation>.<name>`, which `/apply` first checks is this installation's own; a
 missing one, or one Your Space didn't make, stops the apply with a message. `path` is absolute and
-normalised, isn't `/` and isn't in `/proc`, `/sys` or `/dev`; names are 1 to 40 lower-case letters,
+normalised, isn't `/` and isn't in `/proc`, `/sys` or `/dev`, or at or under `/etc/resolv.conf`,
+`/etc/hosts` or `/etc/hostname`; names are 1 to 40 lower-case letters,
 digits and dashes, each given once. `/check` takes the path with no bases, so the review refuses a
 file whose interface service mounts anything of its own at or inside it. An app's file can never name
 a knowledge base's volume, as a key, a volume's `name` or a mount's source, with or without

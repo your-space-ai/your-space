@@ -139,10 +139,11 @@ describe("the app spec's knowledge", () => {
   it("takes an absolute, normalised path and distinct names", () => {
     expect(validateSpec({ ...base, knowledge: { path: "/knowledge", bases: ["course-notes", "a1"] } }).knowledge).toEqual({ path: "/knowledge", bases: ["course-notes", "a1"] });
     expect(validateSpec({ ...base, knowledge: { path: "/data/vault", bases: [] } }).knowledge).toEqual({ path: "/data/vault", bases: [] });
+    expect(validateSpec({ ...base, knowledge: { path: "/etc/notes", bases: [] } }).knowledge).toEqual({ path: "/etc/notes", bases: [] });
   });
 
   it("refuses any other path or name", () => {
-    const paths = ["knowledge", "/", "", "/knowledge/", "/a/../etc", "/a/./b", "/a//b", "/.hidden", "/proc", "/sys/fs", "/dev/shm", "/a b"];
+    const paths = ["knowledge", "/", "", "/knowledge/", "/a/../etc", "/a/./b", "/a//b", "/.hidden", "/proc", "/sys/fs", "/dev/shm", "/etc/resolv.conf", "/etc/hosts/notes", "/etc/hostname", "/a b"];
     for (const path of paths) expect(() => validateSpec({ ...base, knowledge: { path, bases: [] } }), path).toThrow(SpecError);
     const names = [["Notes"], ["-notes"], ["notes-"], ["a/b"], [".."], ["a".repeat(41)], ["notes", "notes"], [1]];
     for (const bases of names) expect(() => validateSpec({ ...base, knowledge: { path: "/knowledge", bases } }), JSON.stringify(bases)).toThrow(SpecError);

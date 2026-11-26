@@ -56,8 +56,11 @@ export function parseMemory(value: string | number): number {
 
 /** Where Your Space mounts the knowledge bases the owner gives an app, unless its kit names a path. */
 export const DEFAULT_KNOWLEDGE_PATH = "/knowledge";
-/** Folders the container's kernel file systems are at, which a mount can't go in. */
-const SYSTEM_FOLDERS = ["/proc", "/sys", "/dev"];
+/**
+ * Folders the container's kernel file systems are at, and the files Docker mounts in every container,
+ * which a mount can't go in.
+ */
+const SYSTEM_FOLDERS = ["/proc", "/sys", "/dev", "/etc/resolv.conf", "/etc/hosts", "/etc/hostname"];
 
 /**
  * A kit's `knowledge` (journey 014): the app asks for knowledge bases, mounted in its interface service
@@ -75,7 +78,8 @@ export function parseKnowledge(value: unknown): { path: string } {
   if (parts.length > 8 || parts.some((part) => !/^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$/.test(part))) {
     throw new KitError("knowledge.path must be at most 8 folder names deep, each 1 to 64 letters, digits, dots, dashes and underscores, starting with a letter, digit or underscore.");
   }
-  if (SYSTEM_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))) throw new KitError(`knowledge.path can't be in ${path.split("/").slice(0, 2).join("/")}, a system folder.`);
+  const system = SYSTEM_FOLDERS.find((folder) => path === folder || path.startsWith(`${folder}/`));
+  if (system) throw new KitError(`knowledge.path can't be in ${system}, a system folder or file.`);
   return { path };
 }
 

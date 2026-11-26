@@ -106,9 +106,10 @@ folders of files that belong to Your Space, not to any app. The owner picks them
 the app's page, and Your Space mounts each in the interface service at `<path>/<name>`, read-write,
 one folder per knowledge base even when there is only one; the app finds them by listing `<path>`.
 `path` is optional and defaults to `/knowledge`. It is an absolute path in the app's container, isn't
-`/`, names no `..`, and isn't in `/proc`, `/sys` or `/dev`. It is at most 8 folders deep, and each
-folder is 1 to 64 letters, digits, dots, dashes and underscores, starting with a letter, digit or
-underscore, so `/a/b/c/d/e/f/g/h/i` and `/-vault` are refused. Your Space keeps it normalised, so
+`/`, names no `..`, and isn't in `/proc`, `/sys` or `/dev`, or at or under `/etc/resolv.conf`,
+`/etc/hosts` or `/etc/hostname`, the files Docker mounts in every container. It is at most 8
+folders deep, and each folder is 1 to 64 letters, digits, dots, dashes and underscores, starting
+with a letter, digit or underscore, so `/a/b/c/d/e/f/g/h/i` and `/-vault` are refused. Your Space keeps it normalised, so
 `/data/vault/` is `/data/vault`. `knowledge: {}` asks for the default path. A kit with `knowledge` needs an
 `interface`, any other field in `knowledge` is refused, and so is a Compose file whose interface
 service mounts anything of its own at or inside the path. A kit without `knowledge` gets no mounts
