@@ -181,6 +181,8 @@ let initExits: number[];
 let volumeDeleteFails: boolean;
 /** Whether the engine fails to remove the setup container. */
 let initDeleteFails: boolean;
+/** A volume the engine fails to delete, alone. */
+let failingVolume: string | undefined;
 
 function matches(labels: Record<string, string>, filters: string[]): boolean {
   return filters.every((filter) => {
@@ -198,6 +200,7 @@ beforeEach(() => {
   initExits = [];
   volumeDeleteFails = false;
   initDeleteFails = false;
+  failingVolume = undefined;
   vi.mocked(engineModule.engineJson).mockImplementation(async (method, path, body) => {
     calls.push(`${method} ${path.split("?")[0]}`);
     if (path === "/containers/runtime-id/json") return { Image: "sha256:runtime" } as never;
@@ -233,7 +236,7 @@ beforeEach(() => {
       const name = decodeURIComponent(path.slice("/volumes/".length));
       if (method === "GET") return volumes.has(name) ? { status: 200, body: JSON.stringify({ Name: name, Labels: volumes.get(name) }) } : { status: 404, body: "" };
       if (method === "DELETE") {
-        if (volumeDeleteFails) return { status: 500, body: "the engine failed" };
+        if (volumeDeleteFails || failingVolume === name) return { status: 500, body: "the engine failed" };
         if (containers.some((c) => c.volumes?.includes(name))) return { status: 409, body: "volume is in use" };
         return volumes.delete(name) ? { status: 204, body: "" } : { status: 404, body: "" };
       }
@@ -386,6 +389,19 @@ describe("a knowledge base's volume", () => {
     // Refused before anything was deleted.
     expect(volumes.has(state)).toBe(true);
     expect(volumes.has(NOTES)).toBe(true);
+  });
+
+  it("keeps its files when its sync state can't be removed: the state goes first", async () => {
+    const state = knowledgeStateVolume(INSTALLATION, "notes");
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    volumes.set(state, knowledgeSyncLabels(INSTALLATION, "notes"));
+    failingVolume = state;
+    await expect(deleteKnowledge("notes")).rejects.toThrow(/the engine failed/);
+    expect(volumes.has(NOTES)).toBe(true);
+    expect(calls).not.toContain(`DELETE /volumes/${NOTES}`);
+    failingVolume = undefined;
+    await deleteKnowledge("notes");
+    expect([volumes.has(NOTES), volumes.has(state)]).toEqual([false, false]);
   });
 
   /** The sync's container, as runtime/src/sync.ts runs it, mounting the knowledge base and its state. */

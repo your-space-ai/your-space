@@ -795,10 +795,12 @@ export function deleteKnowledge(name: string): Promise<void> {
     }
     const names = () => [...new Set(users.map((c) => c.Labels["ai.your-space.app"] ?? c.Names[0]?.replace(/^\//, "") ?? c.Id.slice(0, 12)))].join(", ");
     if (users.length > 0) throw new EngineError(`The knowledge base ${name} is still mounted by ${names()}, so it can't be deleted yet.`, 409);
+    // Its sync state first: a deletion that fails after it keeps the knowledge base with its files,
+    // whose next sync asks for a resync, rather than a knowledge base whose files are gone.
+    if (state) await removeKnowledgeState(name);
     const answer = await engine("DELETE", `/volumes/${encodeURIComponent(volume)}`);
     if (answer.status === 409) throw new EngineError(`The knowledge base ${name} is still in use, so it can't be deleted yet.`, 409);
     if (answer.status >= 400 && answer.status !== 404) throw new EngineError(`Deleting the knowledge base ${name} failed: ${answer.body.trim().slice(0, 300)}`);
-    if (state) await removeKnowledgeState(name);
   });
 }
 

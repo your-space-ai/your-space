@@ -8,7 +8,7 @@
 // in again. The runtime manager and the rclones are fakes that record what they are asked.
 import { createHash } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { authorizationUrl, challengeOf, DRIVE_SCOPE, folderIdOf, GoogleError, rcloneToken, SignIns } from "../src/apps/google.ts";
 import { moveSettingsToDataKey } from "../src/apps/keys.ts";
 import { bisyncParams, runFolder } from "../src/apps/bisync.ts";
@@ -146,8 +146,14 @@ const connection = async () => (await t.db.select().from(googleConnection))[0];
 const syncRow = async (name = "notes") => (await t.db.select({ sync: knowledgeSync }).from(knowledgeSync).innerJoin(knowledgeBase, eq(knowledgeBase.id, knowledgeSync.knowledgeBaseId)).where(eq(knowledgeBase.name, name)))[0]?.sync;
 const status = async (name = "notes") => ((await (await api(`/api/knowledge/${name}`)).json()) as { sync: Record<string, unknown> | null }).sync;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** The events of a type, oldest first, so a test can tell the new ones by their place. */
 const events = (type: string) =>
-  t.db.select({ actorId: event.actorId, knowledgeBase: eventKnowledgeBase.name }).from(event).leftJoin(eventKnowledgeBase, eq(eventKnowledgeBase.eventId, event.id)).where(eq(event.type, type));
+  t.db
+    .select({ actorId: event.actorId, knowledgeBase: eventKnowledgeBase.name })
+    .from(event)
+    .leftJoin(eventKnowledgeBase, eq(eventKnowledgeBase.eventId, event.id))
+    .where(eq(event.type, type))
+    .orderBy(asc(event.createdAt), asc(event.id));
 
 /** One tick of the server's timer. */
 const tick = () => sync().tick();
@@ -172,9 +178,12 @@ const ok = { level: "info", msg: "Bisync successful" };
 const SECRETS = [CLIENT_SECRET, ACCESS, REFRESH];
 
 /** Signs in with Google as the owner's browser would: Google sends it back with the state and a code. */
+/** The last sign-in page's PKCE challenge, which the code's exchange must answer. */
+let challenge: string | null = null;
 async function signInWithGoogle(): Promise<string> {
   const { url } = (await (await send("/api/google-drive/authorize", {})).json()) as { url: string };
   const asked = new URL(url);
+  challenge = asked.searchParams.get("code_challenge");
   const back = await api(`/api/google-drive/callback?state=${encodeURIComponent(asked.searchParams.get("state")!)}&code=the-code`);
   expect(back.status).toBe(302);
   return back.headers.get("location")!;
@@ -227,6 +236,9 @@ describe("the Google connection", () => {
     expect(form.get("client_secret")).toBe(CLIENT_SECRET);
     expect(form.get("redirect_uri")).toBe(`${server.publicUrl}/api/google-drive/callback`);
     expect(form.get("code_verifier")).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
+    // The verifier of the sign-in Google was asked for.
+    expect(challenge).toBeTruthy();
+    expect(challengeOf(form.get("code_verifier")!)).toBe(challenge);
     const row = (await connection())!;
     expect(row.token).not.toContain(REFRESH);
     expect(JSON.parse(decrypt(TEST_DATA_KEY, row.token!))).toMatchObject({ access_token: ACCESS, refresh_token: REFRESH, expiry: expect.any(String) });
@@ -563,6 +575,40 @@ describe("a knowledge base's sync", () => {
     expect((await status())!.summary).toContain("changed since you confirmed them");
   });
 
+  it("keeps the owner's Apply these deletions when bisync's lock refused its dry run, and applies them once the lock is gone", async () => {
+    rc.answers = [{ success: false, error: "too many deletes", lines: [deleted("a.md"), deleted("b.md"), tooMany] }];
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    const stopped = (await status())!;
+    rc.answers = [{ success: false, error: "bisync aborted", lines: [{ level: "error", msg: "prior lock file found: /state/notes/bisync/x.lck" }] }];
+    const runs = rc.started().length;
+    expect((await send("/api/knowledge/notes/sync", { action: "apply_deletions", run: stopped.lastRunAt, count: 2 })).status).toBe(202);
+    await tick();
+    await tick();
+    expect(rc.started().length).toBe(runs + 1);
+    // Asked for again, confirmed by the same deletions, and due a minute later.
+    const waiting = (await syncRow())!;
+    expect(waiting).toMatchObject({ job: null, result: "stopped", reason: "max_delete", requested: { mode: "force", by: owner, again: true, run: waiting.lastRunAt!.toISOString(), count: 2 } });
+    expect(waiting.deletions).toHaveLength(2);
+    await tick();
+    expect(rc.started().length).toBe(runs + 1);
+    rc.answers = [{ lines: [deleted("a.md"), deleted("b.md"), ok] }, { lines: [ok] }];
+    const applied = (await events("knowledge.deletions_applied")).length;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 120_000);
+    try {
+      await tick();
+    } finally {
+      clock.mockRestore();
+    }
+    await settled();
+    expect(rc.started().slice(runs + 1).map((j) => [j.params.dryRun === true, j.params.force === true])).toEqual([
+      [true, true],
+      [false, true],
+    ]);
+    expect(await status()).toMatchObject({ result: "synced", deletions: [] });
+    expect((await events("knowledge.deletions_applied")).slice(applied).map((e) => e.actorId)).toEqual([owner]);
+  });
+
   it("keeps the deletions for the owner when only the dry run was interrupted, and records them as the owner's when applying them was", async () => {
     rc.answers = [{ success: false, error: "too many deletes", lines: [deleted("a.md"), deleted("b.md"), tooMany] }];
     await send("/api/knowledge/notes/sync", { action: "sync" });
@@ -686,6 +732,29 @@ describe("a knowledge base's sync", () => {
     expect(steps[3]!.params).toMatchObject({ resync: true, resyncMode: "newer" });
     expect(await status()).toMatchObject({ result: "synced", ties: ties.slice(1) });
     expect((await events("knowledge.resync_requested")).map((e) => e.actorId)).toEqual([owner]);
+  });
+
+  it("takes a run's next step only once a job of a run its rclone runs, which the row doesn't name, has ended", async () => {
+    const tie = (path: string) => ({ level: "error", msg: `-                   Checksum not equal in listing. Path1: aaa, Path2: bbb - ${path}` });
+    rc.answers = [{ success: false, error: "bisync aborted", lines: [tie("same.md"), { level: "error", msg: "Bisync aborted. Must run --resync to recover." }] }, { lines: [ok] }];
+    rc.copies = [{ copied: ["same.md"] }];
+    rc.hold = true;
+    expect((await send("/api/knowledge/notes/sync", { action: "resync" })).status).toBe(202);
+    await tick();
+    expect((await syncRow())!.job).toMatchObject({ step: "resync" });
+    rc.finish();
+    // The tie copy rclone runs, as when it took the copy but keeping it on the row failed.
+    await rc.rcFor("notes").call("sync/copy", { srcFs: "/knowledge/notes", dstFs: "kb-notes:", _async: true, _group: "knowledge/notes/run/ties/stray" });
+    const copies = rc.started("sync/copy").length;
+    await tick();
+    await tick();
+    expect(rc.started("sync/copy").length).toBe(copies);
+    expect((await syncRow())!.job).toMatchObject({ step: "resync" });
+    rc.finish();
+    rc.hold = false;
+    await settled();
+    expect(rc.started("sync/copy").length).toBe(copies + 1);
+    expect(await status()).toMatchObject({ result: "synced", ties: ["same.md"] });
   });
 
   it("records a run that finished while the server was stopped once it starts again: rclone keeps the result", async () => {
@@ -964,15 +1033,20 @@ describe("a knowledge base's sync", () => {
     const asked = runtime.calls.filter((c) => c.method === "knowledgeUsers").length;
     const runs = rc.started().length;
     const deleting = api("/api/knowledge/drafts", { method: "DELETE" });
-    for (let i = 0; i < 200 && runtime.calls.filter((c) => c.method === "knowledgeUsers").length === asked; i++) await sleep(5);
-    // It left the service first.
-    expect(runtime.syncBases).toEqual(["notes", "recipes"]);
-    await due();
-    await tick();
-    for (const action of ["sync", "resync"]) expect((await send("/api/knowledge/drafts/sync", { action })).status, action).toBe(409);
-    expect((await api("/api/knowledge/drafts/sync", { method: "DELETE" })).status).toBe(409);
-    release();
-    runtime.holdKnowledgeUsers = undefined;
+    try {
+      for (let i = 0; i < 200 && runtime.calls.filter((c) => c.method === "knowledgeUsers").length === asked; i++) await sleep(5);
+      expect(runtime.calls.filter((c) => c.method === "knowledgeUsers").length).toBe(asked + 1);
+      // It left the service first.
+      expect(runtime.syncBases).toEqual(["notes", "recipes"]);
+      await due();
+      await tick();
+      for (const action of ["sync", "resync"]) expect((await send("/api/knowledge/drafts/sync", { action })).status, action).toBe(409);
+      expect((await api("/api/knowledge/drafts/sync", { method: "DELETE" })).status).toBe(409);
+    } finally {
+      // Even when a check above fails, so the delete ends and holds nothing for the tests after it.
+      release();
+      runtime.holdKnowledgeUsers = undefined;
+    }
     expect((await deleting).status).toBe(204);
     expect(rc.started().slice(runs).filter((j) => j.params.path2 === "/knowledge/drafts")).toEqual([]);
     expect(runtime.calls.filter((c) => c.method === "deleteKnowledge" && c.project === "drafts")).toHaveLength(1);
@@ -994,6 +1068,22 @@ describe("a knowledge base's sync", () => {
     expect(runtime.syncBases).toEqual(["notes"]);
     await tick();
     expect(runtime.syncBases).toEqual(["notes", "recipes"]);
+  });
+
+  it("removes the container a connect that failed left behind, so the knowledge base can be deleted", async () => {
+    expect((await send("/api/knowledge", { name: "drafts" })).status).toBe(201);
+    // Its container was made, and then didn't answer in time.
+    runtime.failSyncServiceAfter = new RuntimeError("rclone-drafts didn't answer in time.", 503, "engine_error");
+    try {
+      expect((await send("/api/knowledge/drafts/sync", { folder: FOLDER }, "PUT")).status).toBe(503);
+    } finally {
+      runtime.failSyncServiceAfter = undefined;
+    }
+    expect(await syncRow("drafts")).toBeUndefined();
+    expect(runtime.syncBases).toEqual(["drafts", "notes", "recipes"]);
+    await tick();
+    expect(runtime.syncBases).toEqual(["notes", "recipes"]);
+    expect((await api("/api/knowledge/drafts", { method: "DELETE" })).status).toBe(204);
   });
 
   it("refuses to forget the connection while a knowledge base syncs through it", async () => {
@@ -1029,11 +1119,16 @@ describe("a knowledge base's sync", () => {
     runtime.holdRemoveSync = new Promise<void>((resolve) => (release = resolve));
     const cleared = () => runtime.calls.filter((c) => c.method === "removeSync" && c.project === "journal").length;
     const connecting = send("/api/knowledge/journal/sync", { folder: FOLDER }, "PUT");
-    for (let i = 0; i < 200 && cleared() === 0; i++) await sleep(5);
-    // Forgotten while the connect clears the knowledge base's earlier sync: the connect then finds none.
-    expect((await api("/api/google-drive", { method: "DELETE" })).status).toBe(204);
-    release();
-    runtime.holdRemoveSync = undefined;
+    try {
+      for (let i = 0; i < 200 && cleared() === 0; i++) await sleep(5);
+      // The connect is clearing the earlier sync now, or the forget below wouldn't race it.
+      expect(cleared()).toBe(1);
+      // Forgotten while the connect clears the knowledge base's earlier sync: the connect then finds none.
+      expect((await api("/api/google-drive", { method: "DELETE" })).status).toBe(204);
+    } finally {
+      release();
+      runtime.holdRemoveSync = undefined;
+    }
     const connected = await connecting;
     expect(connected.status).toBe(409);
     expect(((await connected.json()) as { error: string }).error).toBe("google_not_set_up");

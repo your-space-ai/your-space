@@ -152,6 +152,8 @@ export class FakeRuntime implements Runtime {
   onSyncRecreated: ((knowledgeBase: string) => void) | undefined;
   /** Refuses the next starts of the sync's containers, as an engine that can't start them. */
   failSyncService: RuntimeError | undefined;
+  /** Starts the containers, then refuses, as when a new one doesn't answer in time: it is left there. */
+  failSyncServiceAfter: RuntimeError | undefined;
   /** Holds the starts of the sync's containers until it resolves. */
   holdSyncService: Promise<void> | undefined;
   removedSyncs: string[] = [];
@@ -166,11 +168,15 @@ export class FakeRuntime implements Runtime {
     this.calls.push({ method: "ensureSyncService", project: knowledgeBases.join(",") });
     await this.holdSyncService;
     if (this.failSyncService) throw this.failSyncService;
+    // Like the runtime manager, only knowledge bases on the engine.
+    const missing = knowledgeBases.find((n) => !this.knowledge.has(n));
+    if (missing) throw new RuntimeError(`The knowledge base ${missing} isn't on this machine's engine.`, 404, "engine_error");
     // Only the containers of knowledge bases added or removed change; the others run on.
     const changed = [...knowledgeBases.filter((n) => !this.syncBases.includes(n)), ...this.syncBases.filter((n) => !knowledgeBases.includes(n))];
     this.syncStarts.push([...knowledgeBases]);
     this.syncBases = [...knowledgeBases];
     for (const name of changed) this.onSyncRecreated?.(name);
+    if (this.failSyncServiceAfter) throw this.failSyncServiceAfter;
     return this.syncService();
   }
 

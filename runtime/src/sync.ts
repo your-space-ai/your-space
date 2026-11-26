@@ -251,14 +251,20 @@ async function serverUserns(): Promise<boolean> {
   return detail?.HostConfig?.UsernsMode === "host";
 }
 
-/** Creates a volume of Your Space's, set up for user 1000, unless it is there with its labels already. */
-async function ensureVolume(volume: string, labels: Record<string, string>, mode: "2777" | "0700", usernsHost = false): Promise<void> {
+/**
+ * Creates a volume of Your Space's, set up for user 1000, unless it is there with its labels already.
+ * One that is there is set up again with `again`, as before a knowledge base's container first mounts
+ * it: nothing on it says whether an earlier try set it up, as when that try's volume couldn't be
+ * deleted. Setting up only gives the folder its owner and mode, so the files on it stay as they are.
+ */
+async function ensureVolume(volume: string, labels: Record<string, string>, mode: "2777" | "0700", usernsHost = false, again = false): Promise<void> {
   const found = await engine("GET", `/volumes/${encodeURIComponent(volume)}`);
   if (found.status === 200) {
     const existing = (JSON.parse(found.body) as { Labels: Record<string, string> | null }).Labels ?? {};
     if (!Object.entries(labels).every(([key, value]) => existing[key] === value)) {
       throw new EngineError(`A volume named ${volume} exists on the engine, but Your Space didn't make it, so the sync doesn't use it.`, 409);
     }
+    if (again) await initKnowledge(volume, mode, usernsHost);
     return;
   }
   if (found.status !== 404) throw new EngineError(`Reading ${volume} failed: ${found.body.trim().slice(0, 300)}`);
@@ -348,7 +354,9 @@ export function ensureSyncService(knowledgeBases: string[]): Promise<SyncService
       await ensureImage(rclone);
       await ensureImage(proxy);
       const usernsHost = await serverUserns();
-      for (const name of names) await ensureVolume(knowledgeStateVolume(INSTALLATION, name), knowledgeSyncLabels(INSTALLATION, name), "0700", usernsHost);
+      // A knowledge base without a container yet has its state set up, even one kept from before; the
+      // others' containers run with theirs.
+      for (const name of names) await ensureVolume(knowledgeStateVolume(INSTALLATION, name), knowledgeSyncLabels(INSTALLATION, name), "0700", usernsHost, !before.has(name));
       const socket = await socketVolume();
       // Only user 1000, rclone's and the server's, reaches the sockets, each in a folder of its own.
       await initKnowledge(socket, "0700", usernsHost, names);
@@ -393,9 +401,11 @@ export async function stopSyncs(): Promise<void> {
   if (!isStopping()) throw new Error("The syncs stop only once Your Space is stopping.");
   await queued(async () => {
     if (!(await projectExists())) return;
-    // rclone first, with time for bisync to finish; then the proxy, as an app's is stopped.
+    // rclone first, with time for bisync to finish; then the proxy, as an app's is stopped. That stops
+    // any rclone still running too, so only its failure says the sync didn't stop.
     await stopRclones([...(await rcloneContainers()).keys()]).catch(() => {});
-    await docker(["compose", "-p", syncProject(), "stop"]);
+    const stopped = await docker(["compose", "-p", syncProject(), "stop"]);
+    if (stopped.code !== 0) throw new EngineError(`Stopping the sync failed: ${stopped.stderr.trim().slice(-600)}`);
   });
 }
 

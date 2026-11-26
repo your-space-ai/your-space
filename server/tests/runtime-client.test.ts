@@ -31,8 +31,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // No new connection from here on; then the ones open, which close() waits for, are closed.
+  const closed = new Promise<void>((resolve) => server.close(() => resolve()));
   server.closeAllConnections();
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await closed;
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -50,8 +52,8 @@ describe("the runtime client", () => {
     expect(await runtime.ensureSyncService(["notes"])).toMatchObject({ running: ["notes"], knowledgeBases: ["notes"] });
     expect(asked.at(-1)).toEqual({ method: "PUT", url: "/knowledge-sync", body: JSON.stringify({ knowledgeBases: ["notes"] }) });
     await runtime.restartSyncService("notes");
-    expect(asked.at(-1)).toMatchObject({ method: "POST", url: "/knowledge-sync/notes/restart" });
+    expect(asked.at(-1)).toEqual({ method: "POST", url: "/knowledge-sync/notes/restart", body: "{}" });
     await runtime.syncService();
-    expect(asked.at(-1)).toMatchObject({ method: "GET", url: "/knowledge-sync" });
+    expect(asked.at(-1)).toEqual({ method: "GET", url: "/knowledge-sync", body: "" });
   });
 });

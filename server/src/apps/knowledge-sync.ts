@@ -477,6 +477,9 @@ export class KnowledgeSync {
           await this.startService(this.bases(await this.rows()));
         } catch (error) {
           await this.db.delete(knowledgeSync).where(eq(knowledgeSync.knowledgeBaseId, base.id));
+          // Its container may be there, as one that didn't answer in time: the next tick's change of
+          // the containers, for the knowledge bases that sync, removes it.
+          if (this.service) this.service = { ...this.service, bases: [...new Set([...this.service.bases, name])].sort() };
           throw serviceError(error);
         }
       });
@@ -702,24 +705,31 @@ export class KnowledgeSync {
    * server started just before it stopped: bisync's log is rclone's, so two would mix theirs.
    */
   private async instance(row: Row): Promise<string | undefined> {
-    const rc = this.rcFor(row.name);
     try {
-      const list = await rc.call<{ executeId: string; runningIds?: number[] }>("job/list");
+      const { executeId, running } = await this.jobsOf(row.name);
       this.unreachableSince.delete(row.name);
-      for (const id of list.runningIds ?? []) {
-        // Every call is a job of rclone's, this one among them; a run's is in a group of Your Space's.
-        const job = await rc.call<RcJob>("job/status", { jobid: id }).catch(() => undefined);
-        if (job && !job.finished && job.group?.startsWith("knowledge/")) {
-          log("warn", "knowledge.sync_untracked", { name: row.name, job: id });
-          return undefined;
-        }
+      if (running !== undefined) {
+        log("warn", "knowledge.sync_untracked", { name: row.name, job: running });
+        return undefined;
       }
-      return list.executeId;
+      return executeId;
     } catch (error) {
       if (error instanceof RcError && (error.status === 503 || error.status === 504)) await this.unreachable(row);
       else log("warn", "knowledge.sync_instance_failed", { name: row.name, ...errorFields(error) });
       return undefined;
     }
+  }
+
+  /** The knowledge base's rclone's instance, and a job of a run of its that is under way, if any. */
+  private async jobsOf(name: string): Promise<{ executeId: string; running: number | undefined }> {
+    const rc = this.rcFor(name);
+    const list = await rc.call<{ executeId: string; runningIds?: number[] }>("job/list");
+    for (const id of list.runningIds ?? []) {
+      // Every call is a job of rclone's, this one among them; a run's is in a group of Your Space's.
+      const job = await rc.call<RcJob>("job/status", { jobid: id }).catch(() => undefined);
+      if (job && !job.finished && job.group?.startsWith("knowledge/")) return { executeId: list.executeId, running: id };
+    }
+    return { executeId: list.executeId, running: undefined };
   }
 
   /**
@@ -764,7 +774,7 @@ export class KnowledgeSync {
       await this.remote(row, connection, executeId, fixture);
       if (mode === "resync") await this.markers(row.name);
       const step = mode === "resync" ? "resync" : mode === "force" ? "preview" : "sync";
-      await this.launch(row, { ...job, step }, bisyncParams(row.name, run, { resync: mode === "resync", force: mode === "force", dryRun: mode === "force" }));
+      await this.launch(row, { ...job, step }, bisyncParams(row.name, run, { resync: mode === "resync", force: mode === "force", dryRun: mode === "force" }), true);
     } catch (error) {
       const message = error instanceof AppError || error instanceof RcError ? error.message : "The sync couldn't start.";
       log("warn", "knowledge.sync_start_failed", { name: row.name, ...errorFields(error) });
@@ -824,8 +834,20 @@ export class KnowledgeSync {
     return Boolean(item);
   }
 
-  /** Starts a job in the knowledge base's rclone, in the background, and keeps it on its row. */
-  private async launch(row: Row, job: Omit<SyncJob, "id" | "executeId">, params: Record<string, unknown>): Promise<void> {
+  /**
+   * Starts a job in the knowledge base's rclone, in the background, and keeps it on its row. A run's
+   * next step waits while rclone runs a job of a run that the row doesn't name, as one rclone started
+   * when keeping it on the row failed: that step is taken again once it ends, so no two overlap.
+   * `checked` when the caller has just seen none.
+   */
+  private async launch(row: Row, job: Omit<SyncJob, "id" | "executeId">, params: Record<string, unknown>, checked = false): Promise<void> {
+    if (!checked) {
+      const { running } = await this.jobsOf(row.name);
+      if (running !== undefined) {
+        log("warn", "knowledge.sync_untracked", { name: row.name, job: running, step: job.step });
+        throw new StepWaits();
+      }
+    }
     const command = job.step === "ties" ? "sync/copy" : "sync/bisync";
     // A group of its own: rclone counts each job's transfers by it, as the tie copies read back.
     const group = `knowledge/${row.name}/${job.run}/${job.step}/${randomUUID().slice(0, 8)}`;
@@ -872,7 +894,13 @@ export class KnowledgeSync {
       return;
     }
     const lines = logLines(typeof status.output?.output === "string" ? status.output.output : "");
-    await this.stepDone(row, job, status, lines);
+    try {
+      await this.stepDone(row, job, status, lines);
+    } catch (error) {
+      // Taken again next tick, from this job's result, which rclone keeps with its counts.
+      if (error instanceof StepWaits) return;
+      throw error;
+    }
     // rclone keeps each job's counts until it has a thousand: a run a minute adds up.
     await rc.call("core/stats-delete", { group: status.group }).catch(() => {});
   }
@@ -991,9 +1019,19 @@ export class KnowledgeSync {
     const subject = { id: row.knowledgeBaseId, name: row.name };
     if (ran.result === "busy") {
       // bisync's lock: another run of it, as one a restarted rclone left, holds it until it expires.
-      // Nothing else is recorded, and the next run is due a minute later.
-      await this.db.update(knowledgeSync).set({ job: null, lastRunAt: new Date(job.startedAt) }).where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
-      log("warn", "knowledge.sync_locked", { name: row.name });
+      // Nothing else is recorded, and the next run is due a minute later. The owner's Resync or Apply
+      // these deletions is asked for again, so it is that run: the deletions confirmed by this run's
+      // time, as they are unchanged, and its dry run compares them again before any is made.
+      const startedAt = new Date(job.startedAt);
+      const again: SyncRequested | null =
+        job.by && job.mode !== "sync"
+          ? { mode: job.mode, by: job.by, at: new Date().toISOString(), again: true, ...(job.mode === "force" ? { run: startedAt.toISOString(), count: row.deletions.length } : {}) }
+          : null;
+      await this.db
+        .update(knowledgeSync)
+        .set({ job: null, lastRunAt: startedAt, ...(again ? { requested: again } : {}) })
+        .where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
+      log("warn", "knowledge.sync_locked", { name: row.name, again: Boolean(again) });
       return;
     }
     const deletions = extra.deletions ?? deletionsOf(lines);
@@ -1048,6 +1086,9 @@ export class KnowledgeSync {
     log(ran.result === "synced" ? "info" : "warn", "knowledge.synced", { name: row.name, mode: job.mode, result: ran.result, reason: ran.reason, changed: extra.changed });
   }
 }
+
+/** A run's next step that waits for a job its rclone runs, which the server doesn't follow. */
+class StepWaits extends Error {}
 
 /** A failure to start the sync's containers, for the owner. */
 function serviceError(error: unknown): AppError {

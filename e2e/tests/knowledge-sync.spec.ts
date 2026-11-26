@@ -572,6 +572,8 @@ const bigHere = (script: string) => shell(`ys-knowledge.${PROJECT}.${BIG}`, `cd 
 const bigThere = (script: string) => shell(DRIVE_VOLUME, `mkdir -p /v/${BIG_FOLDER} && cd /v/${BIG_FOLDER} && ${script}`);
 const bigRow = async (column: string) => (await sql(`select ${column} from knowledge_sync s join knowledge_base b on b.id = s.knowledge_base_id where b.name = '${BIG}'`))[0];
 const MANY = 30_000;
+/** The big knowledge base's run under way, once it is one that started after `since`: one that copies every file made before it. */
+const runSince = (since: string) => bigRow(`case when (s.job->>'startedAt')::timestamptz > '${since}' then s.job end`);
 
 test("a run goes on when only the server restarts, and the next server records its result", async ({ page }) => {
   test.setTimeout(400_000);
@@ -587,13 +589,17 @@ test("a run goes on when only the server restarts, and the next server records i
   const main = page.locator('main[data-state="knowledge-base"]');
   await expect(main).toHaveAttribute("data-sync-result", "synced", { timeout: 120_000 });
   const synced = async () => Number((await sql(`select count(*) from event e join event_knowledge_base k on k.event_id = e.id where e.type = 'knowledge.synced' and k.name = '${BIG}'`))[0]);
-  const before = await synced();
 
   await bigHere(`mkdir first && cd first && seq 1 ${MANY} | while read i; do echo $i > f-$i; done`);
-  // A timed run starts copying them; the server stops while it is under way.
-  await expect.poll(() => bigRow("job is not null"), { timeout: 60_000, intervals: [100] }).toBe("t");
+  const made = new Date().toISOString();
+  // A timed run that starts once they are all there copies them; the server stops while it is under way.
+  await expect.poll(async () => (await runSince(made)) ?? null, { timeout: 60_000, intervals: [100] }).not.toBeNull();
   await compose(["stop", "server"]);
-  const job = JSON.parse((await bigRow("job"))!) as { id: number; startedAt: string };
+  // Counted once the server is stopped: only the next server can record the run under way.
+  const before = await synced();
+  const kept = await runSince(made);
+  expect(kept, "The run copying the files was still on the row when the server stopped.").toBeTruthy();
+  const job = JSON.parse(kept!) as { id: number; startedAt: string };
   // rclone finishes the run without the server, and keeps its result.
   // Only its state: its result holds the run's whole log, which is long for this many files.
   const status = async () => {
@@ -618,7 +624,9 @@ test("a run goes on when only the server restarts, and the next server records i
 test("stopping Your Space during a run stops rclone gracefully, and the next start carries the run on without a resync", async ({ page }) => {
   test.setTimeout(400_000);
   await bigHere(`mkdir second && cd second && seq 1 ${MANY} | while read i; do echo $i > g-$i; done`);
-  await expect.poll(() => bigRow("job is not null"), { timeout: 60_000, intervals: [100] }).toBe("t");
+  const made = new Date().toISOString();
+  // A run that copies them all is under way when Your Space stops, not one that started before they were there.
+  await expect.poll(async () => (await runSince(made)) ?? null, { timeout: 60_000, intervals: [100] }).not.toBeNull();
   // As `your-space stop` does: the apps and the sync first, then Your Space.
   await compose(["exec", "-T", "runtime", "stop-apps"]);
   // Stopped by SIGINT: rclone exits with 130 once bisync has shut down.

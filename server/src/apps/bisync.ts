@@ -88,9 +88,12 @@ export function bisyncParams(knowledgeBase: string, run: string, options: { resy
   };
 }
 
-/** rclone's filter pattern for exactly this path from the root, its special characters escaped. */
+/**
+ * rclone's filter pattern for exactly this path from the root, its special characters escaped: a `]`
+ * too, which rclone otherwise refuses as "mismatched ']'".
+ */
 export function exactPattern(path: string): string {
-  return `/${path.replace(/[\\*?[{}]/g, "\\$&")}`;
+  return `/${path.replace(/[\\*?[\]{}]/g, "\\$&")}`;
 }
 
 /**

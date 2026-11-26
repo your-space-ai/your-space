@@ -124,8 +124,9 @@ of it starts meanwhile.
 
 - **Disconnect** on a knowledge base's page stops its sync. Both keep their files: the knowledge
   base and the Drive folder. The sync's own storage goes with it, and with it the replaced files
-  Your Space kept, however recent: copy any you need out of it first (see below). Connecting again,
-  to the same folder or another, starts with a first sync that deletes nothing.
+  Your Space kept, however recent: copy any you need out of it first, as
+  [How it runs](#how-it-runs) shows. Connecting again, to the same folder or another, starts with a
+  first sync that deletes nothing.
 - **Change client** on the **Knowledge** page saves another OAuth client; sign in with Google again
   afterwards.
 - **Remove connection** forgets the client and the token, once no knowledge base syncs. To revoke
@@ -174,7 +175,12 @@ On the Docker engine:
   the replaced files of the last 30 days, in its `backups` folder: a folder for each sync, named
   by its time, with the files that sync replaced at their paths in the knowledge base.
   Disconnecting or deleting the knowledge base deletes it; removing an app or deleting its data
-  never does.
+  never does. To keep the replaced files before you disconnect or delete it, copy them out into an
+  archive in the current folder, here for the knowledge base `notes`:
+
+  ```sh
+  docker run --rm -v ys-knowledge.your-space.notes.sync:/sync:ro alpine tar -cf - -C /sync backups > notes-backups.tar
+  ```
 - `<installation>_knowledge-sync`: the Compose project of the sync: each knowledge base's rclone
   container, `<installation>_knowledge-sync-rclone-<name>-1`, and their outbound proxy. It starts with
   the first synced knowledge base, stops with your apps, and is removed when no knowledge base syncs;

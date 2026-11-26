@@ -83,13 +83,14 @@ describe("a run's options", () => {
 
   it("copies exactly the tie files over Drive's, by content and never over a newer copy, their names' special characters escaped", () => {
     expect(exactPattern("plan.md")).toBe("/plan.md");
-    expect(exactPattern("notes/tie [1] {a} *?.md")).toBe("/notes/tie \\[1] \\{a\\} \\*\\?.md");
+    expect(exactPattern("notes/tie [1] {a} *?.md")).toBe("/notes/tie \\[1\\] \\{a\\} \\*\\?.md");
+    expect(exactPattern("a]b.md")).toBe("/a\\]b.md");
     expect(exactPattern("back\\slash.md")).toBe("/back\\\\slash.md");
     expect(tieCopyParams("notes", ["a.md", "dir/b [2].md"])).toEqual({
       srcFs: "/knowledge/notes",
       dstFs: "kb-notes:",
       _config: { UpdateOlder: true, CheckSum: true },
-      _filter: { IncludeRule: ["/a.md", "/dir/b \\[2].md"] },
+      _filter: { IncludeRule: ["/a.md", "/dir/b \\[2\\].md"] },
     });
   });
 });
