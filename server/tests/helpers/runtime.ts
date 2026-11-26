@@ -60,9 +60,10 @@ export class FakeRuntime implements Runtime {
     this.calls.push({ method: "apply", spec });
     onEvent({ step: "check" });
     if (this.failApply) throw new Error(this.failApply);
-    // Like the runtime manager, a knowledge base without its storage stops the apply before anything starts.
+    // Like the runtime manager, a knowledge base without its storage stops the apply before anything
+    // starts. Its refusal comes in the apply's stream, which the client answers as a failed apply.
     const missingBase = spec.knowledge?.bases.find((name) => !this.knowledge.has(name));
-    if (missingBase) throw new RuntimeError(`The knowledge base ${missingBase} isn't on this machine's engine, so ${spec.app} can't mount it.`, 409, "engine_error");
+    if (missingBase) throw new RuntimeError(`The knowledge base ${missingBase} isn't on this machine's engine, so ${spec.app} can't mount it.`, 502, "apply_failed");
     // An apply never gives a required setting a placeholder.
     const missing = this.variables.find((v) => v.required && !spec.env[v.name]);
     if (missing) throw new Error(`The file isn't a Compose file Your Space can read: required variable ${missing.name} is missing a value`);
