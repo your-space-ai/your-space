@@ -467,7 +467,8 @@ describe("a knowledge base's sync", () => {
     const before = asked();
     // A tick that waits for rclone's answer, and twenty more meanwhile.
     const first = tick();
-    await sleep(20);
+    for (let i = 0; i < 200 && asked() === before; i++) await sleep(5);
+    expect(asked()).toBe(before + 1);
     const more = Array.from({ length: 20 }, () => tick());
     rc.gates.delete("job/status");
     open();
@@ -1263,7 +1264,7 @@ describe("a knowledge base's sync", () => {
     let release: () => void = () => {};
     runtime.holdKnowledgeUsers = new Promise<void>((resolve) => (release = resolve));
     const asked = runtime.calls.filter((c) => c.method === "knowledgeUsers").length;
-    const runs = rc.started().length;
+    const calls = rc.calls.length;
     const deleting = api("/api/knowledge/drafts", { method: "DELETE" });
     try {
       for (let i = 0; i < 200 && runtime.calls.filter((c) => c.method === "knowledgeUsers").length === asked; i++) await sleep(5);
@@ -1275,12 +1276,15 @@ describe("a knowledge base's sync", () => {
       for (const action of ["sync", "resync"]) expect((await send("/api/knowledge/drafts/sync", { action })).status, action).toBe(409);
       expect((await api("/api/knowledge/drafts/sync", { method: "DELETE" })).status).toBe(409);
     } finally {
-      // Even when a check above fails, so the delete ends and holds nothing for the tests after it.
+      // Even when a check above fails, so the delete ends and holds nothing for the tests after it;
+      // its own failure then doesn't hide that check's.
       release();
       runtime.holdKnowledgeUsers = undefined;
+      await deleting.catch(() => undefined);
     }
     expect((await deleting).status).toBe(204);
-    expect(rc.started().slice(runs).filter((j) => j.params.path2 === "/knowledge/drafts")).toEqual([]);
+    // From the calls, which a restarted rclone keeps, unlike its jobs.
+    expect(rc.calls.slice(calls).filter((c) => c.knowledgeBase === "drafts" && c.command === "sync/bisync")).toEqual([]);
     expect(runtime.calls.filter((c) => c.method === "deleteKnowledge" && c.project === "drafts")).toHaveLength(1);
     // The timer doesn't put it back.
     await settled();
@@ -1361,8 +1365,10 @@ describe("a knowledge base's sync", () => {
       // Forgotten while the connect clears the knowledge base's earlier sync: the connect then finds none.
       expect((await api("/api/google-drive", { method: "DELETE" })).status).toBe(204);
     } finally {
+      // The connect ends even when a check failed, and its own failure doesn't hide that check's.
       release();
       runtime.holdRemoveSync = undefined;
+      await connecting.catch(() => undefined);
     }
     const connected = await connecting;
     expect(connected.status).toBe(409);
