@@ -534,8 +534,9 @@ test("a run that stops over more than 500 deletions shows the first 500, and app
   await evidence(page, testInfo, "014-2-apply-many-deletions");
   await dialog.getByRole("button", { name: "Delete 600 files" }).click();
   await expect(main).toHaveAttribute("data-sync-result", "synced", { timeout: 120_000 });
-  expect(await count(remote)).toBe("500");
-  expect(await remote("ls file-1.md file-600.md 2>&1 || true")).toContain("No such file");
+  // Exactly the 600 confirmed are gone, and the other 500 are all there.
+  const left = (await remote("ls | sed -n 's/^file-\\([0-9]*\\)\\.md$/\\1/p' | sort -n | tr '\\n' ' '")).trim();
+  expect(left).toBe(Array.from({ length: 500 }, (_, i) => String(601 + i)).join(" "));
   expect(await remote("cat file-601.md file-1100.md")).toBe("601\n1100");
   await page.getByRole("button", { name: "Disconnect", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Disconnect" }).click();
@@ -552,7 +553,7 @@ test("the client secret and token are in rclone's memory only: in no container's
   // whose configuration the engine keeps on disk, nor the server's or the runtime manager's.
   const ids = new Set<string>();
   for (const label of [`ai.your-space.installation=${PROJECT}`, `com.docker.compose.project=${PROJECT}`]) {
-    for (const id of (await docker(["ps", "-aq", "--filter", `label=${label}`])).stdout.split("\n").filter(Boolean)) ids.add(id);
+    for (const id of (await docker(["ps", "-aq", "--filter", `label=${label}`], false)).stdout.split("\n").filter(Boolean)) ids.add(id);
   }
   expect(ids.size).toBeGreaterThan(3);
   for (const id of ids) {
@@ -643,8 +644,11 @@ test("a run goes on when only the server restarts, and the next server records i
 
 /** A job of the big knowledge base's rclone: only its state, as its result holds the run's whole log. */
 async function bigJob(id: number): Promise<{ finished: boolean; success: boolean }> {
-  const said = await docker(["exec", rcloneOf(BIG), "sh", "-c", `rclone rc --unix-socket /run/ys-sync/rc.sock job/status jobid=${id} | grep -E '"(finished|success)":'`]);
-  return { finished: said.stdout.includes('"finished": true'), success: said.stdout.includes('"success": true') };
+  // A failed lookup, or an answer that doesn't say, throws: it never reads as a job under way.
+  const said = (await docker(["exec", rcloneOf(BIG), "rclone", "rc", "--unix-socket", "/run/ys-sync/rc.sock", "job/status", `jobid=${id}`], false)).stdout;
+  const finished = /"finished":\s*(true|false)/.exec(said)?.[1];
+  if (finished === undefined) throw new Error(`rclone's job/status of job ${id} doesn't say whether it finished.`);
+  return { finished: finished === "true", success: /"success":\s*true/.test(said) };
 }
 /** The big knowledge base's events of a type, those of one kind of actor if given. */
 const bigEvents = async (type: string, kind?: string) =>
