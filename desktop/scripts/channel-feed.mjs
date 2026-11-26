@@ -23,16 +23,18 @@ if (match[4]?.split(".").includes("canary")) fail(`${version} is a canary build,
 const lines = readFileSync(source, "utf8").split("\n");
 if (lines.pop() !== "") fail(`${source} doesn't end with a line break.`);
 const base = `${downloads}/v${version}/`;
+// The version is already checked above; escaping every special character keeps the patterns literal.
+const v = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const digest = "'[A-Za-z0-9+/]{86}=='";
 const expected = [
-  [new RegExp(`^version: '${version.replaceAll(".", "\\.")}'$`)],
+  [new RegExp(`^version: '${v}'$`)],
   [/^files:$/],
   ...["arm64", "x64"].flatMap(arch => [
-    [new RegExp(`^  - url: your-space-macos-${arch}-${version.replaceAll(".", "\\.")}\\.zip$`), "  - url: "],
+    [new RegExp(`^  - url: your-space-macos-${arch}-${v}\\.zip$`), "  - url: "],
     [new RegExp(`^    sha512: ${digest}$`)],
     [/^    size: [1-9]\d*$/],
   ]),
-  [new RegExp(`^path: your-space-macos-arm64-${version.replaceAll(".", "\\.")}\\.zip$`), "path: "],
+  [new RegExp(`^path: your-space-macos-arm64-${v}\\.zip$`), "path: "],
   [new RegExp(`^sha512: ${digest}$`)],
   [/^releaseDate: '\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z'$/],
 ];
