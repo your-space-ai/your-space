@@ -160,9 +160,11 @@ knowledge base. [Journey 014](https://github.com/your-space-ai/your-space/blob/m
   container with SIGINT, bisync's graceful shutdown, so a run under way saves its state and the next
   run carries on from it. An interrupted run is recorded as failed, as it may have changed files;
   deletions the owner confirmed are recorded as theirs even when their run was interrupted. When
-  bisync can finish an interrupted run only with a resync, as for the first run after a resync, Your
-  Space runs that resync itself, the newer copy winning: nothing is lost, and at worst a deleted file
-  comes back. This replaces stopping for the owner in that case. Every other run that bisync's checks
+  bisync can finish an interrupted run only with a resync, as after a kill without a graceful
+  shutdown or a power cut during the first run after connecting, Your Space runs that resync itself,
+  the newer copy winning: nothing is lost, and at worst a deleted file comes back. It does this once
+  for each interruption; if its own resync fails, the next run that still needs one stops for the
+  owner. This replaces stopping for the owner in that case. Every other run that bisync's checks
   stop still waits for the owner. A run that finds bisync's lock held is tried again a minute later.
 - **Files apps write (owner decision, 2026-11-26).** Sync runs as user 1000, so an app that writes
   into a knowledge base should run as user 1000 or with a umask of 002. Otherwise sync may be unable

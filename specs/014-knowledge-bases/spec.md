@@ -117,15 +117,17 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
     lists the deletions again without changing anything (`--dry-run`); if the list differs from the
     one the owner confirmed, it doesn't run and shows the new list for confirmation.
   - Overwrites keep the replaced copy. A local file replaced by a sync is moved to a backup folder
-    of that run in Your Space's sync state, outside the knowledge base (`--backup-dir1` with a folder
-    per run), so a file replaced in several runs keeps each earlier copy. Backups are kept for 30
-    days. A Drive file replaced by a sync keeps its earlier version only in Drive's own version
-    history, for as long as Drive keeps it (by default 30 days or 100 versions); Your Space keeps no
-    copy of it. The knowledge base's page lists the backed-up files of recent runs.
-- **Conflicts.** When a file changed on both sides since the last run, bisync keeps both: the remote's
-  copy is renamed with a conflict suffix. Your Space lists conflict copies on the knowledge base's
-  page. Two apps writing the same file locally is not detected: the last write wins, and Drive's
-  version history is the fallback.
+    of that run in Your Space's sync state, outside the knowledge base. The knowledge base is
+    bisync's Path2 and the Drive folder its Path1, so this is `--backup-dir2`, with a folder per run.
+    A file replaced in several runs keeps each earlier copy. Backups are kept for 30 days. A Drive
+    file replaced by a sync keeps its earlier version only in Drive's own version history, for as
+    long as Drive keeps it (by default 30 days or 100 versions); Your Space keeps no copy of it. The
+    knowledge base's page lists the backed-up files of recent runs.
+- **Conflicts.** When a file changed on both sides since the last run, bisync keeps both: the
+  knowledge base's copy keeps the name (`--conflict-resolve path2`), and the remote's copy is renamed
+  with a conflict suffix. Your Space lists conflict copies on the knowledge base's page. Two apps
+  writing the same file locally is not detected: the last write wins, and Drive's version history is
+  the fallback.
 - **Scope of a sync.** A sync covers exactly the chosen Drive folder, never the whole Drive: the
   folder is the root of the knowledge base's Drive remote. Native Google Docs, Sheets and Slides are
   skipped (`skip_gdocs`): they have no file to edit locally and stay in Drive only. Drive shortcuts
@@ -157,13 +159,16 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
 - **Stopping.** Stopping Your Space stops each sync container with SIGINT, which starts bisync's
   graceful shutdown: it finishes or cancels the transfers under way and saves its state for the next
   run. The server doesn't stop runs through the remote control (`job/stop`). Disconnecting a
-  knowledge base stops its container the same way.
+  knowledge base stops its container the same way. A container killed without that shutdown, or a
+  power cut, can leave a run that bisync can finish only with a resync (see **Interrupted runs**).
 - **Interrupted runs.** A run that was interrupted, as when Your Space or its sync container
-  stopped, is recorded as failed, and the next run carries on from where it was (`--recover`). When
-  bisync can finish an interrupted run only with a resync, as when it was the first run after a
-  resync, Your Space runs that resync itself (`--resync --resync-mode newer`, with the same checks)
-  instead of stopping for the owner (2026-11-26). The newer copy of each file wins, so nothing is
-  lost; at worst a file deleted on one side comes back from the other.
+  stopped, is recorded as failed, and the next run carries on from where it was (`--recover`).
+  Sometimes bisync can finish an interrupted run only with a resync. This is seen when the first run
+  after connecting is killed without a graceful shutdown, or the power is cut. Then Your Space
+  resyncs by itself (`--resync --resync-mode newer`, with the same checks) instead of stopping for
+  the owner (2026-11-26). The newer copy of each file wins, so nothing is lost; at worst a file
+  deleted on one side comes back from the other. Your Space does this once for each interruption.
+  If its own resync fails, the next run that still needs one stops for the owner.
 - **Credentials.** The Google token is encrypted with the data key ([journey 009](../009-encrypt-stored-data/spec.md))
   and moved with app settings when the data key changes, so rotating the key doesn't break sync. The
   server creates each knowledge base's Drive remote in its rclone's in-memory configuration over its
@@ -179,8 +184,9 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   deletions the owner confirmed, are recorded against the owner; each sync run that changed files,
   stopped or failed against Your Space. An interrupted run may have changed files, so it is recorded
   as failed. An interrupted **Apply these deletions** is still recorded as the owner's applied
-  deletions, since some may have been made. Runs that change nothing aren't recorded one by one; the
-  page shows when the last one finished.
+  deletions, since some may have been made. Your Space's own resync of an interrupted run is recorded
+  as `knowledge.resync_requested` against Your Space. Runs that change nothing aren't recorded one
+  by one; the page shows when the last one finished.
 
 ## Acceptance
 
