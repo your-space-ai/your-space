@@ -84,10 +84,10 @@ replaced it, the command says so and changes nothing. Get the newest command and
 
 ## Go Back to Releases
 
-Follow Alpha again with `your-space upgrade --channel alpha`. It waits for the next alpha: until a
-release newer than your canary is out, it says nothing is newer and changes nothing, and once one
-is, it moves the installation to it. That is an ordinary upgrade, because a canary sorts before the
-next release. Without the flag, install that release's command as the
+Run `your-space upgrade --channel alpha` once a release newer than your canary is out. The command
+stores no channel, so until then it says nothing is newer and changes nothing: run it again when the
+next alpha is published. It then moves the installation to that release with an ordinary upgrade,
+because a canary sorts before the next release. Without the flag, install that release's command as the
 [installation guide](index.md#1-get-the-your-space-command) says and run `your-space upgrade`.
 
 An installation doesn't go back to the release the canary followed: that release's command refuses

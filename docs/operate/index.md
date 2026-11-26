@@ -58,8 +58,9 @@ npm install -g @your-space-ai/cli@<version>
 your-space upgrade
 ```
 
-To move to the newest build of a release channel instead, whichever command you have, add
-`--channel alpha` or `--channel canary`: see [Follow a Release Channel](#follow-a-release-channel).
+To move to the newest build of a release channel instead, add `--channel alpha` or
+`--channel canary` to `upgrade`, with a command that has the flag: see
+[Follow a Release Channel](#follow-a-release-channel).
 
 It names both versions and asks first; `--yes` answers for you. Then it:
 
@@ -125,9 +126,13 @@ then runs its `upgrade`, which does all of the above. So each version upgrades w
   on a canary moves to Alpha with the first alpha newer than it.
 - If a file is missing or doesn't match, as when a newer canary replaces the canary's files while it
   runs, it changes nothing: run it again.
+- Ctrl-C while it downloads that build's command stops it with nothing changed. Once that build's
+  `upgrade` runs, Ctrl-C reaches it and stops it as above.
 - It stores nothing. Plain `upgrade` still moves the installation to the command's own version.
 - The flag comes with 0.1.0-alpha.2 and the canary builds made since it was added. The command
-  inside the Mac app doesn't take it: the app moves its own workspace when it updates.
+  inside the Mac app doesn't take it: the app moves its own workspace when it updates. Don't point
+  another `your-space` command at the app's workspace either: the app doesn't start a workspace
+  newer than itself.
 
 ### Restore the Backup by Hand
 

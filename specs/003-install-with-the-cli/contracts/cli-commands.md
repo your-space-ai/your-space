@@ -154,7 +154,13 @@ nothing and reports `upToDate`. When the build is the CLI's own version, it upgr
 does. Otherwise it downloads the build's CLI, runs its `upgrade` with `--workdir` and the `--yes`,
 `--json` and `--verbose` it was given, and ends with that command's output and exit status. The
 standalone macOS CLI, the one inside the Mac app, refuses it with `usage`: the app moves its own
-local workspace.
+local workspace. SIGINT or SIGTERM while it downloads or checks the build's CLI stops it with
+`cancelled`, with nothing changed; while the build's `upgrade` runs, they go to that command. When
+a signal ends the build's `upgrade`, or with `--json` it prints nothing, the command fails with
+`cancelled` for SIGINT or SIGTERM and `unexpected` otherwise, with `channel`, `from` and `to`, and
+says to see where the installation was left with `your-space status`. A build's CLI that matches
+`SHA256SUMS` but whose `--version` fails, such as one that needs a newer Node.js, fails with
+`unexpected` and what it printed in `detail`.
 
 ### Other results
 
@@ -168,7 +174,7 @@ local workspace.
 | `secrets replace` | `{ ok, replaced: "auth-secret" }` |
 | `configure` | `{ ok, setup, env, summary }` |
 | `upgrade` | `{ ok, from, to, backup }`: the versions, and the absolute path of the database backup; `{ ok, from, to, upToDate: true }` when the installation already runs the CLI's version, with nothing changed |
-| `upgrade --channel` | The `upgrade` result of the build's CLI. `{ ok, channel, newest, from, to, upToDate: true }` when nothing changed: `newest` is the version `channel.json` names, and `from` and `to` the installation's, the same as `newest` or newer than it, as on a canary waiting for the next alpha |
+| `upgrade --channel` | The `upgrade` result of the build's CLI. `{ ok, channel, newest, from, to, upToDate: true }` when nothing changed: `newest` is the version `channel.json` names, and `from` and `to` the installation's, the same as `newest` or newer than it, as on a canary waiting for the next alpha. When the build's `upgrade` gave no result, a `cancelled` or `unexpected` failure with `channel`, `from` (the installation's version) and `to` (the build's) |
 
 ## What Each Command Runs
 
@@ -186,7 +192,7 @@ local workspace.
 | `secrets replace database-password` | `docker compose run --rm secrets --new database-password`, the guide's `psql` step, then `docker compose restart server` |
 | `start --new-secrets` | `start`; only when it stops with `lost_secrets`: `docker compose run --rm secrets --new auth-secret --new database-password`, `docker compose up -d --wait postgres`, the `psql` step, then `start` again. Secrets that aren't lost are kept |
 | `configure` | Sets the setup's lines in `.env`, then `docker compose up -d --wait` |
-| `upgrade --channel <name>` | Reads the installation's version from `stack.yaml`, holding `.your-space.lock` while it does, then `<releases>/<name>/channel.json` with one request: `{"channel","version","commit"}`, where Alpha's `version` is never a canary and Canary's always is. When that version is later than the installation's and isn't the CLI's own, it downloads `SHA256SUMS` and the build's CLI from the build's release (`v<version>`, or `canary`): `your-space-linux-<arch>` when the running CLI is the Linux executable, otherwise `your-space-ai-cli-<version>.tgz`, whose `package/package.json` must name the version and whose `package/dist/your-space.cjs` runs with Node. It checks the file against `SHA256SUMS`, in a temporary folder only its owner can read (`TMPDIR`), removed afterwards. It runs `<cli> --version`, which must print the version, then `<cli> upgrade --workdir <folder>` with the terminal, passing on SIGINT and SIGTERM |
+| `upgrade --channel <name>` | Reads the installation's version from `stack.yaml`, holding `.your-space.lock` while it does, then `<releases>/<name>/channel.json` with one request: `{"channel","version","commit"}`, where Alpha's `version` is never a canary and Canary's always is. When that version is later than the installation's and isn't the CLI's own, it downloads `SHA256SUMS`, then, when that lists it, the build's CLI from the build's release (`v<version>`, or `canary`): `your-space-linux-<arch>` when the running CLI is the Linux executable, otherwise `your-space-ai-cli-<version>.tgz`, whose `package/package.json` must name the version and whose `package/dist/your-space.cjs` runs with Node. It checks the file against `SHA256SUMS`, in a temporary folder only its owner can read (`TMPDIR`), removed afterwards. It runs `<cli> --version`, which must print the version within a minute, then `<cli> upgrade --workdir <folder>` with the terminal, passing on SIGINT and SIGTERM |
 | `upgrade` | Reads the installation's version from `stack.yaml`. When the CLI's is later: downloads and checks the release files as `init` does, into a folder beside the installation; `docker compose --project-directory <new release folder> --env-file .env -f <new release folder>/compose.yaml pull --policy missing`; `docker compose up -d --wait postgres` when the database is stopped; `docker compose stop caddy server`; `pg_dump` in the `postgres` service into `backups/<time>-<version>.sql` (mode 0600); replaces `compose.yaml`, `stack.yaml`, `modes/` and `env.example`, adds any setting the new `env.example` sets that `.env` lacks; `docker compose up -d --wait server`, then `docker compose up -d --wait`, so Caddy starts last. When the first of those fails, it stops the server and Caddy, moves the previous files back, restores the backup when a second `pg_dump` differs from it, the new version having changed the database (into a new database, swapped in with `ALTER DATABASE ... RENAME` in one transaction, keeping the replaced one as `yourspace_upgrade_failed_<time>`), and runs `docker compose up -d --wait`. It stops early, leaving `.upgrade-restore` and saying what is left to do by hand, when the new server can't be stopped (nothing is moved back), when the previous files can't be put back, or when the database can't be read or restored (the previous version isn't started). It holds `.your-space.lock` throughout, and from the first file moved until the files and the database are known to match, `.upgrade-restore` |
 
 ## The Server's `show-owner` Command

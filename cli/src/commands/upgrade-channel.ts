@@ -9,10 +9,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { isSea } from "node:sea";
 import { CHANNEL_NAMES, readChannel, type Channel, type ChannelBuild } from "../channel.ts";
-import { CliError, EXIT } from "../errors.ts";
+import { CliError } from "../errors.ts";
 import { holdingLock } from "../installation-lock.ts";
 import { Installation } from "../installation.ts";
-import { run } from "../process.ts";
+import { run, type Ran } from "../process.ts";
 import { parseSums, releaseTag, releaseUrl } from "../release.ts";
 import type { Ui } from "../ui.ts";
 import { compareVersions, VERSION } from "../version.ts";
@@ -70,12 +70,12 @@ function runAgain(build: ChannelBuild): string {
 }
 
 /** Downloads one of the build's release files; a file that isn't there stops the run with nothing changed. */
-async function download(build: ChannelBuild, file: string): Promise<Buffer> {
+async function download(build: ChannelBuild, file: string, stop: AbortSignal): Promise<Buffer> {
   const url = releaseUrl(build.version, file);
   let response: Response;
   let data: ArrayBuffer;
   try {
-    response = await fetch(url, { redirect: "follow" });
+    response = await fetch(url, { redirect: "follow", signal: stop });
     data = await response.arrayBuffer();
   } catch (error) {
     throw new CliError("download_failed", `Couldn't download ${url}. Check this machine's internet connection, then run this again. Nothing was changed.`, {}, String(error));
@@ -91,20 +91,23 @@ async function download(build: ChannelBuild, file: string): Promise<Buffer> {
 interface Program {
   command: string;
   args: string[];
+  /** The Node.js versions the npm package says it needs (`engines.node`), as it says them. */
+  needs?: string;
 }
 
 /**
  * Downloads the build's CLI into `work`, checked against the SHA256SUMS of the build's release, and,
  * for the npm package, that the package is the build's version.
  */
-async function fetchCli(build: ChannelBuild, cli: BuildCli, work: string): Promise<Program> {
+async function fetchCli(build: ChannelBuild, cli: BuildCli, work: string, stop: AbortSignal): Promise<Program> {
   const release = releaseTag(build.version);
-  const sums = parseSums((await download(build, "SHA256SUMS")).toString("utf8"));
-  const data = await download(build, cli.asset);
+  const sums = parseSums((await download(build, "SHA256SUMS", stop)).toString("utf8"));
+  // Before the download, which for the executable is about 100 MB.
   const expected = sums.get(cli.asset);
   if (!expected) {
     throw new CliError("checksum_mismatch", `The ${release} release's SHA256SUMS doesn't list ${cli.asset}${runAgain(build)}. Nothing was changed; run this again.`);
   }
+  const data = await download(build, cli.asset, stop);
   if (createHash("sha256").update(data).digest("hex") !== expected) {
     throw new CliError(
       "checksum_mismatch",
@@ -119,25 +122,26 @@ async function fetchCli(build: ChannelBuild, cli: BuildCli, work: string): Promi
   const tarball = join(work, cli.asset);
   writeFileSync(tarball, data, { mode: 0o600 });
   const script = "package/dist/your-space.cjs";
-  const unpacked = await run("tar", ["--no-same-owner", "-xzf", tarball, "-C", work, "package/package.json", script]);
+  const unpacked = await run("tar", ["--no-same-owner", "-xzf", tarball, "-C", work, "package/package.json", script], { signal: stop });
   const notPackage = () => new CliError("checksum_mismatch", `${cli.asset} isn't the npm package of Your Space ${build.version}'s CLI. Nothing was changed.`, {}, unpacked.stderr || undefined);
   if (unpacked.code !== 0) throw notPackage();
-  let manifest: { name?: unknown; version?: unknown };
+  let manifest: { name?: unknown; version?: unknown; engines?: { node?: unknown } };
   try {
     manifest = JSON.parse(readFileSync(join(work, "package", "package.json"), "utf8")) as typeof manifest;
   } catch {
     throw notPackage();
   }
   if (manifest.name !== "@your-space-ai/cli" || manifest.version !== build.version) throw notPackage();
-  return { command: process.execPath, args: [join(work, script)] };
+  const needs = manifest.engines?.node;
+  return { command: process.execPath, args: [join(work, script)], ...(typeof needs === "string" ? { needs } : {}) };
 }
 
 /** The owner's check: the downloaded CLI itself says it is the version channel.json names. */
-async function checkVersion(build: ChannelBuild, program: Program, work: string): Promise<void> {
-  let said: string;
+async function checkVersion(build: ChannelBuild, program: Program, work: string, stop: AbortSignal): Promise<void> {
+  let ran: Ran;
   try {
-    const ran = await run(program.command, [...program.args, "--version"]);
-    said = ran.code === 0 ? ran.stdout.trim() : `nothing it could print (exit status ${ran.code})`;
+    // A CLI prints its version at once; one that doesn't within a minute isn't run.
+    ran = await run(program.command, [...program.args, "--version"], { timeout: 60_000, signal: stop });
   } catch (error) {
     throw new CliError(
       "permission_denied",
@@ -146,6 +150,19 @@ async function checkVersion(build: ChannelBuild, program: Program, work: string)
       String(error),
     );
   }
+  if (ran.code !== 0) {
+    // It matches the release's SHA256SUMS, so it isn't damaged: it doesn't run on this machine, as a
+    // build that needs a newer Node.js wouldn't.
+    const ended = ran.signal ? `was stopped by ${ran.signal}` : `ended with exit status ${ran.code}`;
+    const node = program.needs ? ` It needs Node.js ${program.needs}, and this is Node.js ${process.versions.node}.` : "";
+    throw new CliError(
+      "unexpected",
+      `Your Space ${build.version}'s CLI, which matches its release's SHA256SUMS, didn't run here: its --version ${ended}.${node} Nothing was changed.`,
+      { channel: build.channel },
+      ran.stderr.trim() || undefined,
+    );
+  }
+  const said = ran.stdout.trim();
   if (said !== build.version) {
     throw new CliError(
       "checksum_mismatch",
@@ -155,9 +172,46 @@ async function checkVersion(build: ChannelBuild, program: Program, work: string)
   }
 }
 
-export async function upgradeChannel(ui: Ui, workdir: string, channel: Channel): Promise<void> {
+/**
+ * Downloads and checks the build's CLI. SIGINT or SIGTERM meanwhile stops the download or the check,
+ * with nothing changed, before the build's upgrade starts.
+ */
+async function checkedCli(ui: Ui, build: ChannelBuild, cli: BuildCli, work: string): Promise<Program> {
+  const stop = new AbortController();
+  const abort = (signal: NodeJS.Signals) => stop.abort(signal);
+  process.on("SIGINT", abort);
+  process.on("SIGTERM", abort);
+  try {
+    return await ui.step(`Downloading Your Space ${build.version}'s CLI`, `Checked Your Space ${build.version}'s CLI`, async () => {
+      const program = await fetchCli(build, cli, work, stop.signal);
+      await checkVersion(build, program, work, stop.signal);
+      stop.signal.throwIfAborted();
+      return program;
+    });
+  } catch (error) {
+    if (stop.signal.aborted) {
+      throw new CliError("cancelled", `Stopped by ${String(stop.signal.reason)} before Your Space ${build.version}'s upgrade started. Nothing was changed.`, { channel: build.channel });
+    }
+    throw error;
+  } finally {
+    process.off("SIGINT", abort);
+    process.off("SIGTERM", abort);
+  }
+}
+
+/**
+ * The build's upgrade ended without a result of its own: a signal ended it, or, with --json, it
+ * printed nothing. It may have changed the installation, so this says where to look.
+ */
+function noResult(build: ChannelBuild, ran: Ran, fields: Record<string, unknown>): CliError {
+  const ended = ran.signal ? `was stopped by ${ran.signal}` : `ended with exit status ${ran.code}`;
+  const message = `Your Space ${build.version}'s upgrade ${ended} before it gave a result. See where it left the installation with: your-space status`;
+  // SIGINT and SIGTERM are the ones passed on to it, as Ctrl-C or a kill.
+  return new CliError(ran.signal === "SIGINT" || ran.signal === "SIGTERM" ? "cancelled" : "unexpected", message, fields);
+}
+
+export async function upgradeChannel(ui: Ui, workdir: string, channel: Channel, running: RunningCli = runningCli()): Promise<void> {
   ui.intro("Your Space");
-  const running = runningCli();
   refuseBundled(running);
   const name = CHANNEL_NAMES[channel];
   // Read with the installation's lock held, so an upgrade running now, or one that stopped part
@@ -188,28 +242,24 @@ export async function upgradeChannel(ui: Ui, workdir: string, channel: Channel):
   }
 
   const cli = buildCli(build.version, running);
-  // Owner-only, and removed whatever happens.
+  // Owner-only, and removed whatever happens, also when the process exits part way, as Clack's
+  // spinner makes it on Ctrl-C.
   const work = mkdtempSync(join(tmpdir(), "your-space-channel-"));
+  const remove = () => rmSync(work, { recursive: true, force: true });
+  process.on("exit", remove);
   try {
-    const program = await ui.step(`Downloading Your Space ${build.version}'s CLI`, `Checked Your Space ${build.version}'s CLI`, async () => {
-      const program = await fetchCli(build, cli, work);
-      await checkVersion(build, program, work);
-      return program;
-    });
+    const program = await checkedCli(ui, build, cli, work);
     ui.outro(`Upgrading to Your Space ${build.version} with its own CLI`);
     const args = ["upgrade", "--workdir", resolve(workdir), ...(ui.yes ? ["--yes"] : []), ...(ui.json ? ["--json"] : []), ...(ui.verbose ? ["--verbose"] : [])];
-    // Its output is the command's: with --json, its one JSON object. Ctrl-C reaches it, and this
-    // process waits while it stops at its next step and puts the previous version back.
-    const ran = await run(program.command, [...program.args, ...args], { inherit: true, forwardSignals: true });
-    if (!Object.values(EXIT).includes(ran.code as (typeof EXIT)[keyof typeof EXIT])) {
-      throw new CliError(
-        "unexpected",
-        `Your Space ${build.version}'s upgrade stopped without a result (exit status ${ran.code}). See where it left the installation with: your-space status`,
-        { channel, from, to: build.version },
-      );
-    }
+    // Its output is the command's: with --json, its one JSON object, passed through here so this
+    // process knows whether it printed one. Ctrl-C reaches it, and this process waits while it
+    // stops at its next step and puts the previous version back.
+    const ran = await run(program.command, [...program.args, ...args], { inherit: true, relayStdout: ui.json, forwardSignals: true });
+    const answered = ui.json ? ran.stdout.trim() !== "" : !ran.signal;
+    if (!answered) throw noResult(build, ran, { channel, from, to: build.version });
     process.exitCode = ran.code;
   } finally {
-    rmSync(work, { recursive: true, force: true });
+    process.off("exit", remove);
+    remove();
   }
 }

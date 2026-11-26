@@ -3,6 +3,8 @@ import { spawn } from "node:child_process";
 
 export interface Ran {
   code: number;
+  /** The signal that ended the program, when one did; `code` is then 128. */
+  signal?: NodeJS.Signals;
   stdout: string;
   stderr: string;
 }
@@ -13,6 +15,8 @@ export interface RunOptions {
   env?: NodeJS.ProcessEnv;
   /** Lets the program use the terminal directly, as `logs --follow` does. */
   inherit?: boolean;
+  /** With `inherit`, its output goes to this process's output through a pipe, and is collected too. */
+  relayStdout?: boolean;
   /** An open file the program reads as its input, in place of `input`, such as a database backup. */
   inputFile?: number;
   /** An open file the program writes its output to, byte for byte, in place of `stdout`. */
@@ -22,6 +26,10 @@ export interface RunOptions {
    * the program decides what they do and this process waits for its result.
    */
   forwardSignals?: boolean;
+  /** Stops the program with SIGTERM after this many milliseconds. */
+  timeout?: number;
+  /** Stops the program with SIGTERM when this is aborted, and rejects. */
+  signal?: AbortSignal;
 }
 
 /** Resolves with the exit code, or rejects with ENOENT when the program isn't installed. */
@@ -30,7 +38,9 @@ export function run(program: string, args: string[], options: RunOptions = {}): 
     const child = spawn(program, args, {
       cwd: options.cwd,
       env: options.env ?? process.env,
-      stdio: options.inherit ? "inherit" : [options.inputFile ?? "pipe", options.outputFile ?? "pipe", "pipe"],
+      stdio: options.inherit ? ["inherit", options.relayStdout ? "pipe" : "inherit", "inherit"] : [options.inputFile ?? "pipe", options.outputFile ?? "pipe", "pipe"],
+      timeout: options.timeout,
+      signal: options.signal,
     });
     let stdout = "";
     let stderr = "";
@@ -40,7 +50,10 @@ export function run(program: string, args: string[], options: RunOptions = {}): 
     const done = () => {
       for (const signal of signals) process.off(signal, forward);
     };
-    child.stdout?.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+      if (options.relayStdout) process.stdout.write(chunk);
+    });
     child.stderr?.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
     child.on("error", (error) => {
       done();
@@ -48,7 +61,7 @@ export function run(program: string, args: string[], options: RunOptions = {}): 
     });
     child.on("close", (code, signal) => {
       done();
-      resolve({ code: code ?? (signal ? 128 : 1), stdout, stderr });
+      resolve({ code: code ?? (signal ? 128 : 1), ...(signal ? { signal } : {}), stdout, stderr });
     });
     // Docker may exit before it reads the whole input (for example, when the server is stopped).
     child.stdin?.on("error", (error: NodeJS.ErrnoException) => {

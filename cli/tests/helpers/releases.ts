@@ -13,11 +13,13 @@ export interface Served {
   close(): Promise<void>;
 }
 
-export async function serveReleases(folder: string): Promise<Served> {
+/** Serves `folder`; a request for a path in `hold` gets no answer, as a download under way. */
+export async function serveReleases(folder: string, hold: string[] = []): Promise<Served> {
   const requests: string[] = [];
   const server = createServer((request, response) => {
     const path = decodeURIComponent(new URL(request.url ?? "/", "http://x").pathname);
     requests.push(path);
+    if (hold.includes(path)) return;
     try {
       if (path.split("/").includes("..")) throw new Error("outside");
       response.end(readFileSync(join(folder, path)));
@@ -30,7 +32,11 @@ export async function serveReleases(folder: string): Promise<Served> {
   return {
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     requests,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () =>
+      new Promise((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      }),
   };
 }
 
