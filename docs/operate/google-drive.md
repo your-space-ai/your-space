@@ -145,7 +145,8 @@ of it starts meanwhile.
 - **Remove connection** forgets the client and the token, once no knowledge base syncs. To revoke
   the token at Google too, remove Your Space's access in your
   [Google account](https://myaccount.google.com/permissions).
-- Deleting a knowledge base deletes its sync too; the Drive folder keeps its files.
+- Deleting a knowledge base deletes its sync too, with the replaced files it kept: copy out any you
+  need first, as below. The Drive folder keeps its files.
 
 Replacing the data key ([Replace a Secret](recovery.md#replace-a-secret)) moves the client secret
 and the token to the new key with apps' settings, so syncs go on.
@@ -203,7 +204,9 @@ On the Docker engine:
   the first synced knowledge base, stops with your apps, and is removed when no knowledge base syncs;
   [Remove Your Space](index.md#remove-your-space) removes it.
 - `<installation>_ys-sync`: the volume of rclone's sockets, a folder for each knowledge base. It
-  holds nothing durable.
+  holds nothing durable. The server and rclone's containers share it, so knowledge bases sync only
+  when apps run on the engine Your Space runs on: with `YS_ENGINE_SOCKET` set to another engine,
+  connecting one is refused.
 
 `<installation>` is your installation's Compose project name, `your-space` unless you changed it.
 
