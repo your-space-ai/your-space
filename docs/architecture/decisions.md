@@ -152,10 +152,22 @@ knowledge base. [Journey 014](https://github.com/your-space-ai/your-space/blob/m
   apps without their files when the remote is unreachable.
 - **A sync container for each knowledge base (owner decision, 2026-11-26).** Each container mounts
   only its own knowledge base, its sync state and its own socket's folder. This supersedes one
-  container for all synced knowledge bases (2026-11-25): rclone writes through a symbolic link to a
-  folder, so in a shared container an app given one knowledge base could have a sync write into
-  another app's knowledge base. Connecting or disconnecting one knowledge base now leaves the others'
-  runs alone.
+  container for all synced knowledge bases (2026-11-25): without `links`, rclone wrote through a
+  symbolic link to a folder, so in a shared container an app given one knowledge base could have a
+  sync write into another app's knowledge base. Since links sync as links (below), the container
+  for each stays as defence in depth: it limits what any run can reach. Connecting or disconnecting
+  one knowledge base now leaves the others' runs alone.
+- **Links sync as links (owner decision, 2026-11-26).** rclone's `links` option is set on the
+  knowledge base's side of every sync (`:local,links:<path>`), so a symbolic link is never followed
+  out of the knowledge base: Drive keeps it as a small `<name>.rclonelink` file holding its target,
+  and such a file from Drive becomes a link. A Drive folder at the path of a link out of the
+  knowledge base, or of any absolute link, stops that knowledge base with its own reason naming the
+  path, and nothing is written where the link leads; it waits for the owner to remove the folder, or
+  the link and its `.rclonelink` file, and choose Resync. This supersedes rclone's default, which
+  wrote through a link to a folder, so an app could have a sync write into its knowledge base's own
+  sync state; refusing every run while a knowledge base has a link to a folder was not chosen. A
+  relative link to a folder inside the knowledge base is still followed, and what it leads to stays
+  in the knowledge base. Checked against the pinned rclone 1.75.2.
 - **Stopping and recovery (owner decisions, 2026-11-26).** Stopping Your Space stops each sync
   container with SIGINT, bisync's graceful shutdown, so a run under way saves its state and the next
   run carries on from it. An interrupted run is recorded as failed, as it may have changed files;

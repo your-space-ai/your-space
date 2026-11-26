@@ -60,9 +60,8 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
 - **One rclone for each synced knowledge base, always on, and nothing else.** Each synced knowledge
   base has a long-running container of its own that runs stock rclone's remote-control server
   (`rclone rcd`), with its configuration in memory only, listening on a private socket only the
-  server can reach. It mounts only that knowledge base: rclone follows a symbolic link to a folder
-  when it writes, so one container for all of them would let an app make a sync write into another
-  app's knowledge base (2026-11-26). The server drives each through rclone's own remote control API:
+  server can reach. It mounts only that knowledge base, so no run can reach another knowledge base
+  (2026-11-26). The server drives each through rclone's own remote control API:
   it creates the knowledge base's Drive remote there, so tokens stay in rclone's memory, and starts
   each bisync there. Your Space adds no sync daemon or file watcher of its own.
   The owner: "rclone just constantly bisync the contents", and "can that be achieved natively with
@@ -73,6 +72,12 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   set the OAuth app to *In production*: an app left in *Testing* gets refresh tokens that expire
   after seven days. Other rclone remotes are accepted direction, each listed only once it passes the
   same both-sides-edit and conflict check.
+- **Links sync as links (2026-11-26).** rclone's `links` option is set on the knowledge base's side
+  of every sync, so a symbolic link is never followed out of the knowledge base: it is kept in Drive
+  as a small `<name>.rclonelink` file holding the link's target, and such a file from Drive becomes
+  a link here. A Drive folder at the path of a link out of the knowledge base stops it, naming the
+  path, until the owner removes the folder or the link (see **Links**). The owner adopted this once
+  it was checked against the pinned stock rclone.
 - **No permissioning in v1.** Every mount is read-write, for every app given the knowledge base. There
   is no writer role, read-only mount or folder ownership yet. The owner: "i dont want to build a
   solution before we've run into a problem here".
@@ -135,12 +140,27 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   are in the Drive, so following it would copy files from outside the chosen folder into the
   knowledge base. The OAuth scope is `drive`, because with `drive.file` rclone sees only the files it
   created itself, not those already in the folder. Empty folders sync too.
+- **Links.** Every fs rclone is given on the knowledge base's side, the knowledge base itself and
+  its backup folders, is `:local,links:<path>` (2026-11-26). A symbolic link an app makes in the
+  knowledge base syncs to Drive as a `<name>.rclonelink` file holding the link's target, and a
+  `.rclonelink` file in the Drive folder becomes a link here, with whatever target it holds. rclone
+  never writes through a link that leads out of the knowledge base, or through any absolute link:
+  - A Drive folder at such a link's path, or under it, stops the knowledge base with its own reason
+    (`link`), naming the path. Nothing is written where the link leads, such as the knowledge base's
+    own sync state. bisync then needs a resync, and Your Space doesn't run one by itself for it.
+  - It stays stopped until the owner removes the Drive folder, or removes the link here and its
+    `.rclonelink` file in Drive, which would otherwise bring the link back, then chooses
+    **Resync**. A resync while the folder and the link are both there stops the same way.
+  - A Drive file at a link's path never writes into the link's target.
+  - A link written relative to where it is, to a folder in the knowledge base itself, is the one
+    link rclone follows: a Drive folder at its path is written where it leads, still inside the
+    knowledge base, and later runs move it there in Drive too.
 - **The sync containers.** One container for each synced knowledge base, run by the runtime manager
   for Your Space: the stock rclone image running `rclone rcd`, unprivileged, with no engine access
   and no FUSE. It mounts only that knowledge base's volume, its own sync state (bisync's listings and
-  the backups) and its own socket's folder. rclone writes through a symbolic link to a folder, so a
-  container that mounted other knowledge bases would let an app given this one make a sync write
-  into another's, or over another's state or socket. Its remote control listens only on a Unix socket
+  the backups) and its own socket's folder. Links aren't followed out of the knowledge base (see
+  **Links**); the container is defence in depth besides, as it limits what any run can reach to that
+  knowledge base, its state and its socket. Its remote control listens only on a Unix socket
   in that folder, in a volume only the server mounts whole, protected by file permissions, as the
   runtime manager's socket is. Connecting or disconnecting a knowledge base adds or removes its
   container only; the others keep running.
@@ -216,8 +236,14 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
 - Restart only the server during a run: the run finishes, and the page then shows its result and its
   events are recorded. Stop Your Space during a run: the run is recorded as failed, and the next
   start finishes it, resyncing by itself if bisync needs that.
-- Two synced knowledge bases sync through containers of their own. An app given only one of them
-  puts a symbolic link in it to where the other would be mounted: no sync writes into the other.
+- Two synced knowledge bases sync through containers of their own, each mounting only its own
+  knowledge base, sync state and socket's folder.
+- A link an app makes in a synced knowledge base is in the fixture remote as a `.rclonelink` file,
+  and a `.rclonelink` file added there becomes a link. A link out of the knowledge base is never
+  followed: an app links to the knowledge base's own sync state and the fixture remote has a folder
+  at the link's path; the run stops with reason `link`, naming the path, nothing is written into the
+  sync state, and Your Space runs no resync of its own. With the link and its `.rclonelink` file
+  removed, **Resync** syncs again.
 - The token is in no file in the sync containers' volumes, and in no container's environment or
   configuration (`docker inspect`). Restart a knowledge base's sync container: it syncs again once
   the server has created its remote again.
@@ -252,11 +278,17 @@ order.
   where stock `rclone rcd` already runs bisync, holds remotes in memory and reports jobs. A local
   watcher stays later direction.
 - **One `rclone rcd` container for all synced knowledge bases** (the third design, 2026-11-25).
-  Replaced on 2026-11-26 by a container for each: rclone writes through a symbolic link to a folder,
-  so an app given one knowledge base could link to where another was mounted in the shared container
-  and have a sync write into it, or over its sync state. And connecting or disconnecting any
-  knowledge base changed the container's mounts, so it was recreated and every run under way was
-  stopped.
+  Replaced on 2026-11-26 by a container for each: without `links`, rclone wrote through a symbolic
+  link to a folder, so an app given one knowledge base could link to where another was mounted in
+  the shared container and have a sync write into it, or over its sync state. And connecting or
+  disconnecting any knowledge base changed the container's mounts, so it was recreated and every run
+  under way was stopped. Links now sync as links, and the container for each stays as defence in
+  depth.
+- **rclone's default for links, or refusing a run while the knowledge base has a link to a folder**
+  (2026-11-26). Not chosen, at the owner's decision. By default rclone skips a link when it reads the
+  knowledge base but writes through a link to a folder, so an app could have a sync write into its
+  knowledge base's own sync state. Refusing every run while a link is there would stop knowledge
+  bases whose apps use links for their own files.
 - **A live mount** (`rclone mount`). Not chosen: it needs FUSE and extra privileges in a container,
   and leaves apps without their files when the remote is unreachable.
 
