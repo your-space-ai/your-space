@@ -295,13 +295,14 @@ test("a canary-mac.yml that another run signed for this build is left as it is, 
   for (const [name, data] of theirs) assert.equal(files[name], data, name);
 
   // With this run's ZIPs there, it is this run's canary-mac.yml that didn't download as it was
-  // uploaded, so the re-run uploads it again.
+  // uploaded, so the re-run uploads it again, and only it: the ZIPs it lists stay.
   const dir = signed(t);
   const ours = zips(version).map(name => [name, readFileSync(join(dir, name), "utf8")]);
   const own = github(t, { canary: [[{}, [...linuxFiles(version, "a".repeat(40)), ...ours, ["canary-mac.yml", `${feedFor(version)}garbled\n`], [zips(older)[0], "old"]]]] });
   const again = own.publish(dir);
   assert.equal(again.status, 0, again.stderr);
-  assert.deepEqual(writes(again.calls).filter(call => call.startsWith("gh release upload")), [`gh release upload canary ${zips(version).join(" ")}`, "gh release upload canary canary-mac.yml"]);
+  assert.deepEqual(writes(again.calls).filter(call => call.startsWith("gh release upload")), ["gh release upload canary canary-mac.yml"]);
+  for (const [name, data] of ours) assert.equal(own.files()[name], data, name);
   assert.equal(own.files()["canary-mac.yml"], readFileSync(join(dir, "canary-mac.yml"), "utf8"));
   assert.equal(own.files()[zips(older)[0]], undefined);
 });
