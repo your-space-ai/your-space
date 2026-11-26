@@ -27,6 +27,9 @@ const releaseFeed = alphaFeed.replaceAll(`https://github.com/your-space-ai/your-
 const channelJson = (channel, named, at) => `${JSON.stringify({ channel, version: named, commit: at })}\n`;
 // The feed's latest-mac.yml as the script writes it for another release.
 const feedFor = other => alphaFeed.replaceAll(version, other);
+// The alpha prerelease's notes start with the release a run has begun to point the feed at, in a
+// form every release's script reads, so it is pinned here.
+const notesFor = other => `Feed for v${other}. The Alpha channel's feed.`;
 const sha256 = data => createHash("sha256").update(data).digest("hex");
 
 /** A stand-in for GitHub holding the published v0.1.0-alpha.2 release and any `alpha` releases given. */
@@ -54,7 +57,8 @@ function github(t, { alpha = [], fail = [], served, feed: published = releaseFee
   // SHA256SUMS lists the release's own latest-mac.yml, as Release draft writes it.
   const sums = [...zips.map(([name, data]) => `${sha256(data)}  ${name}`), `${sha256(releaseFeed)}  latest-mac.yml`].join("\n") + "\n";
   add({ tag_name: `v${version}`, name: `Your Space ${version}` }, [...zips, ["latest-mac.yml", published], ["SHA256SUMS", sums]]);
-  for (const [release, files] of alpha) add({ tag_name: "alpha", name: title, ...release }, files);
+  // An `alpha` release given starts with the notes of the alpha.1 feed unless its notes are given.
+  for (const [release, files] of alpha) add({ tag_name: "alpha", name: title, body: notesFor("0.1.0-alpha.1"), ...release }, files);
   writeFileSync(join(dir, "state.json"), JSON.stringify(state));
   const readState = () => JSON.parse(readFileSync(join(dir, "state.json"), "utf8"));
 
@@ -98,6 +102,7 @@ test("a first run creates the alpha prerelease at the release's commit and uploa
     { draft: alpha[0].draft, prerelease: alpha[0].prerelease, make_latest: alpha[0].make_latest, name: alpha[0].name, target_commitish: alpha[0].target_commitish },
     { draft: false, prerelease: true, make_latest: "false", name: title, target_commitish: commit },
   );
+  assert.ok(alpha[0].body.startsWith(`Feed for v${version}. `), alpha[0].body);
   assert.deepEqual(alpha[0].assets.map(file => [file.name, file.state]).sort(), [["channel.json", "uploaded"], ["latest-mac.yml", "uploaded"]]);
   // What clients read is the fixture: full links into the v release, and the release's channel.json.
   assert.equal(gh.served("latest-mac.yml"), alphaFeed);
@@ -138,6 +143,11 @@ test("a feed that names a newer release is left as it is, and one that names an 
   const older = github(t, { alpha: [[{}, [["latest-mac.yml", "version: '0.1.0-alpha.1'\n"], ["channel.json", channelJson("alpha", "0.1.0-alpha.1", commit)]]]] });
   const moved = older.run();
   assert.equal(moved.status, 0, moved.stderr);
+  // It reads the notes, then records this release in them, before it changes either file.
+  const id = older.state().releases.find(release => release.tag_name === "alpha").id;
+  const recorded = moved.calls.findIndex(call => call.startsWith(`gh api PATCH ${releases}/${id} `) && call.includes(`Feed for v${version}. `));
+  assert.ok(moved.calls.indexOf(`gh api GET ${releases}/${id}`) < recorded);
+  assert.ok(recorded !== -1 && recorded < moved.calls.findIndex(call => call.startsWith("gh release upload ")));
   assert.equal(older.served("latest-mac.yml"), alphaFeed);
   assert.equal(older.served("channel.json"), alphaChannel);
   assert.equal(older.state().releases.filter(release => release.tag_name === "alpha").length, 1);
@@ -242,6 +252,45 @@ test("a latest-mac.yml the feed can't be read for, or that doesn't name an Alpha
     assert.notEqual(result.status, 0, listed);
     assert.match(result.stderr, /latest-mac\.yml doesn't list an Alpha release/, listed);
     assert.deepEqual(writes(result.calls), [], listed);
+  }
+});
+
+// gh's --clobber deletes a file before it uploads the new one, so a run that stops there leaves the
+// file missing. The notes, set first, keep an older release's run out until this release's re-run.
+test("a run that stops with latest-mac.yml deleted keeps older releases out and is finished by its re-run", t => {
+  const named = channelJson("alpha", "0.1.0-alpha.1", commit);
+  const gh = github(t, {
+    alpha: [[{}, [["latest-mac.yml", feedFor("0.1.0-alpha.1")], ["channel.json", named]]]],
+    fail: [{ call: "gh release upload alpha", status: 502, times: 5, apply: "delete" }],
+  });
+  assert.notEqual(gh.run().status, 0);
+  assert.equal(gh.served("latest-mac.yml"), undefined);
+  assert.equal(gh.served("channel.json"), named);
+  assert.ok(gh.state().releases.find(release => release.tag_name === "alpha").body.startsWith(`Feed for v${version}. `));
+
+  const again = gh.run();
+  assert.equal(again.status, 0, again.stderr);
+  assert.equal(gh.served("latest-mac.yml"), alphaFeed);
+  assert.equal(gh.served("channel.json"), alphaChannel);
+});
+
+test("notes that name a newer release keep the feed as it is, whatever its files name", t => {
+  for (const files of [[["channel.json", channelJson("alpha", "0.1.0-alpha.1", commit)]], [["latest-mac.yml", feedFor("0.1.0-alpha.1")]], []]) {
+    const gh = github(t, { alpha: [[{ body: notesFor("0.1.0-alpha.3") }, files]] });
+    const { status, stderr, stdout, calls } = gh.run();
+    assert.equal(status, 0, stderr);
+    assert.match(stdout, /A run for v0\.1\.0-alpha\.3 has begun/);
+    assert.match(stderr, /::warning::.*re-run v0\.1\.0-alpha\.3's alpha-feed job/);
+    assert.deepEqual(writes(calls), []);
+    assert.equal(gh.state().releases.find(release => release.tag_name === "alpha").body, notesFor("0.1.0-alpha.3"));
+  }
+
+  for (const body of ["Edited by hand.", "", `Feed for v0.1.0-alpha.2.canary.20261201.60. The Alpha channel's feed.`, "Feed for 0.1.0-alpha.1. The Alpha channel's feed."]) {
+    const gh = github(t, { alpha: [[{ body }, [["channel.json", channelJson("alpha", "0.1.0-alpha.1", commit)]]]] });
+    const result = gh.run();
+    assert.notEqual(result.status, 0, body);
+    assert.match(result.stderr, /notes don't start with the release a run began/, body);
+    assert.deepEqual(writes(result.calls), [], body);
   }
 });
 

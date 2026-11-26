@@ -10,7 +10,7 @@
     <updated>2026-11-30T18:40:12Z</updated>
     <link rel="alternate" type="text/html" href="https://github.com/your-space-ai/your-space/releases/tag/alpha"/>
     <title>Alpha channel feed (not a release)</title>
-    <content type="html">&lt;p&gt;The Alpha channel&#39;s feed: latest-mac.yml and channel.json. This isn&#39;t a release.&lt;/p&gt;</content>
+    <content type="html">&lt;p&gt;Feed for v0.1.0-alpha.2. The Alpha channel&#39;s feed: latest-mac.yml and channel.json. This isn&#39;t a release.&lt;/p&gt;</content>
     <author>
       <name>github-actions[bot]</name>
     </author>

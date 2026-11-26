@@ -7,7 +7,9 @@
 //
 // state.fail holds failures to inject, each { call, status, times, apply }: the first `times` calls
 // whose description starts with `call` fail with that HTTP status, after making their change anyway
-// when `apply` is set, as a call GitHub answers with an error can still have made its release.
+// when `apply` is set, as a call GitHub answers with an error can still have made its release. An
+// upload with `apply: "delete"` deletes the file it replaces and then fails, as gh's --clobber does
+// when the upload after its delete fails.
 // state.served lists answers for each of the feed's files at its fixed address, by file name, one per
 // read, before the releases count.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -52,6 +54,7 @@ const byTag = tag => state.releases.find(release => release.tag_name === tag && 
 const jq = {
   ".sha": value => [value.sha],
   ".id": value => [value.id],
+  ".body": value => [value.body ?? ""],
   '.[] | select(.tag_name == "alpha") | "\\(.draft) \\(.id)"': value => value.filter(release => release.tag_name === "alpha").map(release => `${release.draft} ${release.id}`),
   '.[] | "\\(.id) \\(.state) \\(.name)"': value => value.map(item => `${item.id} ${item.state} ${item.name}`),
 };
@@ -94,6 +97,9 @@ function ghApi() {
     }
     result = { id: ++state.lastId, draft: false, prerelease: false, assets: [], ...fields };
     state.releases.push(result);
+  } else if (method === "GET" && (match = new RegExp(`^${api}/releases/(\\d+)$`).exec(path))) {
+    result = state.releases.find(release => release.id === Number(match[1]));
+    if (!result) return missing();
   } else if (method === "PATCH" && (match = new RegExp(`^${api}/releases/(\\d+)$`).exec(path))) {
     result = state.releases.find(release => release.id === Number(match[1]));
     if (!result) return missing();
@@ -139,6 +145,11 @@ function ghRelease() {
   if (failure && !failure.apply) return finish(1, { err: `HTTP ${failure.status}: Server Error (https://api.github.com/${api}/releases)\n` });
   const release = byTag(tag);
   if (!release) return finish(1, { err: "release not found\n" });
+  if (failure?.apply === "delete") {
+    if (command !== "upload" || !clobber) return unsupported();
+    release.assets = release.assets.filter(item => !files.some(file => basename(file) === item.name));
+    return finish(1, { err: `HTTP ${failure.status}: Server Error (https://uploads.github.com/${api}/releases/${release.id}/assets)\n` });
+  }
 
   if (command === "download") {
     if (!clobber || files.length) return unsupported();

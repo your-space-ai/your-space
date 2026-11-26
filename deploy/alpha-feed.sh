@@ -6,11 +6,12 @@
 # latest-mac.yml, which the Mac app on Alpha reads and which lists the release's two update ZIPs by
 # their full links into the `v` release (desktop/scripts/channel-feed.mjs), and channel.json, which
 # names the release for `your-space upgrade --channel alpha` (deploy/channel-json.sh). It never
-# points the feed at a release older than either file names, and never at a canary.
+# points the feed at a release older than either file names, or than a run that stopped part way
+# had begun to point it at, which the prerelease's notes record first, and never at a canary.
 #
 # Safe to re-run: it changes nothing once channel.json names this release or a newer one, or
-# latest-mac.yml lists a newer one, it looks for the `alpha` prerelease before it creates one, and
-# --clobber replaces a file an attempt uploaded.
+# latest-mac.yml or the notes name a newer one, it looks for the `alpha` prerelease before it
+# creates one, and --clobber replaces a file an attempt uploaded.
 # Each call to GitHub is retried while GitHub answers with a server error (deploy/gh-retry.sh).
 # latest-mac.yml goes up first and channel.json last, each checked once it is there, so channel.json
 # names this release only once the Mac app's feed is this release's. It needs bash, curl, gh, Node,
@@ -31,7 +32,6 @@ repo=your-space-ai/your-space
 api=repos/$repo
 feed=https://github.com/$repo/releases/download/alpha
 title='Alpha channel feed (not a release)'
-notes="The Alpha channel's feed: latest-mac.yml, which the Mac app reads when its Update Channel is Alpha, and channel.json, which your-space upgrade --channel alpha reads. Both point at the newest published release, and Release publish replaces them when a newer one is published. This isn't a release: to install Your Space, use a numbered release as the installation guide says: https://github.com/$repo/blob/main/docs/install/index.md"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 summary=${GITHUB_STEP_SUMMARY:-/dev/null}
@@ -42,6 +42,12 @@ if [[ $tag != v* ]]; then
   exit 1
 fi
 version=${tag#v}
+# The `alpha` prerelease's notes start with the release a run has begun to point the feed at, set
+# before it changes either file and never lowered, so a run that stopped part way, even with a file
+# deleted, still keeps an older release's run out. Each release's own alpha-feed.sh reads what an
+# earlier or later one wrote, so keep that first sentence as it is: "Feed for vVERSION. ".
+notes="Feed for $tag. The Alpha channel's feed: latest-mac.yml, which the Mac app reads when its Update Channel is Alpha, and channel.json, which your-space upgrade --channel alpha reads. Both point at the newest published release, and Release publish replaces them when a newer one is published. This isn't a release: to install Your Space, use a numbered release as the installation guide says: https://github.com/$repo/blob/main/docs/install/index.md"
+begun_pattern='^Feed for v([0-9A-Za-z.+-]+)\. '
 
 # Alpha's channel.json for this release, at the commit its tag points to. channel-json.sh refuses a
 # version that isn't one, or is a canary's, before anything changes.
@@ -169,6 +175,23 @@ alpha_release() {
   esac
 }
 id=$(retry alpha_release)
+
+# The release a run has begun to point the feed at, read before this run records itself in the
+# notes. Notes in another form stop the run, for a maintainer to look. When it is newer than this
+# release, its run stopped part way, and finishing the feed is that run's to do.
+body=$(retry gh api "$api/releases/$id" --jq .body)
+begun=
+if [[ $body =~ $begun_pattern ]]; then begun=${BASH_REMATCH[1]}; fi
+if [[ -z $begun ]] || ! "$root/deploy/channel-json.sh" alpha "$begun" "$commit" > /dev/null 2>&1; then
+  echo "::error::The alpha prerelease's notes don't start with the release a run began to point the feed at, as deploy/alpha-feed.sh writes them, so nothing is replaced. Find what changed them, then re-run." >&2
+  exit 1
+fi
+begun_order=$(order "$begun") || exit 1
+if ((begun_order > 0)); then
+  say "A run for v$begun has begun to point the alpha feed at it, so it stays as it is for $tag."
+  echo "::warning::The alpha feed doesn't name v$begun yet, so its run stopped part way: re-run v$begun's alpha-feed job in Release publish to finish." >&2
+  exit 0
+fi
 retry gh api --method PATCH "$api/releases/$id" -F prerelease=true -f make_latest=false -f name="$title" -f body="$notes" --silent
 
 # Just before writing, in case a newer release was published meanwhile.
@@ -179,7 +202,8 @@ if covered; then exit 0; fi
 # until it is. A file already gone (HTTP 404) counts as deleted. --clobber deletes the old file
 # before it uploads the new one, so for a moment the file is missing: a Mac app on Alpha checking
 # then says it couldn't check, and the CLI stops with nothing changed. A run that stops in between
-# leaves it missing until a re-run, and covered() reads both files, so no older release moves in.
+# leaves it missing until this release's re-run, and the notes already name this release, so no
+# older release's run moves in meanwhile.
 replace() {
   local name=$1 asset state listed
   gh api --paginate "$api/releases/$id/assets?per_page=100" --jq '.[] | "\(.id) \(.state) \(.name)"' > "$work/listed" || return 1
