@@ -1131,8 +1131,11 @@ export class KnowledgeSync {
       }
       const synced = ended.result === "synced";
       const stopped = ended.result === "stopped";
-      // More deletions than the owner can confirm: the run stays stopped, and none of them is kept.
-      const tooMany = stopped && deletions.length > MAX_DELETIONS;
+      // More deletions than the owner can confirm: the run stays stopped, and none of them is kept. A
+      // stop at a link keeps none either: bisync lists a run's deletions before it stops there, but the
+      // owner resyncs, which deletes nothing, rather than confirm them.
+      const kept = stopped && ended.reason !== "link";
+      const tooMany = kept && deletions.length > MAX_DELETIONS;
       const updated = await tx
         .update(knowledgeSync)
         .set({
@@ -1143,7 +1146,7 @@ export class KnowledgeSync {
           side: ended.side ?? null,
           message: ended.message?.slice(0, 1000) ?? null,
           // Every one of them, which the owner confirms and the server compares with its dry run.
-          deletions: stopped && !tooMany ? deletions : [],
+          deletions: kept && !tooMany ? deletions : [],
           ...(listed ? { conflicts: listed.conflicts, backups: listed.backups } : {}),
           ...(synced ? { lastSyncedAt: new Date() } : {}),
           ...(synced && job.mode === "resync" ? { resync: false, ties: (extra.ties ?? []).slice(0, 500) } : {}),

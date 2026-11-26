@@ -964,6 +964,9 @@ describe("a knowledge base's sync", () => {
         success: false,
         error: "bisync aborted",
         lines: [
+          // bisync lists the run's deletions before it stops there: more than the owner could confirm
+          // are still this stop, and none is kept for the owner to apply.
+          ...Array.from({ length: MAX_DELETIONS + 1 }, (_, i) => deleted(`f-${i}.md`)),
           { level: "error", msg: `Failed to copy: ${escapes}`, object: "notes/out/planted.txt" },
           { level: "error", msg: "not deleting files as there were IO errors", object: "Local file system at /knowledge/notes" },
           { level: "error", msg: `Bisync critical error: ${escapes}` },
@@ -977,9 +980,9 @@ describe("a knowledge base's sync", () => {
     expect(rc.started().slice(runs).map((j) => Boolean(j.params.resync))).toEqual([false]);
     expect((await events("knowledge.resync_requested")).length).toBe(resyncs);
     expect((await events("knowledge.sync_stopped")).slice(stops)).toEqual([{ actorId: operator, knowledgeBase: "notes" }]);
-    expect(await syncRow()).toMatchObject({ result: "stopped", reason: "link", interrupted: false });
+    expect(await syncRow()).toMatchObject({ result: "stopped", reason: "link", interrupted: false, deletions: [] });
     const stopped = await status();
-    expect(stopped).toMatchObject({ running: false, result: "stopped", reason: "link", detail: `Bisync critical error: ${escapes}` });
+    expect(stopped).toMatchObject({ running: false, result: "stopped", reason: "link", detail: `Bisync critical error: ${escapes}`, deletions: [], deletionCounts: { local: 0, remote: 0 } });
     expect(stopped!.summary).toContain("Drive has a folder at notes/out where this knowledge base has a link");
     expect(stopped!.summary).toContain("remove the link here and its .rclonelink file in Drive");
     // The timer leaves it to the owner.

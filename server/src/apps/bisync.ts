@@ -213,10 +213,11 @@ function failureLines(lines: LogLine[]): string[] {
  * that rclone doesn't write through (`links`): the folder it couldn't make, or whose time it couldn't
  * set, at the link or under it. rclone 1.75.2 says `mkdirat <path>: statat <path>: path escapes from
  * parent`, `mkdirat <path>: path escapes from parent` for a folder under the link, or `failed to set
- * directory modtime: chtimesat <path>: …`. The path is whatever the app named, so the line is read
- * from bisync's own start to its end, the path between them.
+ * directory modtime: chtimesat <path>: …`. The path is whatever the app named, line breaks included,
+ * which rclone keeps as they are in `msg`, so the line is read from bisync's own start to its end,
+ * the path between them.
  */
-const ESCAPES = /^Bisync critical error: (?:failed to set directory modtime: )?[a-z]+ (.+?)(?:: [a-z]+ \1)?: path escapes from parent$/;
+const ESCAPES = /^Bisync critical error: (?:failed to set directory modtime: )?[a-z]+ (.+?)(?:: [a-z]+ \1)?: path escapes from parent$/s;
 
 /** The path a run's `link` stop names, from its message, rclone's critical error. */
 export function linkPathOf(message: string | null | undefined): string | undefined {

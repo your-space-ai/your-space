@@ -169,7 +169,8 @@ describe("reading rclone's log", () => {
     expect(linkPathOf(outcome(false, logLines(json(time))).message)).toBe("notes/out");
     // The path is the app's: a link named like Google's refusal, a lock or a stop is still this stop,
     // so it can't disconnect Google, and its whole name is named.
-    for (const name of ["notes/invalid_grant: a b", "prior lock file found", "too many deletes (>50%) on Path1", "x: statat x"]) {
+    // rclone keeps a line break in the name as it is in `msg` (in `object` it is ␊).
+    for (const name of ["notes/invalid_grant: a b", "prior lock file found", "too many deletes (>50%) on Path1", "x: statat x", "notes/a\ninvalid_grant: b", "a\n"]) {
       const named = outcome(false, logLines(json(escapes(name))), "bisync aborted");
       expect(named, name).toMatchObject({ result: "stopped", reason: "link" });
       expect(linkPathOf(named.message), name).toBe(name);
