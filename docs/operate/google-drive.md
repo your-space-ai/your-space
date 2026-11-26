@@ -92,6 +92,14 @@ The knowledge base's page shows when it last synced, and what to do when a sync 
   storage, outside the knowledge base, where apps don't see it. The page lists them. A Drive file a
   sync replaces is kept in that file's version history in Drive, for as long as Drive keeps it.
 - Two apps writing the same file in the knowledge base aren't detected: the last write wins.
+- Symbolic links sync as links. A link an app makes in the knowledge base is kept in Drive as a
+  small file named after it with `.rclonelink` at the end, holding the link's target, such as
+  `notes.rclonelink`; a `.rclonelink` file you add in Drive becomes a link in the knowledge base,
+  leading wherever its text says. The sync never follows a link out of the knowledge base, or any
+  absolute link: when the Drive folder has a folder at such a link's path, the sync stops, as
+  [When a sync stops](#when-a-sync-stops) says, and writes nothing where the link leads. A link
+  written relative to where it is, to a folder in the knowledge base itself, is followed: files of a
+  Drive folder at its path are written where it leads, still in the knowledge base.
 - The sync runs as user 1000. Apps that write into a synced knowledge base should run as user
   1000, as most self-hosted images do, or give the files they make group read and write, and the
   folders group read, write and search. A umask of 002 keeps those for files and folders made with
@@ -115,6 +123,11 @@ rather than guess. Your files stay as they are on both sides, and apps keep work
 - **The knowledge base or the folder is empty**, or **the marker file is missing** on one side, as
   when a folder was replaced, emptied or moved. **Resync** puts the marker back and copies both
   ways, deleting nothing.
+- **The Drive folder has a folder where the knowledge base has a link**, at the link's path or
+  under it; the page names the path. The sync doesn't write through such a link, so it stops, and
+  nothing is written where the link leads. Remove that folder in Drive, or remove the link in the
+  knowledge base and its `.rclonelink` file in Drive, which otherwise brings the link back. Then
+  choose **Resync**. Your Space doesn't resync by itself for this, even after an interruption.
 - **Google refused Your Space's access**, for example because you removed it in your
   [Google account](https://myaccount.google.com/permissions), the client's secret changed, or the
   app was left in **Testing**. **Knowledge** and the knowledge base's page show **Reconnect**, which
@@ -159,11 +172,11 @@ pinned to its digest for every processor it is published for, running rclone's o
 as user 1000, without capabilities, with a read-only file system, no access to the Docker engine and
 no FUSE. It mounts only its own knowledge base, that knowledge base's sync state, and its own folder
 of a volume, `ys-sync`, that only Your Space's server mounts whole, where rclone's remote control
-listens on a Unix socket only user 1000 opens; apps never mount it. As each container sees one
-knowledge base only, a symbolic link an app makes in a knowledge base can't lead a sync into
-another. Their only network is one whose way out is an outbound proxy of the sync's own, which lets
-through only Google's token endpoint (`oauth2.googleapis.com`) and the Drive API
-(`www.googleapis.com`).
+listens on a Unix socket only user 1000 opens; apps never mount it. Links sync as links, as
+[What a sync does](#what-a-sync-does) says, and as each container sees one knowledge base only, no
+sync can reach another besides. Their only network is one whose way out is an outbound proxy of the
+sync's own, which lets through only Google's token endpoint (`oauth2.googleapis.com`) and the Drive
+API (`www.googleapis.com`).
 
 rclone keeps its configuration in memory only. The server creates each knowledge base's Drive
 remote in that knowledge base's rclone over its socket, with the client and the token, and starts

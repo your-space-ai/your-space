@@ -9,6 +9,9 @@ import {
   conflictsOf,
   deletionsOf,
   exactPattern,
+  linkPathOf,
+  localFs,
+  backupsFs,
   logLines,
   MAX_DELETE,
   outcome,
@@ -54,7 +57,8 @@ describe("a run's options", () => {
     const params = bisyncParams("notes", "2026-11-25T17-05-00-123Z");
     expect(params).toEqual({
       path1: "kb-notes:",
-      path2: "/knowledge/notes",
+      // rclone's local backend with links: a link syncs as a `.rclonelink` file, never followed out.
+      path2: ":local,links:/knowledge/notes",
       // State and backups are in the sync's own volume, never in the knowledge base.
       workdir: "/state/notes/bisync",
       checkAccess: true,
@@ -65,11 +69,26 @@ describe("a run's options", () => {
       maxLock: "2m",
       compare: "size,modtime,checksum",
       conflictResolve: "path2",
-      backupDir2: "/state/notes/backups/2026-11-25T17-05-00-123Z",
+      // On the same remote as Path2, by the same string, as bisync wants.
+      backupDir2: ":local,links:/state/notes/backups/2026-11-25T17-05-00-123Z",
       createEmptySrcDirs: true,
     });
     expect(SYNC_MARKER).toBe(".your-space-sync");
     expect(MAX_DELETE).toBe(50);
+  });
+
+  it("names the local side with links everywhere, so every step of a run uses the same strings, the Drive side never", () => {
+    expect(localFs("notes")).toBe(":local,links:/knowledge/notes");
+    expect(backupsFs("notes")).toBe(":local,links:/state/notes/backups");
+    for (const options of [{}, { resync: true }, { force: true, dryRun: true }, { force: true }]) {
+      const params = bisyncParams("notes", "r", options);
+      expect(params.path2).toBe(localFs("notes"));
+      expect(params.backupDir2).toBe(`${backupsFs("notes")}/r`);
+      expect(params.path1).toBe("kb-notes:");
+    }
+    expect(tieCopyParams("notes", ["a.md"]).srcFs).toBe(localFs("notes"));
+    // The Drive remote has no links option; rclone's `links` is the local backend's own.
+    expect(JSON.stringify(remoteConfig(remote, false))).not.toMatch(/links/);
   });
 
   it("copies both ways and deletes nothing for a resync, the newer copy winning; checks deletions with a dry run before forcing them", () => {
@@ -87,7 +106,7 @@ describe("a run's options", () => {
     expect(exactPattern("a]b.md")).toBe("/a\\]b.md");
     expect(exactPattern("back\\slash.md")).toBe("/back\\\\slash.md");
     expect(tieCopyParams("notes", ["a.md", "dir/b [2].md"])).toEqual({
-      srcFs: "/knowledge/notes",
+      srcFs: ":local,links:/knowledge/notes",
       dstFs: "kb-notes:",
       _config: { UpdateOlder: true, CheckSum: true },
       _filter: { IncludeRule: ["/a.md", "/dir/b \\[2\\].md"] },
@@ -127,6 +146,39 @@ describe("reading rclone's log", () => {
     expect(outcome(false, [line("error", "-                   Access test failed: Path1 file not found in Path2 - invalid_grant too many deletes.md"), line("error", "couldn't list directory")] as never).result).toBe("failed");
     // A network failure on the token endpoint isn't a refusal: the connection stays.
     expect(outcome(false, [line("error", "couldn't fetch token: Post \"https://oauth2.googleapis.com/token\": dial tcp: i/o timeout")] as never).result).toBe("failed");
+  });
+
+  it("stops for the owner at a Drive folder where the knowledge base has a link, naming its path, before any other reason", () => {
+    // rclone 1.75.2's log of a run with links where Drive has notes/out/planted.txt and notes/out is a
+    // link here to the knowledge base's own sync state: it refuses to write through it.
+    const escapes = (path: string, op = `mkdirat ${path}: statat ${path}`) => [
+      { level: "error", msg: `Failed to copy: ${op}: path escapes from parent`, object: `${path}/planted.txt` },
+      { level: "error", msg: "not deleting files as there were IO errors", object: "Local file system at /knowledge/notes" },
+      { level: "notice", msg: `Received error: ${op}: path escapes from parent - retrying as --resilient is set. Retry 1/3`, object: "copy1to2" },
+      { level: "error", msg: `Bisync critical error: ${op}: path escapes from parent` },
+      { level: "error", msg: "Bisync aborted. Must run --resync to recover." },
+    ];
+    const run = outcome(false, logLines(json(escapes("notes/out"))), "bisync aborted");
+    // Not `resync`, which Your Space can run by itself after an interruption.
+    expect(run).toEqual({ result: "stopped", reason: "link", message: "Bisync critical error: mkdirat notes/out: statat notes/out: path escapes from parent" });
+    expect(linkPathOf(run.message)).toBe("notes/out");
+    // A folder under the link, and the folder's time when the folder was there already.
+    expect(linkPathOf(outcome(false, logLines(json(escapes("notes/out/deep", "mkdirat notes/out/deep")))).message)).toBe("notes/out/deep");
+    const time = [{ level: "error", msg: "Bisync critical error: failed to set directory modtime: chtimesat notes/out: path escapes from parent" }, { level: "error", msg: "Bisync aborted. Must run --resync to recover." }];
+    expect(outcome(false, logLines(json(time)))).toMatchObject({ result: "stopped", reason: "link" });
+    expect(linkPathOf(outcome(false, logLines(json(time))).message)).toBe("notes/out");
+    // The path is the app's: a link named like Google's refusal, a lock or a stop is still this stop,
+    // so it can't disconnect Google, and its whole name is named.
+    for (const name of ["notes/invalid_grant: a b", "prior lock file found", "too many deletes (>50%) on Path1", "x: statat x"]) {
+      const named = outcome(false, logLines(json(escapes(name))), "bisync aborted");
+      expect(named, name).toMatchObject({ result: "stopped", reason: "link" });
+      expect(linkPathOf(named.message), name).toBe(name);
+    }
+    expect(linkPathOf(null)).toBeUndefined();
+    expect(linkPathOf("Bisync aborted. Must run --resync to recover.")).toBeUndefined();
+    // Only bisync's own critical error: the words in a file's line, or a run that synced, aren't it.
+    expect(outcome(false, [{ level: "info", msg: "- Path1             File is new                                 - path escapes from parent" }, { level: "error", msg: "couldn't list directory" }])).toMatchObject({ result: "failed" });
+    expect(outcome(true, logLines(json(escapes("notes/out"))))).toEqual({ result: "synced" });
   });
 
   it("reads JSON lines, and keeps any other line as a notice", () => {

@@ -87,6 +87,14 @@ once a minute and when you choose **Sync now**. Apps keep reading and writing th
 work offline too, and can't tell a synced knowledge base from a local one. A sync covers only the
 chosen folder: shortcuts in it, and Google Docs, Sheets and Slides, stay in Drive only.
 
+Symbolic links an app makes in a synced knowledge base sync as links: Drive keeps each as a small
+`<name>.rclonelink` file holding the link's target, and a `.rclonelink` file made in Drive becomes a
+link here, with whatever target it holds. The sync never follows a link out of the knowledge base.
+If the Drive folder has a folder where the knowledge base has such a link, the sync stops and names
+the path: remove that folder in Drive, or the link here and its `.rclonelink` file in Drive, then
+choose **Resync** (see
+[When a sync stops](../operate/google-drive.md#when-a-sync-stops)).
+
 The knowledge base's page shows:
 
 - When it last synced, and the Drive folder it syncs with.

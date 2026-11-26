@@ -125,11 +125,11 @@ at `/state/<name>`, and the folder `<name>` of the volume `<installation>_ys-syn
 Compose file (labelled `com.docker.compose.volume=ys-sync`), as a volume subpath, at `/run/ys-sync`.
 The server alone mounts that volume whole, at `/run/ys-sync`, and reaches each knowledge base's
 remote control at `/run/ys-sync/<name>/rc.sock`; before each start the runtime manager gives the
-volume and each knowledge base's folder in it to user 1000 with mode 0700. rclone's local backend
-follows a symbolic link to a folder when it writes, so a container that mounted several knowledge
-bases would let an app given one of them have a sync write into another, or over another's listings
-or socket; with a container each, such a link leads nowhere, and the write fails. The containers
-join the sealed network `<installation>_knowledge-sync_sync`, whose only way out is the project's
+volume and each knowledge base's folder in it to user 1000 with mode 0700. The server gives rclone
+the knowledge base with the local backend's `links` option (below), so a symbolic link syncs as a
+link and is never followed out of it; the container for each is defence in depth besides, as
+whatever a run does reaches nothing of another knowledge base, its listings or its socket. The
+containers join the sealed network `<installation>_knowledge-sync_sync`, whose only way out is the project's
 Squid, which lets through only `oauth2.googleapis.com` and `www.googleapis.com`.
 
 The runtime manager never receives a remote, a client or a token: the server creates each knowledge
@@ -154,10 +154,16 @@ socket, for that knowledge base only:
   `/remote/<folderId>` with the same client and token. `config/delete` when the OAuth client is
   saved again, so rclone's memory keeps no earlier secret or token.
 - `sync/bisync` with `_async` and a `_group` of its own, between `kb-<name>:` (Path1) and
-  `/knowledge/<name>` (Path2): `workdir: /state/<name>/bisync`, `checkAccess`, `checkFilename:
-  .your-space-sync`, `maxDelete: 50`, `resilient`, `recover`, `maxLock: 2m`, `compare:
+  `:local,links:/knowledge/<name>` (Path2): `workdir: /state/<name>/bisync`, `checkAccess`,
+  `checkFilename: .your-space-sync`, `maxDelete: 50`, `resilient`, `recover`, `maxLock: 2m`, `compare:
   size,modtime,checksum`, `conflictResolve: path2`, `createEmptySrcDirs`, and `backupDir2` set to a
-  folder of the run in `/state/<name>/backups`. A resync adds `resync` and `resyncMode: newer`.
+  folder of the run in `:local,links:/state/<name>/backups`, which bisync wants on the same remote as
+  Path2, by the same string. A resync adds `resync` and `resyncMode: newer`. Every fs of the local
+  side, in every call below too, is `:local,links:<path>` (journey 014, 2026-11-26): rclone reads a
+  symbolic link as a `<name>.rclonelink` file holding its target and writes such a file as a link,
+  never writing through a link that leads out of the folder, or an absolute one. The Drive remote
+  has no such option, and needs none: there a `.rclonelink` file is a file. bisync names its listings
+  after Path1 and Path2, so every step of a run gives them the same strings.
   The first run's and the owner's Resync come after the marker is put at both roots
   (`operations/stat`, `operations/uploadfile`, `operations/copyfile`); the resync the server runs
   itself to finish an interrupted run puts none back, and starts only when `operations/stat` finds
@@ -183,13 +189,17 @@ socket, for that knowledge base only:
   itself as the run's next step, once for each interruption (journey 014, 2026-11-26). An answer
   that fails otherwise than with `job not found` leaves the job to be asked about again. The job's
   `output.output` is bisync's log at INFO, from which the server reads the deletions, ties and the
-  reason a run stopped; rclone keeps one log for its whole process while a bisync runs, so each
-  knowledge base's rclone runs one bisync at a time; the knowledge bases' runs go on side by side.
+  reason a run stopped. bisync's `Bisync critical error: … path escapes from parent`, when the Drive
+  side has a folder at the path of a link that rclone doesn't write through, is read first, as its
+  path is the app's: the run stops with reason `link`, which needs a resync the server never runs
+  itself, and keeps that line, which names the path. rclone keeps one log for its whole process
+  while a bisync runs, so each knowledge base's rclone runs one bisync at a time; the knowledge
+  bases' runs go on side by side.
   `core/stats-delete` drops a finished job's counts. Calls about jobs, remotes and rclone itself
   wait 30 seconds; listings and copies wait five minutes.
-- `operations/list` of `/knowledge/<name>` (filtered to `**.conflict[0-9]*`) after a run that
-  changed something, and at least hourly; of `/state/<name>/backups`'s run folders (`dirsOnly`),
-  then of each, newest first, until 500 files are listed, as rclone keeps every answer for an hour;
+- `operations/list` of `:local,links:/knowledge/<name>` (filtered to `**.conflict[0-9]*`) after a
+  run that changed something, and at least hourly; of `:local,links:/state/<name>/backups`'s run
+  folders (`dirsOnly`), then of each, newest first, until 500 files are listed, as rclone keeps every answer for an hour;
   and `operations/purge` of backup folders older than 30 days.
 
 A job under way past two hours is stopped with `POST /knowledge-sync/{name}/restart`, and recorded

@@ -261,12 +261,11 @@ test("a file changed on both sides keeps both copies, and the page lists the con
   await arrives(() => onDrive("ls | grep -c conflict || true"), "0");
 });
 
-test("each knowledge base syncs through an rclone of its own, so a symbolic link in one can't have a sync write into another", async ({ page }) => {
+test("each knowledge base syncs through an rclone of its own, which mounts only that knowledge base, its state and its socket", async ({ page }) => {
   test.setTimeout(240_000);
   await asOwner(page);
   const name = "other";
   const folder = "1E2eTestFolder0000000000000000ij";
-  const other = (script: string) => shell(`ys-knowledge.${PROJECT}.${name}`, `cd /v && ${script}`);
   const notes = await containerId(RCLONE);
   await page.goto("/knowledge");
   const create = page.getByRole("region", { name: "New knowledge base" });
@@ -278,40 +277,63 @@ test("each knowledge base syncs through an rclone of its own, so a symbolic link
   await page.getByRole("button", { name: "Connect" }).click();
   const main = page.locator('main[data-state="knowledge-base"]');
   await expect(main).toHaveAttribute("data-sync-result", "synced", { timeout: 120_000 });
-  // Each rclone mounts its own knowledge base, its sync state and its socket's folder only; connecting
-  // another left the first running as it was.
+  // Each rclone mounts its own knowledge base, its sync state and its socket's folder only, as defence
+  // in depth besides links syncing as links (below); connecting another left the first running as it was.
   expect(await mountsOf(rcloneOf(name))).toEqual([`/knowledge/${name}`, "/remote", "/run/ys-sync", `/state/${name}`]);
   expect(await mountsOf(RCLONE)).toEqual([`/knowledge/${KB}`, "/remote", "/run/ys-sync", `/state/${KB}`]);
   expect(await containerId(RCLONE)).toBe(notes);
 
-  // An app given only drive-notes makes a symbolic link to where the other knowledge base would be,
-  // and Drive has files under that name: rclone writes through a link to a folder, so in one container
-  // mounting both, the next run would copy them into the other knowledge base.
-  await here(`ln -s /knowledge/${name} evil && ln -s /state/${name} evil-state`);
-  await onDrive("mkdir -p evil evil-state && echo planted > evil/planted.md && echo planted > evil-state/planted.md");
-  const planted = new Date().toISOString();
-  // Drive-notes' next run, started after them, can't: the links lead nowhere in its own container.
-  await expect
-    .poll(async () => (await sql(`select s.last_run_at > '${planted}'::timestamptz and s.job is null from knowledge_sync s join knowledge_base b on b.id = s.knowledge_base_id where b.name = '${KB}'`))[0], { timeout: 60_000 })
-    .toBe("t");
-  expect(await other("ls -A")).toBe(".your-space-sync");
-  expect(await shell(`ys-knowledge.${PROJECT}.${name}.sync`, "find /v -name planted.md")).toBe("");
-  // The app's own knowledge base gets back to syncing once the links are gone.
-  await here("rm evil evil-state");
-  await onDrive("rm -r evil evil-state");
-  await page.goto(`/knowledge/${KB}`);
-  const notesPage = page.locator('main[data-state="knowledge-base"]');
-  await expect(notesPage).toHaveAttribute("data-sync-running", "false", { timeout: 60_000 });
-  if ((await notesPage.getAttribute("data-sync-result")) === "stopped") await run(page, "Resync");
-  await expect(notesPage).toHaveAttribute("data-sync-result", "synced", { timeout: 60_000 });
-
   // Disconnecting the other removes its rclone only.
-  await page.goto(`/knowledge/${name}`);
   await page.getByRole("button", { name: "Disconnect", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Disconnect" }).click();
   await expect(page.getByLabel("Drive folder link")).toBeVisible();
   expect((await docker(["ps", "-aq", "--filter", `name=${rcloneOf(name)}`], false)).stdout.trim()).toBe("");
   expect(await containerId(RCLONE)).toBe(notes);
+});
+
+test("links sync as links and are never followed out: a Drive folder at a link to the sync's own state stops the sync, naming it", async ({ page }, testInfo) => {
+  test.setTimeout(240_000);
+  await asOwner(page);
+  await page.goto(`/knowledge/${KB}`);
+  const main = page.locator('main[data-state="knowledge-base"]');
+  await expect(main).toHaveAttribute("data-sync-result", "synced", { timeout: 60_000 });
+  const before = await listing(onDrive);
+
+  // An ordinary link to a folder of the knowledge base is in Drive as a .rclonelink file holding its
+  // target, not as a copy of the folder; a .rclonelink file added in Drive becomes a link here.
+  await here("ln -s course inside");
+  await onDrive("printf course > back.rclonelink");
+  await arrives(() => onDrive("cat inside.rclonelink 2>&1"), "course");
+  await arrives(() => here("readlink back 2>&1"), "course");
+  expect(await onDrive("test -e inside && echo there || echo none")).toBe("none");
+
+  // An app links to the knowledge base's own sync state, which only its rclone mounts, and the Drive
+  // folder has a folder at the link's path: without links, rclone would write through it.
+  const ownResyncs = await sql("select count(*) from event e join actor a on a.id = e.actor_id where e.type = 'knowledge.resync_requested' and a.kind = 'operator'");
+  await onBoth(`ln -s /state/${KB} state`, "mkdir -p state && echo planted > state/planted.md");
+  await expect(main).toHaveAttribute("data-sync-result", "stopped", { timeout: 60_000 });
+  const notice = page.locator('[data-sync-notice="link"]');
+  await expect(notice).toContainText("Drive has a folder at state where this knowledge base has a link");
+  await expect(notice).toContainText("remove the link here and its .rclonelink file in Drive");
+  await expect(notice).toContainText("path escapes from parent");
+  // Nothing was written where the link leads, the link is still a link, and Your Space ran no resync of its own.
+  expect(await shell(STATE_VOLUME, "find /v -name planted.md")).toBe("");
+  expect(await here("readlink state")).toBe(`/state/${KB}`);
+  expect(await sql("select count(*) from event e join actor a on a.id = e.actor_id where e.type = 'knowledge.resync_requested' and a.kind = 'operator'")).toEqual(ownResyncs);
+  await evidence(page, testInfo, "014-2-stopped-link");
+
+  // The owner removes the link here and its .rclonelink file in Drive, which would otherwise bring it
+  // back; Resync then brings the Drive folder here as a folder of the knowledge base.
+  await onBoth("rm state", "rm -f state.rclonelink");
+  await run(page, "Resync");
+  await expect(main).toHaveAttribute("data-sync-result", "synced");
+  expect(await here("cat state/planted.md")).toBe("planted");
+  expect(await shell(STATE_VOLUME, "find /v -name planted.md")).toBe("");
+
+  // Deleting the links and the folder here deletes their files in Drive too.
+  await here("rm -r state inside back");
+  await arrives(() => listing(onDrive), before);
+  expect(await listing(here)).toBe(before);
 });
 
 test("a missing marker or an empty knowledge base stops the sync with Drive unchanged, and Resync deletes nothing", async ({ page }, testInfo) => {

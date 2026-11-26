@@ -4,7 +4,8 @@
 // stock `rclone rcd` for each, which the runtime manager runs (runtime/src/sync.ts), syncs it; the
 // server drives each over its socket (rclone.ts): it creates the knowledge base's remote there, with
 // the client and token, which stay in rclone's memory, and starts each bisync there as a job in the
-// background. A container mounts its own knowledge base only, so no sync writes into another's.
+// background. A container mounts its own knowledge base only, so no sync writes into another's, and
+// rclone syncs links as links (bisync.ts), never following one out of the knowledge base.
 //
 // About once a minute for each knowledge base, and at once on the owner's Sync now, Resync or Apply
 // these deletions, the server starts a run. Each knowledge base has its own turn: its runs never
@@ -25,13 +26,14 @@ import { errorFields, log } from "../log.ts";
 import {
   backupRuns,
   backupsOf,
-  backupsPath,
+  backupsFs,
   bisyncParams,
   changedBy,
   conflictsOf,
   deletionsOf,
+  linkPathOf,
   LISTED,
-  localPath,
+  localFs,
   logLines,
   outcome,
   remoteConfig,
@@ -114,7 +116,7 @@ export interface SyncStatus {
 const where = (side: SyncRow["side"], local: string, remote: string) => (side === "remote" ? remote : local);
 
 /** The owner's words for how a run ended. */
-export function summaryOf(row: Pick<SyncRow, "result" | "reason" | "side">): string | null {
+export function summaryOf(row: Pick<SyncRow, "result" | "reason" | "side" | "message">): string | null {
   switch (row.result) {
     case null:
       return null;
@@ -136,6 +138,10 @@ export function summaryOf(row: Pick<SyncRow, "result" | "reason" | "side">): str
           return `The ${where(row.side, "knowledge base", "Drive folder")} is empty, so the sync stopped rather than delete everything on the other side. Resync copies the files back and deletes nothing.`;
         case "marker":
           return `Your Space's marker file, .your-space-sync, is missing ${where(row.side, "in the knowledge base", "in the Drive folder")}, so the sync stopped: the folder may have been emptied, replaced or moved. Resync puts the marker back and copies both ways, deleting nothing.`;
+        case "link": {
+          const path = linkPathOf(row.message);
+          return `Drive has a folder${path ? ` at ${path}` : ""} where this knowledge base has a link, at that path or in a folder above it. Sync never writes through such a link, so it stopped, and nothing was written where the link leads. Remove that folder in Drive, or remove the link here and its .rclonelink file in Drive, which would otherwise bring the link back; then choose Resync.`;
+        }
         default:
           return "The sync stopped and needs a resync, which copies both ways and deletes nothing.";
       }
@@ -842,11 +848,11 @@ export class KnowledgeSync {
   /** Puts Your Space's marker at both roots before a resync, copying it from one side to the other. */
   private async markers(name: string): Promise<void> {
     const rc = this.rcFor(name);
-    const here = await this.stat(rc, localPath(name));
+    const here = await this.stat(rc, localFs(name));
     const there = await this.stat(rc, `${remoteName(name)}:`);
-    if (!here && there) await rc.call("operations/copyfile", { srcFs: `${remoteName(name)}:`, srcRemote: SYNC_MARKER, dstFs: localPath(name), dstRemote: SYNC_MARKER });
-    else if (!here) await rc.upload(localPath(name), "", SYNC_MARKER, "");
-    if (!there) await rc.call("operations/copyfile", { srcFs: localPath(name), srcRemote: SYNC_MARKER, dstFs: `${remoteName(name)}:`, dstRemote: SYNC_MARKER });
+    if (!here && there) await rc.call("operations/copyfile", { srcFs: `${remoteName(name)}:`, srcRemote: SYNC_MARKER, dstFs: localFs(name), dstRemote: SYNC_MARKER });
+    else if (!here) await rc.upload(localFs(name), "", SYNC_MARKER, "");
+    if (!there) await rc.call("operations/copyfile", { srcFs: localFs(name), srcRemote: SYNC_MARKER, dstFs: `${remoteName(name)}:`, dstRemote: SYNC_MARKER });
   }
 
   private async stat(rc: Rc, fs: string): Promise<boolean> {
@@ -969,7 +975,7 @@ export class KnowledgeSync {
     let here: boolean;
     let there: boolean;
     try {
-      here = await this.stat(rc, localPath(row.name));
+      here = await this.stat(rc, localFs(row.name));
       there = await this.stat(rc, `${remoteName(row.name)}:`);
     } catch (error) {
       if (!(error instanceof RcError)) throw error;
@@ -1026,7 +1032,8 @@ export class KnowledgeSync {
       }
       case "sync":
         // Only a run after an interruption, and only where bisync itself says a resync is needed: any
-        // stop of its checks comes first, as `outcome` reads them.
+        // stop of its checks comes first, as `outcome` reads them. A Drive folder at a link's path
+        // (`link`) needs a resync too, but only once the owner has removed one of them.
         if (job.mode === "sync" && row.interrupted && ended.result === "stopped" && ended.reason === "resync") return this.resyncItself(row, job);
         return this.finish(row, job, ended, lines, { changed });
       default:
@@ -1059,13 +1066,13 @@ export class KnowledgeSync {
       }
     };
     try {
-      const conflicts = conflictsOf(await list(localPath(name), { recurse: true, filesOnly: true }, { IncludeRule: ["**.conflict[0-9]*"] }));
-      const { recent, expired } = backupRuns((await list(backupsPath(name), { dirsOnly: true })).map((e) => e.Path), new Date());
-      for (const run of expired) await rc.call("operations/purge", { fs: backupsPath(name), remote: run });
+      const conflicts = conflictsOf(await list(localFs(name), { recurse: true, filesOnly: true }, { IncludeRule: ["**.conflict[0-9]*"] }));
+      const { recent, expired } = backupRuns((await list(backupsFs(name), { dirsOnly: true })).map((e) => e.Path), new Date());
+      for (const run of expired) await rc.call("operations/purge", { fs: backupsFs(name), remote: run });
       const files: Listed[] = [];
       for (const run of recent) {
         if (files.length >= LISTED) break;
-        files.push(...(await list(`${backupsPath(name)}/${run}`, { recurse: true, filesOnly: true })).map((e) => ({ ...e, Path: `${run}/${e.Path}` })));
+        files.push(...(await list(`${backupsFs(name)}/${run}`, { recurse: true, filesOnly: true })).map((e) => ({ ...e, Path: `${run}/${e.Path}` })));
       }
       return { conflicts, backups: backupsOf(files, new Date()).backups };
     } catch (error) {

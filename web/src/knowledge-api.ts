@@ -22,7 +22,7 @@ export interface KnowledgeSync {
   lastRunAt: string | null;
   lastSyncedAt: string | null;
   result: "synced" | "stopped" | "unauthorized" | "failed" | null;
-  reason: "max_delete" | "too_many" | "empty" | "marker" | "resync" | "changed" | null;
+  reason: "max_delete" | "too_many" | "empty" | "marker" | "resync" | "changed" | "link" | null;
   side: "local" | "remote" | null;
   summary: string | null;
   detail: string | null;

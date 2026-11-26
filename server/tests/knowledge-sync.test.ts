@@ -320,9 +320,12 @@ describe("a knowledge base's sync", () => {
     expect(JSON.parse((created[0]!.params.parameters as { token: string }).token)).toMatchObject({ refresh_token: REFRESH });
     // The marker is put at both roots: here first, then copied to Drive with the same time.
     expect(rc.calls.filter((c) => c.command.startsWith("operations/") && c.command !== "operations/stat" && c.command !== "operations/list").map((c) => c.command)).toEqual(["operations/uploadfile", "operations/copyfile"]);
-    expect(rc.markers).toEqual(new Set(["/knowledge/notes", "kb-notes:"]));
+    // The knowledge base always with rclone's links option, as every step of a run names it.
+    expect(rc.calls.filter((c) => c.command === "operations/stat").map((c) => c.params.fs)).toEqual([":local,links:/knowledge/notes", "kb-notes:"]);
+    expect(rc.calls.filter((c) => c.command === "operations/copyfile").map((c) => [c.params.srcFs, c.params.dstFs])).toEqual([[":local,links:/knowledge/notes", "kb-notes:"]]);
+    expect(rc.markers).toEqual(new Set([":local,links:/knowledge/notes", "kb-notes:"]));
     const [first] = rc.started();
-    expect(first!.params).toMatchObject({ ...bisyncParams("notes", "x", { resync: true }), backupDir2: expect.stringMatching(/^\/state\/notes\/backups\/\d{4}-/), _async: true });
+    expect(first!.params).toMatchObject({ ...bisyncParams("notes", "x", { resync: true }), backupDir2: expect.stringMatching(/^:local,links:\/state\/notes\/backups\/\d{4}-/), _async: true });
     expect(await status()).toMatchObject({ folderId: FOLDER, folderUrl: `https://drive.google.com/drive/folders/${FOLDER}`, result: "synced", firstRun: false, running: false });
 
     // The client secret and token went to rclone's memory only: never to the runtime manager, which
@@ -355,8 +358,8 @@ describe("a knowledge base's sync", () => {
     await tick();
     // Both at once, each through its own rclone, which mounts only its own knowledge base.
     expect(rc.running().map((j) => [j.knowledgeBase, j.params.path2]).sort()).toEqual([
-      ["notes", "/knowledge/notes"],
-      ["recipes", "/knowledge/recipes"],
+      ["notes", ":local,links:/knowledge/notes"],
+      ["recipes", ":local,links:/knowledge/recipes"],
     ]);
     await tick();
     expect(runs()).toBe(before + 2);
@@ -410,7 +413,7 @@ describe("a knowledge base's sync", () => {
     rc.answers = [{ lines: [ok] }];
     expect((await send("/api/knowledge/first/sync", { action: "sync" })).status).toBe(202);
     await settled("first");
-    expect(rc.started().filter((j) => j.params.path2 === "/knowledge/first").at(-1)!.params).toMatchObject({ resync: true, resyncMode: "newer" });
+    expect(rc.started().filter((j) => j.params.path2 === ":local,links:/knowledge/first").at(-1)!.params).toMatchObject({ resync: true, resyncMode: "newer" });
     expect(await status("first")).toMatchObject({ result: "synced", firstRun: false });
     expect((await api("/api/knowledge/first", { method: "DELETE" })).status).toBe(204);
   });
@@ -522,7 +525,7 @@ describe("a knowledge base's sync", () => {
   it("keeps a stopped run's reason and deletions, waits for the owner, and applies the deletions confirmed once a dry run lists them again", async () => {
     const deletions = [{ side: "local", path: "a.md" }, { side: "local", path: "b.md" }] as const;
     rc.answers = [{ success: false, error: "too many deletes", lines: [deleted("a.md"), deleted("b.md"), tooMany] }];
-    rc.listings.set("/knowledge/notes", [{ Path: "plan.md.conflict1", Size: 3 }]);
+    rc.listings.set(":local,links:/knowledge/notes", [{ Path: "plan.md.conflict1", Size: 3 }]);
     await send("/api/knowledge/notes/sync", { action: "sync" });
     await settled();
     const stopped = (await status())!;
@@ -532,7 +535,7 @@ describe("a knowledge base's sync", () => {
 
     // The timer leaves it for the owner, even once it is due. Its last run's time, which the owner
     // confirms the deletions by, is put back after.
-    const ofNotes = () => rc.started().filter((j) => j.params.path2 === "/knowledge/notes").length;
+    const ofNotes = () => rc.started().filter((j) => j.params.path2 === ":local,links:/knowledge/notes").length;
     const runs = ofNotes();
     const notes = (await syncRow("notes"))!;
     await due("notes", "recipes");
@@ -653,7 +656,7 @@ describe("a knowledge base's sync", () => {
     const recent = runFolder(new Date(Date.now() - 60_000));
     const older = runFolder(new Date(Date.now() - 24 * 60 * 60_000));
     const expired = runFolder(new Date(Date.now() - 31 * 24 * 60 * 60_000));
-    rc.listings.set("/state/notes/backups", [
+    rc.listings.set(":local,links:/state/notes/backups", [
       ...Array.from({ length: 600 }, (_, i) => ({ Path: `${recent}/f-${i}.md`, Size: 1 })),
       { Path: `${older}/old.md`, Size: 2 },
       { Path: `${expired}/gone.md`, Size: 3 },
@@ -662,16 +665,16 @@ describe("a knowledge base's sync", () => {
     rc.answers = [{ lines: [copied("x.md"), ok] }];
     await due("notes");
     await settled();
-    const lists = rc.calls.slice(from).filter((c) => c.command === "operations/list" && String(c.params.fs).startsWith("/state/notes/backups"));
+    const lists = rc.calls.slice(from).filter((c) => c.command === "operations/list" && String(c.params.fs).startsWith(":local,links:/state/notes/backups"));
     expect(lists.map((c) => [c.params.fs, Boolean((c.params.opt as { dirsOnly?: boolean }).dirsOnly)])).toEqual([
-      ["/state/notes/backups", true],
-      [`/state/notes/backups/${recent}`, false],
+      [":local,links:/state/notes/backups", true],
+      [`:local,links:/state/notes/backups/${recent}`, false],
     ]);
-    expect(rc.purged).toContain(`/state/notes/backups/${expired}`);
+    expect(rc.purged).toContain(`:local,links:/state/notes/backups/${expired}`);
     const shown = (await status())!.backups as { run: string }[];
     expect(shown).toHaveLength(500);
     expect(new Set(shown.map((b) => b.run))).toEqual(new Set([recent]));
-    rc.listings.delete("/state/notes/backups");
+    rc.listings.delete(":local,links:/state/notes/backups");
     rc.answers = [{ lines: [copied("y.md"), ok] }];
     await due("notes");
     await settled();
@@ -716,7 +719,7 @@ describe("a knowledge base's sync", () => {
     await send("/api/knowledge/notes/sync", { action: "sync" });
     await settled();
     expect((await status())!.summary).toContain("marker file, .your-space-sync, is missing in the knowledge base");
-    rc.markers.delete("/knowledge/notes");
+    rc.markers.delete(":local,links:/knowledge/notes");
     const tie = (path: string) => ({ level: "error", msg: `-                   Checksum not equal in listing. Path1: aaa, Path2: bbb - ${path}` });
     const ties = Array.from({ length: 45 }, (_, i) => `same ${i}.md`);
     rc.answers = [
@@ -729,12 +732,12 @@ describe("a knowledge base's sync", () => {
     expect((await send("/api/knowledge/notes/sync", { action: "resync" })).status).toBe(202);
     await settled();
     // The marker went back here, from Drive.
-    expect(rc.calls.slice(runs).filter((c) => c.command === "operations/copyfile").map((c) => [c.params.srcFs, c.params.dstFs])).toEqual([["kb-notes:", "/knowledge/notes"]]);
+    expect(rc.calls.slice(runs).filter((c) => c.command === "operations/copyfile").map((c) => [c.params.srcFs, c.params.dstFs])).toEqual([["kb-notes:", ":local,links:/knowledge/notes"]]);
     const steps = rc.calls.slice(runs).filter((c) => c.command === "sync/bisync" || c.command === "sync/copy");
     expect(steps.map((c) => c.command)).toEqual(["sync/bisync", "sync/copy", "sync/copy", "sync/bisync"]);
     expect(steps[0]!.params).toMatchObject({ resync: true, resyncMode: "newer" });
     expect((steps[1]!.params._filter as { IncludeRule: string[] }).IncludeRule).toHaveLength(40);
-    expect(steps[1]!.params).toMatchObject({ srcFs: "/knowledge/notes", dstFs: "kb-notes:", _config: { UpdateOlder: true, CheckSum: true } });
+    expect(steps[1]!.params).toMatchObject({ srcFs: ":local,links:/knowledge/notes", dstFs: "kb-notes:", _config: { UpdateOlder: true, CheckSum: true } });
     expect(steps[3]!.params).toMatchObject({ resync: true, resyncMode: "newer" });
     expect(await status()).toMatchObject({ result: "synced", ties: ties.slice(1) });
     expect((await events("knowledge.resync_requested")).map((e) => e.actorId)).toEqual([owner]);
@@ -750,7 +753,7 @@ describe("a knowledge base's sync", () => {
     expect((await syncRow())!.job).toMatchObject({ step: "resync" });
     rc.finish();
     // The tie copy rclone runs, as when it took the copy but keeping it on the row failed.
-    await rc.rcFor("notes").call("sync/copy", { srcFs: "/knowledge/notes", dstFs: "kb-notes:", _async: true, _group: "knowledge/notes/run/ties/stray" });
+    await rc.rcFor("notes").call("sync/copy", { srcFs: ":local,links:/knowledge/notes", dstFs: "kb-notes:", _async: true, _group: "knowledge/notes/run/ties/stray" });
     const copies = rc.started("sync/copy").length;
     await tick();
     await tick();
@@ -765,7 +768,7 @@ describe("a knowledge base's sync", () => {
 
   it("starts no run while it can't tell whether its rclone runs a job of a run", async () => {
     rc.hold = true;
-    await rc.rcFor("notes").call("sync/copy", { srcFs: "/knowledge/notes", dstFs: "kb-notes:", _async: true, _group: "knowledge/notes/run/ties/stray" });
+    await rc.rcFor("notes").call("sync/copy", { srcFs: ":local,links:/knowledge/notes", dstFs: "kb-notes:", _async: true, _group: "knowledge/notes/run/ties/stray" });
     // Asked about the jobs under way, rclone's answer for that one is cut short.
     rc.failures.set("job/status", new RcError("unexpected EOF", 500));
     const runs = rc.started().length;
@@ -868,7 +871,7 @@ describe("a knowledge base's sync", () => {
   }
 
   it("finishes an interrupted run that bisync can carry on only with a resync by resyncing itself, putting no marker back, also after a restart and bisync's lock", async () => {
-    rc.markers.add("/knowledge/notes");
+    rc.markers.add(":local,links:/knowledge/notes");
     rc.markers.add("kb-notes:");
     await interruptRun();
     const resyncs = (await events("knowledge.resync_requested")).length;
@@ -889,7 +892,7 @@ describe("a knowledge base's sync", () => {
     // The same run's next step: its backup folder, and a resync as the first run's, the newer copy winning.
     expect(steps[2]!.params).toMatchObject({ ...bisyncParams("notes", "x", { resync: true }), backupDir2: steps[1]!.params.backupDir2 });
     expect(markersMade(calls)).toEqual([]);
-    expect(rc.calls.slice(calls).filter((c) => c.command === "operations/stat").map((c) => c.params.fs)).toEqual(["/knowledge/notes", "kb-notes:"]);
+    expect(rc.calls.slice(calls).filter((c) => c.command === "operations/stat").map((c) => c.params.fs)).toEqual([":local,links:/knowledge/notes", "kb-notes:"]);
     expect(await status()).toMatchObject({ running: false, result: "synced", reason: null, firstRun: false });
     expect((await syncRow())!.interrupted).toBe(false);
     // Against Your Space, as each run is; nothing stopped for the owner.
@@ -908,7 +911,7 @@ describe("a knowledge base's sync", () => {
   });
 
   it("never resyncs by itself past a missing marker: the run stops for the owner, and the marker isn't put back", async () => {
-    rc.markers.add("/knowledge/notes");
+    rc.markers.add(":local,links:/knowledge/notes");
     rc.markers.delete("kb-notes:");
     await interruptRun();
     const resyncs = (await events("knowledge.resync_requested")).length;
@@ -944,6 +947,45 @@ describe("a knowledge base's sync", () => {
     await recorded(sync());
     expect(rc.started().slice(runs).map((j) => Boolean(j.params.resync))).toEqual([false, true, false]);
     expect(await status()).toMatchObject({ result: "stopped", reason: "resync" });
+    await resyncAsOwner();
+  });
+
+  it("stops for the owner at a Drive folder where the knowledge base has a link, naming its path, with no resync of its own after an interruption", async () => {
+    rc.markers.add(":local,links:/knowledge/notes");
+    rc.markers.add("kb-notes:");
+    await interruptRun();
+    const resyncs = (await events("knowledge.resync_requested")).length;
+    const stops = (await events("knowledge.sync_stopped")).length;
+    const runs = rc.started().length;
+    // rclone 1.75.2's log when Drive has notes/out/planted.txt and notes/out is a link here to the sync's state.
+    const escapes = "mkdirat notes/out: statat notes/out: path escapes from parent";
+    rc.answers = [
+      {
+        success: false,
+        error: "bisync aborted",
+        lines: [
+          { level: "error", msg: `Failed to copy: ${escapes}`, object: "notes/out/planted.txt" },
+          { level: "error", msg: "not deleting files as there were IO errors", object: "Local file system at /knowledge/notes" },
+          { level: "error", msg: `Bisync critical error: ${escapes}` },
+          { level: "error", msg: "Bisync aborted. Must run --resync to recover." },
+        ],
+      },
+    ];
+    await due("notes");
+    await recorded(sync());
+    // bisync says only a resync carries on, but this one waits for the owner: no resync of Your Space's own.
+    expect(rc.started().slice(runs).map((j) => Boolean(j.params.resync))).toEqual([false]);
+    expect((await events("knowledge.resync_requested")).length).toBe(resyncs);
+    expect((await events("knowledge.sync_stopped")).slice(stops)).toEqual([{ actorId: operator, knowledgeBase: "notes" }]);
+    expect(await syncRow()).toMatchObject({ result: "stopped", reason: "link", interrupted: false });
+    const stopped = await status();
+    expect(stopped).toMatchObject({ running: false, result: "stopped", reason: "link", detail: `Bisync critical error: ${escapes}` });
+    expect(stopped!.summary).toContain("Drive has a folder at notes/out where this knowledge base has a link");
+    expect(stopped!.summary).toContain("remove the link here and its .rclonelink file in Drive");
+    // The timer leaves it to the owner.
+    await due("notes");
+    await tick();
+    expect(rc.started().length).toBe(runs + 1);
     await resyncAsOwner();
   });
 

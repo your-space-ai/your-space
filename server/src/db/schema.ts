@@ -358,7 +358,7 @@ export const knowledgeSync = pgTable(
     lastRunAt: timestamp("last_run_at", { withTimezone: true }),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
     result: text("result", { enum: ["synced", "stopped", "unauthorized", "failed"] }),
-    /** Why a run stopped: max_delete, empty, marker, resync or changed. */
+    /** Why a run stopped: max_delete, too_many, empty, marker, resync, changed or link. */
     reason: text("reason"),
     side: text("side", { enum: ["local", "remote"] }),
     message: text("message"),

@@ -11,11 +11,12 @@
 //
 // A knowledge base's container mounts only that knowledge base, at /knowledge/<name>, its sync state,
 // bisync's listings and the files syncs replaced, at /state/<name>, from a volume of Your Space's
-// outside the knowledge base, and its own socket's folder. rclone writes through a symbolic link to a
-// folder, so an app could otherwise have a sync write into another knowledge base, or over another's
-// listings or socket. Connecting or disconnecting a knowledge base adds or removes its container
-// only. Each stops with SIGINT, bisync's graceful shutdown, so a run under way saves its state for the
-// next one. Once Your Space is stopping (/stop-all), nothing here starts.
+// outside the knowledge base, and its own socket's folder. The server has rclone sync links as links,
+// never following one out of the knowledge base (server/src/apps/bisync.ts); the container is defence
+// in depth besides, as whatever a run does reaches nothing of another knowledge base, its listings or
+// its socket. Connecting or disconnecting a knowledge base adds or removes its container only. Each
+// stops with SIGINT, bisync's graceful shutdown, so a run under way saves its state for the next one.
+// Once Your Space is stopping (/stop-all), nothing here starts.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { EGRESS_IMAGE, EGRESS_PORT, EGRESS_SERVICE, egressConfig, egressService, escapeDollars, knowledgeStateVolume, knowledgeSyncLabels, knowledgeVolume, pinnedImage } from "./adapter.ts";
@@ -67,8 +68,8 @@ const SYNC_MEMORY = "1g";
 
 /**
  * rclone's remote control, and only that. A socket an earlier container left behind is removed first:
- * rclone doesn't replace one, and wouldn't start; so is anything else there, as a folder a sync wrote
- * through a symbolic link. `--rc-no-auth` because rclone refuses to create a
+ * rclone doesn't replace one, and wouldn't start; so is anything else there, as a folder of that
+ * name. `--rc-no-auth` because rclone refuses to create a
  * remote over a remote control without authentication, and the socket's file permissions are its
  * authentication. `-v`, JSON and no colour: the server reads each bisync's log from its result.
  */

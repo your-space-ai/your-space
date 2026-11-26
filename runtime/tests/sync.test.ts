@@ -94,8 +94,8 @@ describe("the sync's containers", () => {
   });
 
   it("gives each knowledge base a container of its own, which mounts only it, its sync state and its socket's folder", () => {
-    // rclone writes through a symbolic link to a folder: an app given one knowledge base could
-    // otherwise have a sync write into another, or over its listings or socket.
+    // Defence in depth, as links sync as links: whatever a run of one knowledge base does reaches
+    // nothing of another, its listings or its socket.
     const both = file(["notes", "recipes"]);
     expect(Object.keys(both.services).sort()).toEqual(["rclone-notes", "rclone-recipes", "ys-egress"]);
     for (const name of ["notes", "recipes"]) {
