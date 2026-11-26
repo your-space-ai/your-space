@@ -138,11 +138,19 @@ for other in "${held[@]}"; do
     exit 0
   fi
 done
-# Another run of this build, signed apart from this one (its digests and date differ), already
-# published it: its ZIPs, which canary-mac.yml lists, stay as they are.
+# canary-mac.yml lists this build, but not as this run signed it. If the ZIPs there aren't this run's,
+# another run signed this build apart from this one (its digests and date differ) and published it,
+# so its files stay as they are. If they are, an earlier attempt's canary-mac.yml didn't download as
+# it was uploaded, and it is uploaded again below.
 if [[ $listed == "$version" ]] && ! cmp -s "$dir/canary-mac.yml" "$work/held-canary-mac.yml"; then
-  say "The canary prerelease's canary-mac.yml already lists $version as another run signed it, so its Mac files stay as they are."
-  exit 0
+  for name in "${zips[@]}"; do
+    retry gh release download canary --repo "$repo" --pattern "$name" --output "$work/downloaded" --clobber
+    if ! cmp -s "$dir/$name" "$work/downloaded"; then
+      say "The canary prerelease's canary-mac.yml already lists $version as another run signed it, so its Mac files stay as they are."
+      exit 0
+    fi
+  done
+  listed=
 fi
 
 # Uploads files of this build from DIR. Any of their names an upload left half there (not
@@ -173,7 +181,7 @@ check() {
   done
 }
 
-# canary-mac.yml is this build's as this run signed it, so an earlier attempt of this run got past it.
+# canary-mac.yml is this build's as this run signed it: an earlier attempt of this run uploaded it.
 if [[ $listed == "$version" ]]; then
   say "The canary prerelease's canary-mac.yml already lists $version, so its ZIPs are checked and the older ones deleted."
   check "${zips[@]}"
