@@ -121,6 +121,13 @@ images of its own. It signs and notarizes the two app ZIPs, which the app update
 can be installed by hand, not the DMGs. It builds nothing when the prerelease's Mac files are
 already that build's.
 
+**Narrowed (2026-11-26, PR #137, accepted by the owner: "thats fine"):** the build must be of the
+run's own commit, the newest on `main` when the run starts, and every job checks out only that
+commit, as Release draft does, so a run on `main` runs no other commit's code. On a day when that
+commit has no Linux canary yet, because its Canary run is still going or failed, the run builds
+nothing rather than packaging the build before it; the next run, scheduled or started by hand,
+catches up.
+
 Standard GitHub-hosted runners, the `macos-15` and `macos-15-intel` ones the release uses included,
 are free on public repositories
 ([runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners),
@@ -354,11 +361,12 @@ release.
 - **FR-004**: Every canary build replaces the rolling `canary` prerelease's files as today, each
   step retried and safe to re-run, and uploads `channel.json` last, once its files pass their
   check. Each canary workflow checks and deletes only its own files.
-- **FR-005**: Once a day and when started by hand, a workflow packages the newest Linux canary for
-  Apple Silicon and Intel, signs it with the canary certificate, notarizes and staples both apps,
+- **FR-005**: Once a day and when started by hand, a workflow packages the newest Linux canary, when
+  it is of the run's own commit (the newest on `main`), for Apple Silicon and Intel, signs it with the canary certificate, notarizes and staples both apps,
   checks their update ZIPs, and uploads them, then `canary-mac.yml`, to the `canary` prerelease,
   then deletes the older Mac ZIPs, unless `canary-mac.yml` already names a newer build. No canary
-  release carries `latest-mac.yml`. It never delays the Linux canary.
+  release carries `latest-mac.yml`. When that commit has no Linux canary yet, the run builds
+  nothing. It checks out no other commit. It never delays the Linux canary.
 - **FR-006**: `your-space upgrade --channel alpha|canary` reads that channel's `channel.json`,
   downloads the build's CLI from its release, checks it against that release's `SHA256SUMS` and that
   it is the version `channel.json` names, and runs its `upgrade`. It changes nothing when the
