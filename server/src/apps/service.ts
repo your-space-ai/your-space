@@ -168,6 +168,8 @@ const MAX_KNOWLEDGE_BASES = 100;
 
 export type AppRow = typeof app.$inferSelect;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+/** Saves what follows from how a job ended, with the job's own end when it applied the app. */
+type JobEnded = (tx: Tx, applied: boolean) => Promise<void>;
 
 /** `sure.space.localhost` for Your Space at `space.localhost`, with the same scheme and port. */
 export function appAddress(publicUrl: string, name: string): { origin: string; host: string } {
@@ -735,6 +737,8 @@ export class AppsService {
     }
     const bases = await this.knowledgeBases(p.kit, p.title, knowledgeWith);
 
+    // Used once: another request that read the same review may have installed from it meanwhile.
+    if (this.previews.get(previewId) !== p) throw new AppError(404, "preview_expired", "This review has expired. Paste the kit's link again.");
     this.previews.delete(previewId);
     // The app's rows and its install job are saved together, once the job holds the app: a request
     // that fails leaves no app installing without a job.
@@ -1000,7 +1004,7 @@ export class AppsService {
   async startJob(
     appId: string,
     kind: "install" | "apply" | "remove",
-    { first, held = false }: { first?: (tx: Tx) => Promise<void>; held?: boolean } = {},
+    { first, ended, held = false }: { first?: (tx: Tx) => Promise<void>; ended?: JobEnded; held?: boolean } = {},
   ): Promise<{ jobId: string; done: Promise<void> }> {
     if (!held) {
       if (this.busy.has(appId)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
@@ -1020,14 +1024,14 @@ export class AppsService {
         const inserted = await tx.insert(installJob).values({ appId, kind }).returning({ id: installJob.id });
         return inserted[0]!.id;
       });
-      return { jobId, done: this.runJob(jobId, appId, kind).finally(letGo) };
+      return { jobId, done: this.runJob(jobId, appId, kind, ended).finally(letGo) };
     } catch (error) {
       letGo();
       throw error;
     }
   }
 
-  private async runJob(jobId: string, appId: string, kind: "install" | "apply" | "remove"): Promise<void> {
+  private async runJob(jobId: string, appId: string, kind: "install" | "apply" | "remove", ended?: JobEnded): Promise<void> {
     try {
       const row = (await this.db.select().from(app).where(eq(app.id, appId)))[0];
       if (!row) throw new AppError(404, "not_found", "The app is gone.");
@@ -1065,7 +1069,10 @@ export class AppsService {
         await this.db.update(app).set({ state: "starting", updatedAt: new Date() }).where(eq(app.id, appId));
         await this.refreshState(row.name);
       }
-      await this.db.update(installJob).set({ state: "succeeded", finishedAt: new Date() }).where(eq(installJob.id, jobId));
+      await this.db.transaction(async (tx) => {
+        await tx.update(installJob).set({ state: "succeeded", finishedAt: new Date() }).where(eq(installJob.id, jobId));
+        await ended?.(tx, true);
+      });
     } catch (error) {
       let message = error instanceof AppError || error instanceof RuntimeError ? error.message : "Something went wrong on the server.";
       if (!(error instanceof AppError || error instanceof RuntimeError)) log("error", "app.job_failed", errorFields(error));
@@ -1077,6 +1084,7 @@ export class AppsService {
             : " Your Space signs in to download a private image only while installing the app: remove it, then install it again, reusing its data, with your image token in place.";
       }
       await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));
+      if (ended) await this.db.transaction((tx) => ended(tx, false)).catch((failure: unknown) => log("error", "app.job_end_failed", errorFields(failure)));
       // Refused because Your Space is stopping: the app starts again with Your Space.
       const stopping = error instanceof RuntimeError && error.status === 409;
       // A failed removal shows as failed too, so the owner sees why and can remove it again.
@@ -1468,24 +1476,36 @@ export class AppsService {
     const row = await this.liveRow(name);
     if (!row.kit?.knowledge) throw new AppError(400, "no_knowledge", `${row.title}'s kit doesn't ask for knowledge, so it can't be given knowledge bases.`);
     const next = await this.knowledgeBases(row.kit, row.title, input);
+    let removed: { id: string; name: string }[] = [];
+    let taken: (typeof appKnowledgeBase.$inferSelect)[] = [];
     // Read and saved only once the app is the job's, with the job: a grant saved without the apply
     // that mounts it, or takes it away, would leave the app's containers and its grants disagreeing,
     // and grants read before then may be another change's, from before it was saved.
-    return this.granting(next, () => this.queue(row.id, "apply", async (tx) => {
+    const first = async (tx: Tx) => {
       // As the app is now: one installed again since from a kit that doesn't ask for knowledge gets none.
       const [now] = await tx.select({ kit: app.kit }).from(app).where(eq(app.id, row.id));
       if (!now?.kit?.knowledge) throw new AppError(400, "no_knowledge", `${row.title}'s kit doesn't ask for knowledge, so it can't be given knowledge bases.`);
       await this.stillExist(tx, next);
       const current = await this.grants(row.id, tx);
       const added = next.filter((base) => !current.some((c) => c.id === base.id));
-      const removed = current.filter((base) => !next.some((n) => n.id === base.id));
+      removed = current.filter((base) => !next.some((n) => n.id === base.id));
       if (removed.length) {
-        await tx.delete(appKnowledgeBase).where(and(eq(appKnowledgeBase.appId, row.id), inArray(appKnowledgeBase.knowledgeBaseId, removed.map((base) => base.id))));
+        taken = await tx
+          .delete(appKnowledgeBase)
+          .where(and(eq(appKnowledgeBase.appId, row.id), inArray(appKnowledgeBase.knowledgeBaseId, removed.map((base) => base.id))))
+          .returning();
       }
       if (added.length) await tx.insert(appKnowledgeBase).values(added.map((base) => ({ appId: row.id, knowledgeBaseId: base.id, grantedBy: actorId })));
       for (const base of added) await recordEvent(tx, "knowledge.granted", actorId, null, row.id, base);
-      for (const base of removed) await recordEvent(tx, "knowledge.revoked", actorId, null, row.id, base);
-    }));
+    };
+    // A knowledge base taken away is gone from the app only once the apply that unmounts it worked.
+    // Until then the app's containers still mount it, so a failed apply gives the grant back, as
+    // deleting a knowledge base does, and the app's page still lists it.
+    const ended = async (tx: Tx, applied: boolean) => {
+      if (applied) for (const base of removed) await recordEvent(tx, "knowledge.revoked", actorId, null, row.id, base);
+      else if (taken.length) await tx.insert(appKnowledgeBase).values(taken).onConflictDoNothing();
+    };
+    return this.granting(next, async () => ({ jobId: (await this.startJob(row.id, "apply", { first, ended })).jobId }));
   }
 
   async approve(name: string, host: string, actorId: string): Promise<{ jobId: string }> {

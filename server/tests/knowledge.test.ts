@@ -97,10 +97,12 @@ beforeAll(async () => {
     "ys-fixtures/vault/compose.yaml": COMPOSE,
     "ys-fixtures/plain/compose.yaml": COMPOSE,
     "ys-fixtures/atlas/compose.yaml": COMPOSE,
+    "ys-fixtures/twice/compose.yaml": COMPOSE,
     ...plainKit("notes", "knowledge: {}\n"),
     ...plainKit("atlas", "knowledge: {}\n"),
     ...plainKit("vault", "knowledge: { path: /vault/ }\n"),
     ...plainKit("plain"),
+    ...plainKit("twice"),
   });
   server = await startServer(t.db, { apps: { runtime, fetch } });
   await createOwnerWithPassword(t.db, OWNER, server.publicUrl);
@@ -310,6 +312,33 @@ describe("giving knowledge bases to apps", () => {
     await waitForJob(((await removed.json()) as { jobId: string }).jobId);
     expect(lastApply("notes").knowledge).toEqual({ path: "/knowledge", bases: ["recipes"] });
     expect(await events("knowledge.revoked")).toEqual([{ actorId: owner, subjectAppId: await appId("notes"), knowledgeBase: "course-notes" }]);
+  });
+
+  it("keeps a knowledge base taken away when the apply that would unmount it fails", async () => {
+    const revoked = (await events("knowledge.revoked")).length;
+    runtime.failApply = "The engine stopped.";
+    const taken = await send("/api/apps/notes/knowledge", { bases: [] }, "PUT");
+    expect(taken.status).toBe(202);
+    const job = await waitForJob(((await taken.json()) as { jobId: string }).jobId);
+    runtime.failApply = undefined;
+    expect(job.state).toBe("failed");
+    // Its containers still mount it, so it keeps its grant, and nothing records it as taken away.
+    const detail = (await (await api("/api/apps/notes")).json()) as { knowledge: { bases: { name: string }[] } };
+    expect(detail.knowledge.bases.map((base) => base.name)).toEqual(["recipes"]);
+    expect((await events("knowledge.revoked")).length).toBe(revoked);
+    // Applied again as it is, it starts with it.
+    const again = await send("/api/apps/notes/knowledge", { bases: ["recipes"] }, "PUT");
+    expect((await waitForJob(((await again.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+    expect(lastApply("notes").knowledge).toEqual({ path: "/knowledge", bases: ["recipes"] });
+  });
+
+  it("installs from a review once, even when two requests read it before either used it", async () => {
+    const { previewId } = await review("twice");
+    const [first, second] = await Promise.allSettled([server.apps!.install(previewId, {}, false, owner), server.apps!.install(previewId, {}, false, owner)]);
+    expect(second).toMatchObject({ status: "rejected", reason: { code: "preview_expired" } });
+    expect(first.status).toBe("fulfilled");
+    if (first.status === "fulfilled") await first.value.done;
+    expect((await t.db.select().from(app).where(eq(app.name, "twice")))[0]).toMatchObject({ state: "running" });
   });
 });
 
