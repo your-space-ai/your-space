@@ -195,7 +195,10 @@ test("a knowledge base connected to a Drive folder syncs files created, changed 
 
   // Sync now runs at once, and the page says so.
   await here("echo 'Now' > now.md");
+  // The button asks the server for a run; the timer's runs are its tests'.
+  const asked = page.waitForResponse((r) => r.url().endsWith(`/api/knowledge/${KB}/sync`) && r.request().method() === "POST");
   await page.getByRole("button", { name: "Sync now", exact: true }).click();
+  expect((await asked).status()).toBe(202);
   await arrives(() => onDrive("cat now.md 2>&1"), "Now", 15_000);
   await here("rm now.md");
   await arrives(() => onDrive("ls"), "course\nfrom-drive.md\nfrom-here.md");
@@ -307,7 +310,7 @@ test("each knowledge base syncs through an rclone of its own, so a symbolic link
   await page.getByRole("button", { name: "Disconnect", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Disconnect" }).click();
   await expect(page.getByLabel("Drive folder link")).toBeVisible();
-  expect((await docker(["ps", "-aq", "--filter", `name=${rcloneOf(name)}`])).stdout.trim()).toBe("");
+  expect((await docker(["ps", "-aq", "--filter", `name=${rcloneOf(name)}`], false)).stdout.trim()).toBe("");
   expect(await containerId(RCLONE)).toBe(notes);
 });
 
@@ -409,13 +412,19 @@ test("deleting over half the files stops the sync; Resync brings them back, and 
 });
 
 test("replacing the data key keeps the Google connection, and the knowledge base still syncs", async ({ page }) => {
-  const [before] = await sql("select client_secret || ' ' || token from google_connection");
+  const encrypted = async () => (await sql("select client_secret, token from google_connection"))[0]!.split("\t");
+  const [secretBefore, tokenBefore] = await encrypted();
   await compose(["run", "--rm", "secrets", "--new", "data-key"]);
   await compose(["restart", "server"]);
   await up();
   await compose(["run", "--rm", "secrets", "--forget", "previous-data-key"]);
-  const [after] = await sql("select client_secret || ' ' || token from google_connection");
-  expect(after).not.toBe(before);
+  // Each was encrypted again with the new key.
+  const [secretAfter, tokenAfter] = await encrypted();
+  expect(secretAfter).not.toBe(secretBefore);
+  expect(tokenAfter).not.toBe(tokenBefore);
+  // A server started with the new key alone makes the remote again, from what it reads now.
+  await compose(["restart", "server"]);
+  await up();
 
   await asOwner(page);
   await page.goto(`/knowledge/${KB}`);
@@ -502,7 +511,8 @@ test("a run that stops over more than 500 deletions shows the first 500, and app
   expect(await count(remote)).toBe("1100");
 
   // 600 of 1,100 files deleted here: over the limit, so the run stops, and the page has all 600.
-  await local("for i in $(seq 1 600); do rm file-$i.md; done");
+  // One rm, so a timed run can't come between two batches of them.
+  await local("rm $(seq -f 'file-%g.md' 1 600)");
   await expect(main).toHaveAttribute("data-sync-result", "stopped", { timeout: 30_000 });
   const listed = page.locator("[data-deletions]");
   await expect(listed).toContainText("600 files to delete");
@@ -547,8 +557,11 @@ test("the client secret and token are in rclone's memory only: in no container's
   expect(rclone.Config.User).toBe("1000:1000");
   expect(rclone.HostConfig).toMatchObject({ ReadonlyRootfs: true, CapDrop: ["ALL"] });
   expect(rclone.Mounts.map((m) => m.Destination).sort()).toEqual(["/knowledge/drive-notes", "/remote", "/run/ys-sync", "/state/drive-notes"]);
-  const found = await docker(["exec", RCLONE, "sh", "-c", `grep -rl ${SECRETS.map((x) => `-e '${x}'`).join(" ")} /run/ys-sync /state /knowledge /remote /tmp 2>/dev/null; true`], false);
-  expect(found.stdout.trim()).toBe("");
+  // Every regular file is read: a match, or a file or folder the scan couldn't read, names its path,
+  // never the value. grep -r can't be used, as it fails on rclone's socket.
+  const scan = `find /run/ys-sync /state /knowledge /remote /tmp -type f 2>&1 | while IFS= read -r f; do grep -q ${SECRETS.map((x) => `-e '${x}'`).join(" ")} "$f"; r=$?; [ $r -eq 0 ] && echo "found in $f"; [ $r -gt 1 ] && echo "couldn't read $f"; done; echo scanned`;
+  const found = await docker(["exec", RCLONE, "sh", "-c", scan], false);
+  expect(found.stdout.trim()).toBe("scanned");
   const said = await docker(["logs", RCLONE], false);
   for (const secret of SECRETS) expect(said.stdout + said.stderr).not.toContain(secret);
   // Its socket is in a folder only user 1000, rclone's and the server's, opens.
@@ -642,7 +655,7 @@ const bigEvents = async (type: string, kind?: string) =>
  * server stops, rclone finishes it, and the files are made in `folder` before the server starts
  * again, so no run comes between. Answers once the run that copies them is under way.
  */
-async function firstRunAfterResync(page: Page, folder: string, resync: () => Promise<void>): Promise<void> {
+async function firstRunAfterResync(page: Page, folder: string, resync: () => Promise<void>): Promise<{ id: number }> {
   await asOwner(page);
   const asked = new Date().toISOString();
   await resync();
@@ -660,6 +673,7 @@ async function firstRunAfterResync(page: Page, folder: string, resync: () => Pro
   // The next server records the resync, and the run after it copies the files.
   await expect.poll(async () => (await runSince(made)) ?? null, { timeout: 60_000, intervals: [100] }).not.toBeNull();
   expect(await bigRow("resync")).toBe("f");
+  return JSON.parse((await runSince(made))!) as { id: number };
 }
 /** The owner's Resync of the big knowledge base: refused while a timed run is under way, so asked again until it comes between two. */
 const ownersResync = (page: Page) => async () => {
@@ -670,7 +684,9 @@ const ownersResync = (page: Page) => async () => {
 test("stopping Your Space during the first run after a resync stops rclone gracefully, and the next start finishes the run by itself", async ({ page }) => {
   test.setTimeout(600_000);
   const stopped = await bigEvents("knowledge.sync_stopped");
-  await firstRunAfterResync(page, "second", ownersResync(page));
+  const run = await firstRunAfterResync(page, "second", ownersResync(page));
+  // Still copying, so the stop interrupts it.
+  expect((await bigJob(run.id)).finished).toBe(false);
   // As `your-space stop` does: the apps and the sync first, then Your Space.
   await compose(["exec", "-T", "runtime", "stop-apps"]);
   // Stopped by SIGINT: rclone exits with 130 once bisync has shut down.
@@ -726,11 +742,11 @@ test("disconnecting leaves both sides' files, and no secret reached a log or a c
   await expect(page.getByLabel("Drive folder link")).toBeVisible();
   expect(await listing(here)).toBe(drive);
   expect(await listing(onDrive)).toBe(drive);
-  expect((await docker(["volume", "ls", "-q", "--filter", `name=${STATE_VOLUME}`])).stdout.trim()).toBe("");
+  expect((await docker(["volume", "ls", "-q", "--filter", `name=${STATE_VOLUME}`], false)).stdout.trim()).toBe("");
 
   // With no knowledge base synced, the sync's containers are gone, and neither the server's nor the
   // runtime manager's log has the client secret or a token.
-  expect((await docker(["ps", "-aq", "--filter", "label=ai.your-space.role=knowledge-sync", "--filter", `label=ai.your-space.installation=${PROJECT}`])).stdout.trim()).toBe("");
+  expect((await docker(["ps", "-aq", "--filter", "label=ai.your-space.role=knowledge-sync", "--filter", `label=ai.your-space.installation=${PROJECT}`], false)).stdout.trim()).toBe("");
   const all = await logs(["server", "runtime"]);
   for (const secret of SECRETS) expect(all).not.toContain(secret);
 });
