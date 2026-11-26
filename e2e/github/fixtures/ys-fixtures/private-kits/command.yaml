@@ -1,0 +1,16 @@
+# A second kit in the private repository, installed with the server command (journey 015).
+kit: 1
+source:
+  repo: ys-fixtures/whoami
+  path: compose.yaml
+  commit: 1c6792eb96b6dc6c330052b210eb4d1f8cbb87e6
+name: private-command
+title: Private Command
+interface:
+  service: web
+  port: 80
+env:
+  API_TOKEN: { generate: { bytes: 24 } }
+  GREETING: { ask: optional, secret: false }
+limits:
+  web: { memory: 64M, cpus: 0.5 }

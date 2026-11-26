@@ -51,7 +51,24 @@ describe("links, kits and settings", () => {
   it("reads GitHub file links and refuses anything else", () => {
     expect(parseLink(COMPOSE_LINK)).toEqual({ repo: "ys-fixtures/whoami", rest: ["main", "compose.yaml"] });
     expect(parseLink("https://raw.githubusercontent.com/a/b/main/x/compose.yml").rest).toEqual(["main", "x", "compose.yml"]);
-    for (const bad of ["not a link", "http://github.com/a/b/blob/main/c.yml", "https://gitlab.com/a/b/blob/main/c.yml", "https://github.com/a/b", "https://github.com/a/b/tree/main"]) {
+    for (const bad of [
+      "not a link",
+      "http://github.com/a/b/blob/main/c.yml",
+      "https://gitlab.com/a/b/blob/main/c.yml",
+      "https://github.com/a/b",
+      "https://github.com/a/b/tree/main",
+      // A path can't step out of its repository, hide a slash in a part, or fail to decode.
+      "https://github.com/a/b/blob/main/x%2F..%2F..%2Fc.yml",
+      "https://raw.githubusercontent.com/a/b/main/..%2Fc.yml",
+      "https://github.com/a/b/blob/main/%E0%A4%A.yml",
+      // The URL parser would resolve these away before the parts are checked.
+      "https://github.com/a/b/blob/main/docs/%2e%2e/c.yml",
+      "https://github.com/a/b/blob/main/%2E%2e/%2e./.%2E/x/blob/main/c.yml",
+      "https://raw.githubusercontent.com/a/b/main/./c.yml",
+      // The URL parser drops a tab or a newline before it resolves the parts.
+      "https://github.com/a/b/blob/main/%2e%2\ne/%2e%2\ne/%2e%2\ne/x/blob/main/c.yml",
+      "https://github.com/a/b/blob/main/.\t./c.yml",
+    ]) {
       expect(() => parseLink(bad), bad).toThrow(SourceError);
     }
   });
@@ -408,7 +425,13 @@ describe("apps API", () => {
     const review = JSON.parse(text);
     expect(review).toMatchObject({ name: "whoami", title: "Who Am I", ok: true, origin: `http://whoami.${new URL(server.publicUrl).host}`, outbound: ["example.com"], interface: { service: "web", port: 80 } });
     expect(review.source).toMatchObject({ repo: "ys-fixtures/whoami", commit: COMMIT });
-    expect(review.kit).toEqual({ source: `https://github.com/ys-fixtures/catalog/blob/${COMMIT}/apps/ys-fixtures/whoami.yaml`, repo: "ys-fixtures/catalog", path: "apps/ys-fixtures/whoami.yaml", commit: COMMIT });
+    expect(review.kit).toEqual({
+      source: `https://github.com/ys-fixtures/catalog/blob/${COMMIT}/apps/ys-fixtures/whoami.yaml`,
+      repo: "ys-fixtures/catalog",
+      path: "apps/ys-fixtures/whoami.yaml",
+      commit: COMMIT,
+      read: { read: "anonymous" },
+    });
     expect(review.settings.find((s: { name: string }) => s.name === "API_TOKEN")).toMatchObject({ secret: true, generated: true, set: true });
     expect(text).not.toContain("published-default-token");
     expect(review.warning).toMatch(/trusts it/);
@@ -648,10 +671,10 @@ describe("apps API", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: "kit_required", message: expect.stringMatching(/not a Your Space kit.*Give the link to the app's kit/) });
     expect((await post("/api/kits/preview", { kitUrl: "https://example.com/kit.yaml" })).status).toBe(400);
-    // A kit GitHub doesn't show this machine, as in a private repository, installs with the server command.
+    // A kit GitHub doesn't show this machine, as in a private repository, needs the GitHub connection (journey 015).
     const hidden = await post("/api/kits/preview", { kitUrl: "https://github.com/ys-fixtures/private-kits/blob/main/kit.yaml" });
     expect(hidden.status).toBe(404);
-    expect(await hidden.json()).toMatchObject({ error: "kit_not_found", message: expect.stringMatching(/repository must be public\. If the kit is in a private repository, install it from this machine.*install-app --kit - < kit\.yaml/) });
+    expect(await hidden.json()).toMatchObject({ error: "not_connected", message: expect.stringMatching(/on public GitHub\. If the repository is private, connect GitHub/) });
     expect((await post("/api/kits/preview", {})).status).toBe(400);
     expect((await post("/api/apps/preview", { link: COMPOSE_LINK })).status).toBe(404);
   });

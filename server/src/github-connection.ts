@@ -1,15 +1,17 @@
 // The GitHub connection (journey 015): the workspace's source credential, a fine-grained token the
 // owner pastes, with Contents read on the repositories they choose. The GitHub page and the `github`
 // server command call these same actions (decision 6). The token is encrypted under the data key and
-// never returned, logged or given to an app or an agent (R5). GitHub is asked about it only when the
-// owner connects or looks at the connection, never in the background (R7).
-import { and, eq } from "drizzle-orm";
+// never returned, logged or given to an app or an agent (R5). It is used only while the owner reviews
+// or installs a kit GitHub doesn't show anonymously, or connects or looks at the connection, never in
+// the background (R7).
+import { and, eq, sql } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import type { Auth } from "./auth.ts";
 import type { Db } from "./db/client.ts";
 import { sourceCredential } from "./db/schema.ts";
 import { ownerFor } from "./apps/routes.ts";
 import { githubAccount, githubEndpoints, isFineGrainedToken, SourceError, TokenRefusedError, type GithubEndpoints } from "./apps/github.ts";
+import type { SourceCredentials } from "./apps/service.ts";
 import { decrypt, encrypt } from "./apps/settings.ts";
 import { readInstallation } from "./owner/installation.ts";
 
@@ -84,6 +86,17 @@ export class GithubConnection {
     return row;
   }
 
+  /**
+   * Marks that GitHub accepted the token in a read that began at `started`. A refusal GitHub gave
+   * since then, to a read that finished first, stands.
+   */
+  private async worked(row: Row, started: Date): Promise<void> {
+    await this.db
+      .update(sourceCredential)
+      .set({ workedAt: new Date(), refusedAt: sql`case when ${sourceCredential.refusedAt} >= ${started.toISOString()}::timestamptz then ${sourceCredential.refusedAt} end` })
+      .where(and(eq(sourceCredential.id, row.id), eq(sourceCredential.token, row.token)));
+  }
+
   /** Marks what GitHub said, only if the token is still the one asked about. */
   private async mark(row: Row, change: Partial<Pick<Row, "account" | "workedAt" | "refusedAt">>): Promise<void> {
     await this.db.update(sourceCredential).set(change).where(and(eq(sourceCredential.id, row.id), eq(sourceCredential.token, row.token)));
@@ -117,6 +130,31 @@ export class GithubConnection {
       }
       throw error;
     }
+  }
+
+  /**
+   * The token for reading a kit Your Space can't read anonymously (R1, R2), or why there is none to
+   * use. GitHub isn't asked here: the read itself says whether GitHub still accepts the token, and
+   * marks it so the GitHub page and `github status` show it (decision 5).
+   */
+  async reading(): ReturnType<SourceCredentials["reading"]> {
+    const started = new Date();
+    const found = await readInstallation(this.db);
+    if (found.state !== "claimed" || !found.workspaceId) return { state: "none" };
+    const row = await this.row(found.workspaceId);
+    if (!row) return { state: "none" };
+    let token: string;
+    try {
+      token = decrypt(this.dataKey, row.token);
+    } catch {
+      return { state: "unreadable", login: row.account };
+    }
+    return {
+      state: "ready",
+      credential: { login: row.account, token },
+      worked: () => this.worked(row, started),
+      refused: () => this.mark(row, { refusedAt: new Date() }),
+    };
   }
 
   /** Stores the contents token once GitHub says which account it belongs to, replacing any before it. */

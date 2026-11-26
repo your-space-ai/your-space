@@ -19,8 +19,19 @@ import {
   type Publish,
 } from "../db/schema.ts";
 import { errorFields, log } from "../log.ts";
-import { fetchPinnedFile, githubEndpoints, SourceError, type GithubEndpoints, type SourceFile } from "./github.ts";
-import { composeOf, kitFromFile, kitFromLink, KitError, kitIdentity, NotAKitError, type FoundKit } from "./kits.ts";
+import {
+  fetchPinnedFile,
+  fetchSourceWith,
+  githubEndpoints,
+  SourceError,
+  TokenRefusedError,
+  type FileRead,
+  type GithubEndpoints,
+  type SourceCredential,
+  type SourceFile,
+  type SourceMiss,
+} from "./github.ts";
+import { composeOf, kitFromFile, kitFromLink, kitFromSource, KitError, kitIdentity, NotAKitError, type FoundKit } from "./kits.ts";
 import { localSource, type LocalCompose } from "./local.ts";
 import { RuntimeError, type AppSpec, type CheckAnswer, type Runtime, type ServiceState } from "./runtime-client.ts";
 import {
@@ -62,6 +73,26 @@ export class AppError extends Error {
   }
 }
 
+/**
+ * The workspace's source credential (journey 015), the GitHub connection: what reads a kit GitHub
+ * doesn't show anonymously. It is asked for only after an anonymous read found nothing (R1).
+ */
+export interface SourceCredentials {
+  reading(): Promise<
+    | { state: "none" }
+    /** Stored, but no data key here can read it (decision 3). */
+    | { state: "unreadable"; login: string }
+    | {
+        state: "ready";
+        credential: SourceCredential;
+        /** GitHub accepted it for a read. */
+        worked(): Promise<void>;
+        /** GitHub refused it: it expired, or was deleted or revoked (decision 5). */
+        refused(): Promise<void>;
+      }
+  >;
+}
+
 export interface AppsConfig {
   /** Your Space's own address, e.g. http://space.localhost. */
   publicUrl: string;
@@ -69,7 +100,14 @@ export interface AppsConfig {
   dataKey: string;
   github?: GithubEndpoints;
   fetch?: typeof fetch;
+  /** Left out where nothing is connected, as in tests that don't need it. */
+  credentials?: SourceCredentials;
 }
+
+/** The API's error code for each way GitHub gave no file. */
+const MISS_CODE: Record<SourceMiss, string> = { not_found: "not_found", not_visible: "repository_not_visible", no_ref: "not_found", no_file: "file_missing" };
+/** What the owner does about a connection that can't read a private kit; the page and the command each say where. */
+const RECONNECT = "Create a new token and connect GitHub again, then try again.";
 
 interface Preview {
   id: string;
@@ -77,6 +115,8 @@ interface Preview {
   source: SourceFile;
   kit: Kit;
   kitSource: string;
+  /** How the kit was read from GitHub; null for a kit file given on this machine. */
+  kitRead: FileRead | null;
   name: string;
   title: string;
   check: CheckAnswer;
@@ -346,38 +386,68 @@ export class AppsService {
     const github = this.config.github ?? githubEndpoints();
     const fetcher = this.config.fetch ?? fetch;
     let source: SourceFile;
-    let found: FoundKit;
+    let found: FoundKit & { file?: SourceFile };
     try {
       if (compose) {
         if (!("text" in kit)) throw new KitError("give the kit as a file on this machine with a Compose file on this machine.");
         source = localSource(compose);
         found = kitFromFile(kit.text, null);
       } else {
-        if ("link" in kit) {
-          try {
-            found = await kitFromLink(kit.link, github, fetcher);
-          } catch (error) {
-            // Its caller says how to reach a kit in a private repository instead.
-            if (error instanceof SourceError && error.missing) throw new AppError(404, "kit_not_found", error.message);
-            throw error;
-          }
-        } else {
-          found = kitFromFile(kit.text, null);
-        }
+        found = "link" in kit ? await this.kitAt(kit.link, github, fetcher) : kitFromFile(kit.text, null);
         const file = composeOf(found.kit);
         source = await fetchPinnedFile(file.repo, file.path, file.commit, github, fetcher);
       }
     } catch (error) {
       if (error instanceof NotAKitError) throw new AppError(400, "kit_required", error.message);
+      if (error instanceof SourceError && error.miss) throw new AppError(404, MISS_CODE[error.miss], error.message);
       if (error instanceof SourceError || error instanceof KitError) throw new AppError(400, "source", error.message);
       throw error;
     }
     return this.previewResolved(source, found);
   }
 
+  /**
+   * The kit at its link (journey 015, R1): read from public GitHub first, and through the GitHub
+   * connection only when GitHub shows no such repository without it, as for a private one. A
+   * public kit never touches the connection, so a connection GitHub refuses, or that no data key here
+   * can read, never stops it.
+   */
+  private async kitAt(link: string, github: GithubEndpoints, fetcher: typeof fetch): Promise<FoundKit & { file: SourceFile }> {
+    try {
+      return await kitFromLink(link, github, fetcher);
+    } catch (error) {
+      if (!(error instanceof SourceError && error.miss === "not_found")) throw error;
+      const reading = (await this.config.credentials?.reading()) ?? { state: "none" as const };
+      if (reading.state === "none") {
+        throw new AppError(404, "not_connected", `${error.message} If the repository is private, connect GitHub with a token that can read it, then try again.`);
+      }
+      if (reading.state === "unreadable") {
+        throw new AppError(
+          409,
+          "token_unreadable",
+          `${error.message} Your GitHub connection (@${reading.login}) can't read it: no data key here can read its token, as when the data key was replaced without the one before it. ${RECONNECT}`,
+        );
+      }
+      let file: SourceFile;
+      try {
+        file = await fetchSourceWith(reading.credential, link, github, fetcher);
+      } catch (failure) {
+        if (!(failure instanceof TokenRefusedError)) throw failure;
+        await reading.refused();
+        throw new AppError(
+          409,
+          "token_refused",
+          `GitHub no longer accepts your GitHub connection's token (@${reading.credential.login}): it expired, or it was deleted or revoked. ${RECONNECT}`,
+        );
+      }
+      await reading.worked();
+      return kitFromSource(file);
+    }
+  }
+
   /** The review of a kit and the Compose file it names, both already read. HTTP callers never
    * supply trusted source, commit, or review metadata. */
-  async previewResolved(source: SourceFile, found: FoundKit): Promise<ReturnType<AppsService["reviewOf"]>> {
+  async previewResolved(source: SourceFile, found: FoundKit & { file?: SourceFile }): Promise<ReturnType<AppsService["reviewOf"]>> {
     for (const [id, p] of this.previews) if (p.expiresAt < Date.now()) this.previews.delete(id);
     const kit = found.kit;
     const name = source.repo ? (kit.name ?? slug(source.repo.split("/")[1]!)) : kit.name;
@@ -434,6 +504,7 @@ export class AppsService {
       source,
       kit,
       kitSource: found.source,
+      kitRead: found.file?.read ?? null,
       name,
       title: kit.title ?? (source.repo ? source.repo.split("/")[1]! : name),
       check,
@@ -464,8 +535,9 @@ export class AppsService {
       name: p.name,
       title: p.title,
       origin: this.address(p.name).origin,
-      source: { link: p.source.link, repo: p.source.repo, path: p.source.path, ref: p.source.ref, commit: p.source.commit, pinnedLink: p.source.pinnedLink },
-      kit: kitIdentity(p.kitSource),
+      // How each file was read: a Private label in the review for one read through the connection (decision 7).
+      source: { link: p.source.link, repo: p.source.repo, path: p.source.path, ref: p.source.ref, commit: p.source.commit, pinnedLink: p.source.pinnedLink, read: p.source.read ?? null },
+      kit: { ...kitIdentity(p.kitSource), read: p.kitRead },
       ok: p.check.ok,
       services: p.check.services,
       images: p.check.images.map((i) => ({ ref: i.ref, digest: i.digest, runsHere: i.runsHere })),
@@ -540,6 +612,7 @@ export class AppsService {
         compose: p.source.text,
         kit: p.kit,
         kitSource: p.kitSource,
+        provenance: { kit: p.kitRead, compose: p.source.read ?? null },
         images,
         adaptations: check.adaptations,
         interface: p.interface,
@@ -921,6 +994,7 @@ export class AppsService {
       publish: publishOf(this.config.publicUrl, row),
       source: { link: row.sourceUrl, repo: row.repo, path: row.path, ref: row.ref, commit: row.commit },
       kitSource: row.kitSource,
+      provenance: row.provenance,
       images: row.images,
       adaptations: row.adaptations,
       services: services.map((s) => ({ ...s, limit: row.limits[s.name] ?? null })),

@@ -1,0 +1,7 @@
+# A kit in a private repository the connection's token wasn't given (journey 015).
+kit: 1
+source:
+  repo: ys-fixtures/whoami
+  path: compose.yaml
+  commit: 1c6792eb96b6dc6c330052b210eb4d1f8cbb87e6
+name: private-other

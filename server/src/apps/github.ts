@@ -1,16 +1,38 @@
 // Turns a GitHub link into one file at an exact commit (component C, FR-003, FR-026): an app's kit,
-// and the Compose file the kit names. Only public repositories; GitHub answers 404 for private ones.
-// It also asks GitHub which account a connection's token belongs to (journey 015).
+// and the Compose file the kit names. It reads public repositories anonymously, and a private one
+// through the workspace's source credential, the GitHub connection's token (journey 015, R2): only
+// GitHub's commits and contents endpoints, and only this adapter knows how the token is sent. It also
+// asks GitHub which account a token belongs to.
+
+/**
+ * Why GitHub gave no file: `not_found`, it shows no such repository, as for a private repository read
+ * anonymously; `not_visible`, it doesn't show the repository to the credential; `no_ref`, the
+ * repository is there, but not the branch, tag or commit; `no_file`, the repository and commit are
+ * there, but not the file.
+ */
+export type SourceMiss = "not_found" | "not_visible" | "no_ref" | "no_file";
 
 export class SourceError extends Error {
-  /** GitHub has no such repository, ref or file for this machine, as for a private repository. */
-  readonly missing: boolean;
-  constructor(message: string, missing = false) {
+  readonly miss: SourceMiss | null;
+  constructor(message: string, miss: SourceMiss | null = null) {
     super(message);
     this.name = "SourceError";
-    this.missing = missing;
+    this.miss = miss;
   }
 }
+
+/**
+ * A source credential (journey 015): lets Your Space read a file it can't read anonymously. Its first
+ * adapter is a fine-grained GitHub token with Contents read, which only this file sends.
+ */
+export interface SourceCredential {
+  /** The GitHub account the token belongs to, as GitHub last said. */
+  readonly login: string;
+  readonly token: string;
+}
+
+/** How Your Space read a kit or a Compose file (R4): anonymously, or through the GitHub connection. */
+export type FileRead = { read: "anonymous" } | { read: "connection"; login: string };
 
 export interface GithubEndpoints {
   /** https://api.github.com, or a stand-in in tests. */
@@ -42,70 +64,179 @@ export interface SourceFile {
   text: string;
   /** The same file at its commit, for the record. */
   pinnedLink: string;
+  /** How it was read from GitHub; a file given on this machine wasn't. */
+  read?: FileRead;
 }
 
 const NAME = /^[A-Za-z0-9_.-]+$/;
 export const MAX_FILE_BYTES = 256 * 1024;
 
-/** `https://github.com/<owner>/<repo>/blob/<ref>/<path>`, or the raw form of it. */
+/**
+ * `https://github.com/<owner>/<repo>/blob/<ref>/<path>`, or the raw form of it. Each part is decoded
+ * once, and none may be `.` or `..` or hide a slash, so the ref and the path can't step out of the
+ * repository in the URLs built from them.
+ */
 export function parseLink(link: string): FileLink {
-  let url: URL;
-  try {
-    url = new URL(link.trim());
-  } catch {
-    throw new SourceError("That isn't a link. Paste the GitHub link to the app's kit.");
-  }
-  const segments = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
-  if (url.protocol === "https:" && url.hostname === "github.com") {
+  const input = link.trim();
+  // The URL parser drops tabs and newlines, and control characters at the ends, before it resolves
+  // `.` and `..` parts. A link has none, so the parts hasDotPart checks are the ones it parses.
+  const url = /[\x00-\x1f\x7f]/.test(input) ? null : URL.parse(input);
+  if (!url) throw new SourceError("That isn't a link. Paste the GitHub link to the app's kit.");
+  const segments = hasDotPart(input) ? null : decodedSegments(url.pathname);
+  if (segments && url.protocol === "https:" && url.hostname === "github.com") {
     const [owner, name, kind, ...rest] = segments;
     if (owner && name && NAME.test(owner) && NAME.test(name) && (kind === "blob" || kind === "raw") && rest.length >= 2) {
       return { repo: `${owner}/${name}`, rest };
     }
   }
-  if (url.protocol === "https:" && url.hostname === "raw.githubusercontent.com") {
+  if (segments && url.protocol === "https:" && url.hostname === "raw.githubusercontent.com") {
     const [owner, name, ...rest] = segments;
     if (owner && name && NAME.test(owner) && NAME.test(name) && rest.length >= 2) return { repo: `${owner}/${name}`, rest };
   }
   throw new SourceError(
-    "Your Space installs an app from its kit, a file in a public GitHub repository. Open the kit on GitHub and paste its link, like https://github.com/owner/repo/blob/main/kit.yaml.",
+    "Your Space installs an app from its kit, a file in a GitHub repository. Open the kit on GitHub and paste its link, like https://github.com/owner/repo/blob/main/kit.yaml.",
   );
+}
+
+/**
+ * Whether a link's path, as written, has a `.` or `..` part, `%2e` for a dot included, which the
+ * URL parser would resolve away before the parts are checked.
+ */
+function hasDotPart(link: string): boolean {
+  const path = link.replace(/^[^:/?#]*:\/\/[^/\\?#]*/, "").split(/[?#]/)[0]!;
+  return path.split(/[/\\]/).some((part) => /^(\.|%2e){1,2}$/i.test(part));
+}
+
+/** A link's path parts, decoded, or null when one doesn't decode or isn't a single plain part. */
+function decodedSegments(pathname: string): string[] | null {
+  try {
+    const segments = pathname.split("/").filter(Boolean).map(decodeURIComponent);
+    return segments.some((part) => part === "." || part === ".." || part.includes("/")) ? null : segments;
+  } catch {
+    return null;
+  }
 }
 
 type Fetch = typeof fetch;
 
-async function get(fetcher: Fetch, url: string, accept: string): Promise<Response> {
+const UNREACHABLE = "GitHub can't be reached right now. Check this machine's internet connection and try again.";
+
+/**
+ * A GET to GitHub, anonymous or with the credential's token. The token goes only to the API, and a
+ * redirect isn't followed with it (refusal says the repository moved), so it never reaches another
+ * address.
+ */
+async function get(fetcher: Fetch, url: string, accept: string, credential?: SourceCredential): Promise<Response> {
+  const headers: Record<string, string> = { Accept: accept, "User-Agent": "your-space" };
+  if (credential) {
+    headers.Authorization = `Bearer ${credential.token}`;
+    headers["X-GitHub-Api-Version"] = "2022-11-28";
+  }
   try {
-    return await fetcher(url, { headers: { Accept: accept, "User-Agent": "your-space" }, signal: AbortSignal.timeout(20_000) });
+    return await fetcher(url, { headers, signal: AbortSignal.timeout(20_000), ...(credential ? { redirect: "manual" as const } : {}) });
   } catch {
-    throw new SourceError("GitHub can't be reached right now. Check this machine's internet connection and try again.");
+    throw new SourceError(UNREACHABLE);
   }
 }
 
+/** GitHub's primary rate limit (no requests remaining) or a secondary one (a 403 or 429 with Retry-After). */
 function rateLimited(res: Response): boolean {
-  return res.status === 429 || (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0");
+  return res.status === 429 || (res.status === 403 && (res.headers.get("x-ratelimit-remaining") === "0" || res.headers.has("retry-after")));
 }
 
-/** The commit a ref names. A branch name can contain slashes, so each split is tried in turn. */
-async function resolveRef(fetcher: Fetch, endpoints: GithubEndpoints, link: FileLink): Promise<{ ref: string; path: string; commit: string }> {
+/** GitHub's answer to a request with the credential, when it isn't one the caller reads. */
+function refusal(res: Response, repo: string, credential: SourceCredential): Error {
+  if (res.status === 401) return new TokenRefusedError();
+  // GitHub redirects a renamed or transferred repository's API requests to its new place.
+  if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) {
+    return new SourceError(`GitHub says ${repo} has moved: it was renamed or transferred. Use the link from its new place on GitHub.`);
+  }
+  if (rateLimited(res)) return new SourceError("GitHub is limiting requests from this machine. Try again in a few minutes.");
+  // An organization can require approving a fine-grained token, block such tokens, or require
+  // single sign-on; GitHub then refuses the repository to the token.
+  if (res.status === 403 || res.status === 404) return notVisible(repo, credential);
+  return new SourceError(`GitHub answered ${res.status}. Try again later.`);
+}
+
+function notVisible(repo: string, credential: SourceCredential): SourceError {
+  return new SourceError(
+    `GitHub doesn't show ${repo} to your GitHub connection (@${credential.login}). Check the link, and that the token can read ${repo}: at GitHub, its resource owner must be ${repo.split("/")[0]}, and its repositories must include ${repo.split("/")[1]}. An organization may also need to approve the token.`,
+    "not_visible",
+  );
+}
+
+/**
+ * The commit a ref names. A branch name can contain slashes, so each split is tried in turn. GitHub
+ * answers 422 for a ref a repository doesn't have, 409 for any ref of an empty repository, and 404
+ * for a repository it doesn't show.
+ */
+async function resolveRef(fetcher: Fetch, endpoints: GithubEndpoints, link: FileLink, credential?: SourceCredential): Promise<{ ref: string; path: string; commit: string }> {
+  let shown = false;
   for (let i = 1; i < link.rest.length; i++) {
     const ref = link.rest.slice(0, i).join("/");
     const path = link.rest.slice(i).join("/");
-    const res = await get(fetcher, `${endpoints.api}/repos/${link.repo}/commits/${encodeURIComponent(ref)}`, "application/vnd.github.sha");
+    const res = await get(fetcher, `${endpoints.api}/repos/${link.repo}/commits/${encodeURIComponent(ref)}`, "application/vnd.github.sha", credential);
     if (res.ok) {
       const commit = (await res.text()).trim();
       if (/^[0-9a-f]{40}$/.test(commit)) return { ref, path, commit };
       throw new SourceError("GitHub answered with something that isn't a commit.");
     }
+    if (res.status === 409 || res.status === 422) shown = true;
+    if (res.status === 404 || res.status === 409 || res.status === 422) continue;
+    if (credential) throw refusal(res, link.repo, credential);
     if (rateLimited(res)) throw new SourceError("GitHub is limiting requests from this machine. Try again in a few minutes.");
-    if (res.status !== 404 && res.status !== 422) throw new SourceError(`GitHub answered ${res.status}. Try again later.`);
+    throw new SourceError(`GitHub answered ${res.status}. Try again later.`);
   }
-  throw new SourceError(`Your Space can't find that branch, tag or commit in ${link.repo}. The repository must be public.`, true);
+  const noRef = new SourceError(`Your Space can't find that branch, tag or commit in ${link.repo}.`, "no_ref");
+  if (shown) throw noRef;
+  if (credential) {
+    // Every split answered 404. The repository's latest commit tells a repository GitHub doesn't show
+    // the token from a ref it doesn't have; an empty repository answers 409.
+    const res = await get(fetcher, `${endpoints.api}/repos/${link.repo}/commits?per_page=1`, "application/vnd.github+json", credential);
+    if (!res.ok && res.status !== 409) throw refusal(res, link.repo, credential);
+    throw noRef;
+  }
+  throw new SourceError(`Your Space can't find ${link.repo}, or that branch, tag or commit in it, on public GitHub.`, "not_found");
 }
 
+/**
+ * The file at a link, read anonymously from public GitHub. A repository GitHub doesn't show without a
+ * token, as a private one, fails with the miss `not_found`; only then may the connection be used (R1).
+ */
 export async function fetchSource(link: string, endpoints: GithubEndpoints = githubEndpoints(), fetcher: Fetch = fetch): Promise<SourceFile> {
   const parsed = parseLink(link);
   const { ref, path, commit } = await resolveRef(fetcher, endpoints, parsed);
   return readResolvedFile(parsed.repo, ref, path, commit, link.trim(), endpoints, fetcher);
+}
+
+/**
+ * The file at a link, read through the source credential (R2): the ref resolved with the commits API,
+ * and the file read at that commit with the contents API, as its raw text. A token GitHub refuses
+ * throws TokenRefusedError.
+ */
+export async function fetchSourceWith(
+  credential: SourceCredential,
+  link: string,
+  endpoints: GithubEndpoints = githubEndpoints(),
+  fetcher: Fetch = fetch,
+): Promise<SourceFile> {
+  const parsed = parseLink(link);
+  const { ref, path, commit } = await resolveRef(fetcher, endpoints, parsed, credential);
+  const res = await get(fetcher, `${endpoints.api}/repos/${parsed.repo}/contents/${encodePath(path)}?ref=${commit}`, "application/vnd.github.raw+json", credential);
+  // The commit resolved through the token, so the repository is visible: a 404 is the file.
+  if (res.status === 404) throw new SourceError(`There is no file ${path} in ${parsed.repo} at ${ref}.`, "no_file");
+  if (!res.ok) throw refusal(res, parsed.repo, credential);
+  const text = await fileText(res, path);
+  return {
+    link: link.trim(),
+    repo: parsed.repo,
+    ref,
+    path,
+    commit,
+    text,
+    pinnedLink: `https://github.com/${parsed.repo}/blob/${commit}/${encodePath(path)}`,
+    read: { read: "connection", login: credential.login },
+  };
 }
 
 /** GitHub doesn't accept a token: it is wrong, expired, deleted or revoked. */
@@ -148,7 +279,7 @@ export async function githubAccount(token: string, endpoints: GithubEndpoints = 
       signal: AbortSignal.timeout(20_000),
     });
   } catch {
-    throw new SourceError("GitHub can't be reached right now. Check this machine's internet connection and try again.");
+    throw new SourceError(UNREACHABLE);
   }
   if (res.status === 401) throw new TokenRefusedError();
   if (rateLimited(res)) throw new SourceError("GitHub is limiting requests from this machine. Try again in a few minutes.");
@@ -170,8 +301,14 @@ export function fetchPinnedFile(repo: string, path: string, commit: string, endp
 
 async function readResolvedFile(repo: string, ref: string, path: string, commit: string, link: string, endpoints: GithubEndpoints, fetcher: Fetch): Promise<SourceFile> {
   const res = await get(fetcher, `${endpoints.raw}/${repo}/${commit}/${encodePath(path)}`, "text/plain");
-  if (res.status === 404) throw new SourceError(`There is no file ${path} in ${repo} at ${ref}.`, true);
+  if (res.status === 404) throw new SourceError(`There is no file ${path} in ${repo} at ${ref}.`, "no_file");
   if (!res.ok) throw new SourceError(`GitHub answered ${res.status} for the file. Try again later.`);
+  const text = await fileText(res, path);
+  return { link, repo, ref, path, commit, text, pinnedLink: `https://github.com/${repo}/blob/${commit}/${encodePath(path)}`, read: { read: "anonymous" } };
+}
+
+/** A file's text: at most 256 KiB of UTF-8, however it was read. */
+async function fileText(res: Response, path: string): Promise<string> {
   const length = Number(res.headers.get("content-length") ?? 0);
   if (length > MAX_FILE_BYTES) throw new SourceError(`${path} is larger than a kit or Compose file should be.`);
   const bytes = await res.arrayBuffer();
@@ -183,5 +320,5 @@ async function readResolvedFile(repo: string, ref: string, path: string, commit:
   } catch {
     throw new SourceError("Choose a UTF-8 file.");
   }
-  return { link, repo, ref, path, commit, text, pinnedLink: `https://github.com/${repo}/blob/${commit}/${encodePath(path)}` };
+  return text;
 }

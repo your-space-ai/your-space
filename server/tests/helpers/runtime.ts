@@ -122,31 +122,63 @@ export function plainKit(name: string, more = ""): Record<string, string> {
   };
 }
 
+export interface FakeGithubOptions {
+  /** Private repositories, and the tokens that can read each: GitHub answers 404 to anyone else. */
+  private?: Record<string, string[]>;
+  /** Tokens GitHub refuses on every request: wrong, expired, deleted or revoked. */
+  refused?: Set<string>;
+  /** Records each request: its URL, Authorization and Accept headers. */
+  calls?: { url: string; authorization: string | null; accept: string | null }[];
+  /**
+   * GitHub's own answer to an API request the stand-in would serve, when it gives one: an
+   * organization's 403, a rate limit, a redirect or an empty repository's 409.
+   */
+  answer?: (url: URL, token: string | null) => Response | undefined;
+}
+
 /**
  * A stand-in for GitHub. A file keyed `owner/repo/path` is at `COMMIT`, which `main` resolves to; one
- * keyed `owner/repo@<commit>/path` is only at that commit.
+ * keyed `owner/repo@<commit>/path` is only at that commit. A private repository's commits and files
+ * are served only through the API, to a token it was given (journey 015).
  */
-export function fakeGithub(files: Record<string, string>): typeof fetch {
+export function fakeGithub(files: Record<string, string>, options: FakeGithubOptions = {}): typeof fetch {
   const at = (key: string) => {
     const [, repo, commit, path] = /^([^/@]+\/[^/@]+)(?:@([0-9a-f]{40}))?\/(.+)$/.exec(key)!;
     return { repo: repo!, commit: commit ?? COMMIT, path: path! };
   };
   const stored = Object.entries(files).map(([key, text]) => ({ ...at(key), text }));
-  return (async (input: string | URL | Request) => {
+  return (async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input));
+    const headers = new Headers(init?.headers);
+    options.calls?.push({ url: url.toString(), authorization: headers.get("authorization"), accept: headers.get("accept") });
+    const authorization = headers.get("authorization");
+    const token = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : null;
+    if (token && options.refused?.has(token)) return Response.json({ message: "Bad credentials" }, { status: 401 });
     const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
-    if (url.hostname === "api.github.test" && parts[0] === "repos" && parts[3] === "commits") {
-      if (parts.length === 4 && url.searchParams.get("per_page") === "1")
-        return Response.json([{ sha: COMMIT }]);
-      const ref = parts.slice(4).join("/");
+    if (url.hostname === "api.github.test" && parts[0] === "repos") {
       const repo = `${parts[1]}/${parts[2]}`;
+      const readers = options.private?.[repo];
+      if (readers && !(token && readers.includes(token))) return Response.json({ message: "Not Found" }, { status: 404 });
+      const answer = options.answer?.(url, token);
+      if (answer) return answer;
       const commits = new Set(stored.filter((f) => f.repo === repo).map((f) => f.commit));
-      if (commits.size && (ref === "main" || ref === "feature/x")) return new Response(COMMIT);
-      if (commits.has(ref) || (commits.size && ref === COMMIT)) return new Response(ref);
+      if (parts[3] === "commits") {
+        if (parts.length === 4 && url.searchParams.get("per_page") === "1")
+          return commits.size ? Response.json([{ sha: COMMIT }]) : Response.json({ message: "Not Found" }, { status: 404 });
+        const ref = parts.slice(4).join("/");
+        if (commits.size && (ref === "main" || ref === "feature/x")) return new Response(COMMIT);
+        if (commits.has(ref) || (commits.size && ref === COMMIT)) return new Response(ref);
+        return new Response("", { status: commits.size ? 422 : 404 });
+      }
+      if (parts[3] === "contents" && headers.get("accept") === "application/vnd.github.raw+json") {
+        const file = stored.find((f) => f.repo === repo && f.commit === url.searchParams.get("ref") && f.path === parts.slice(4).join("/"));
+        if (file) return new Response(file.text);
+      }
       return new Response("", { status: 404 });
     }
     if (url.hostname === "raw.github.test") {
       const [owner, repo, commit, ...path] = parts;
+      if (options.private?.[`${owner}/${repo}`]) return new Response("", { status: 404 });
       const file = stored.find((f) => f.repo === `${owner}/${repo}` && f.commit === commit && f.path === path.join("/"));
       if (file) return new Response(file.text);
       return new Response("", { status: 404 });
