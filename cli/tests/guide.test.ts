@@ -38,11 +38,13 @@ describe("the operator documentation", () => {
     }
   });
 
+  // It starts the CLI once per command the guide names, one after another, while other test files
+  // run beside it, which takes longer than the default 5 seconds on a busy runner.
   it("names only commands and options that exist", () => {
     const global = cli(["--help"]);
     for (const { command, options } of all) {
       const help = cli([...command, "--help"]);
       for (const option of options) expect(`${help}\n${global}`, `your-space ${command.join(" ")} ${option}`).toContain(option);
     }
-  });
+  }, 30_000);
 });
