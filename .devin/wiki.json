@@ -61,7 +61,7 @@
     },
     {
       "title": "macOS Desktop Launcher",
-      "purpose": "desktop/: the Electron launcher, local engine discovery, local vs server setup, the bundled CLI, closing vs quitting (stopping the local workspace), the electron-updater self-update from GitHub Releases, and packaging.",
+      "purpose": "desktop/: the Electron launcher, local engine discovery, local vs server setup, the bundled CLI, closing vs quitting (stopping the local workspace), the electron-updater self-update from the feed of the update channel the owner chooses, Alpha or Canary (updates.mjs, update-menu.mjs), staged with Squirrel.Mac only at restart or quit, and packaging.",
       "parent": "Installation and Operations"
     },
     {

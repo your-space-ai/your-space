@@ -6,10 +6,13 @@
 
 **Status**: Decided. The owner settled all ten decisions on 2026-11-25. The pull request check on
 migrations (decision 8, FR-011) delivered 2026-11-25 in
-[PR #132](https://github.com/your-space-ai/your-space/pull/132). Canary's `channel.json` (FR-004)
-is built in [PR #135](https://github.com/your-space-ai/your-space/pull/135), in review. The `alpha`
-feed (FR-003) is built in [PR #136](https://github.com/your-space-ai/your-space/pull/136), in
-review, and first runs when alpha.2 is published. The rest ships in alpha.2.
+[PR #132](https://github.com/your-space-ai/your-space/pull/132). Built in PRs
+[#135](https://github.com/your-space-ai/your-space/pull/135) (Canary's `channel.json`, FR-004),
+[#136](https://github.com/your-space-ai/your-space/pull/136) (the `alpha` feed, FR-003),
+[#137](https://github.com/your-space-ai/your-space/pull/137) (the daily Mac canary, FR-005),
+[#138](https://github.com/your-space-ai/your-space/pull/138) (`upgrade --channel`, FR-006) and
+[#139](https://github.com/your-space-ai/your-space/pull/139) (the Mac app's setting, FR-001, FR-002
+and FR-009), all for alpha.2; live checks pending.
 
 **Input**: The owner, on 2026-11-25: "in the desktop app, should be a setting to choose which
 release channel to follow for updates, and yes you can add the flag in the cli."
@@ -333,14 +336,17 @@ release.
 - **FR-001**: The Mac app offers Alpha and Canary under **Your Space › Update Channel**. The
   channel is stored in `updates.json`, kept across updates, and alone decides which feed the app
   reads. With none stored, the app stores its own build's channel at its first start, Alpha for a
-  release and Canary for a canary build; after that only the owner's choice changes it. Choosing
-  Canary first says that canaries are unsupported.
+  release and Canary for a canary build; after that only the owner's choice changes it. An
+  `updates.json` that can't be read is left as it is, and until the owner chooses again the app
+  follows Alpha. Choosing Canary first says that canaries are unsupported.
 - **FR-002**: Every check, automatic or manual, reads the stored channel's feed at its fixed
   address with electron-updater's generic provider, with the channel in the feed's options and
   downgrades off. The app is offered only its channel's builds, and says so when nothing is newer.
   A feed it can't read means it couldn't check, and it offers nothing. Changing the channel drops
   any check in progress and any update found or downloaded from the other channel's feed, which is
-  then neither offered nor installed, not even when the app quits.
+  then neither offered nor installed, not even when the app quits. Once the owner chooses **Restart
+  Now**, which hands the update to macOS to install, the channel can't change until the app
+  restarts, unless macOS refuses the update.
 - **FR-003**: Once a published release passes Release publish's check, Release publish writes the
   `alpha` prerelease's `latest-mac.yml`, listing that release's update ZIPs by full link, and its
   `channel.json`, unless they already name a newer version. Nothing else writes to the `alpha`

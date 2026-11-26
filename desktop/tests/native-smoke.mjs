@@ -64,11 +64,17 @@ test('native launcher opens a workspace, isolates its app, saves it and reopens 
       await client.evaluate(({app}) => app.emit('activate'));
       await expect.poll(windows).toEqual([{url: origin + '/', visible: true}]);
       const menu = await client.evaluate(({Menu}) => Menu.getApplicationMenu().items[0].submenu.items
-        .filter(item => /Update/.test(item.label)).map(({label, type, checked}) => ({label, type, checked})));
+        .filter(item => /Update/.test(item.label)).map(({label, type, checked, submenu}) => ({label, type, checked,
+          ...(submenu ? {submenu: submenu.items.map(({label, type, checked}) => ({label, type, checked}))} : {})})));
+      // A release build with no channel stored follows Alpha.
       assert.deepEqual(menu, [
         {label:'Check for Updates…', type:'normal', checked:false},
         {label:'Check for Updates Automatically', type:'checkbox', checked:false},
+        {label:'Update Channel', type:'submenu', checked:false, submenu:[
+          {label:'Alpha', type:'radio', checked:true}, {label:'Canary', type:'radio', checked:false},
+        ]},
       ]);
+      assert.deepEqual(JSON.parse(await readFile(join(userData, 'updates.json'), 'utf8')), {automatic:false, channel:'alpha'});
       // The Connections menu lists the saved connection on ⌘1, then adding a server and the launcher's list.
       const connectionMenu = await client.evaluate(({Menu}) => Menu.getApplicationMenu().items
         .find(item => item.label === 'Connections').submenu.items.map(({label, type, accelerator}) => ({label, type, accelerator})));

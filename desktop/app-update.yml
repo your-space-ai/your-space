@@ -1,6 +1,7 @@
-# electron-updater's settings, which the packager copies to Contents/Resources/app-update.yml:
-# releases of this repository on GitHub, and a download cache named after the app.
-provider: github
-owner: your-space-ai
-repo: your-space
+# electron-updater's settings, which the packager copies to Contents/Resources/app-update.yml: the
+# Alpha channel's feed at its fixed address, and a download cache named after the app. Every check
+# first points the updater at the feed of the channel stored in updates.json (src/updates.mjs), so
+# this feed is only the default, and nothing reads the releases Atom feed.
+provider: generic
+url: https://github.com/your-space-ai/your-space/releases/download/alpha/
 updaterCacheDirName: ai.your-space.desktop-updater

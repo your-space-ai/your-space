@@ -199,7 +199,8 @@ test("refuses to open an installation newer than the app, and reports other upgr
   const before = starts();
   app.upgrade = () => ({ code: 2, stdout: JSON.stringify({ ok: false, error: "downgrade_refused", message: "newer" }) });
   await assert.rejects(service("0.1.0-alpha.1").start({ engine: app.socket }),
-    error => error.code === "downgrade_refused" && /newer version of Your Space/.test(error.message));
+    error => error.code === "downgrade_refused" && /newer version of Your Space/.test(error.message) &&
+      /starts once the app’s update channel has a build at least that new/.test(error.message));
   app.upgrade = () => ({ code: 3, stdout: JSON.stringify({ ok: false, error: "download_failed", detail: "private" }) });
   await assert.rejects(service("0.1.0-alpha.3").start({ engine: app.socket }), { code: "upgrade_failed" });
   app.upgrade = () => ({ code: 2, stdout: JSON.stringify({ ok: false, error: "engine_missing" }) });
@@ -219,12 +220,38 @@ test("refuses to open an installation newer than the app, and reports other upgr
   await assert.rejects(readFile(versionFile, "utf8"), { code: "ENOENT" });
 });
 
+test("a failed upgrade says where it left the workspace: the previous version back, tried again next start, or stopped for the owner", async t => {
+  const { app, calls, service, versionFile } = await fixture(t);
+  await service().start({ engine: app.socket });
+  const starts = () => calls.filter(c => c.args[3] === "start").length;
+  const before = starts();
+  // The previous version's files are back, as upgrade --json reports: the app says so, doesn't open
+  // it, and upgrades again at its next start.
+  for (const restored of [false, true]) {
+    app.upgrade = () => ({ code: 2, stdout: JSON.stringify({ ok: false, error: "start_failed", from: "0.1.0-alpha.1", to: "0.1.0-alpha.2", rolledBack: true, restored, message: "private" }) });
+    await assert.rejects(service("0.1.0-alpha.2").start({ engine: app.socket }),
+      error => error.code === "upgrade_rolled_back" && /put the previous version back/.test(error.message) &&
+        /tries again the next time/.test(error.message) && !error.message.includes("private"));
+  }
+  // The rollback stopped before the previous files were back, for the owner to finish by hand.
+  app.upgrade = () => ({ code: 2, stdout: JSON.stringify({ ok: false, error: "start_failed", rolledBack: false, restored: false, message: "private" }) });
+  await assert.rejects(service("0.1.0-alpha.2").start({ engine: app.socket }),
+    error => error.code === "upgrade_interrupted" && /doesn’t start it/.test(error.message) && /finish it by hand/.test(error.message));
+  // The new version is in place but didn't open: nothing was rolled back, and the next start runs it.
+  app.upgrade = () => ({ code: 2, stdout: JSON.stringify({ ok: false, error: "port_in_use", upgraded: true, rolledBack: false, restored: false }) });
+  await assert.rejects(service("0.1.0-alpha.2").start({ engine: app.socket }), { code: "upgrade_failed" });
+  assert.equal(starts(), before);
+  await assert.rejects(readFile(versionFile, "utf8"), { code: "ENOENT" });
+  // Each upgrade ran: a failure records no version, so the next start tries again.
+  assert.equal(calls.filter(c => c.args[3] === "upgrade").length, 4);
+});
+
 test("start refuses an installation an earlier upgrade left part way, or one another command is changing", async t => {
   const { app, service } = await fixture(t);
   await service().start({ engine: app.socket });
   app.startFailure = "upgrade_interrupted";
   await assert.rejects(service().start({ engine: app.socket }),
-    error => error.code === "upgrade_interrupted" && /upgrade guide/.test(error.message));
+    error => error.code === "upgrade_interrupted" && /doesn’t start it/.test(error.message) && /upgrade guide/.test(error.message));
   app.startFailure = "installation_busy";
   await assert.rejects(service().start({ engine: app.socket }),
     error => error.code === "installation_busy" && /Wait for it to finish/.test(error.message));
@@ -236,7 +263,7 @@ test("a failed upgrade may have started the workspace again, so quitting still s
   const local = service("0.1.0-alpha.2");
   // For example, the new version didn't become ready and the previous one was started again.
   app.upgrade = () => ({ code: 2, stdout: JSON.stringify({ ok: false, error: "start_failed", rolledBack: true, restored: false }) });
-  await assert.rejects(local.start({ engine: app.socket }), { code: "upgrade_failed" });
+  await assert.rejects(local.start({ engine: app.socket }), { code: "upgrade_rolled_back" });
   assert.equal(local.mayBeRunning(), true);
   await local.stop();
   assert.equal(app.stopped, 1);

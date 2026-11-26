@@ -20,8 +20,7 @@ later one, and from a canary on to the next release, the same way it moves betwe
 | Server, web and runtime images, tagged with the canary's version | GHCR, for Linux AMD64 and ARM64. The `canary` tag points at the newest build; `latest` stays on the newest release |
 | `your-space-linux-x64` and `your-space-linux-arm64`, the npm package as `your-space-ai-cli-<version>.tgz`, the Compose bundle `your-space.tar.gz`, `SHA256SUMS`, and `channel.json`, which names the build's version and commit | The [canary prerelease](https://github.com/your-space-ai/your-space/releases/tag/canary) on GitHub, which each build replaces |
 
-There is no canary of the Mac app, and none on npm. Leave the Mac app's own local workspace on its
-release: the app doesn't start a workspace newer than itself.
+The canary isn't published to npm. The Mac app has canaries of its own, which [The Mac App](#the-mac-app) describes.
 
 ## Move an Installation onto the Canary
 
@@ -41,6 +40,9 @@ apps and their data, as [Update Your Space](../operate/index.md#update-your-spac
 the backup it takes from the release: it is the way back to that release. Run the same command for
 each later canary. If a newer build replaces the prerelease's files while it runs, it changes
 nothing: run it again.
+
+This is for an installation the CLI runs. For the Mac app's own local workspace, choose Canary in
+the app instead, as [The Mac App](#the-mac-app) describes.
 
 ### Without the Flag
 
@@ -81,6 +83,39 @@ canary.
 For a later canary, get the newest canary's command again and run `upgrade`. A canary's command
 reads its files from the one prerelease, which holds only the newest build: when a newer one has
 replaced it, the command says so and changes nothing. Get the newest command and run it again.
+
+## The Mac App
+
+Once a day, the newest canary build is also packaged as the Mac app for Apple Silicon and Intel,
+signed and notarized as a release is, and added to the canary prerelease as
+`your-space-macos-arm64-<version>.zip` and `your-space-macos-x64-<version>.zip`, with
+`canary-mac.yml`, the feed the app reads. A Mac canary can be a day behind the prerelease's other
+files. Until the first Mac canary is published, the prerelease has no Mac app.
+
+To follow Canary from 0.1.0-alpha.2 on, choose **Your Space › Update Channel › Canary**. The app
+first warns that canaries aren't supported and may change your data in ways the next alpha doesn't
+expect; then each check reads only the canary feed and offers the newest Mac canary, which installs
+as any update does ([Mac app](macos-desktop.md)). The app's own local workspace follows the app,
+so the next time it starts, the app upgrades it to the canary, backing up the database first. Don't
+point `upgrade --channel` at that workspace: the app moves it.
+
+Install the first Mac canary by hand: download the ZIP for your Mac from the
+[canary prerelease](https://github.com/your-space-ai/your-space/releases/tag/canary), open it to
+unpack `Your Space.app`, quit Your Space if it's open, and drag the new app to Applications in place
+of the old one. Replace an app only with a newer canary: the version in the ZIP's name must be newer
+than the one **Your Space › About Your Space** shows. The newest Mac canary can be older than the
+app, such as in the day after a release, and an older app doesn't start a local workspace that a
+newer one upgraded; wait for a later Mac canary then. From 0.1.0-alpha.2 on, choosing Canary in the
+menu, as above, offers only a canary newer than the app. A canary with no channel stored yet, on a
+new Mac or over 0.1.0-alpha.1, follows Canary from its first start; installed over an app already
+set to Alpha, it stays on Alpha until you choose Canary. Later canaries come as updates.
+
+To leave Canary, choose **Update Channel › Alpha**. The app stays on its canary build, says "You'll
+move to Alpha with the next alpha", and moves to the first alpha newer than it, usually the next
+one. An update it had found or downloaded from Canary is dropped and never installed, not even when
+you quit, as long as you haven't chosen **Restart Now** for it. Once you have, the channel can't
+change until the app has restarted, even if the update wasn't ready in time, unless macOS refuses
+the update. Like a CLI installation, the app doesn't go back to the release the canary followed.
 
 ## Go Back to Releases
 

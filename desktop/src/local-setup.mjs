@@ -23,9 +23,10 @@ const messages = {
   invalid_input: "Enter a name of up to 100 characters and a username of 3–30 letters, digits, underscores, or periods.",
   invalid_workspace: "The selected installation did not report a running local Your Space workspace.",
   busy: "A local setup operation is already in progress.",
-  downgrade_refused: "This workspace was set up by a newer version of Your Space. Install the latest Your Space app to open it.",
+  downgrade_refused: "This workspace runs a newer version of Your Space than this app, so the app doesn’t start it. It starts once the app’s update channel has a build at least that new and the app has updated to it.",
   installation_busy: "Another Your Space command is changing the local workspace. Wait for it to finish, then retry.",
-  upgrade_interrupted: "An earlier upgrade of the local workspace stopped part way. Use the upgrade guide to recover it, then retry.",
+  upgrade_interrupted: "An upgrade of the local workspace stopped part way, so Your Space doesn’t start it. Use the upgrade guide to finish it by hand, then retry.",
+  upgrade_rolled_back: "Your Space couldn’t upgrade the local workspace to this version, so it put the previous version back and didn’t open it. It tries again the next time it starts the workspace.",
   upgrade_failed: "Your Space could not upgrade the local workspace to this version. Check your internet connection and Docker, then retry.",
   unexpected: "The local setup command could not finish. Check Docker and retry.",
 };
@@ -144,6 +145,11 @@ export function createLocalSetup({ folder, cli, releaseDir, version, versionFile
     if (upgradeRefusals.has(value?.error)) started = before;
     // A CLI built before `upgrade` existed answers with a usage error. Start as before and retry next time.
     if (value?.error === "usage" && /unknown command/i.test(String(value.message))) return;
+    // Where a failed upgrade left the installation (2026-11-23): the previous version's files back, so
+    // the next start tries again; or not, so the rollback stopped for the owner to finish by hand, and
+    // the CLI refuses to start it until then.
+    if (value?.rolledBack === true) throw localSetupError("upgrade_rolled_back");
+    if (value?.rolledBack === false && value.upgraded !== true) throw localSetupError("upgrade_interrupted");
     throw localSetupError(upgradeCodes.has(value?.error) ? value.error : "upgrade_failed");
   }
 

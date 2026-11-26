@@ -20,12 +20,13 @@ function clock() {
   };
 }
 
-function control({ running = true, stop, timeouts, onFailed } = {}) {
+function control({ running = true, stop, timeouts, onFailed, update } = {}) {
   const log = [];
   const time = clock();
   let resolveStop;
   const quit = createQuitControl({
     needsStop: () => running,
+    ...(update ? { pendingUpdate: () => update.pending, stageUpdate: signal => { log.push("stage"); return update.stage(signal); } } : {}),
     stop: stop ?? (signal => new Promise((resolve, reject) => {
       log.push("stop");
       resolveStop = resolve;
@@ -136,4 +137,86 @@ test("installing an update stops the workspace first, then installs instead of q
   const idle = control({ running: false });
   await idle.quit.beforeInstall(() => idle.log.push("install"));
   assert.deepEqual(idle.log, ["install"]);
+});
+
+test("a downloaded update holds the quit while it stages, with no workspace to stop and no stopping window", async () => {
+  let staged;
+  const update = { pending: true, stage: () => new Promise(resolve => { staged = resolve; }) };
+  const { quit, log } = control({ running: false, update });
+  const event = quitEvent();
+  quit.beforeQuit(event);
+  assert.equal(event.prevented, true);
+  assert.deepEqual(log, ["stage"]);
+  staged();
+  await settle();
+  assert.deepEqual(log, ["stage", "quit"]);
+  assert.equal(quit.quitting, true);
+
+  update.pending = false;
+  const none = control({ running: false, update });
+  const direct = quitEvent();
+  none.quit.beforeQuit(direct);
+  assert.equal(direct.prevented, false, "nothing to stage: the app quits at once");
+});
+
+test("staging runs beside the workspace's stop, within its deadline, and never raises the stop's warning", async () => {
+  let staged;
+  const update = { pending: true, stage: () => new Promise(resolve => { staged = resolve; }) };
+  const both = control({ update });
+  both.quit.beforeQuit(quitEvent());
+  assert.deepEqual(both.log, ["stopping", "stop", "stage"]);
+  both.finishStop();
+  await settle();
+  assert.deepEqual(both.log, ["stopping", "stop", "stage"], "the quit waits for staging too");
+  staged();
+  await settle();
+  assert.deepEqual(both.log, ["stopping", "stop", "stage", "quit"]);
+
+  // Staging that runs out of time is cut off at the deadline, which logout shortens; the stop finished.
+  const signals = [];
+  const slow = control({ update: { pending: true, stage: signal => { signals.push(signal); return new Promise(() => {}); } } });
+  slow.quit.beforeQuit(quitEvent());
+  slow.finishStop();
+  slow.quit.systemEnding();
+  assert.deepEqual(slow.time.pending().map(item => item.ms), [20_000]);
+  slow.time.fire();
+  await settle();
+  assert.equal(signals[0].aborted, true);
+  assert.deepEqual(slow.log, ["stopping", "stop", "stage", "quit"]);
+
+  // A refused update, alone, says nothing.
+  const refused = control({ update: { pending: true, stage: async () => { throw new Error("Code signature did not pass validation"); } } });
+  refused.quit.beforeQuit(quitEvent());
+  refused.finishStop();
+  await settle();
+  assert.deepEqual(refused.log, ["stopping", "stop", "stage", "quit"]);
+
+  // A workspace that doesn't stop in time still warns, whether or not the update staged.
+  const stuck = control({ update: { pending: true, stage: async () => {} } });
+  stuck.quit.beforeQuit(quitEvent());
+  stuck.time.fire();
+  await settle();
+  assert.deepEqual(stuck.log, ["stopping", "stop", "stage", "failed: timed out", "quit"]);
+});
+
+test("logout bounds a quit that only stages an update at 20 seconds, with no stopping window or warning", async () => {
+  const signals = [];
+  const never = { pending: true, stage: signal => { signals.push(signal); return new Promise(() => {}); } };
+  const during = control({ running: false, update: never });
+  during.quit.beforeQuit(quitEvent());
+  assert.deepEqual(during.time.pending().map(item => item.ms), [120_000]);
+  during.quit.systemEnding();
+  assert.deepEqual(during.time.pending().map(item => item.ms), [20_000]);
+  during.time.fire();
+  await settle();
+  assert.equal(signals[0].aborted, true);
+  assert.deepEqual(during.log, ["stage", "quit"]);
+
+  const before = control({ running: false, update: never });
+  before.quit.systemEnding();
+  before.quit.beforeQuit(quitEvent());
+  assert.deepEqual(before.time.pending().map(item => item.ms), [20_000]);
+  before.time.fire();
+  await settle();
+  assert.deepEqual(before.log, ["stage", "quit"]);
 });
