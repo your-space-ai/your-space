@@ -428,14 +428,16 @@ test("replacing the data key keeps the Google connection, and the knowledge base
 
   await asOwner(page);
   await page.goto(`/knowledge/${KB}`);
-  const written = new Date().toISOString();
   await here("echo 'After the new key' > after-key.md");
+  const written = new Date().toISOString();
   await arrives(() => onDrive("cat after-key.md 2>&1"), "After the new key");
   await expect(page.locator('main[data-state="knowledge-base"]')).toHaveAttribute("data-sync-result", "synced");
-  // Synced by a run that started after the file was written, so by this server, not one an earlier
-  // server left running in rclone.
-  const ranSince = async () => (await sql(`select s.result = 'synced' and s.last_run_at > '${written}' from knowledge_sync s join knowledge_base b on b.id = s.knowledge_base_id where b.name = '${KB}'`))[0];
-  await expect.poll(ranSince, { timeout: 30_000 }).toBe("t");
+  // A run that started after the file was written, so this server's, syncs. Runs of one knowledge
+  // base never overlap, so a sync that ended after that run started is that run or a later one.
+  const row = (column: string, where = "true") => sql(`select ${column} from knowledge_sync s join knowledge_base b on b.id = s.knowledge_base_id where b.name = '${KB}' and ${where}`);
+  let started: string | null = null;
+  await expect.poll(async () => (started = (await row("s.job->>'startedAt'", `(s.job->>'startedAt')::timestamptz > '${written}'`))[0] ?? null), { timeout: 30_000, intervals: [100] }).not.toBeNull();
+  await expect.poll(async () => (await row(`s.result = 'synced' and s.last_synced_at >= '${started}'::timestamptz`))[0], { timeout: 30_000 }).toBe("t");
 });
 
 test("a connection Google refused shows Reconnect, and signing in again resumes the sync", async ({ page }, testInfo) => {
