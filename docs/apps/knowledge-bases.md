@@ -47,7 +47,8 @@ apps running as different users can all create files there. An app running as an
 1000 may not be able to change a file another user wrote; most self-hosted images run as user 1000.
 The sync with Google Drive runs as user 1000 too, so in a synced knowledge base it can't change the
 files, or write into the folders, of an app that runs as another user with the usual umask of 022:
-that sync fails with a permission error and is tried again a minute later, and nothing is deleted.
+that sync fails with a permission error and is tried again a minute later. Changes it made before
+the error, which can include deleting in Drive files removed here, stay made.
 
 When two apps change the same file, the last one to write it wins. Your Space doesn't merge them.
 
@@ -71,8 +72,9 @@ until you delete the knowledge base again, which starts it without the folder.
 
 Knowledge bases are Docker volumes named `ys-knowledge.<installation>.<name>`, labelled
 `ai.your-space.role=knowledge`. `docker compose down -v` of Your Space doesn't delete them, as it
-doesn't delete apps' volumes. Deleting a synced knowledge base deletes its sync too; the Drive folder
-keeps its files.
+doesn't delete apps' volumes. Deleting a synced knowledge base deletes its sync too, with the
+replaced files it kept, even those less than 30 days old: copy out any you need first, as before
+disconnecting it. The Drive folder keeps its files.
 
 ## Sync with Google Drive
 
@@ -94,8 +96,8 @@ The knowledge base's page shows:
 - **Replaced files:** files a sync replaced or deleted here, kept for 30 days outside the knowledge
   base.
 - Why a sync stopped, when it did, with **Resync**, which copies both ways and deletes nothing, and,
-  after more than half of the files were deleted on one side, the deletions (the first 500 by name,
-  and how many more) and **Apply these deletions**. Where both sides changed a file, Resync keeps
+  after more than half of the files were deleted on one side, the deletions (the first 500 in the
+  order the sync found them, and how many more) and **Apply these deletions**. Where both sides changed a file, Resync keeps
   the newer copy rather than both: a copy it replaced here is under **Replaced files**, and one it
   replaced in Drive is in the file's version history there.
 - **Reconnect**, when Google refused Your Space's access.
@@ -118,10 +120,11 @@ service. The app finds them by listing `<path>`. The path must be absolute, isn'
 starting with a letter, digit or underscore. The app's own file can't mount anything at or inside it. See the
 [kit format](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
 
-An app that writes into knowledge bases should run as user 1000, or keep the files and folders it
-makes writable by their group: other apps, and the sync with Google Drive, which runs as user 1000,
-can then change them. A umask of 002 does that for files and folders made with the usual modes, but
-not for a mode the app sets itself, like `0700`. Otherwise a sync can't change the app's files or
-write into the folders it made: that sync fails with a permission error and is tried again a minute
-later, and nothing is deleted.
+An app that writes into knowledge bases should run as user 1000, or give the files it makes group
+read and write, and the folders group read, write and search (`rwx`): other apps, and the sync with
+Google Drive, which runs as user 1000, can then read and change them. A umask of 002 keeps those for
+files and folders the app makes with the usual modes, but can't add them to a mode the app sets
+itself, like `0700`. Otherwise a sync can't change the app's files or write into the folders it
+made: that sync fails with a permission error and is tried again a minute later. Changes it made
+before the error, deletions included, stay made.
 

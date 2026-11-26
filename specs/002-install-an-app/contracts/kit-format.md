@@ -118,12 +118,13 @@ files, lost when it is recreated, so a kit whose app keeps files at that folder'
 inside one of the app's volumes. A kit without `knowledge` gets no mounts
 and can't be given knowledge bases. Older Your Space versions refuse `knowledge` as an unknown field,
 so the change needs no new format version; `kit: 1` and `kit: 2` both take it. An app that writes
-into knowledge bases should run as user 1000, or keep the files and folders it makes there writable
-by their group, group 1000, which the knowledge base gives them (decision 2026-11-26). A umask of
-002 does that for files and folders the app makes with the usual modes; a mode the app sets itself,
-like `0700`, a umask can't widen. The sync with Google Drive runs as user 1000, and can't change files
-or write into folders that only another user can write, so that sync fails with a permission error
-and is retried, deleting nothing.
+into knowledge bases should run as user 1000, or give group 1000, which the knowledge base gives
+the files and folders it makes there, read and write on files and read, write and search on folders
+(decision 2026-11-26). A umask of 002 keeps those for files and folders the app makes with the
+usual modes; it can't add them to a mode the app sets itself, like `0700`, so such an app must ask
+for them. The sync with Google Drive runs as user 1000, and can't change files or write into
+folders that only another user can write, so that sync fails with a permission error and is
+retried; changes it made before the error, deletions included, stay made.
 
 Every field except `kit` and `source` is optional. A kit given with a Compose file on this machine
 may leave out `source`, and its `source` isn't matched. Any other kit without `source` is refused, as

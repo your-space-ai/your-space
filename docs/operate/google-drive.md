@@ -93,11 +93,12 @@ The knowledge base's page shows when it last synced, and what to do when a sync 
   sync replaces is kept in that file's version history in Drive, for as long as Drive keeps it.
 - Two apps writing the same file in the knowledge base aren't detected: the last write wins.
 - The sync runs as user 1000. Apps that write into a synced knowledge base should run as user
-  1000, as most self-hosted images do, or keep the files and folders they make writable by their
-  group. A umask of 002 does that for files and folders made with the usual modes, but not for a
-  mode the app sets itself, like `0700`. Otherwise the sync can't change such an app's files or
-  write into the folders it made: that sync fails with a permission error and is tried again a
-  minute later, and nothing is deleted.
+  1000, as most self-hosted images do, or give the files they make group read and write, and the
+  folders group read, write and search. A umask of 002 keeps those for files and folders made with
+  the usual modes, but can't add them to a mode the app sets itself, like `0700`. Otherwise the
+  sync can't change such an app's files or write into the folders it made: that sync fails with a
+  permission error and is tried again a minute later. Changes it made before the error, which can
+  include deleting in Drive files removed in the knowledge base, stay made.
 
 ## When a sync stops
 
@@ -126,7 +127,8 @@ resync, as when the first sync after connecting was cut off without a graceful s
 power cut, Your Space runs that resync itself rather than wait for you: it copies both ways and
 deletes nothing, the newer copy winning, so at worst a file deleted on one side comes back from the
 other. It does this once for each interruption, and never without the marker file on both sides;
-otherwise the sync stops and waits for **Resync**. Each knowledge base syncs on its own, so a long
+otherwise the sync stops and waits for **Resync**. If that resync fails, as while offline, and the
+next sync still needs one, the sync stops and waits for you to choose **Resync**. Each knowledge base syncs on its own, so a long
 first sync of one doesn't hold up the others. **Sync now** during a sync of the same knowledge base runs once
 more after it. Disconnecting or deleting a synced knowledge base stops its sync under way; no sync
 of it starts meanwhile.
@@ -193,7 +195,7 @@ On the Docker engine:
   or delete the knowledge base:
 
   ```sh
-  docker run --rm -v ys-knowledge.your-space.notes.sync:/sync:ro alpine tar -cf - -C /sync backups > notes-backups.tar.part && mv notes-backups.tar.part notes-backups.tar
+  (umask 077 && docker run --rm -v ys-knowledge.your-space.notes.sync:/sync:ro alpine tar -cf - -C /sync backups > notes-backups.tar.part) && mv notes-backups.tar.part notes-backups.tar
   tar -tf notes-backups.tar
   ```
 - `<installation>_knowledge-sync`: the Compose project of the sync: each knowledge base's rclone
