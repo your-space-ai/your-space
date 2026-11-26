@@ -372,7 +372,7 @@ describe("applying an app given knowledge bases", () => {
   beforeEach(() => {
     up = undefined;
     vi.mocked(engineModule.engineInfo).mockResolvedValue({ reachable: true, arch: "arm64", connection: "unix:///var/run/docker.sock" });
-    vi.mocked(engineModule.inspectImage).mockImplementation(async (ref) => ({ ref, digest: "sha256:abc", platforms: [], runsHere: true }));
+    vi.mocked(engineModule.inspectImage).mockImplementation(async (ref) => ({ ref, registry: "docker.io", digest: "sha256:abc", platforms: [], runsHere: true }));
     vi.mocked(engineModule.docker).mockImplementation(async (args): Promise<CliResult> => {
       const ok = (stdout: string) => ({ code: 0, stdout, stderr: "" });
       if (args.includes("--variables")) return ok("{}");
