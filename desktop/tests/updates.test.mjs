@@ -80,6 +80,9 @@ class FakeSquirrel extends EventEmitter {
     this.calls.push("stage");
     if (this.answer === "staged") queueMicrotask(() => this.emit("update-downloaded", {}));
     else if (this.answer instanceof Error) queueMicrotask(() => this.emit("error", this.answer));
+    // A refusal reported at once, before checkForUpdates() returns.
+    else if (this.answer === "throws") throw new Error("Squirrel.Mac refused at once");
+    else if (this.answer === "emits") this.emit("error", new Error("Squirrel.Mac refused at once"));
   }
   quitAndInstall() { this.calls.push("quitAndInstall"); }
 }
@@ -338,6 +341,23 @@ test("Restart Now stages the update with Squirrel.Mac first, and stops the works
   assert.deepEqual(updater.calls.at(-1), "quitAndInstall");
 });
 
+test("an update Squirrel.Mac refuses at once doesn't stop the next one from staging", async t => {
+  for (const answer of ["throws", "emits"]) {
+    const dir = await folder(t);
+    const squirrel = new FakeSquirrel({ answer });
+    const updater = new FakeUpdater([available("0.1.0-alpha.2"), available("0.1.0-alpha.3")]);
+    const { updates, shown, installs } = setup(t, dir, { updater, squirrel });
+    await updates.check();
+    assert.equal(shown.at(-1), "failed install on alpha: Squirrel.Mac refused at once", answer);
+    assert.equal(updates.installing, false);
+    squirrel.answer = "staged";
+    await updates.check();
+    assert.deepEqual(squirrel.calls, ["stage", "stage"], `${answer}: Restart Now asks Squirrel.Mac again`);
+    assert.deepEqual(installs, ["stopped workspace"]);
+    assert.equal(updater.calls.at(-1), "quitAndInstall");
+  }
+});
+
 test("once an update has gone to Squirrel.Mac the channel stays, even if staging runs out of time", async t => {
   const dir = await folder(t);
   const squirrel = new FakeSquirrel({ answer: "later" });
@@ -560,7 +580,7 @@ test("the guard refuses a feed's version that isn't plain SemVer, which electron
 test("at quit, a downloaded update of the channel followed now is staged, so it installs once the app has quit", async t => {
   const dir = await folder(t);
   const squirrel = new FakeSquirrel();
-  const { updates, installs } = setup(t, dir, { updater: new FakeUpdater([available("0.1.0-alpha.2")]), squirrel, answers: { restart: false } });
+  const { updates, installs, shown } = setup(t, dir, { updater: new FakeUpdater([available("0.1.0-alpha.2")]), squirrel, answers: { restart: false } });
   assert.equal(updates.installsAtQuit, false);
   await updates.stageAtQuit();
   assert.deepEqual(squirrel.calls, []);
@@ -568,6 +588,7 @@ test("at quit, a downloaded update of the channel followed now is staged, so it 
   assert.equal(updates.installsAtQuit, true);
   await updates.stageAtQuit();
   assert.deepEqual(squirrel.calls, ["stage"]);
+  assert.equal(shown.at(-1), "progress 2", "the Dock's bar stays until the app has quit, the workspace's stop may still show it");
   assert.equal(updates.installsAtQuit, false, "staged: Squirrel.Mac installs it as the app quits");
   assert.deepEqual(installs, [], "quitting doesn't relaunch");
 

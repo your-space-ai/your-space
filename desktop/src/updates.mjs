@@ -144,31 +144,36 @@ export function createUpdates({ load, settingsFile, version, beforeInstall, ui, 
   // designated requirement and stages it. Resolves once it is staged; rejects if Squirrel refuses it.
   function stage() {
     if (staged) return Promise.resolve();
-    stagingPromise ??= new Promise((resolve, reject) => {
-      const done = () => finish();
-      const failed = error => finish(error instanceof Error ? error : new Error(String(error)));
-      const finish = error => {
-        squirrel.off('update-downloaded', done);
-        squirrel.off('error', failed);
-        stagingPromise = undefined;
-        if (!error) return resolve();
-        handed = false;
-        phase = 'idle';
-        ready = undefined;
-        reject(error);
-      };
-      squirrel.on('update-downloaded', done);
-      squirrel.on('error', failed);
-      handed = true;
-      try { squirrel.checkForUpdates(); } catch (error) { failed(error); }
-    });
-    return stagingPromise;
+    if (stagingPromise) return stagingPromise;
+    // Kept before Squirrel is asked, so a refusal it reports at once, by throwing or emitting error
+    // in checkForUpdates(), clears it and the next update is staged afresh.
+    let settle;
+    const promise = new Promise((resolve, reject) => { settle = { resolve, reject }; });
+    stagingPromise = promise;
+    const done = () => finish();
+    const failed = error => finish(error instanceof Error ? error : new Error(String(error)));
+    const finish = error => {
+      squirrel.off('update-downloaded', done);
+      squirrel.off('error', failed);
+      stagingPromise = undefined;
+      if (!error) return settle.resolve();
+      handed = false;
+      phase = 'idle';
+      ready = undefined;
+      settle.reject(error);
+    };
+    squirrel.on('update-downloaded', done);
+    squirrel.on('error', failed);
+    handed = true;
+    try { squirrel.checkForUpdates(); } catch (error) { failed(error); }
+    return promise;
   }
 
   // Waits for staging, at most `staging` milliseconds or until the signal aborts, with a progress
   // bar on the Dock icon meanwhile. A timeout doesn't release the channel: Squirrel may still stage
-  // the update, and then installs it at quit.
-  function whenStaged(signal) {
+  // the update, and then installs it at quit. At quit the bar stays until the app has quit, since
+  // the local workspace may still be stopping under it.
+  function whenStaged(signal, { atQuit = false } = {}) {
     if (staged) return Promise.resolve();
     let timer;
     let abort;
@@ -182,7 +187,7 @@ export function createUpdates({ load, settingsFile, version, beforeInstall, ui, 
     return Promise.race([stage(), limit]).finally(() => {
       timers.clearTimeout(timer);
       signal?.removeEventListener('abort', abort);
-      ui.progress(-1);
+      if (!atQuit) ui.progress(-1);
     });
   }
 
@@ -376,7 +381,7 @@ export function createUpdates({ load, settingsFile, version, beforeInstall, ui, 
      */
     async stageAtQuit(signal) {
       if (phase !== 'ready' || staged) return;
-      await whenStaged(signal).catch(() => {});
+      await whenStaged(signal, { atQuit: true }).catch(() => {});
     },
     get automatic() { return settings.automatic; },
     get channel() { return settings.channel; },
