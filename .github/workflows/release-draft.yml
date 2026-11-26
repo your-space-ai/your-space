@@ -70,10 +70,11 @@ jobs:
           statuses=$(gh api --paginate "$repo/commits/$GITHUB_SHA/status?per_page=100" --jq '.statuses[] | [.context, .state] | @tsv')
           # Check runs, without those of any Release draft run on this commit, this one included, so a
           # run that failed doesn't block its retry, nor those of Canary, which publishes main's
-          # builds on its own and may still be running on this commit. As in required checks,
-          # skipped and neutral pass.
+          # builds on its own and may still be running on this commit, nor those of Mac canary, whose
+          # runs attach to main's newest commit and may still be running on it. As in required
+          # checks, skipped and neutral pass.
           drafts=$(gh api --paginate "$repo/actions/runs?head_sha=$GITHUB_SHA&per_page=100" \
-            --jq '.workflow_runs[] | select(.path == ".github/workflows/release-draft.yml" or .path == ".github/workflows/canary.yml") | .check_suite_id')
+            --jq '.workflow_runs[] | select(.path == ".github/workflows/release-draft.yml" or .path == ".github/workflows/canary.yml" or .path == ".github/workflows/canary-macos.yml") | .check_suite_id')
           checks=$(gh api --paginate "$repo/commits/$GITHUB_SHA/check-runs?per_page=100" \
             --jq '.check_runs[] | [.check_suite.id, .name, .conclusion // .status] | @tsv')
           missing=()
