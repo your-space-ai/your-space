@@ -111,7 +111,7 @@
     },
     {
       "title": "Kit Links",
-      "purpose": "Reviewing an app from its kit's link, read from public GitHub, and kit files given to the server command. There is no kit directory. The GitHub connection (journey 015): a read-only fine-grained token the owner pastes on the GitHub page or gives to the github server command, stored encrypted under the data key and moved on key rotation. A kit, or the Compose file it pins, that public GitHub doesn't show is read again through it, with the commits and contents APIs; the review labels each private file and names another repository the kit reads, and the installed app records how each file was read.",
+      "purpose": "Reviewing an app from its kit's link, read from public GitHub, and kit files given to the server command. There is no kit directory. The GitHub connection (journey 015): a read-only fine-grained token the owner pastes on the GitHub page or gives to the github server command, stored encrypted under the data key and moved on key rotation. A kit, or the Compose file it pins, that public GitHub doesn't show is read again through it, with the commits and contents APIs; the review labels each private file and names another repository the kit reads, and the installed app records how each file was read. Its optional image token, a classic token with only read:packages, signs the engine in to ghcr.io through the runtime manager (X-Registry-Auth) for images GHCR won't show anonymously.",
       "parent": "Apps Subsystem"
     },
     {

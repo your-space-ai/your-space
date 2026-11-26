@@ -57,6 +57,7 @@ export async function startServer(
         fetch: options.apps.fetch,
         github: { api: "https://api.github.test", raw: "https://raw.github.test" },
         credentials: github,
+        registries: github,
       })
     : undefined;
   server.on("request", createApp({ auth, db, dataKey: TEST_DATA_KEY, apps: apps ? { service: apps, handoffs } : undefined, github }));

@@ -29,6 +29,7 @@ import {
   inspectImage,
   listContainers,
   pullImage,
+  registryOf,
   scrub,
   type CliResult,
   type ContainerSummary,
@@ -66,7 +67,35 @@ export function validateSpec(body: unknown): AppSpec {
     if (frame !== undefined && typeof frame !== "boolean") throw new SpecError("Whether Your Space frames the published app must be true or false.");
   }
   if (spec.placeholders !== undefined && typeof spec.placeholders !== "boolean") throw new SpecError("Whether the check uses placeholders must be true or false.");
+  if (spec.registryCredentials !== undefined) validateCredentials(spec.registryCredentials);
   return { ...spec, installation: INSTALLATION, env } as AppSpec;
+}
+
+const REGISTRY = /^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?(:\d{1,5})?$/;
+const VISIBLE = /^[\x21-\x7e]{1,1024}$/;
+
+/** Registry credentials: each for one registry, by its exact host, and the images it is for. */
+function validateCredentials(credentials: unknown): void {
+  const valid =
+    Array.isArray(credentials) &&
+    credentials.length <= 4 &&
+    credentials.every((c: unknown) => {
+      const { registry, username, secret, images } = (typeof c === "object" && c !== null ? c : {}) as Record<string, unknown>;
+      return (
+        typeof registry === "string" &&
+        REGISTRY.test(registry) &&
+        typeof username === "string" &&
+        VISIBLE.test(username) &&
+        typeof secret === "string" &&
+        VISIBLE.test(secret) &&
+        Array.isArray(images) &&
+        images.length >= 1 &&
+        images.length <= 64 &&
+        images.every((i) => typeof i === "string" && VISIBLE.test(i))
+      );
+    });
+  // Never repeats what it was given: a credential holds a secret.
+  if (!valid) throw new SpecError("Each registry credential needs a registry, a user name, a secret and the images it is for.");
 }
 
 type Publish = { port: number; bind: string };
@@ -212,19 +241,22 @@ async function checkWithImages(spec: AppSpec, waitForCaddy = 0, placeholders = f
     refs.map(async (ref) => {
       // An image named with a placeholder is looked up once the owner gives the setting: the install
       // checks the file again whenever its review used one.
-      if (placeheld.length > 0 && ref.includes(PLACEHOLDER)) return { ref, platforms: [], runsHere: true } satisfies ImageCheck;
-      if (pins[ref]) return { ref, digest: pins[ref], platforms: [], runsHere: true } satisfies ImageCheck;
-      const image = await inspectImage(ref, info.arch ?? "amd64");
+      if (placeheld.length > 0 && ref.includes(PLACEHOLDER)) return { ref, registry: registryOf(ref), platforms: [], runsHere: true } satisfies ImageCheck;
+      if (pins[ref]) return { ref, registry: registryOf(ref), digest: pins[ref], platforms: [], runsHere: true } satisfies ImageCheck;
+      const image = await inspectImage(ref, info.arch ?? "amd64", spec.registryCredentials);
       if (image.digest) pins[ref] = image.digest;
       return image;
     }),
   );
   const result = adapt({ ...spec, pins }, resolved, profiled, caddy, files);
   for (const image of images) {
+    // An image its registry won't give without a sign-in is the server's to word: what to do
+    // depends on the credentials it holds (journey 015).
+    if (image.signIn) continue;
     if (image.error) result.refusals.push({ service: "", setting: "image", reason: `${image.ref} can't be found in its registry: ${image.error}` });
     else if (!image.runsHere) result.refusals.push({ service: "", setting: "image", reason: `${image.ref} isn't published for this machine's processor (linux/${info.arch}).` });
   }
-  const ok = result.refusals.length === 0;
+  const ok = result.refusals.length === 0 && !images.some((image) => image.signIn);
   return {
     answer: { ok, services: result.services, adaptations: result.adaptations, refusals: result.refusals, variables, images },
     adapted: ok ? result.adapted : null,
@@ -281,14 +313,15 @@ export async function apply(spec: AppSpec, emit: Emit): Promise<void> {
   emit({ step: "check" });
   const { answer, adapted } = await checkWithImages(spec, CADDY_WAIT_MS);
   if (!adapted) {
-    throw new SpecError(answer.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`).join(" "));
+    const signIn = answer.images.filter((i) => i.signIn).map((i) => `${i.ref}: its registry asks for a sign-in, as for a private image.`);
+    throw new SpecError([...answer.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`), ...signIn].join(" "));
   }
   const services = adapted.services as Record<string, { image: string; restart?: string }>;
   const images = [...new Set(Object.values(services).map((s) => s.image))];
   for (const image of images) {
     if (await imagePresent(image)) continue;
     emit({ step: "pull", image, progress: 0 });
-    await pullImage(image, (progress) => emit({ step: "pull", image, progress: Math.round(progress * 100) / 100 }));
+    await pullImage(image, (progress) => emit({ step: "pull", image, progress: Math.round(progress * 100) / 100 }), spec.registryCredentials);
     emit({ step: "pull", image, progress: 1 });
   }
   emit({ step: "start" });

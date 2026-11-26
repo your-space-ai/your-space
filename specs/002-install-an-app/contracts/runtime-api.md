@@ -40,6 +40,15 @@ image named with a placeholder isn't looked up and has no digest; the server che
 with the owner's values before installing it. `/apply` ignores `placeholders` and refuses a file
 whose required settings have no value, so a placeholder never reaches a running app.
 
+`registryCredentials` (optional, journey 015): `[{ registry, username, secret, images }]`. Each
+signs the engine in to `registry`, an exact host such as `ghcr.io`, for the `images` it names alone:
+the runtime manager sends it as Docker's `X-Registry-Auth` on the lookup (`/check`) or download
+(`/apply`) of an image whose reference names that registry and the same repository, and on no other
+request. It writes no Docker config file and never repeats a credential in an answer or a log. The
+server sends one only for images a check without it found private. The engine's distribution
+lookup takes `X-Registry-Auth` (checked on Docker Engine 29.6.2, API 1.55), so a private image is
+pinned to its digest without downloading it.
+
 `env` (2026-11-23) is how settings reach the app: the server sends exactly the variables the app's
 kit defines that have a value, and Compose resolves the file with them as its environment. Before it resolves anything, the runtime manager has Compose read the file as written
 (`config` with interpolation, settings files, normalization and paths turned off, every profile
@@ -60,8 +69,8 @@ sends it to `/check` or `/apply` (2026-11-24).
 | Method and path | Body | Answer |
 | --- | --- | --- |
 | `GET /engine` | | `{ reachable, version, os, arch, cpus, memory, connection, stopping }`; `stopping` is true after `/stop-all` |
-| `POST /check` | app spec, `pins` and `placeholders` optional | `{ ok, services: [{ name, image, interface, ports, published: [{ target, host }], volumes, dependsOn }], variables: [{ name, required, default, unset }], adaptations: [...], refusals: [{ service, setting, reason }], images: [{ ref, digest, runsHere, platforms }] }` |
-| `POST /apply` | app spec | NDJSON stream: `{ "step": "pull", "image" }`, `{ "step": "start" }`, …, then `{ "done": true }` or `{ "error": "…" }`; a published port something else took since it was checked gives an error naming it. While the app runs, a one-time service that finished and is unchanged isn't started again |
+| `POST /check` | app spec, `pins`, `placeholders` and `registryCredentials` optional | `{ ok, services: [{ name, image, interface, ports, published: [{ target, host }], volumes, dependsOn }], variables: [{ name, required, default, unset }], adaptations: [...], refusals: [{ service, setting, reason }], images: [{ ref, registry, digest, runsHere, platforms, private, signIn }] }`. `registry` is the one the reference names (`docker.io` when it names none); `private` marks an image its registry gave only with a credential; `signIn` is `needed` when its registry wants a sign-in the spec has no credential for, or `refused` when it refused the one given. Such an image is never looked up on the engine instead, has no refusal of its own, which the server words, and makes `ok` false |
+| `POST /apply` | app spec | NDJSON stream: `{ "step": "pull", "image" }`, `{ "step": "start" }`, …, then `{ "done": true }` or `{ "error": "…" }`, with `"code": "sign_in"` when a registry asked for a sign-in to download an image, or refused the one given; a published port something else took since it was checked gives an error naming it. While the app runs, a one-time service that finished and is unchanged isn't started again |
 | `POST /apps/{project}/down` | | Removes containers, networks and the anonymous volumes the containers mounted; keeps named volumes |
 | `DELETE /apps/{project}/volumes` | | Removes the app's volumes |
 | `GET /apps` | | `[{ project, app, services: [{ name, role, state, health, exitCode, oomKilled, outdated, framing }] }]` for every app this installation manages; `role` is `app`, `egress` or `publish`; `outdated` marks a `publish` service that doesn't run Your Space's Caddy's current image, or lets another origin than that Caddy's frame the app; `framing`, on a `publish` service that runs and lets that Caddy's origin frame the app, is its container's ID, shortened to 12 characters, which changes whenever the service is recreated |

@@ -1,7 +1,8 @@
 // A stand-in for GitHub in the browser tests (spec Q8): the commits API and raw files, served from
 // fixtures/<owner>/<repo>/<path>. Every repository is at one commit on the branch `main`, the git
 // tree id of its fixture folder (commits.mjs), and its files are served only at that commit. It also
-// answers which account a token belongs to (`GET /user`, journey 015) for the synthetic tokens below.
+// answers which account a token belongs to (`GET /user`, journey 015) for the synthetic tokens below,
+// and for a classic one, its scopes in the `X-OAuth-Scopes` header, as GitHub does.
 // A private repository answers 404 to anyone without a token it was given to, as GitHub does, and
 // serves its commits and its files, through the contents API, to one with it.
 import { createServer } from "node:http";
@@ -14,7 +15,22 @@ const root = fileURLToPath(new URL("./fixtures/", import.meta.url));
 
 // Synthetic tokens and the accounts they belong to; GitHub refuses any other token.
 const CONTENTS_TOKEN = "github_pat_ys_fixture_contents";
-const ACCOUNTS = new Map([[CONTENTS_TOKEN, "ys-fixture-owner"]]);
+// Classic tokens for the image token (slice 4). The browser tests' registry, which stands in for
+// ghcr.io, takes the first, as e2e/registry/htpasswd says; it doesn't know the second's account.
+const IMAGE_TOKEN = "ghp_ys_fixture_packages";
+const OTHER_IMAGE_TOKEN = "ghp_ys_fixture_packages_other";
+const WIDE_TOKEN = "ghp_ys_fixture_packages_wide";
+const ACCOUNTS = new Map([
+  [CONTENTS_TOKEN, "ys-fixture-owner"],
+  [IMAGE_TOKEN, "ys-fixture-owner"],
+  [OTHER_IMAGE_TOKEN, "ys-fixture-other"],
+  [WIDE_TOKEN, "ys-fixture-owner"],
+]);
+const SCOPES = new Map([
+  [IMAGE_TOKEN, "read:packages"],
+  [OTHER_IMAGE_TOKEN, "read:packages"],
+  [WIDE_TOKEN, "read:packages, write:packages, repo"],
+]);
 // Private repositories, and the tokens that can read each. Kept here, not in the fixture folders, so
 // a fixture's commit stays the tree id of its files.
 const PRIVATE = new Map([
@@ -45,6 +61,7 @@ createServer(async (req, res) => {
   // GET /user, with the token as a bearer token.
   if (url.pathname === "/user") {
     if (!login) return json(res, 401, { message: "Requires authentication" });
+    if (SCOPES.has(token)) res.setHeader("X-OAuth-Scopes", SCOPES.get(token));
     return json(res, 200, { login, type: "User" });
   }
   if (parts[0] === "repos" && parts.length >= 4) {

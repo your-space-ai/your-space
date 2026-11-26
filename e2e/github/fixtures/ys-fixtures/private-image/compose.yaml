@@ -1,0 +1,6 @@
+# A Compose file whose image is private on GitHub's container registry (journey 015, slice 4). In
+# the browser tests, a local registry that asks for a password stands in for ghcr.io
+# (compose.e2e.yaml), and its one image is traefik/whoami (MIT), which echoes each request it gets.
+services:
+  web:
+    image: 127.0.0.1:5591/ys-fixtures/private-image:1

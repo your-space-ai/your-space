@@ -160,7 +160,8 @@ export const app = pgTable(
     kitSource: text("kit_source"),
     /** Null for an app installed before journey 015. */
     provenance: jsonb("provenance").$type<Provenance>(),
-    images: jsonb("images").$type<Record<string, { digest: string }>>().notNull(),
+    /** Each image's pinned digest; `private` marks one pulled with the registry credential (journey 015, R9). */
+    images: jsonb("images").$type<Record<string, { digest: string; private?: true }>>().notNull(),
     adaptations: jsonb("adaptations").$type<Adaptation[]>().notNull(),
     interface: jsonb("interface").$type<{ service: string; port: number }>(),
     pane: boolean("pane").notNull().default(true),
@@ -362,6 +363,26 @@ export const sourceCredential = pgTable("source_credential", {
   /** When GitHub last accepted the token. */
   workedAt: timestamp("worked_at", { withTimezone: true }).notNull(),
   /** When GitHub refused the token on its latest use; null while it works. */
+  refusedAt: timestamp("refused_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * The workspace's registry credential (journey 015, decision 4): what lets the engine pull an image a
+ * registry won't give anonymously. Its first adapter is the GitHub connection's optional image token,
+ * a classic token with only `read:packages`, for `ghcr.io`. A slot of its own, apart from the source
+ * credential, so either can be added, replaced or removed alone. One per workspace (R6).
+ */
+export const registryCredential = pgTable("registry_credential", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().unique().references(() => organization.id, { onDelete: "cascade" }),
+  /** AES-256-GCM ciphertext under the data key (spec 009); never returned or logged. */
+  token: text("token").notNull(),
+  /** The account GitHub said the token belongs to, the last time it answered. */
+  account: text("account").notNull(),
+  /** When the token last worked: GitHub accepted it, or the registry gave an image with it. */
+  workedAt: timestamp("worked_at", { withTimezone: true }).notNull(),
+  /** When GitHub refused the token, the last time it was asked; null while it works. */
   refusedAt: timestamp("refused_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

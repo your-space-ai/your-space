@@ -92,7 +92,7 @@ try {
 const auth = createAuth({ config, db });
 const handoffs = new Handoffs();
 const github = new GithubConnection(db, config.dataKey);
-const apps = new AppsService(db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey, credentials: github });
+const apps = new AppsService(db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey, credentials: github, registries: github });
 const app = createApp({ auth, db, dataKey: config.dataKey, apps: { service: apps, handoffs }, github });
 const gate = createGate({ db, publicUrl: config.publicUrl, authSecret: config.authSecret, handoffs });
 const gateServer: Server = gate.listen(GATE_PORT, "0.0.0.0");

@@ -94,13 +94,20 @@ The signed-in dashboard arranges installed app panes in a resizable grid. A name
   API returns the kit at that commit. The Compose file the kit pins is read the same way: its raw
   file anonymously, and when that answers 404, the commits API without the token tells a private
   repository from a missing file or commit, and only a private one is read again with the token. A
-  kit file given to the server command needs the connection only for a private Compose file.
+  kit file given to the server command needs the connection only for a private Compose file. The
+  runtime manager looks each image up in its registry without signing in. When `ghcr.io` won't show
+  one, the server reads the image token and has the runtime manager look that image up again signed
+  in: the engine's registry sign-in, Docker's `X-Registry-Auth` on that lookup alone. The install
+  downloads that image the same way, for that image alone, and no Docker config file is written.
+  Other registries are only read without signing in.
 - **Connecting GitHub (015):** the owner pastes a fine-grained token, Contents read on the
   repositories they choose, on the GitHub page or into the `github` server command → the server asks
   GitHub's API which account it belongs to (`GET /user`) → stores it encrypted under the data key,
   and moves it with everything else when the data key is replaced. The server asks again only when
   the owner opens the page or checks its status, and uses the token otherwise only to review or
-  install a private kit or Compose file.
+  install a private kit or Compose file. The optional image token, a classic token with only
+  `read:packages`, is added the same way; GitHub's answer lists its scopes, and any other scope
+  refuses it before it is stored.
 - **An app reaching the internet:** app → its egress proxy → approved host, or a denial the
   runtime manager reads and the server turns into an access request.
 - **An agent.** The CLI sends the agent’s key and requested action to the server through the edge.
@@ -128,6 +135,7 @@ aligned box borders. Rationale belongs in the decision record, not here.
 Authorized agent on host → setup CLI → Docker workspace → private owner claim
 Kit link or directory → public GitHub at pinned commits → install preview
 Private kit or Compose file → GitHub connection (commits + contents API) → install preview
+Private image on ghcr.io → image token → runtime manager signs the engine in → pinned pull
 Private kit file → server command (install-app --kit -) → install preview
 ```
 

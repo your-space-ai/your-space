@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { encrypt, decrypt } from "../src/apps/settings.ts";
 import { sourceCredential } from "../src/db/schema.ts";
-import { GITHUB_TOKENS_URL } from "../src/github-connection.ts";
+import { GITHUB_CLASSIC_TOKENS_URL, GITHUB_TOKENS_URL } from "../src/github-connection.ts";
 import { runCommand } from "./helpers/commands.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY } from "./helpers/env.ts";
@@ -73,7 +73,7 @@ describe("the GitHub page's API", () => {
     const status = await api("GET");
     expect(status.status).toBe(200);
     expect(status.headers.get("cache-control")).toBe("no-store");
-    expect(await status.json()).toEqual({ contents: { set: false } });
+    expect(await status.json()).toEqual({ contents: { set: false }, images: { set: false } });
     expect(github.calls).toEqual([]);
   });
 
@@ -90,7 +90,7 @@ describe("the GitHub page's API", () => {
     expect(row!.account).toBe(LOGIN);
 
     const status = await read("GET");
-    expect(status.json).toEqual({ contents: { set: true, login: LOGIN, lastWorkedAt: expect.any(String), accepted: true } });
+    expect(status.json).toEqual({ contents: { set: true, login: LOGIN, lastWorkedAt: expect.any(String), accepted: true }, images: { set: false } });
     expect(status.text).not.toContain(TOKEN);
     expect(lines.join("\n")).not.toContain(TOKEN);
   });
@@ -132,7 +132,7 @@ describe("the GitHub page's API", () => {
   it("shows Reconnect once GitHub refuses the token, and connecting a new one clears it", async () => {
     await read("PUT", { token: TOKEN });
     accounts.delete(TOKEN); // The owner deleted it at GitHub, or it expired.
-    expect((await read("GET")).json).toEqual({ contents: { set: true, login: LOGIN, lastWorkedAt: expect.any(String), accepted: false, problem: "refused" } });
+    expect((await read("GET")).json).toEqual({ contents: { set: true, login: LOGIN, lastWorkedAt: expect.any(String), accepted: false, problem: "refused" }, images: { set: false } });
     expect((await stored())!.refusedAt).not.toBeNull();
     // While GitHub can't be asked, the refusal it gave stands.
     reachable = false;
@@ -146,7 +146,7 @@ describe("the GitHub page's API", () => {
   it("says when GitHub can't be asked, without calling the token refused", async () => {
     await read("PUT", { token: TOKEN });
     reachable = false;
-    expect((await read("GET")).json).toEqual({ contents: { set: true, login: LOGIN, lastWorkedAt: expect.any(String), accepted: null, problem: "unreachable" } });
+    expect((await read("GET")).json).toEqual({ contents: { set: true, login: LOGIN, lastWorkedAt: expect.any(String), accepted: null, problem: "unreachable" }, images: { set: false } });
     expect((await stored())!.refusedAt).toBeNull();
   });
 
@@ -154,18 +154,18 @@ describe("the GitHub page's API", () => {
     await read("PUT", { token: TOKEN });
     await t.db.update(sourceCredential).set({ token: encrypt("a-data-key-that-is-gone-0123456789abcdef", TOKEN) });
     github.calls.length = 0;
-    expect((await read("GET")).json).toEqual({ contents: { set: true, login: LOGIN, lastWorkedAt: expect.any(String), accepted: false, problem: "unreadable" } });
+    expect((await read("GET")).json).toEqual({ contents: { set: true, login: LOGIN, lastWorkedAt: expect.any(String), accepted: false, problem: "unreadable" }, images: { set: false } });
     expect(github.calls).toEqual([]);
     expect((await read("PUT", { token: NEXT_TOKEN })).json.contents.accepted).toBe(true);
-    expect((await read("DELETE")).json).toEqual({ removed: true, contents: { set: false } });
+    expect((await read("DELETE")).json).toEqual({ removed: true, contents: { set: false }, images: { set: false } });
   });
 
   it("disconnects by forgetting the token here", async () => {
     await read("PUT", { token: TOKEN });
-    expect((await read("DELETE")).json).toEqual({ removed: true, contents: { set: false } });
+    expect((await read("DELETE")).json).toEqual({ removed: true, contents: { set: false }, images: { set: false } });
     expect(await stored()).toBeUndefined();
-    expect((await read("GET")).json).toEqual({ contents: { set: false } });
-    expect((await read("DELETE")).json).toEqual({ removed: false, contents: { set: false } });
+    expect((await read("GET")).json).toEqual({ contents: { set: false }, images: { set: false } });
+    expect((await read("DELETE")).json).toEqual({ removed: false, contents: { set: false }, images: { set: false } });
   });
 });
 
@@ -250,8 +250,8 @@ describe("the github server command", () => {
 
     const disconnected = await run(["disconnect", "--json"]);
     expect(disconnected.code).toBe(0);
-    expect(disconnected.json).toEqual({ ok: true, removed: true, contents: { set: false }, deleteAt: GITHUB_TOKENS_URL });
+    expect(disconnected.json).toEqual({ ok: true, removed: true, contents: { set: false }, images: { set: false }, deleteAt: GITHUB_TOKENS_URL, deleteImageTokenAt: GITHUB_CLASSIC_TOKENS_URL });
     expect((await run(["disconnect"])).stdout).toContain("no token to remove");
-    expect((await run(["status", "--json"])).json).toEqual({ ok: true, contents: { set: false } });
+    expect((await run(["status", "--json"])).json).toEqual({ ok: true, contents: { set: false }, images: { set: false } });
   });
 });

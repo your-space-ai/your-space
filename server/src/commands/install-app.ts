@@ -29,6 +29,12 @@ const CONNECTION_HINT: Record<string, string> = {
 /** A private kit also installs from a kit file on this machine; a private Compose file needs the connection. */
 const KIT_FILE_HINT = "Or give the kit file: install-app --kit - < kit.yaml";
 
+/** The image reference the review's images are keyed by: with a tag, without a digest. */
+function imageRef(image: string): string {
+  const base = image.split("@")[0]!;
+  return base.slice(base.lastIndexOf("/") + 1).includes(":") ? base : `${base}:latest`;
+}
+
 /** The review's note on a file read through the GitHub connection (decision 7). */
 function privately(read: FileRead | null): string {
   return read?.read === "connection" ? ` (private, read with your GitHub connection @${read.login})` : "";
@@ -88,10 +94,12 @@ async function main(argv: string[]): Promise<number> {
   const opened = openForCommand(out);
   if (!opened) return EXIT.unexpected;
   const { config, database } = opened;
+  const connection = new GithubConnection(database.db, config.dataKey);
   const apps = new AppsService(database.db, socketRuntime(), {
     publicUrl: config.publicUrl,
     dataKey: config.dataKey,
-    credentials: new GithubConnection(database.db, config.dataKey),
+    credentials: connection,
+    registries: connection,
   });
   try {
     // The command runs in the server's container, so standard input (`--kit -`) is how a file on the
@@ -99,6 +107,8 @@ async function main(argv: string[]): Promise<number> {
     // there; a kit file on this machine names it too.
     const kitText = values.kit !== undefined ? readLocalKit(values.kit) : undefined;
     const review = await apps.preview(kitText !== undefined ? { text: kitText } : { link: link! });
+    // Each image pulled with the image token is marked private (decision 7).
+    const privateImages = new Set(review.images.filter((i) => i.private).map((i) => i.ref));
     if (!review.ok) {
       const reasons = review.refusals.map((r) => `  - ${r.service ? `${r.service}: ` : ""}${r.reason}`);
       out.failure({ ok: false, error: "refused", name: review.name, refusals: review.refusals }, [`Your Space can't run ${review.title} as it is:`, ...reasons].join("\n"));
@@ -109,7 +119,7 @@ async function main(argv: string[]): Promise<number> {
         [
           `${review.title} from ${isLocalSource(review.source) ? localFileLine(review.source) : `${review.source.repo} at ${review.source.commit.slice(0, 12)}${privately(review.source.read)}`}${review.kit.repo ? `, with its kit ${review.kit.repo}/${review.kit.path} at ${review.kit.commit!.slice(0, 12)}${privately(review.kit.read)}` : ", with the kit file you gave"}`,
           ...(review.readsRepository ? [`This kit reads ${review.readsRepository} with your GitHub connection.`] : []),
-          ...review.services.map((s) => `  ${s.name}: ${s.image}${s.interface ? " (interface)" : ""}`),
+          ...review.services.map((s) => `  ${s.name}: ${s.image}${s.interface ? " (interface)" : ""}${privateImages.has(imageRef(s.image)) ? " (private image, pulled with your image token)" : ""}`),
           ...review.adaptations.map((a) => `  ${a.service}: ${a.detail}`),
           review.warning,
           "",

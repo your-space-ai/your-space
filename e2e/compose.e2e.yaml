@@ -1,5 +1,6 @@
 # For the browser tests only: a stand-in for GitHub that serves fixture apps and installation kits
-# (spec Q8), and the server's settings that point at it.
+# (spec Q8), a local registry that asks for a password and stands in for GitHub's container registry
+# (journey 015, slice 4), and the server's settings that point at them.
 services:
   github:
     image: node:26-slim
@@ -8,10 +9,25 @@ services:
     volumes:
       # Relative to deploy/, the first Compose file's folder.
       - ../e2e/github:/github:ro
+  # The engine pulls images itself, so the registry listens on this machine's loopback, which the
+  # engine reaches over plain HTTP. Its one account, ys-fixture-owner, signs in with the synthetic
+  # image token ghp_ys_fixture_packages (htpasswd). The browser test pushes its image.
+  registry:
+    image: registry:2.8.3
+    ports:
+      - "127.0.0.1:5591:5000"
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: ys-e2e
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+    volumes:
+      - ../e2e/registry/htpasswd:/auth/htpasswd:ro
   server:
     environment:
       YS_E2E_GITHUB_API: http://github:8080
       YS_E2E_GITHUB_RAW: http://github:8080
+      # The registry the image token signs the engine in to, in place of ghcr.io.
+      YS_E2E_GHCR: 127.0.0.1:5591
     depends_on:
       github:
         condition: service_started

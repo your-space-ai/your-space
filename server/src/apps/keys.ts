@@ -60,15 +60,17 @@ export async function moveSettingsToDataKey(db: Db, keys: Keys): Promise<Moved> 
       await tx.update(appSetting).set({ value: encrypt(keys.dataKey, value) }).where(and(eq(appSetting.appId, row.appId), eq(appSetting.name, row.name)));
       result.moved++;
     }
-    // Agent credentials, approval previews and receipts, and the GitHub connection's token (journey
-    // 015, decision 3), use the same installation data key. Leaving the token out is what broke the
-    // removed connection. Batch migration avoids loading all historical results into memory during rotation.
+    // Agent credentials, approval previews and receipts, and the GitHub connection's tokens, its
+    // contents token and its image token (journey 015, decision 3), use the same installation data
+    // key. Leaving the token out is what broke the removed connection. Batch migration avoids loading
+    // all historical results into memory during rotation.
     if (keys.previousDataKey) {
       for (const [table, pk, column] of [
         ["agent_binding", "app_id", "credential"],
         ["agent_request", "id", "input"],
         ["agent_request", "id", "result"],
         ["source_credential", "id", "token"],
+        ["registry_credential", "id", "token"],
       ] as const) {
         let cursor = "00000000-0000-0000-0000-000000000000";
         for (;;) {

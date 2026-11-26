@@ -2,9 +2,10 @@
 
 **Status**: Accepted 2026-11-25, for alpha.2. The owner settled every decision below. Slice 1
 (Connect) delivered 2026-11-25 in [PR #130](https://github.com/your-space-ai/your-space/pull/130),
-slice 2 (Private kits) in [PR #131](https://github.com/your-space-ai/your-space/pull/131), and
-slice 3 (Private apps) in [PR #133](https://github.com/your-space-ai/your-space/pull/133); slices 4
-and 5 to come.
+slice 2 (Private kits) in [PR #131](https://github.com/your-space-ai/your-space/pull/131),
+slice 3 (Private apps) in [PR #133](https://github.com/your-space-ai/your-space/pull/133), and
+slice 4 (Private images) in [PR #134](https://github.com/your-space-ai/your-space/pull/134); slice 5
+to come.
 
 **Created**: 2026-11-25
 
