@@ -100,7 +100,10 @@ function recordingUi(shown, answers = {}) {
     unavailable: async () => { shown.push("unavailable"); },
     upToDate: async channel => { shown.push(`up to date on ${channel}`); },
     busy: async () => { shown.push("busy"); },
-    failed: async (error, stage, channel) => { shown.push(`failed ${stage}${channel ? ` on ${channel}` : ""}: ${error.message}`); },
+    failed: async (error, stage, channel) => {
+      shown.push(`failed ${stage}${channel ? ` on ${channel}` : ""}: ${error.message}`);
+      answers.failed?.(error);
+    },
     available: async (info, manual) => {
       shown.push(`available ${info.version}${manual ? " (asked)" : ""}`);
       return typeof answers.download === "function" ? answers.download(info) : answers.download ?? true;
@@ -109,6 +112,7 @@ function recordingUi(shown, answers = {}) {
       shown.push(`ready ${info.version}`);
       return typeof answers.restart === "function" ? answers.restart(info) : answers.restart ?? true;
     },
+    dropped: async info => { shown.push(`dropped ${info.version}`); },
     progress: fraction => shown.push(`progress ${fraction}`),
   };
 }
@@ -168,11 +172,42 @@ test("a release build with no channel stored stores Alpha at its first start, a 
     assert.deepEqual(await saved(dir), { automatic: true, channel: stored });
   }
 
-  // A channel this build doesn't know, or a damaged file, counts as none stored.
+  // Only a file with no channel in it counts as none stored. One that names a channel this build
+  // doesn't know, or can't be read, doesn't, and one that can't be read at all turns automatic checks off.
   await writeFile(join(dir, "updates.json"), JSON.stringify({ automatic: false, channel: "beta" }));
-  assert.deepEqual(await readUpdateSettings(join(dir, "updates.json")), { automatic: false });
-  await writeFile(join(dir, "updates.json"), "{");
-  assert.deepEqual(await readUpdateSettings(join(dir, "updates.json")), { automatic: true });
+  assert.deepEqual(await readUpdateSettings(join(dir, "updates.json")), { automatic: false, unreadable: true });
+  for (const damaged of ["{", "null", "[]", '"alpha"']) {
+    await writeFile(join(dir, "updates.json"), damaged);
+    assert.deepEqual(await readUpdateSettings(join(dir, "updates.json")), { automatic: false, unreadable: true }, damaged);
+  }
+  await rm(join(dir, "updates.json"));
+  await mkdir(join(dir, "updates.json"));
+  assert.deepEqual(await readUpdateSettings(join(dir, "updates.json")), { automatic: false, unreadable: true }, "a read error");
+});
+
+test("a settings file that can't be read is left as it is: the session follows Alpha and checks only when asked", async t => {
+  for (const damaged of ["{", JSON.stringify({ automatic: true, channel: "beta" })]) {
+    const dir = await folder(t);
+    await writeFile(join(dir, "updates.json"), damaged);
+    const { updates, updater, clock } = setup(t, dir, { version: canaryBuild });
+    await updates.start();
+    assert.equal(updates.channel, "alpha", "a canary build doesn't go back to Canary");
+    assert.equal(await readFile(join(dir, "updates.json"), "utf8"), damaged, "nothing is written at start");
+    await updates.check();
+    assert.deepEqual(updater.feeds, [channelFeed("alpha")]);
+    if (damaged === "{") assert.deepEqual(clock.items, [], "no automatic check while the file can't be read");
+    else assert.equal(clock.items.length, 2);
+    // The owner's next choice replaces the file with what the menu shows, Alpha included.
+    await updates.setAutomatic(true);
+    assert.deepEqual(await saved(dir), { automatic: true, channel: "alpha" });
+  }
+  // A read error, such as a folder in the file's place, is the same.
+  const dir = await folder(t);
+  await mkdir(join(dir, "updates.json"));
+  const { updates } = setup(t, dir, { version: canaryBuild });
+  await updates.start();
+  assert.equal(updates.channel, "alpha");
+  assert.equal(updates.automatic, false);
 });
 
 test("the first start still applies the build's channel and schedules checks when it can't save it", async t => {
@@ -284,7 +319,8 @@ test("Restart Now stages the update with Squirrel.Mac first, and stops the works
   const updater = new FakeUpdater([available("0.1.0-alpha.2"), available("0.1.0-alpha.2")]);
   const { updates, shown, installs, clock } = setup(t, dir, { updater, squirrel });
   await updates.check();
-  assert.deepEqual(shown.slice(-2), ["ready 0.1.0-alpha.2", "failed install on alpha: Code signature did not pass validation"]);
+  assert.deepEqual(shown.slice(-4), ["ready 0.1.0-alpha.2", "progress 2", "progress -1",
+    "failed install on alpha: Code signature did not pass validation"], "the Dock's bar moves while Squirrel.Mac stages");
   assert.deepEqual(squirrel.calls, ["stage"]);
   assert.deepEqual(installs, []);
   assert.equal(squirrel.listenerCount("error"), 0);
@@ -306,7 +342,8 @@ test("once an update has gone to Squirrel.Mac the channel stays, even if staging
   const dir = await folder(t);
   const squirrel = new FakeSquirrel({ answer: "later" });
   const updater = new FakeUpdater([available("0.1.0-alpha.2")]);
-  const { updates, shown, installs, clock } = setup(t, dir, { updater, squirrel, answers: { restart: true } });
+  const codes = [];
+  const { updates, shown, installs, clock } = setup(t, dir, { updater, squirrel, answers: { restart: true, failed: error => codes.push(error.code) } });
   await updates.start();
   const checking = updates.check();
   await until(() => squirrel.calls.includes("stage"));
@@ -316,6 +353,7 @@ test("once an update has gone to Squirrel.Mac the channel stays, even if staging
   clock.items.find(item => item.ms === 300_000).fn();
   await checking;
   assert.equal(shown.at(-1), "failed install on alpha: The update was not ready in time.");
+  assert.deepEqual(codes, ["ERR_YS_STAGING_TIMEOUT"], "told apart from Squirrel's refusal");
   // Squirrel may still stage it, and then installs it at quit: the channel stays.
   await assert.rejects(updates.setChannel("canary"), { code: "installing" });
   squirrel.emit("update-downloaded", {});
@@ -411,9 +449,9 @@ test("a check, an update found or a download from before a change of channel is 
   answer(true);
   await asking;
   assert.deepEqual(found.updater.calls, ["check"], "nothing downloads");
-  assert.deepEqual(found.shown, [`available ${canaryBuild} (asked)`]);
+  assert.deepEqual(found.shown, [`available ${canaryBuild} (asked)`, `dropped ${canaryBuild}`], "Download says why nothing downloads");
 
-  // The download: it is cancelled, and nothing is said about it.
+  // The download: it is cancelled, and nothing is said about it, its late progress included.
   const downloading = new FakeUpdater([available(canaryBuild)]);
   downloading.downloadGate = true;
   const download = setup(t, dir, { updater: downloading, squirrel: new FakeSquirrel() });
@@ -421,6 +459,7 @@ test("a check, an update found or a download from before a change of channel is 
   const fetching = download.updates.check();
   await until(() => downloading.release);
   await download.updates.setChannel("alpha");
+  downloading.emit("download-progress", { percent: 80 });
   await fetching;
   assert.deepEqual(download.shown, [`available ${canaryBuild} (asked)`, "progress 0.5", "progress -1"]);
   assert.deepEqual(downloading.calls, ["check", "download"]);
@@ -440,6 +479,82 @@ test("a check, an update found or a download from before a change of channel is 
   assert.deepEqual(squirrel.calls, [], "nothing goes to Squirrel.Mac, not even at quit");
   assert.deepEqual(ready.updater.calls, ["check", "download", "check"], "the next check reads Alpha's feed afresh");
   assert.equal(ready.shown.at(-1), "up to date on alpha");
+
+  // The update downloaded: the owner switched while asked to restart, then chose Restart Now.
+  let restart;
+  const staging = new FakeSquirrel();
+  const asked = setup(t, dir, { updater: new FakeUpdater([available(canaryBuild)]), squirrel: staging,
+    answers: { restart: () => new Promise(resolve => { restart = resolve; }) } });
+  await asked.updates.setChannel("canary");
+  const restarting = asked.updates.check();
+  await until(() => restart);
+  await asked.updates.setChannel("alpha");
+  restart(true);
+  await restarting;
+  assert.equal(asked.shown.at(-1), `dropped ${canaryBuild}`, "Restart Now says why nothing installs");
+  assert.deepEqual(staging.calls, []);
+  assert.deepEqual(asked.installs, []);
+});
+
+test("a check that fails after a change of channel says nothing about it", async t => {
+  const dir = await folder(t);
+  const updater = new FakeUpdater();
+  const plain = updater.checkForUpdates;
+  let fail;
+  updater.checkForUpdates = async function () {
+    this.calls.push("check");
+    updater.checkForUpdates = plain;
+    await new Promise((resolve, reject) => { fail = reject; });
+  };
+  const { updates, shown } = setup(t, dir, { updater });
+  await updates.setChannel("canary");
+  const before = updates.check();
+  await until(() => fail);
+  await updates.setChannel("alpha");
+  const after = updates.check();
+  await settle();
+  fail(new Error("offline"));
+  await Promise.all([before, after]);
+  assert.deepEqual(shown, ["up to date on alpha"], "nothing about the Canary check");
+});
+
+test("a check overtaken by a second change of channel while it waits never reads its feed", async t => {
+  const dir = await folder(t);
+  const updater = new FakeUpdater();
+  const plain = updater.checkForUpdates;
+  let open;
+  updater.checkForUpdates = async function () {
+    updater.checkForUpdates = plain;
+    const result = plain.call(this);
+    await new Promise(resolve => { open = resolve; });
+    return result;
+  };
+  const { updates, shown } = setup(t, dir, { updater });
+  await updates.setChannel("canary");
+  const first = updates.check();
+  await until(() => open);
+  await updates.setChannel("alpha");
+  const second = updates.check();
+  await settle();
+  await updates.setChannel("canary");
+  const third = updates.check();
+  await settle();
+  open();
+  await Promise.all([first, second, third]);
+  assert.deepEqual(updater.feeds, [channelFeed("canary"), channelFeed("canary")], "the Alpha check, overtaken, read nothing");
+  assert.deepEqual(shown, ["up to date on canary"]);
+});
+
+test("the guard refuses a feed's version that isn't plain SemVer, which electron-updater still reads, on either channel", async t => {
+  const dir = await folder(t);
+  for (const [channel, version] of [["alpha", `v${canaryBuild}`], ["alpha", ` ${canaryBuild}`], ["alpha", "v0.1.0-alpha.3"],
+    ["alpha", "0.1.0-alpha.3 "], ["canary", `v${canaryBuild}`], ["canary", `${canaryBuild}\n`]]) {
+    const { updates, updater, shown } = setup(t, dir, { updater: new FakeUpdater([available(version)]) });
+    await updates.setChannel(channel);
+    await updates.check();
+    assert.deepEqual(shown, [`failed check on ${channel}: The ${channel} feed names ${version}.`], JSON.stringify(version));
+    assert.deepEqual(updater.calls, ["check"], "nothing downloads");
+  }
 });
 
 test("at quit, a downloaded update of the channel followed now is staged, so it installs once the app has quit", async t => {
@@ -470,8 +585,9 @@ test("at quit, a downloaded update of the channel followed now is staged, so it 
 // The real electron-updater, behind a stand-in for GitHub that serves the channels' recorded feeds at
 // their fixed addresses, each release's own latest-mac.yml as update-feed.mjs writes it, and the
 // releases Atom feed, as GitHub serves them. Query strings, such as the generic provider's noCache,
-// don't change what is served. `gate` holds back a file until the test releases it, and `missing`
-// answers 404 for a file, as GitHub does while a feed's file is being replaced.
+// don't change what is served. `gate` holds back a file until the test releases it, `missing`
+// answers 404 for a file, as GitHub does while a feed's file is being replaced, and `serve` replaces
+// a file's content.
 const fixtures = join(desktop, "../shared/release-channels/fixtures");
 const downloads = "https://github.com/your-space-ai/your-space/releases/download";
 const alphaFeed = `${downloads}/alpha`;
@@ -486,12 +602,13 @@ let squirrelForMac;
 const electron = require.resolve("electron");
 require.cache[electron] = { id: electron, filename: electron, loaded: true, exports: { get autoUpdater() { return squirrelForMac; } } };
 
-async function github(t, tags = [], { atom: recorded, gate = new Map(), missing = new Set(), offline = false } = {}) {
+async function github(t, tags = [], { atom: recorded, gate = new Map(), missing = new Set(), offline = false, serve = {} } = {}) {
   const dir = await folder(t);
   const feeds = new Map([
     [`${alphaFeed}/latest-mac.yml`, await readFile(join(fixtures, "alpha/latest-mac.yml"), "utf8")],
     [`${canaryFeed}/canary-mac.yml`, await readFile(join(fixtures, "canary/canary-mac.yml"), "utf8")],
   ]);
+  for (const [url, body] of Object.entries(serve)) feeds.set(url, body);
   for (const tag of tags.filter(tag => tag.startsWith("v"))) {
     const version = tag.slice(1);
     const release = join(dir, tag);
@@ -738,7 +855,7 @@ test("with the real MacUpdater, a downloaded update of the channel left is forgo
   const beforeInstall = installs.push.bind(installs);
   installs.push = value => { order.push(value); return beforeInstall(value); };
   await updates.check();
-  assert.equal(shown.at(-1), `ready ${recordedAlpha}`);
+  assert.deepEqual(shown.slice(-3), [`ready ${recordedAlpha}`, "progress 2", "progress -1"]);
   assert.deepEqual(order, ["staged", "stopped workspace", "install"]);
   assert.match(squirrel.staged.at(-1), new RegExp(`${recordedAlpha.replaceAll(".", "\\.")}$`));
 });
@@ -770,6 +887,22 @@ test("a feed that can't be read selects nothing and says so, as does one that na
   await updates.start();
   await updates.check();
   assert.deepEqual(shown, [`failed check on alpha: The alpha feed names ${recordedCanary}.`]);
+
+  // So is one naming a canary with a leading v or a space, which electron-updater reads as newer.
+  const alphaYml = await readFile(join(fixtures, "alpha/latest-mac.yml"), "utf8");
+  for (const version of [`v${recordedCanary}`, ` ${recordedCanary}`]) {
+    const yml = alphaYml.replace(/^version: .*$/m, `version: '${version}'`);
+    const { dir: odd, app: oddApp } = await github(t, [], { serve: { [`${alphaFeed}/latest-mac.yml`]: yml } });
+    const updater = oddApp(recordedAlpha);
+    const found = [];
+    const checkForUpdates = updater.checkForUpdates.bind(updater);
+    updater.checkForUpdates = async () => { const result = await checkForUpdates(); found.push(result); return result; };
+    const { updates: oddUpdates, shown: oddShown } = channelApp(t, odd, updater);
+    await oddUpdates.start();
+    await oddUpdates.check();
+    assert.equal(found[0].isUpdateAvailable, true, `electron-updater offers ${JSON.stringify(version)}`);
+    assert.deepEqual(oddShown, [`failed check on alpha: The alpha feed names ${version}.`], JSON.stringify(version));
+  }
 });
 
 test("the packaged app-update.yml is the alpha feed, so an app that hasn't chosen a feed reads only it", async t => {

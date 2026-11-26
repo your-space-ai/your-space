@@ -20,7 +20,7 @@ later one, and from a canary on to the next release, the same way it moves betwe
 | Server, web and runtime images, tagged with the canary's version | GHCR, for Linux AMD64 and ARM64. The `canary` tag points at the newest build; `latest` stays on the newest release |
 | `your-space-linux-x64` and `your-space-linux-arm64`, the npm package as `your-space-ai-cli-<version>.tgz`, the Compose bundle `your-space.tar.gz`, `SHA256SUMS`, and `channel.json`, which names the build's version and commit | The [canary prerelease](https://github.com/your-space-ai/your-space/releases/tag/canary) on GitHub, which each build replaces |
 
-None is on npm. The Mac app has canaries of its own, which [The Mac App](#the-mac-app) describes.
+The canary isn't published to npm. The Mac app has canaries of its own, which [The Mac App](#the-mac-app) describes.
 
 ## Move an Installation onto the Canary
 
@@ -40,6 +40,9 @@ apps and their data, as [Update Your Space](../operate/index.md#update-your-spac
 the backup it takes from the release: it is the way back to that release. Run the same command for
 each later canary. If a newer build replaces the prerelease's files while it runs, it changes
 nothing: run it again.
+
+This is for an installation the CLI runs. For the Mac app's own local workspace, choose Canary in
+the app instead, as [The Mac App](#the-mac-app) describes.
 
 ### Without the Flag
 

@@ -74,11 +74,53 @@ export function upToDateMessage(version, channel) {
   if (channel === 'alpha' && isCanaryBuild(version)) {
     return { message: 'No alpha is newer than this canary yet', detail: `This is canary ${version}. ${leavingCanary}.` };
   }
+  if (channel === 'canary' && !isCanaryBuild(version)) {
+    return { message: 'No canary is newer than this release yet', detail: `This is release ${version}. Your Space offers the first canary newer than it.` };
+  }
   return { message: 'Your Space is up to date', detail: `Version ${version} is the newest ${CHANNEL_NAMES[channel]} build.` };
 }
 
-/** Why Check for Updates… found nothing: the channel's feed couldn't be read, so nothing is offered. */
-export function checkFailedDetail(channel) {
-  return `Your Space couldn’t read the ${CHANNEL_NAMES[channel] ?? 'update'} channel’s feed, so it offers nothing. ` +
-    'Check your internet connection, then try again from Your Space › Check for Updates…';
+const tryAgain = 'try again from Your Space › Check for Updates…';
+
+/**
+ * Why Check for Updates… found nothing: the channel's feed couldn't be read, or it names a build of
+ * another channel, so nothing is offered.
+ */
+export function checkFailedDetail(channel, error) {
+  const name = CHANNEL_NAMES[channel] ?? 'update';
+  if (error?.code === 'ERR_YS_CHANNEL_MISMATCH') {
+    return `The ${name} channel’s feed names a version that isn’t a ${name} build, so Your Space offers nothing. Later, ${tryAgain}`;
+  }
+  return `Your Space couldn’t read the ${name} channel’s feed, so it offers nothing. Check your internet connection, then ${tryAgain}`;
 }
+
+/** What the app says when a check, a download or installing an update fails. */
+export function failedMessage(error, stage, channel) {
+  const code = typeof error?.code === 'string' && /^ERR_[A-Z_]+$/.test(error.code) ? ` (${error.code})` : '';
+  if (stage === 'install' && error?.code === 'ERR_YS_STAGING_TIMEOUT') {
+    // Squirrel.Mac may still stage it, and then installs it at quit; the channel stays meanwhile.
+    return { type: 'warning', message: 'The update isn’t ready to install yet',
+      detail: `macOS is still checking the downloaded version. Your Space installs it when you quit, or ${tryAgain} to restart into it.${code}` };
+  }
+  return {
+    type: 'warning',
+    message: { check: 'Your Space could not check for updates', download: 'Your Space could not download the update',
+      install: 'Your Space could not install the update' }[stage],
+    detail: ({ check: checkFailedDetail(channel, error),
+      install: 'macOS didn’t accept the downloaded version. Download Your Space again from its GitHub releases.' }[stage] ??
+      `Check your internet connection, then ${tryAgain}`) + code,
+  };
+}
+
+/** What Download or Restart Now says when the owner changed the channel while asked: that update is dropped. */
+export function droppedMessage(version, channel) {
+  return { message: `Your Space ${version} won’t be installed`,
+    detail: `The update channel changed while it was offered. Your Space now follows ${CHANNEL_NAMES[channel]}, from its next check.` };
+}
+
+/** Said when the owner's choice in the menu couldn't be saved: it holds only until the app quits. */
+export const unsavedSetting = Object.freeze({
+  type: 'warning',
+  message: 'Your Space couldn’t save this setting',
+  detail: 'It applies only until you quit Your Space.',
+});

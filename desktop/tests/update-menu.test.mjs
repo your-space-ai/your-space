@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canaryWarning, checkFailedDetail, chooseChannel, leavingCanary, updateMenu, upToDateMessage } from "../src/update-menu.mjs";
+import { canaryWarning, checkFailedDetail, chooseChannel, droppedMessage, failedMessage, leavingCanary, unsavedSetting, updateMenu, upToDateMessage } from "../src/update-menu.mjs";
 
 const canary = "0.1.0-alpha.2.canary.20261201.60";
 const shape = items => items.map(({ type, label, checked, enabled, submenu }) =>
@@ -110,7 +110,35 @@ test("Check for Updates… says when nothing is newer on the channel, and that a
     { message: "Your Space is up to date", detail: `Version ${canary} is the newest Canary build.` });
   assert.deepEqual(upToDateMessage(canary, "alpha"),
     { message: "No alpha is newer than this canary yet", detail: `This is canary ${canary}. You’ll move to Alpha with the next alpha.` });
+  assert.deepEqual(upToDateMessage("0.1.0-alpha.3", "canary"),
+    { message: "No canary is newer than this release yet", detail: "This is release 0.1.0-alpha.3. Your Space offers the first canary newer than it." });
   for (const [channel, name] of [["alpha", "Alpha"], ["canary", "Canary"]]) {
     assert.match(checkFailedDetail(channel), new RegExp(`couldn’t read the ${name} channel’s feed, so it offers nothing`));
+    const mismatch = checkFailedDetail(channel, { code: "ERR_YS_CHANNEL_MISMATCH" });
+    assert.match(mismatch, new RegExp(`^The ${name} channel’s feed names a version that isn’t a ${name} build, so Your Space offers nothing`));
+    assert.doesNotMatch(mismatch, /couldn’t read|internet/, "the feed was read");
   }
+});
+
+test("a failure says what failed, and a staging timeout isn't reported as macOS refusing the update", () => {
+  const code = code => Object.assign(new Error("x"), { code });
+  assert.deepEqual(failedMessage(code("ENOTFOUND"), "check", "alpha"), { type: "warning", message: "Your Space could not check for updates",
+    detail: checkFailedDetail("alpha") });
+  assert.deepEqual(failedMessage(code("ERR_YS_CHANNEL_MISMATCH"), "check", "canary"), { type: "warning", message: "Your Space could not check for updates",
+    detail: `${checkFailedDetail("canary", code("ERR_YS_CHANNEL_MISMATCH"))} (ERR_YS_CHANNEL_MISMATCH)` });
+  assert.deepEqual(failedMessage(code("ERR_CHECKSUM_MISMATCH"), "download", "alpha"), { type: "warning", message: "Your Space could not download the update",
+    detail: "Check your internet connection, then try again from Your Space › Check for Updates… (ERR_CHECKSUM_MISMATCH)" });
+  assert.deepEqual(failedMessage(new Error("Code signature did not pass validation"), "install", "alpha"), { type: "warning",
+    message: "Your Space could not install the update", detail: "macOS didn’t accept the downloaded version. Download Your Space again from its GitHub releases." });
+  const late = failedMessage(code("ERR_YS_STAGING_TIMEOUT"), "install", "alpha");
+  assert.equal(late.message, "The update isn’t ready to install yet");
+  assert.match(late.detail, /^macOS is still checking the downloaded version\. Your Space installs it when you quit/);
+  assert.doesNotMatch(late.detail, /didn’t accept|Download Your Space again/);
+});
+
+test("Download or Restart Now after a change of channel says the update is dropped, and an unsaved choice says it lasts until quit", () => {
+  assert.deepEqual(droppedMessage(canary, "alpha"), { message: `Your Space ${canary} won’t be installed`,
+    detail: "The update channel changed while it was offered. Your Space now follows Alpha, from its next check." });
+  assert.equal(unsavedSetting.type, "warning");
+  assert.match(unsavedSetting.detail, /until you quit Your Space/);
 });

@@ -6,7 +6,7 @@ import { launcherTheme } from './appearance.mjs';
 import { createLocalSetup, localSetupError } from './local-setup.mjs';
 import { createQuitControl, stopTimeouts } from './quit.mjs';
 import { createUpdates } from './updates.mjs';
-import { checkFailedDetail, chooseChannel, updateMenu, upToDateMessage } from './update-menu.mjs';
+import { chooseChannel, droppedMessage, failedMessage, unsavedSetting, updateMenu, upToDateMessage } from './update-menu.mjs';
 import { checkWorkspace, createSavedConnections, linkTarget, mostRecent, ownerDestination, savedName, webDestination, WorkspaceError, workspaceOrigin, workspacePartition } from './workspace.mjs';
 import { connectionMenu } from './connection-menu.mjs';
 
@@ -97,15 +97,8 @@ const updates = createUpdates({
       detail: 'This copy of Your Space runs from its source, so it doesn’t check for new versions.' }),
     upToDate: channel => message(upToDateMessage(app.getVersion(), channel)),
     busy: () => message({ message: 'Your Space is already checking for updates' }),
-    failed: (error, stage, channel) => message({
-      type: 'warning',
-      message: {check: 'Your Space could not check for updates', download: 'Your Space could not download the update',
-        install: 'Your Space could not install the update'}[stage],
-      detail: ({install: 'macOS didn’t accept the downloaded version. Download Your Space again from its GitHub releases.',
-        check: checkFailedDetail(channel)}[stage] ??
-        'Check your internet connection, then try again from Your Space › Check for Updates…') +
-        (typeof error?.code === 'string' && /^ERR_[A-Z_]+$/.test(error.code) ? ` (${error.code})` : ''),
-    }),
+    failed: (error, stage, channel) => message(failedMessage(error, stage, channel)),
+    dropped: info => message(droppedMessage(info.version, updates.channel)),
     available: async info => (await message({
       message: `Your Space ${info.version} is available`,
       detail: `You have version ${app.getVersion()}. Download it now? Your Space installs it when you restart or quit.`,
@@ -383,6 +376,15 @@ function installHandlers() {
   }
 }
 
+// A radio item shows the choice before it is made, so the menu is rebuilt from the setting either way.
+// A choice that couldn't be saved holds until the app quits, and the app says so.
+function settingChanged(change) {
+  void change.then(buildMenu, () => {
+    buildMenu();
+    return message(unsavedSetting);
+  }).catch(() => {});
+}
+
 function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {label: app.name, submenu: [
@@ -390,13 +392,12 @@ function buildMenu() {
       ...updateMenu({
         automatic: updates.automatic, channel: updates.channel, version: app.getVersion(), installing: updates.installing,
         check: () => void updates.check(),
-        setAutomatic: automatic => void updates.setAutomatic(automatic).catch(() => {}).finally(buildMenu),
-        // A radio item shows the choice before it is made, so the menu is rebuilt from the setting either way.
-        choose: channel => void chooseChannel(channel, {
+        setAutomatic: automatic => settingChanged(updates.setAutomatic(automatic)),
+        choose: channel => settingChanged(chooseChannel(channel, {
           current: updates.channel, version: app.getVersion(),
           ask: async options => (await message(options)).response,
           setChannel: choice => updates.setChannel(choice),
-        }).catch(() => {}).finally(buildMenu),
+        })),
       }),
       {type: 'separator'}, {role: 'services'},
       {type: 'separator'}, {role: 'hide'}, {role: 'hideOthers'}, {role: 'unhide'},

@@ -60,15 +60,23 @@ export function configureUpdater(updater) {
   return updater;
 }
 
-/** The owner's choices in updates.json: automatic checks, on unless turned off, and the channel, once one is stored. */
+/**
+ * The owner's choices in updates.json: automatic checks, on unless turned off, and the channel, once
+ * one is stored. A file that is there but can't be read, or names a channel this build doesn't know,
+ * is `unreadable`; if it can't be read at all, automatic checks count as off.
+ */
 export async function readUpdateSettings(file) {
   let saved;
   try {
     saved = JSON.parse(await readFile(file, 'utf8'));
-  } catch {
-    saved = undefined;
+  } catch (error) {
+    if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return { automatic: true };
+    return { automatic: false, unreadable: true };
   }
-  return { automatic: saved?.automatic !== false, ...(CHANNELS.includes(saved?.channel) ? { channel: saved.channel } : {}) };
+  if (typeof saved !== 'object' || saved === null || Array.isArray(saved)) return { automatic: false, unreadable: true };
+  const automatic = saved.automatic !== false;
+  if (!('channel' in saved)) return { automatic };
+  return CHANNELS.includes(saved.channel) ? { automatic, channel: saved.channel } : { automatic, unreadable: true };
 }
 
 async function saveUpdateSettings(file, settings) {
@@ -93,8 +101,8 @@ function installingError() {
  * @param {string} options.version   the app's own, whose channel is stored when none is yet
  * @param {(install: () => void) => Promise<void>} options.beforeInstall   stops the local workspace, then installs
  * @param {object} options.ui   unavailable(), upToDate(channel), busy(), failed(error, 'check' | 'download' | 'install', channel),
- *   available(info, manual) → boolean,
- *   downloaded(info) → boolean (restart now), progress(fraction or -1)
+ *   available(info, manual) → boolean, downloaded(info) → boolean (restart now), dropped(info) when the
+ *   owner accepted an update of the channel just left, progress(fraction, 2 while staging, or -1 to clear)
  * @param {import('node:events').EventEmitter & {checkForUpdates(): void}} [options.squirrel]   Electron's own
  *   autoUpdater. Its checkForUpdates() stages the update electron-updater downloaded; it then emits
  *   update-downloaded, or error when the signature fails
@@ -157,20 +165,24 @@ export function createUpdates({ load, settingsFile, version, beforeInstall, ui, 
     return stagingPromise;
   }
 
-  // Waits for staging, at most `staging` milliseconds or until the signal aborts. A timeout doesn't
-  // release the channel: Squirrel may still stage the update, and then installs it at quit.
+  // Waits for staging, at most `staging` milliseconds or until the signal aborts, with a progress
+  // bar on the Dock icon meanwhile. A timeout doesn't release the channel: Squirrel may still stage
+  // the update, and then installs it at quit.
   function whenStaged(signal) {
+    if (staged) return Promise.resolve();
     let timer;
     let abort;
     const limit = new Promise((resolve, reject) => {
-      timer = timers.setTimeout(() => reject(new Error('The update was not ready in time.')), staging);
+      timer = timers.setTimeout(() => reject(Object.assign(new Error('The update was not ready in time.'), { code: 'ERR_YS_STAGING_TIMEOUT' })), staging);
       abort = () => reject(new Error('Staging the update was stopped.'));
       if (signal?.aborted) abort();
       signal?.addEventListener('abort', abort, { once: true });
     });
+    ui.progress(2);
     return Promise.race([stage(), limit]).finally(() => {
       timers.clearTimeout(timer);
       signal?.removeEventListener('abort', abort);
+      ui.progress(-1);
     });
   }
 
@@ -211,7 +223,14 @@ export function createUpdates({ load, settingsFile, version, beforeInstall, ui, 
   // install that can't happen, then stops the workspace and installs.
   async function offerRestart() {
     const run = generation;
-    if (!(await ui.downloaded(ready)) || run !== generation || phase !== 'ready') return;
+    const info = ready;
+    const restart = await ui.downloaded(info);
+    if (run !== generation) {
+      // The owner changed the channel while asked: the update is dropped, and Restart Now says so.
+      if (restart) await ui.dropped(info);
+      return;
+    }
+    if (!restart || phase !== 'ready') return;
     try {
       await whenStaged();
     } catch (error) {
@@ -258,7 +277,9 @@ export function createUpdates({ load, settingsFile, version, beforeInstall, ui, 
     if (!current()) return;
     const info = result?.updateInfo;
     // Alpha's feed never names a canary and Canary's only canaries; a feed that does can't be used.
-    if (info && isCanaryBuild(info.version) !== (channel === 'canary')) {
+    // Nor can one whose version isn't plain SemVer, such as v0.1.0 or one with spaces around it,
+    // which electron-updater still reads but this check couldn't place on a channel.
+    if (info && (!SEMVER.test(String(info.version)) || isCanaryBuild(info.version) !== (channel === 'canary'))) {
       phase = 'idle';
       if (manual) await ui.failed(Object.assign(new Error(`The ${channel} feed names ${info.version}.`), { code: 'ERR_YS_CHANNEL_MISMATCH' }), 'check', channel);
       return;
@@ -276,7 +297,11 @@ export function createUpdates({ load, settingsFile, version, beforeInstall, ui, 
     } finally {
       if (!accepted && current()) phase = 'idle';
     }
-    if (!current()) return;
+    if (!current()) {
+      // The owner changed the channel while asked: nothing downloads, and Download says so.
+      if (accepted) await ui.dropped(info);
+      return;
+    }
     if (!accepted) {
       declined.add(info.version);
       return;
@@ -307,12 +332,14 @@ export function createUpdates({ load, settingsFile, version, beforeInstall, ui, 
      * Reads the owner's choices and, if checks are on, checks shortly after launch and then daily.
      * With no channel stored yet, as in a new installation or one updated from alpha.1, it stores this
      * build's own at once, so the channel stays the same through updates until the owner changes it.
+     * A file it can't read is left as it is: the session follows Alpha, which offers no canary, and
+     * only the owner's next choice in the menu replaces the file.
      */
     async start() {
       const saved = await readUpdateSettings(settingsFile);
-      settings = { automatic: saved.automatic, channel: saved.channel ?? buildChannel(version) };
+      settings = { automatic: saved.automatic, channel: saved.channel ?? (saved.unreadable ? 'alpha' : buildChannel(version)) };
       schedule();
-      if (!saved.channel) await save();
+      if (!saved.channel && !saved.unreadable) await save();
     },
     /** Check for Updates…, which works whether or not automatic checks are on. */
     check: () => check(true),

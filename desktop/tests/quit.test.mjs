@@ -198,3 +198,25 @@ test("staging runs beside the workspace's stop, within its deadline, and never r
   await settle();
   assert.deepEqual(stuck.log, ["stopping", "stop", "stage", "failed: timed out", "quit"]);
 });
+
+test("logout bounds a quit that only stages an update at 20 seconds, with no stopping window or warning", async () => {
+  const signals = [];
+  const never = { pending: true, stage: signal => { signals.push(signal); return new Promise(() => {}); } };
+  const during = control({ running: false, update: never });
+  during.quit.beforeQuit(quitEvent());
+  assert.deepEqual(during.time.pending().map(item => item.ms), [120_000]);
+  during.quit.systemEnding();
+  assert.deepEqual(during.time.pending().map(item => item.ms), [20_000]);
+  during.time.fire();
+  await settle();
+  assert.equal(signals[0].aborted, true);
+  assert.deepEqual(during.log, ["stage", "quit"]);
+
+  const before = control({ running: false, update: never });
+  before.quit.systemEnding();
+  before.quit.beforeQuit(quitEvent());
+  assert.deepEqual(before.time.pending().map(item => item.ms), [20_000]);
+  before.time.fire();
+  await settle();
+  assert.deepEqual(before.log, ["stage", "quit"]);
+});
