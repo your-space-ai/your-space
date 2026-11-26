@@ -13,6 +13,8 @@ import { authorizationUrl, challengeOf, DRIVE_SCOPE, folderIdOf, GoogleError, rc
 import { moveSettingsToDataKey } from "../src/apps/keys.ts";
 import { bisyncParams } from "../src/apps/bisync.ts";
 import { KnowledgeSync, MAX_DELETIONS, RUN_LIMIT_MS } from "../src/apps/knowledge-sync.ts";
+import { RcError } from "../src/apps/rclone.ts";
+import { RuntimeError } from "../src/apps/runtime-client.ts";
 import { decrypt, encrypt } from "../src/apps/settings.ts";
 import { actor, event, eventKnowledgeBase, googleConnection, knowledgeBase, knowledgeSync, type SyncDeletion } from "../src/db/schema.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
@@ -379,6 +381,97 @@ describe("a knowledge base's sync", () => {
     const calls = rc.calls.length;
     for (let i = 0; i < 5; i++) await tick();
     expect(rc.calls.length).toBe(calls);
+  });
+
+  it("resyncs until a first resync has succeeded, a Sync now included", async () => {
+    expect((await send("/api/knowledge", { name: "first" })).status).toBe(201);
+    // The first resync fails, as while offline: the knowledge base still has no listings.
+    rc.answers = [{ success: false, error: "bisync aborted", lines: [{ level: "error", msg: "Bisync critical error: couldn't list directory: dial tcp: lookup www.googleapis.com: no such host" }] }];
+    expect((await send("/api/knowledge/first/sync", { folder: FOLDER }, "PUT")).status).toBe(202);
+    await settled("first");
+    expect(await status("first")).toMatchObject({ result: "failed", firstRun: true });
+    rc.answers = [{ lines: [ok] }];
+    expect((await send("/api/knowledge/first/sync", { action: "sync" })).status).toBe(202);
+    await settled("first");
+    expect(rc.started().filter((j) => j.params.path2 === "/knowledge/first").at(-1)!.params).toMatchObject({ resync: true, resyncMode: "newer" });
+    expect(await status("first")).toMatchObject({ result: "synced", firstRun: false });
+    expect((await api("/api/knowledge/first", { method: "DELETE" })).status).toBe(204);
+  });
+
+  it("keeps following a run when rclone's answer about it fails for any reason but not having it", async () => {
+    rc.hold = true;
+    rc.answers = [{ lines: [copied("kept.md"), ok] }];
+    const synced = (await events("knowledge.synced")).length;
+    await due("notes");
+    await tick();
+    const job = (await syncRow())!.job;
+    expect(job).not.toBeNull();
+    rc.failures.set("job/status", new RcError("rclone answered job/status with something that isn't JSON.", 502));
+    await tick();
+    expect((await syncRow())!.job).toEqual(job);
+    rc.finish();
+    await tick();
+    expect((await syncRow())!.job).toBeNull();
+    expect((await events("knowledge.synced")).length).toBe(synced + 1);
+  });
+
+  it("starts no run before the sync's service has said which remote to make", async () => {
+    runtime.syncFixture = true;
+    runtime.failSyncService = new RuntimeError("The engine can't be reached.", 503, "engine_error");
+    const made = () => rc.calls.filter((c) => c.command === "config/create");
+    const before = made().length;
+    const runs = rc.started().length;
+    // A server that just started, while the runtime manager can't start the service: rclone, left
+    // running, answers, but the server doesn't know yet that it is the browser tests'.
+    const restarted = new KnowledgeSync(server.apps!);
+    await due();
+    await restarted.tick();
+    expect(made().length).toBe(before);
+    expect(rc.started().length).toBe(runs);
+    await restarted.close();
+    runtime.failSyncService = undefined;
+    const started = new KnowledgeSync(server.apps!);
+    await started.tick();
+    expect(made().at(-1)!.params).toMatchObject({ type: "alias" });
+    await started.close();
+    runtime.syncFixture = false;
+    await settled();
+    await settled("recipes");
+  });
+
+  it("runs one tick at a time, and a tick asked for meanwhile waits once, not once for each", async () => {
+    rc.hold = true;
+    await due("notes");
+    await tick();
+    expect(rc.running()).toHaveLength(1);
+    let open: () => void = () => {};
+    rc.gates.set("job/status", new Promise<void>((resolve) => (open = resolve)));
+    const asked = () => rc.calls.filter((c) => c.command === "job/status").length;
+    const before = asked();
+    // A tick that waits for rclone's answer, and twenty more meanwhile.
+    const first = tick();
+    await sleep(20);
+    const more = Array.from({ length: 20 }, () => tick());
+    rc.gates.delete("job/status");
+    open();
+    await first;
+    await Promise.all(more);
+    expect(asked() - before).toBe(2);
+    rc.hold = false;
+    rc.finish();
+    await settled();
+  });
+
+  it("forgets every remote in rclone when the OAuth client changes, and makes them again after the next sign-in", async () => {
+    await settled();
+    expect(rc.remotes.has("kb-notes")).toBe(true);
+    expect((await send("/api/google-drive", { clientId: CLIENT_ID, clientSecret: CLIENT_SECRET }, "PUT")).status).toBe(200);
+    expect(rc.remotes.size).toBe(0);
+    expect(await signInWithGoogle()).toBe(`${server.publicUrl}/knowledge?google=connected`);
+    await due();
+    await settled();
+    await settled("recipes");
+    expect([...rc.remotes.keys()].sort()).toEqual(["kb-notes", "kb-recipes"]);
   });
 
   it("records nothing of a run bisync's lock refused, which is due again a minute later", async () => {

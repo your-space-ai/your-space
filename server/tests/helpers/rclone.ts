@@ -42,6 +42,10 @@ export class FakeRc implements Rc {
   purged: string[] = [];
   /** The most jobs it ran at once. */
   mostAtOnce = 0;
+  /** Calls of these commands wait for their promise, as a remote control that is slow to answer. */
+  gates = new Map<string, Promise<void>>();
+  /** The next call of each of these commands fails with its error, once. */
+  failures = new Map<string, RcError>();
 
   /** Forgets every remote and job, as rclone does when its container restarts. */
   restart(): void {
@@ -82,7 +86,13 @@ export class FakeRc implements Rc {
 
   async call<T>(command: string, params: Json = {}): Promise<T> {
     this.calls.push({ command, params });
+    await this.gates.get(command);
     if (!this.reachable) throw new RcError("The knowledge bases' sync service isn't running.", 503);
+    const failure = this.failures.get(command);
+    if (failure) {
+      this.failures.delete(command);
+      throw failure;
+    }
     const answer = (value: unknown) => value as T;
     switch (command) {
       case "job/list":
@@ -91,6 +101,9 @@ export class FakeRc implements Rc {
         this.remotes.set(params.name as string, { type: params.type as string, parameters: params.parameters as Json });
         // rclone asks whether to sign in again for a new token, which is never answered.
         return answer({ State: "*oauth-islocal,teamdrive,,", Option: { Name: "config_refresh_token" }, Error: "", Result: "" });
+      case "config/delete":
+        this.remotes.delete(params.name as string);
+        return answer({});
       case "operations/stat":
         return answer({ item: this.markers.has(params.fs as string) ? { Path: params.remote, Size: 0 } : null });
       case "operations/copyfile":

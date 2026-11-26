@@ -155,6 +155,8 @@ export class KnowledgeSync {
   private pausing = 0;
   /** One step of the sync at a time: a tick, an owner's run starting, or a change to the service. */
   private turn: Promise<unknown> = Promise.resolve();
+  /** A tick waiting for its turn: ticks asked for meanwhile wait for it, rather than each for its own. */
+  private queuedTick: Promise<void> | undefined;
   /** The knowledge bases the service was last started with, and whether it is the browser tests'. */
   private service: { bases: string; fixture: boolean } | undefined;
   /** When starting the service last failed: it is tried again only after SERVICE_RETRY_MS. */
@@ -271,6 +273,9 @@ export class KnowledgeSync {
       await recordEvent(tx, "google.client_saved", actorId, null);
     });
     log("info", "google.client_saved", {});
+    // rclone forgets the remotes made with the earlier client: its secret, the token and the access
+    // tokens rclone renewed. The next sign-in's runs make them again.
+    await this.inTurn(() => this.forgetRemotes());
     return this.google();
   }
 
@@ -552,15 +557,20 @@ export class KnowledgeSync {
    * One step of the sync, in its turn: the run under way is followed, and the next one starts once it
    * has ended. Runs the owner asked for go first, then the knowledge bases due, oldest first.
    */
-  async tick(): Promise<void> {
-    if (this.closed) return;
-    await this.inTurn(async () => {
+  tick(): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    if (this.queuedTick) return this.queuedTick;
+    const tick = this.inTurn(async () => {
+      // From here on, a tick asked for is another: it sees what this one does.
+      this.queuedTick = undefined;
       try {
         await this.advance(true);
       } catch (error) {
         log("warn", "knowledge.sync_tick_failed", errorFields(error));
       }
     });
+    this.queuedTick = tick;
+    return tick;
   }
 
   /**
@@ -578,7 +588,8 @@ export class KnowledgeSync {
       await this.follow(active, bases);
       return Boolean((await this.syncRow(active.knowledgeBaseId))?.job);
     }
-    if (!startNext || this.pausing > 0 || this.closed) return false;
+    // Not before the service has said whether its remotes are Drive or the browser tests' stand-in.
+    if (!startNext || this.pausing > 0 || this.closed || !this.service) return false;
     const connection = await this.connection();
     if (!connection?.token || connection.problem) return false;
     const next = this.next(rows);
@@ -671,7 +682,9 @@ export class KnowledgeSync {
    */
   private async begin(row: Row, connection: Connection, executeId: string): Promise<void> {
     const requested = row.requested;
-    const mode: SyncMode = requested?.mode ?? (row.resync ? "resync" : "sync");
+    // Sync now before a first resync has succeeded is that resync: there are no listings to sync from.
+    const asked: SyncMode = requested?.mode ?? "sync";
+    const mode: SyncMode = asked === "sync" && row.resync ? "resync" : asked;
     await this.db.update(knowledgeSync).set({ requested: null }).where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
     if (mode === "force" && (!row.lastRunAt || requested?.run === undefined || Date.parse(requested.run) !== row.lastRunAt.getTime() || requested.count !== row.deletions.length)) {
       log("warn", "knowledge.deletions_outdated", { name: row.name });
@@ -679,7 +692,7 @@ export class KnowledgeSync {
     }
     const startedAt = new Date();
     const run = runFolder(startedAt);
-    const job: Omit<SyncJob, "id" | "executeId" | "step"> = { mode, startedAt: startedAt.toISOString(), run, connectedAt: connection.connectedAt?.toISOString() ?? null, ...(requested && mode !== "sync" ? { by: requested.by } : {}) };
+    const job: Omit<SyncJob, "id" | "executeId" | "step"> = { mode, startedAt: startedAt.toISOString(), run, connectedAt: connection.connectedAt?.toISOString() ?? null, ...(requested && asked !== "sync" ? { by: requested.by } : {}) };
     try {
       await this.remote(row, connection, executeId);
       if (mode === "resync") await this.markers(row.name);
@@ -711,6 +724,14 @@ export class KnowledgeSync {
     // keeps the token it was given, and the access tokens it renews, in memory.
     await this.rc.call("config/create", { name: remoteName(row.name), type, parameters, opt: { nonInteractive: true } });
     this.remotes.set(row.knowledgeBaseId, { executeId, version, connectedAt: connection.connectedAt?.toISOString() ?? null });
+  }
+
+  /** Deletes every knowledge base's remote from rclone's memory, as when the OAuth client changes. */
+  private async forgetRemotes(): Promise<void> {
+    for (const row of await this.rows()) {
+      await this.rc.call("config/delete", { name: remoteName(row.name) }).catch((error: unknown) => log("warn", "knowledge.remote_delete_failed", { name: row.name, ...errorFields(error) }));
+    }
+    this.remotes.clear();
   }
 
   /** Puts Your Space's marker at both roots before a resync, copying it from one side to the other. */
@@ -754,6 +775,11 @@ export class KnowledgeSync {
       // rclone isn't running, as after Your Space stopped: it is started again, and its answer then
       // says whether it still has the job.
       if (error.status === 503 || error.status === 504) return this.startOrWait(bases, true);
+      // Any other failure, as an answer cut short, says nothing of the job: it is asked again next tick.
+      if (!/job not found/i.test(error.message)) {
+        log("warn", "knowledge.sync_status_failed", { name: row.name, ...errorFields(error) });
+        return;
+      }
     }
     // One rclone no longer has, or a job of the same number of a restarted rclone: interrupted.
     if (!status || status.executeId !== job.executeId) return this.interrupted(row, job);
