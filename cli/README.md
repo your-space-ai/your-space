@@ -26,7 +26,9 @@ reverse proxies, and the standalone executables for Linux machines without Node.
 When a new release comes out, run `npx @your-space-ai/cli@latest upgrade` in the workspace's folder,
 or install the release's CLI and run `your-space upgrade` there. It moves the workspace to that CLI's
 version, backs up the database first and puts the previous version back if the new one doesn't
-start. See [Update Your Space](https://docs.getyourspace.ai/operate#update-your-space).
+start. From 0.1.0-alpha.2, `your-space upgrade --channel alpha` moves it to the newest release, and
+`--channel canary` to the newest canary build, with that build's own CLI, which it downloads and
+checks. See [Update Your Space](https://docs.getyourspace.ai/operate#update-your-space).
 
 ## License
 

@@ -237,6 +237,11 @@ function asCliError(error: unknown): CliError {
 
 export async function upgrade(ui: Ui, workdir: string, flags: ReleaseUpgradeFlags): Promise<void> {
   ui.intro("Your Space");
+  await upgradeInstallation(ui, workdir, flags);
+}
+
+/** `upgrade`'s work, also run by `upgrade --channel` when the channel's build is this CLI's own. */
+export async function upgradeInstallation(ui: Ui, workdir: string, flags: ReleaseUpgradeFlags): Promise<void> {
   // The lock comes first, so an upgrade killed part way, which may have left the folder without its
   // release files, is found before the folder is checked.
   const folder = resolve(workdir);

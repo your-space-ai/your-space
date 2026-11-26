@@ -356,8 +356,9 @@ release.
 - **FR-006**: `your-space upgrade --channel alpha|canary` reads that channel's `channel.json`,
   downloads the build's CLI from its release, checks it against that release's `SHA256SUMS` and that
   it is the version `channel.json` names, and runs its `upgrade`. It changes nothing when the
-  installation is already that build, refuses an older one (FR-008), and stops with nothing changed
-  when a file can't be read or no longer matches. Plain `upgrade` is unchanged.
+  installation is already that build or a newer one, since `upgrade` never moves an installation
+  backward (FR-008), and stops with nothing changed when a file can't be read or no longer matches.
+  Plain `upgrade` is unchanged.
 - **FR-007**: A required test proves that Alpha clients never get a canary. Its fixture is
   recorded files: the `alpha` release's `latest-mac.yml` and `channel.json`; the `canary`
   release's `canary-mac.yml` and `channel.json`, for a canary whose version contains `-alpha.` and

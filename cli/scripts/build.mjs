@@ -1,15 +1,16 @@
 // Bundles the CLI into one CommonJS file, dist/your-space.cjs, with its version and its
 // dependencies inside: the npm package's `bin`, and the main script of the standalone executable
-// (research R3). The licenses of the bundled packages are appended to it.
+// (research R3). The licenses of the bundled packages are appended to it. A second argument writes
+// it elsewhere, as the tests do for a build of another version.
 import { build } from "esbuild";
 import { existsSync, readFileSync, appendFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const { version: packageVersion } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const version = process.argv[2] ?? packageVersion;
-const outfile = join(root, "dist", "your-space.cjs");
+const outfile = process.argv[3] ? resolve(process.argv[3]) : join(root, "dist", "your-space.cjs");
 
 const result = await build({
   entryPoints: [join(root, "src", "index.ts")],

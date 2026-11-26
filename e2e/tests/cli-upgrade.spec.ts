@@ -2,13 +2,14 @@
 // database first, keeps .env, the owner, the data and the apps, and puts the previous version back
 // when the new one doesn't start (contracts/cli-commands.md). The previous version is an earlier
 // release made from the same images, installed by hand as the guide's manual steps do, since the
-// CLI's own `init` installs only its own version.
+// CLI's own `init` installs only its own version. `upgrade --channel alpha` (spec 016) moves it on,
+// through a stand-in for the release downloads whose `alpha` feed names the CLI's version.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { CLI_VERSION, cliIn, githubStandIn, makeRelease, newFolder, removeInstallation, tagImages, type Cli } from "./helpers/cli.ts";
+import { CLI_VERSION, cliIn, githubStandIn, makeRelease, newFolder, removeInstallation, root, serveFolder, tagImages, type Cli } from "./helpers/cli.ts";
 import { compose as e2eCompose, docker, removeApps } from "./helpers/stack.ts";
 
 test.skip(({ browserName }) => browserName !== "chromium", "The CLI doesn't depend on the browser; run it once.");
@@ -45,6 +46,8 @@ function changed(stack: string, find: string | RegExp, replace: string): string 
 
 let releases: string;
 let cli: Cli;
+/** The release downloads, with the `alpha` feed naming the CLI's version, as Release publish writes it. */
+let feed: { url: string; close(): Promise<void> };
 
 test.beforeAll(async () => {
   test.setTimeout(300_000);
@@ -63,6 +66,13 @@ test.beforeAll(async () => {
   // The CLI's version whose server records a migration later than any, adds a table, then stops: a
   // new version that migrated the database and then failed.
   await makeRelease(CLI_VERSION, join(releases, "migrated"), (stack) => changed(stack, /( {2}server:\n {4}image: [^\n]+\n)/, `$1${MIGRATE_THEN_FAIL}`));
+  const served = join(releases, "served");
+  await makeRelease(CLI_VERSION, join(served, `v${CLI_VERSION}`));
+  mkdirSync(join(served, "alpha"));
+  // Any full commit: nothing reads it back.
+  const commit = "69525a9569f68a39b76598af86662a04b6fb2886";
+  writeFileSync(join(served, "alpha", "channel.json"), execFileSync(join(root, "deploy/channel-json.sh"), ["alpha", CLI_VERSION, commit], { encoding: "utf8" }));
+  feed = await serveFolder(served);
 });
 
 test.afterAll(async () => {
@@ -71,6 +81,7 @@ test.afterAll(async () => {
     await removeInstallation(cli, PROJECT);
     rmSync(cli.folder, { recursive: true, force: true });
   }
+  await feed?.close();
   if (releases) rmSync(releases, { recursive: true, force: true });
   for (const name of ["server", "web", "runtime"]) await docker(["rmi", `ghcr.io/your-space-ai/your-space-${name}:${PREVIOUS}`]);
 });
@@ -146,10 +157,11 @@ test("a stopped installation whose new version migrated the database and failed 
   await appsRunning();
 });
 
-test("upgrade backs up the database, then runs the CLI's version with the same owner, data and apps", async () => {
+test("upgrade --channel alpha backs up the database, then runs the version the alpha feed names with the same owner, data and apps", async () => {
   const before = env();
   const app = await appStarted();
-  const upgraded = ok(await cli.run(["upgrade", "--release-dir", join(releases, "current"), "--json"]));
+  // The feed names the CLI's own version, so it upgrades itself, downloading that release.
+  const upgraded = ok(await cli.run(["upgrade", "--channel", "alpha", "--json"], { env: { YS_E2E_RELEASES: feed.url } }));
   expect(upgraded).toEqual({ ok: true, from: PREVIOUS, to: CLI_VERSION, backup: expect.stringMatching(new RegExp(`^${cli.folder}/backups/\\d{8}T\\d{6}Z-${PREVIOUS.replaceAll(".", "\\.")}\\.sql$`)) });
   // The backup is the database from before, readable only by its owner.
   expect(statSync(upgraded.backup).mode & 0o777).toBe(0o600);
@@ -167,4 +179,6 @@ test("upgrade backs up the database, then runs the CLI's version with the same o
 
   const again = ok(await cli.run(["upgrade", "--release-dir", join(releases, "current"), "--json"]));
   expect(again).toEqual({ ok: true, from: CLI_VERSION, to: CLI_VERSION, upToDate: true });
+  const already = ok(await cli.run(["upgrade", "--channel", "alpha", "--json"], { env: { YS_E2E_RELEASES: feed.url } }));
+  expect(already).toEqual({ ok: true, channel: "alpha", newest: CLI_VERSION, from: CLI_VERSION, to: CLI_VERSION, upToDate: true });
 });

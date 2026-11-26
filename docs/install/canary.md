@@ -25,6 +25,25 @@ release: the app doesn't start a workspace newer than itself.
 
 ## Move an Installation onto the Canary
 
+With a `your-space` command that has the `--channel` flag, from 0.1.0-alpha.2 or a canary build made
+since the flag was added, upgrade in the installation's folder:
+
+```sh
+your-space upgrade --channel canary --workdir ~/my-your-space
+```
+
+It reads the prerelease's `channel.json`, which names the newest canary, and downloads that build's
+own `your-space` command, the Linux executable or the npm package as the one you ran is. It checks
+the command against the prerelease's `SHA256SUMS`, and that it reports that build's version, then
+runs its `upgrade`. That downloads the canary's Compose bundle and checks it against the same
+`SHA256SUMS`, backs up the database to `backups/<time>-<old version>.sql`, and keeps `.env`, your
+apps and their data, as [Update Your Space](../operate/index.md#update-your-space) describes. Keep
+the backup it takes from the release: it is the way back to that release. Run the same command for
+each later canary. If a newer build replaces the prerelease's files while it runs, it changes
+nothing: run it again.
+
+### Without the Flag
+
 Get the newest canary's `your-space` command, checked against the prerelease's `SHA256SUMS`, as
 [step 1](index.md#1-get-the-your-space-command) of the installation guide does for a release. On
 Intel/AMD, for example (use `arm64` on ARM):
@@ -55,11 +74,9 @@ Then upgrade in the installation's folder, as for a release:
 your-space upgrade --workdir ~/my-your-space
 ```
 
-`upgrade` downloads the canary's Compose bundle and checks it against the same `SHA256SUMS`, backs
-up the database to `backups/<time>-<old version>.sql`, and keeps `.env`, your apps and their data,
-as [Update Your Space](../operate/index.md#update-your-space) describes. Keep the backup it takes
-from the release: it is the way back to that release. `your-space setup` and `your-space init` with
-a canary's command set up a new installation on that canary.
+`upgrade` downloads the canary's Compose bundle and backs up the database, as above.
+`your-space setup` and `your-space init` with a canary's command set up a new installation on that
+canary.
 
 For a later canary, get the newest canary's command again and run `upgrade`. A canary's command
 reads its files from the one prerelease, which holds only the newest build: when a newer one has
@@ -67,9 +84,11 @@ replaced it, the command says so and changes nothing. Get the newest command and
 
 ## Go Back to Releases
 
-Once a release newer than your canary is out, install that release's command as the
+Run `your-space upgrade --channel alpha` once a release newer than your canary is out. The command
+stores no channel, so until then it says nothing is newer and changes nothing: run it again when the
+next alpha is published. It then moves the installation to that release with an ordinary upgrade,
+because a canary sorts before the next release. Without the flag, install that release's command as the
 [installation guide](index.md#1-get-the-your-space-command) says and run `your-space upgrade`.
-That is an ordinary upgrade, because a canary sorts before the next release.
 
 An installation doesn't go back to the release the canary followed: that release's command refuses
 a newer installation, and its server refuses a database a newer version changed. To return to it
