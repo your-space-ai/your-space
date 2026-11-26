@@ -6,7 +6,7 @@ name: Mac canary
 # to the rolling `canary` prerelease (spec 016, decisions 3 and 4; docs/maintainers/releasing.md,
 # Mac canary builds). The build is the one the prerelease's channel.json names, with its version,
 # whose images are pushed and whose install test passed, and it must be of the run's own commit, the
-# newest on main when the run starts. Every job checks out that commit, so the scripts that build,
+# main commit the run was started on. Every job checks out that commit, so the scripts that build,
 # sign, check and publish a build are the ones it was built from, and the run executes no other
 # commit's code. Nothing runs when channel.json names an older commit, as until main's newest commit
 # has a Linux canary, or when canary-mac.yml already lists the build or a newer one. It ships no DMG

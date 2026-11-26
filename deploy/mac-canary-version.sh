@@ -100,7 +100,7 @@ fi
 # And the run's own commit, the one every later job checks out.
 run_commit=$(git rev-parse HEAD)
 if [[ $commit != "$run_commit" ]]; then
-  skip "The canary prerelease's channel.json names $commit, not this run's commit, $run_commit, the newest on main when it started: no Mac canary is built."
+  skip "The canary prerelease's channel.json names $commit, not this run's commit, $run_commit, the main commit it was started on: no Mac canary is built."
 fi
 
 # The build canary-mac.yml lists: its first line, as update-feed.mjs writes it, which must name a

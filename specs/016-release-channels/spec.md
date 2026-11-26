@@ -122,11 +122,13 @@ can be installed by hand, not the DMGs. It builds nothing when the prerelease's 
 already that build's.
 
 **Narrowed (2026-11-26, PR #137, accepted by the owner: "thats fine"):** the build must be of the
-run's own commit, the newest on `main` when the run starts, and every job checks out only that
+run's own commit, the `main` commit the run was started on, and every job checks out only that
 commit, as Release draft does, so a run on `main` runs no other commit's code. On a day when that
 commit has no Linux canary yet, because its Canary run is still going or failed, the run builds
-nothing rather than packaging the build before it; the next run, scheduled or started by hand,
-catches up.
+nothing rather than packaging the build before it. A later run catches up once its own commit has
+a Linux canary; while the Linux canary keeps failing, every run builds nothing. A run that waited
+behind an earlier one still packages its own commit, even if `main` has moved on since: that build
+is on `main` and is newer than the Mac canary before it, and the next run packages the newer one.
 
 Standard GitHub-hosted runners, the `macos-15` and `macos-15-intel` ones the release uses included,
 are free on public repositories
@@ -362,8 +364,8 @@ release.
   step retried and safe to re-run, and uploads `channel.json` last, once its files pass their
   check. Each canary workflow checks and deletes only its own files.
 - **FR-005**: Once a day and when started by hand, a workflow packages the newest Linux canary, when
-  it is of the run's own commit (the newest on `main`), for Apple Silicon and Intel, signs it with the canary certificate, notarizes and staples both apps,
-  checks their update ZIPs, and uploads them, then `canary-mac.yml`, to the `canary` prerelease,
+  it is of the `main` commit the run was started on, for Apple Silicon and Intel, signs it with
+  the canary certificate, notarizes and staples both apps, checks their update ZIPs, and uploads them, then `canary-mac.yml`, to the `canary` prerelease,
   then deletes the older Mac ZIPs, unless `canary-mac.yml` already names a newer build. No canary
   release carries `latest-mac.yml`. When that commit has no Linux canary yet, the run builds
   nothing. It checks out no other commit. It never delays the Linux canary.
