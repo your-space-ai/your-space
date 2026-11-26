@@ -113,7 +113,9 @@ set to Alpha, it stays on Alpha until you choose Canary. Later canaries come as 
 To leave Canary, choose **Update Channel › Alpha**. The app stays on its canary build, says "You'll
 move to Alpha with the next alpha", and moves to the first alpha newer than it, usually the next
 one. An update it had found or downloaded from Canary is dropped and never installed, not even when
-you quit. Like a CLI installation, the app doesn't go back to the release the canary followed.
+you quit, as long as you haven't chosen **Restart Now** for it. Once you have, the channel can't
+change until the app has restarted, even if the update wasn't ready in time, unless macOS refuses
+the update. Like a CLI installation, the app doesn't go back to the release the canary followed.
 
 ## Go Back to Releases
 
