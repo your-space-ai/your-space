@@ -92,12 +92,14 @@ sends it to `/check` or `/apply` (2026-11-24).
 | `GET /apps/{project}/stats` | | `{ services: [{ name, memory, memoryLimit, cpuPercent }] }` |
 | `GET /apps/{project}/denials` | | `{ hosts: [{ host, attempts, lastSeen }] }` from the egress proxy's log |
 | `POST /apps/{project}/port` | `{ publish: { port, bind } }` | `{ inUse, by? }`: whether the app can be published on `bind:port`. `by` names a running container that publishes it (the app's own Caddy doesn't count); otherwise a short-lived container of Your Space's Caddy's image tries to publish it, and `inUse` without `by` means another program uses it. 502 when the check itself fails, 503 when Your Space's Caddy isn't running |
-| `POST /stop-all` | | Stops every managed app and refuses `/apply` until the runtime manager restarts. Syncs too: a sync asked for answers 409, a step under way is stopped as Ctrl+C stops rclone (`SIGINT`, killed after 100 seconds), so bisync saves its state, and no run starts another step or the sync's proxy; it answers once every run has ended, and the proxy is stopped |
+| `POST /stop-all` | | Stops every managed app and refuses `/apply` until the runtime manager restarts. The knowledge bases' sync too: rclone's container is stopped as Ctrl+C stops rclone (`SIGINT`, killed after 100 seconds), so a bisync under way shuts down gracefully and saves its state, then its proxy; `PUT /knowledge-sync` and `POST /knowledge-sync/restart` answer 409 from then on |
 | `POST /knowledge` | `{ name }` | `{ created }`: creates the knowledge base's volume, labelled `ai.your-space.installation`, `ai.your-space.role=knowledge` and `ai.your-space.knowledge=<name>`, never with a Compose project's labels, and gives its folder to user and group 1000 with mode 2777 in a short-lived container of the runtime manager's own image (no network, only the CHOWN, FOWNER and FSETID capabilities). `created: false` keeps this installation's own volume of that name, with its files, and sets up its folder's owner and mode again, so a volume an earlier try made but didn't set up is set up now; a volume of that name Your Space didn't make is refused with 409. A new volume whose folder can't be set up is deleted |
-| `GET /knowledge/{name}` | | `{ apps, syncing }`: the apps of this installation whose containers mount the knowledge base's volume, running or stopped, by their `ai.your-space.app` label, `[]` when there is no such volume; and whether a run of its sync is under way, by this process or a step's container that still runs. The server asks before deleting a knowledge base, so it applies each again without it, even one it has no grant for, and waits for a run, even one it started before it restarted. 409 when the volume isn't Your Space's |
-| `DELETE /knowledge/{name}` | | Deletes the knowledge base's volume and its files, and its sync state volume when it has one, after removing any of its sync's step containers left behind that don't run. 409 while any other container mounts it, running or stopped, while it syncs (from before a run's first step to after its last), or when either volume isn't Your Space's, before anything is deleted; a volume already gone is deleted. No run of it starts until the deletion ends. Removing an app (`/down`) or deleting its volumes (`DELETE /apps/{project}/volumes`) never deletes a knowledge base's, or its sync state |
-| `POST /knowledge/{name}/sync` | `{ remote: { type: "drive", clientId, clientSecret, token, folderId }, mode: "sync" \| "resync" \| "force", confirm? }` | One run of the knowledge base's two-way sync with its Drive folder (journey 014), when it has finished: `{ result: "synced" \| "stopped" \| "unauthorized" \| "failed" \| "busy", reason?, side?, message?, deletions, ties, conflicts, backups, changed, listed? }`. See below |
-| `DELETE /knowledge/{name}/sync` | | Deletes the knowledge base's sync state volume, after removing any of its step containers left behind that don't run; the knowledge base and the Drive folder keep their files. 409 while it syncs; no run starts until it ends |
+| `GET /knowledge/{name}` | | `{ apps, syncing }`: the apps of this installation whose containers mount the knowledge base's volume, running or stopped, by their `ai.your-space.app` label, `[]` when there is no such volume; and whether the sync's container mounts it, or is being started with it. The server asks before deleting a knowledge base, so it applies each again without it, even one it has no grant for, and takes it out of the sync first. 409 when the volume isn't Your Space's |
+| `DELETE /knowledge/{name}` | | Deletes the knowledge base's volume and its files, and its sync state volume when it has one. 409 while any container mounts it, running or stopped, the sync's included, or when either volume isn't Your Space's, before anything is deleted; a volume already gone is deleted. Removing an app (`/down`) or deleting its volumes (`DELETE /apps/{project}/volumes`) never deletes a knowledge base's, or its sync state |
+| `GET /knowledge-sync` | | `{ running, knowledgeBases, fixture, socket }`: the knowledge bases' sync service (journey 014), whether its container runs, the knowledge bases it mounts, whether it syncs with the browser tests' stand-in for Drive, and where its remote control listens. See below |
+| `PUT /knowledge-sync` | `{ knowledgeBases: [name] }` | The same, once the sync's container runs with exactly these knowledge bases mounted and its remote control answers. No other field is accepted: no remote, client or token. `[]` removes the container and its proxy. 404 for a knowledge base that isn't on the engine, 409 for a sync state volume Your Space didn't make, or one of them being deleted, and while stopping |
+| `POST /knowledge-sync/restart` | | Stops rclone as Ctrl+C stops it, and starts it again: the server's limit on one run's time. 409 while stopping |
+| `DELETE /knowledge/{name}/sync` | | Deletes the knowledge base's sync state volume; the knowledge base and the Drive folder keep their files. 409 while the sync's container mounts it |
 
 Errors: `{ "error": "<code>", "message": "…" }` with status 400 (the spec is refused), 404, 409
 (stopping), 502 (the engine answered with an error) or 503 (the engine can't be reached). Messages
@@ -105,60 +107,65 @@ never include `env` values.
 
 ## Knowledge base sync (journey 014)
 
-`POST /knowledge/{name}/sync` runs `rclone bisync` between the Drive folder (Path1, the remote
-`remote:` whose root is `folderId`) and the knowledge base's volume (Path2) in containers of its
-own, one for each step, each removed when the step ends: `rclone/rclone` 1.75.2 pinned to its index
-digest, as user 1000:1000, with a read-only root, `CapDrop: ALL`, `no-new-privileges`, no engine
-socket, no devices and no FUSE, mounting only the knowledge base's volume at `/knowledge` and its sync
-state volume, `ys-knowledge.<installation>.<name>.sync` (labelled `ai.your-space.role=knowledge-sync`,
-mode 0700), at `/state`. A step that talks to Drive joins the sealed network
-`<installation>_knowledge-sync_sync`, whose only way out is the Squid of the Compose project
-`<installation>_knowledge-sync`, which lets through only `oauth2.googleapis.com` and
-`www.googleapis.com`; any other step has no network. The remote's configuration reaches only those
-steps, as `RCLONE_CONFIG_REMOTE_TYPE=drive`, `_CLIENT_ID`, `_CLIENT_SECRET`, `_TOKEN`, `_SCOPE=drive`
-and `_ROOT_FOLDER_ID` in their environment, with `RCLONE_CONFIG=/dev/null`; it is never written to a
-file, logged or answered, and every line rclone writes is cleaned of it. `remote.type` can only be
-`drive`, and `token` is rclone's token JSON with a refresh token. The runtime manager never writes
-it to a file; the engine keeps a container's environment in that container's configuration while
-the container exists, so each step's container is removed when the step ends, and when the runtime
-manager starts, before it listens, it removes every step container of this installation an earlier
-process left behind, running or not.
+One long-running container syncs every synced knowledge base: the service `rclone` of the Compose
+project `<installation>_knowledge-sync`, stock `rclone/rclone` pinned to its index digest
+(`YS_SYNC_IMAGE` in the runtime manager's environment, which `deploy/stack.yaml` sets, or 1.75.2's
+without it; only `rclone/rclone` pinned by `sha256` is accepted). It runs `rclone rcd --config ''
+--rc-addr unix:///run/ys-sync/rc.sock --rc-no-auth --rc-job-expire-duration 1h -v --use-json-log
+--color NEVER`, after removing a socket an earlier container left there, as user 1000:1000 with a
+read-only root, `/tmp` in memory, `CapDrop: ALL`, `no-new-privileges`, no engine socket, no devices
+and no FUSE, and stops with `SIGINT` and 100 seconds' grace. Its environment is `HOME` and the
+proxy's address only, and its command and labels hold no secret.
 
-Every run uses `--check-access --check-filename .your-space-sync --max-delete 50 --resilient
---recover --max-lock 2m --compare size,modtime,checksum --conflict-resolve path2 --drive-skip-gdocs
---drive-skip-shortcuts --create-empty-src-dirs`, with `--workdir /state/bisync` and `--backup-dir2` set to a folder of the
-run in `/state/backups`. The modes:
+It mounts the volume `<installation>_ys-sync` of Your Space's own Compose file (labelled
+`com.docker.compose.volume=ys-sync`) at `/run/ys-sync`, which the server alone mounts too; the
+runtime manager gives its folder to user 1000 with mode 0700 before each start. For each synced
+knowledge base it mounts the knowledge base's volume at `/knowledge/<name>` and its sync state volume,
+`ys-knowledge.<installation>.<name>.sync` (labelled `ai.your-space.role=knowledge-sync`, mode 0700),
+at `/state/<name>`. It joins the sealed network `<installation>_knowledge-sync_sync`, whose only way
+out is the project's Squid, which lets through only `oauth2.googleapis.com` and `www.googleapis.com`.
 
-- `sync`: a run. It never creates the marker file.
-- `resync`: puts the marker at both roots (`rclone touch` with a fixed time), then
-  `--resync --resync-mode newer`, which copies both ways and deletes nothing. When that leaves only
-  files whose two copies have the same size and modification time but different content, `rclone
-  copy --update --checksum` with an anchored, escaped `--include` for each of them (at most 100 a
-  step) copies the knowledge base's copy over the remote's, except where the remote's is newer, as
-  after an edit there since the first pass; then the same `--resync-mode newer` pass runs again,
-  and `ties` lists the files the copy replaced. No other file goes to the knowledge base's copy: one
-  changed on either side between the passes is still the newer copy's.
-- `force`: the owner's confirmed deletions, up to 10,000 (the request body may be up to 48 MB). A
-  `--force --dry-run` lists the deletions first; unless they are exactly `confirm`, nothing is
-  deleted and the answer is `stopped` with reason `changed` and the new list. Otherwise one
-  `--force` run.
+The runtime manager never receives a remote, a client or a token: the server creates each knowledge
+base's remote over the socket, and starts its runs there, as below. `PUT /knowledge-sync` holds the knowledge bases it names while the container is
+started, so none of them, or its sync state, is deleted meanwhile; Compose recreates the container
+when the mounts change, stopping it with `SIGINT` first. With `YS_E2E_SYNC_FIXTURE=1` in the runtime
+manager's own environment, which only the browser tests' Compose file sets, the container also
+mounts the volume `ys-sync-fixture.<installation>` at `/remote`, and `fixture` is true; nothing the
+server sends selects it.
 
-A run holds its knowledge base from before its first step to after its last: `DELETE
-/knowledge/{name}` and `DELETE /knowledge/{name}/sync` answer 409 meanwhile, and a run asked for
-while either of those is under way answers 409. A step that runs 25 minutes is stopped, and a run
-has two hours in all: a step still under way then is stopped and no other starts, so the answer
-comes soon after (the server waits two and a half hours for it). After `/stop-all`, a run asked for
-answers 409, and one under way starts no further step and doesn't start the proxy.
+### What the server asks rclone
 
-`result` is `stopped` with `reason` `max_delete` (over the limit; `deletions` lists them, each with
-the `side` it was deleted on), `empty` (one side is empty), `marker` (a marker is missing) or
-`resync` (bisync needs one), and `side` (`local` or `remote`) when rclone names it;
-`unauthorized` when Google refused the client or the token (`invalid_grant`, `invalid_client`,
-`Invalid Credentials`, …); `busy` while another run of the knowledge base is under way, by this
-process or a container of the same name; `failed` otherwise, with rclone's last error in `message`.
-After any run but a busy one, a step without network lists the knowledge base's conflict copies
-(`*.conflict<n>`) in `conflicts`, and the files runs of the last 30 days replaced or deleted in it in
-`backups` (`{ run, path, size }`, newest run first), with `listed: true`, and removes older runs'
-backups. With `YS_E2E_SYNC_FIXTURE=1` in the runtime manager's own environment, which only the
-browser tests' Compose file sets, the remote is the folder `folderId` of the volume
-`ys-sync-fixture.<installation>` instead of Drive.
+The server (`server/src/apps/knowledge-sync.ts`) is the only client of the socket, user 1000. It
+asks the runtime manager for the service with every synced knowledge base, then, over the socket:
+
+- `config/create` with `opt.nonInteractive`, for each knowledge base before its first run in this
+  rclone (`job/list`'s `executeId` names it) and again after the Google connection changes: the
+  remote `kb-<name>`, `type: drive` with `client_id`, `client_secret`, `token`, `scope: drive`,
+  `root_folder_id`, `skip_gdocs` and `skip_shortcuts`. rclone answers with a question about signing
+  in again for a new token, which is never answered, so it keeps the token given and the access
+  tokens it renews in memory. In the browser tests (`fixture`), an `alias` remote to
+  `/remote/<folderId>` with the same client and token.
+- `sync/bisync` with `_async` and a `_group` of its own, between `kb-<name>:` (Path1) and
+  `/knowledge/<name>` (Path2): `workdir: /state/<name>/bisync`, `checkAccess`, `checkFilename:
+  .your-space-sync`, `maxDelete: 50`, `resilient`, `recover`, `maxLock: 2m`, `compare:
+  size,modtime,checksum`, `conflictResolve: path2`, `createEmptySrcDirs`, and `backupDir2` set to a
+  folder of the run in `/state/<name>/backups`. A resync adds `resync` and `resyncMode: newer`,
+  after the marker is put at both roots (`operations/stat`, `operations/uploadfile`,
+  `operations/copyfile`); applying deletions runs `force` with `dryRun` first, then `force` only if
+  the dry run's deletions are exactly those the server kept. When a resync leaves only ties, files
+  with the same size and time but different content, `sync/copy` from the knowledge base to the
+  remote with `_config: { UpdateOlder: true, CheckSum: true }` and an anchored `_filter.IncludeRule`
+  for each, at most 40 a copy, read back with `core/transferred`, then the same resync again.
+- `job/status` for the job under way, which the knowledge base's row keeps (`knowledge_sync.job`),
+  so a server that restarted reads it again; a job rclone no longer has, as after it restarted, was
+  interrupted and nothing is recorded of it. The job's `output.output` is bisync's log at INFO, from
+  which the server reads the deletions, ties and the reason a run stopped; rclone keeps one log for
+  its whole process while a bisync runs, so the server runs one job at a time, whichever knowledge
+  base it is for. `core/stats-delete` drops a finished job's counts.
+- `operations/list` of `/knowledge/<name>` (filtered to `**.conflict[0-9]*`) and of
+  `/state/<name>/backups` after a run that changed something, and at least hourly, and
+  `operations/purge` of backup folders older than 30 days.
+
+A job under way past two hours is stopped with `POST /knowledge-sync/restart`. The server never
+stops a job with `job/stop`: rclone cancels it at once, and after the first run that follows a
+resync that leaves listings bisync can't recover without a resync.

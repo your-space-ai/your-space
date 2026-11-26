@@ -199,12 +199,6 @@ export class KnowledgeSync {
     return next;
   }
 
-  /** Whether a knowledge base syncs now, or has a run the owner asked for waiting. */
-  async isRunning(knowledgeBaseId: string): Promise<boolean> {
-    const row = await this.syncRow(knowledgeBaseId);
-    return Boolean(row?.job || row?.requested);
-  }
-
   /**
    * Holds a knowledge base off the timer and the owner's runs while it is deleted, connected or
    * disconnected; false while something else holds it. The caller releases it when done.
@@ -454,12 +448,14 @@ export class KnowledgeSync {
     return this.status((await this.syncRow(base.id))!, false);
   }
 
-  /** Disconnects a knowledge base: its sync state goes, and both it and the Drive folder keep their files. */
+  /**
+   * Disconnects a knowledge base: its sync state goes, and both it and the Drive folder keep their
+   * files. A run under way, of it or another knowledge base, ends first; none of it starts meanwhile.
+   */
   async disconnect(name: string, actorId: string): Promise<void> {
     const base = await this.knowledgeRow(name);
     const row = await this.syncRow(base.id);
     if (!row) throw new AppError(404, "not_connected", "This knowledge base isn't connected to Drive.");
-    if (row.job) throw new AppError(409, "busy", "The knowledge base is syncing. Disconnect it when the sync finishes.");
     if (!this.hold(base.id)) throw new AppError(409, "busy", "The knowledge base is being deleted or disconnected already.");
     this.leaving.add(base.id);
     try {
@@ -646,7 +642,7 @@ export class KnowledgeSync {
           return true;
         });
         if (done) return;
-        if (Date.now() > deadline) throw new AppError(409, "busy", "Another knowledge base is syncing now. Try again when its sync finishes.");
+        if (Date.now() > deadline) throw new AppError(409, "busy", "A knowledge base is syncing now. Try again when its sync finishes.");
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
     } finally {

@@ -78,8 +78,8 @@ A knowledge base can be kept in two-way sync with a folder in Google Drive. The 
 Google connection once, with an OAuth client of their own: see
 [Sync knowledge bases with Google Drive](../operate/google-drive.md). Then open a knowledge base on
 the **Knowledge** page, paste the link of a Drive folder under **Google Drive**, and choose
-**Connect**. The first sync copies both ways and deletes nothing; after it, Your Space syncs every
-five minutes and when you choose **Sync now**. Apps keep reading and writing the local copy, so they
+**Connect**. The first sync copies both ways and deletes nothing; after it, Your Space syncs about
+once a minute and when you choose **Sync now**. Apps keep reading and writing the local copy, so they
 work offline too, and can't tell a synced knowledge base from a local one. A sync covers only the
 chosen folder: shortcuts in it, and Google Docs, Sheets and Slides, stay in Drive only.
 

@@ -360,8 +360,6 @@ describe("a knowledge base's sync", () => {
     expect((await send("/api/knowledge/notes/sync", { action: "resync" })).status).toBe(409);
     expect((await send("/api/knowledge/notes/sync", { action: "sync" })).status).toBe(202);
     expect((await send("/api/knowledge/notes/sync", { action: "sync" })).status).toBe(202);
-    expect((await api("/api/knowledge/notes", { method: "DELETE" })).status).toBe(409);
-    expect((await api("/api/knowledge/notes/sync", { method: "DELETE" })).status).toBe(409);
     const before = rc.started().length;
     await tick();
     expect(rc.started().length).toBe(before);
@@ -593,6 +591,22 @@ describe("a knowledge base's sync", () => {
     expect((await send("/api/knowledge/recipes/sync", { folder: FOLDER }, "PUT")).status).toBe(202);
     await settled("recipes");
     expect(runtime.syncStarts.at(-1)).toEqual(["notes", "recipes"]);
+
+    // Disconnecting a knowledge base whose own run is under way waits for that run too.
+    rc.hold = true;
+    expect((await send("/api/knowledge/recipes/sync", { action: "sync" })).status).toBe(202);
+    await tick();
+    expect(rc.running().map((j) => j.params.path2)).toEqual(["/knowledge/recipes"]);
+    answered = false;
+    const own = api("/api/knowledge/recipes/sync", { method: "DELETE" }).then((r) => ((answered = true), r));
+    await sleep(100);
+    expect(answered).toBe(false);
+    rc.finish();
+    expect((await own).status).toBe(204);
+    expect(runtime.syncStarts.at(-1)).toEqual(["notes"]);
+    rc.hold = false;
+    expect((await send("/api/knowledge/recipes/sync", { folder: FOLDER }, "PUT")).status).toBe(202);
+    await settled("recipes");
   });
 
   it("disconnects the Google connection when Google refuses the token, until the owner signs in again", async () => {
@@ -731,7 +745,8 @@ describe("a knowledge base's sync", () => {
     expect(await status()).toBeNull();
     expect(runtime.knowledge.has("notes")).toBe(true);
     const disconnected = (await events("knowledge.disconnected")).map((e) => [e.actorId, e.knowledgeBase]);
-    expect(disconnected).toHaveLength(2);
+    // Notes now, and recipes twice before.
+    expect(disconnected).toHaveLength(3);
     expect(disconnected).toEqual(expect.arrayContaining([[owner, "notes"], [owner, "recipes"]]));
 
     expect((await api("/api/knowledge/recipes", { method: "DELETE" })).status).toBe(204);

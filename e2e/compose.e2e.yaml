@@ -2,7 +2,8 @@
 # (spec Q8), a local registry that asks for a password and stands in for GitHub's container registry
 # (journey 015, slice 4), one for Google's token endpoint (journey 014), and the server's settings
 # that point at them. The runtime manager syncs knowledge bases with a test volume instead of Google
-# Drive (YS_E2E_SYNC_FIXTURE, runtime/src/sync.ts); only this file sets it.
+# Drive (YS_E2E_SYNC_FIXTURE, runtime/src/sync.ts); only this file sets it. The server syncs each
+# knowledge base every few seconds instead of about once a minute (YS_E2E_SYNC_INTERVAL_S).
 services:
   github:
     image: node:26-slim
@@ -39,6 +40,7 @@ services:
       # The browser never leaves the test: Playwright answers this sign-in page (.test never resolves).
       YS_E2E_GOOGLE_AUTH: http://accounts.google.test/o/oauth2/v2/auth
       YS_E2E_GOOGLE_TOKEN: http://google:8080/token
+      YS_E2E_SYNC_INTERVAL_S: "3"
     depends_on:
       github:
         condition: service_started

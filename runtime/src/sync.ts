@@ -17,7 +17,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { EGRESS_IMAGE, EGRESS_PORT, EGRESS_SERVICE, egressConfig, egressService, escapeDollars, knowledgeStateVolume, knowledgeSyncLabels, knowledgeVolume, pinnedImage } from "./adapter.ts";
-import { deleteKnowledgeState, holdKnowledgeBases, imagePresent, initKnowledge, INSTALLATION, isStopping, knowledgeOf, SpecError, validateKnowledgeName } from "./apps.ts";
+import { deleteKnowledgeState, holdKnowledgeBases, imagePresent, initKnowledge, installationContainer, INSTALLATION, isStopping, knowledgeOf, SpecError, validateKnowledgeName } from "./apps.ts";
 import { docker, engine, engineInfo, engineJson, EngineError, inspectImage, listContainers, pullImage } from "./engine.ts";
 
 /** rclone 1.75.2's official image, for every processor it is published for, by its index digest. */
@@ -109,6 +109,8 @@ export interface SyncServiceSpec {
   /** The synced knowledge bases, by name. */
   knowledgeBases: string[];
   fixture: boolean;
+  /** The server runs in the engine's own user name space, so rclone does too (`serverUserns`). */
+  usernsHost?: boolean;
 }
 
 /** The sync's Compose file: rclone's remote control, and the proxy it reaches Google through. */
@@ -139,6 +141,7 @@ export function syncServiceFile(spec: SyncServiceSpec): Record<string, unknown> 
     security_opt: ["no-new-privileges:true"],
     // No secret: the server creates the remotes over the socket.
     environment: { HOME: "/tmp", HTTPS_PROXY: proxy, HTTP_PROXY: proxy },
+    ...(spec.usernsHost ? { userns_mode: "host" } : {}),
     networks: { sync: {} },
     volumes: mounts,
     restart: "unless-stopped",
@@ -216,8 +219,20 @@ async function ensureImage(image: string): Promise<void> {
   if (!(await imagePresent(image))) await pullImage(image, () => {});
 }
 
+/**
+ * Whether the server runs in the engine's own user name space, as on an engine that remaps containers'
+ * users, where Your Space's own containers are run so: rclone and the folders only it and the server
+ * open then belong to user 1000 there too, so the socket's file permissions mean the same user to both.
+ */
+async function serverUserns(): Promise<boolean> {
+  const id = await installationContainer("server");
+  if (!id) return false;
+  const detail = await engineJson<{ HostConfig?: { UsernsMode?: string } }>("GET", `/containers/${encodeURIComponent(id)}/json`).catch(() => undefined);
+  return detail?.HostConfig?.UsernsMode === "host";
+}
+
 /** Creates a volume of Your Space's, set up for user 1000, unless it is there with its labels already. */
-async function ensureVolume(volume: string, labels: Record<string, string>, mode: "2777" | "0700"): Promise<void> {
+async function ensureVolume(volume: string, labels: Record<string, string>, mode: "2777" | "0700", usernsHost = false): Promise<void> {
   const found = await engine("GET", `/volumes/${encodeURIComponent(volume)}`);
   if (found.status === 200) {
     const existing = (JSON.parse(found.body) as { Labels: Record<string, string> | null }).Labels ?? {};
@@ -229,7 +244,7 @@ async function ensureVolume(volume: string, labels: Record<string, string>, mode
   if (found.status !== 404) throw new EngineError(`Reading ${volume} failed: ${found.body.trim().slice(0, 300)}`);
   await engineJson("POST", "/volumes/create", { Name: volume, Driver: "local", Labels: labels });
   try {
-    await initKnowledge(volume, mode);
+    await initKnowledge(volume, mode, usernsHost);
   } catch (error) {
     await engine("DELETE", `/volumes/${encodeURIComponent(volume)}`).catch(() => {});
     throw error;
@@ -298,15 +313,16 @@ export function ensureSyncService(knowledgeBases: string[]): Promise<SyncService
       const proxy = await squidImage();
       await ensureImage(rclone);
       await ensureImage(proxy);
-      for (const name of names) await ensureVolume(knowledgeStateVolume(INSTALLATION, name), knowledgeSyncLabels(INSTALLATION, name), "0700");
+      const usernsHost = await serverUserns();
+      for (const name of names) await ensureVolume(knowledgeStateVolume(INSTALLATION, name), knowledgeSyncLabels(INSTALLATION, name), "0700", usernsHost);
       const socket = await socketVolume();
       // Only user 1000, rclone's and the server's, reaches the socket.
-      await initKnowledge(socket, "0700");
+      await initKnowledge(socket, "0700", usernsHost);
       const fixture = fixtureEnabled();
       if (fixture) await ensureVolume(fixtureVolume(), { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "sync-fixture" }, "2777");
       // Checked again once the images and volumes are ready, which can take long: a stop may have begun.
       if (isStopping()) throw new EngineError(STOPPING, 409);
-      await compose(syncServiceFile({ squid: proxy, rclone, socketVolume: socket, knowledgeBases: names, fixture }), ["up", "-d", "--wait", "--remove-orphans", "--pull", "never"]);
+      await compose(syncServiceFile({ squid: proxy, rclone, socketVolume: socket, knowledgeBases: names, fixture, usernsHost }), ["up", "-d", "--wait", "--remove-orphans", "--pull", "never"]);
     } finally {
       release();
     }
@@ -336,7 +352,9 @@ export async function stopSyncs(): Promise<void> {
   if (!isStopping()) throw new Error("The syncs stop only once Your Space is stopping.");
   await queued(async () => {
     if (!(await projectExists())) return;
-    await docker(["compose", "-p", syncProject(), "stop", "-t", String(STOP_GRACE_S)]);
+    // rclone first, with time for bisync to finish; then the proxy, as an app's is stopped.
+    await docker(["compose", "-p", syncProject(), "stop", "-t", String(STOP_GRACE_S), RCLONE_SERVICE]);
+    await docker(["compose", "-p", syncProject(), "stop"]);
   });
 }
 

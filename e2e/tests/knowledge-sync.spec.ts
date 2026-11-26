@@ -1,8 +1,10 @@
 // Journey 014, slice 2: synced knowledge bases. The owner sets up the Google connection with their own
 // OAuth client and signs in; a knowledge base connected to a Drive folder then syncs both ways with
-// real rclone bisync. Google is never contacted: the browser's sign-in page is answered by the test,
-// the server exchanges the code with a stand-in (e2e/google), and the runtime manager syncs with a
-// folder of a test volume in place of Drive (YS_E2E_SYNC_FIXTURE in e2e/compose.e2e.yaml).
+// real rclone bisync, run by one container of stock `rclone rcd` that the server drives over its
+// socket. Google is never contacted: the browser's sign-in page is answered by the test, the server
+// exchanges the code with a stand-in (e2e/google), and rclone syncs with a folder of a test volume in
+// place of Drive (YS_E2E_SYNC_FIXTURE in e2e/compose.e2e.yaml). The server syncs every few seconds
+// (YS_E2E_SYNC_INTERVAL_S), so changes arrive without Sync now; the tests wait for files, not runs.
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { evidence } from "./helpers/evidence.ts";
 import { compose, createOwner, docker, logs, PROJECT, resetStack, sql, up } from "./helpers/stack.ts";
@@ -18,8 +20,17 @@ const KB = "drive-notes";
 const DRIVE_VOLUME = `ys-sync-fixture.${PROJECT}`;
 const KB_VOLUME = `ys-knowledge.${PROJECT}.${KB}`;
 const STATE_VOLUME = `${KB_VOLUME}.sync`;
+/** The sync's container: stock rclone's remote control. */
+const RCLONE = `${PROJECT}_knowledge-sync-rclone-1`;
+const SECRETS = [CLIENT_SECRET, "e2e-refresh-token", "e2e-access-token"];
 /** Already on the engine: the GitHub stand-in runs it. */
 const SHELL_IMAGE = "node:26-slim";
+/**
+ * The tests' own containers run as user 1000 in the engine's own user name space, as rclone's does
+ * when Your Space's containers run there, on an engine that remaps containers' users: the files they
+ * write are then rclone's user's. On any other engine this changes nothing.
+ */
+const AS_RCLONE = ["--userns", "host", "--user", "1000:1000"];
 
 let ownerCookies: Awaited<ReturnType<BrowserContext["cookies"]>> = [];
 
@@ -49,16 +60,27 @@ async function answerGoogle(page: Page): Promise<void> {
 
 /** Runs a shell script as user 1000 with a volume at /v: the knowledge base, or the stand-in for Drive. */
 async function shell(volume: string, script: string): Promise<string> {
-  const result = await docker(["run", "--rm", "--network", "none", "--user", "1000:1000", "-v", `${volume}:/v`, SHELL_IMAGE, "sh", "-c", script]);
+  const result = await docker(["run", "--rm", "--network", "none", ...AS_RCLONE, "-v", `${volume}:/v`, SHELL_IMAGE, "sh", "-c", script]);
   if (result.code !== 0) throw new Error(`The script failed: ${result.stderr}`);
   return result.stdout.trim();
 }
 const here = (script: string) => shell(KB_VOLUME, `cd /v && ${script}`);
 const onDrive = (script: string) => shell(DRIVE_VOLUME, `cd /v/${FOLDER} && ${script}`);
+/** Changes both sides in one go, with no sync between them. */
+async function onBoth(local: string, drive: string): Promise<void> {
+  const result = await docker(["run", "--rm", "--network", "none", ...AS_RCLONE, "-v", `${KB_VOLUME}:/a`, "-v", `${DRIVE_VOLUME}:/r`, SHELL_IMAGE, "sh", "-c", `cd /a && ${local} && cd /r/${FOLDER} && ${drive}`]);
+  if (result.code !== 0) throw new Error(`The script failed: ${result.stderr}`);
+}
+/** Waits for a side to answer what is expected, as a timed sync carries changes over; a script that fails, as on a file not there yet, answers its error. */
+const arrives = (side: () => Promise<string>, expected: string, timeout = 60_000) =>
+  expect.poll(() => side().catch((error: unknown) => String(error)), { timeout, intervals: [500] }).toBe(expected);
 /** Every file of a side and its content, to tell whether a run changed it. */
 const listing = (side: (script: string) => Promise<string>) => side("find . -type f | sort | while read f; do echo \"$f: $(cat \"$f\")\"; done");
 
-/** Chooses Sync now, or another action, and waits for that run to finish. */
+/**
+ * Chooses Sync now, or another action, and waits for a run to finish. Only for a knowledge base whose
+ * runs stopped for the owner, which the timer leaves alone, so the run is the one chosen.
+ */
 async function run(page: Page, button = "Sync now"): Promise<void> {
   const main = page.locator('main[data-state="knowledge-base"]');
   const before = (await main.getAttribute("data-last-run")) ?? "";
@@ -127,7 +149,7 @@ test("a knowledge base connected to a Drive folder syncs files created, changed 
 
   // Both sides have a file before they are connected. The Drive stand-in is a volume of the test's.
   await docker(["volume", "create", "--label", `ai.your-space.installation=${PROJECT}`, "--label", "ai.your-space.role=sync-fixture", DRIVE_VOLUME], false);
-  await docker(["run", "--rm", "--network", "none", "-v", `${DRIVE_VOLUME}:/v`, SHELL_IMAGE, "sh", "-c", `mkdir -p /v/${FOLDER} && chown -R 1000:1000 /v && chmod 2777 /v`], false);
+  await docker(["run", "--rm", "--network", "none", "--userns", "host", "-v", `${DRIVE_VOLUME}:/v`, SHELL_IMAGE, "sh", "-c", `mkdir -p /v/${FOLDER} && chown -R 1000:1000 /v && chmod 2777 /v`], false);
   await onDrive("echo 'From Drive' > from-drive.md && mkdir -p course && echo 'Week 1' > course/week-1.md");
   await here("echo 'From here' > from-here.md");
 
@@ -153,22 +175,27 @@ test("a knowledge base connected to a Drive folder syncs files created, changed 
   );
   await evidence(page, testInfo, "014-2-synced");
 
-  // Created and changed on either side.
+  // Created and changed on either side: they arrive on the other without Sync now, at the next timed run.
   await here("echo 'Changed here' > from-drive.md && echo 'New here' > new-here.md");
   await onDrive("echo 'Changed on Drive' > from-here.md && echo 'New on Drive' > new-there.md");
-  await run(page);
+  await arrives(() => here("cat from-here.md new-there.md 2>&1"), "Changed on Drive\nNew on Drive");
+  await arrives(() => onDrive("cat from-drive.md new-here.md 2>&1"), "Changed here\nNew here");
   await expect(main).toHaveAttribute("data-sync-result", "synced");
-  expect(await here("cat from-here.md new-there.md")).toBe("Changed on Drive\nNew on Drive");
-  expect(await onDrive("cat from-drive.md new-here.md")).toBe("Changed here\nNew here");
   // A run that changed files is recorded against Your Space, not the owner.
   expect(await sql("select a.kind from event e join actor a on a.id = e.actor_id where e.type = 'knowledge.synced'")).toContain("operator");
 
   // Deleted on either side.
   await here("rm new-here.md");
   await onDrive("rm new-there.md");
-  await run(page);
-  expect(await listing(onDrive)).toBe(await listing(here));
-  expect(await here("ls")).not.toMatch(/new-/);
+  await arrives(() => here("ls"), "course\nfrom-drive.md\nfrom-here.md");
+  await arrives(() => listing(onDrive), await listing(here));
+
+  // Sync now runs at once, and the page says so.
+  await here("echo 'Now' > now.md");
+  await page.getByRole("button", { name: "Sync now", exact: true }).click();
+  await arrives(() => onDrive("cat now.md 2>&1"), "Now", 15_000);
+  await here("rm now.md");
+  await arrives(() => onDrive("ls"), "course\nfrom-drive.md\nfrom-here.md");
 
   // The list shows how the sync stands.
   await page.goto("/knowledge");
@@ -212,22 +239,20 @@ test("a file changed on both sides keeps both copies, and the page lists the con
   await asOwner(page);
   await page.goto(`/knowledge/${KB}`);
   await here("echo 'Plan' > plan.md");
-  await run(page);
-  await here("echo 'Edited here' > plan.md");
-  await onDrive("echo 'Edited on Drive' > plan.md");
-  await run(page);
+  await arrives(() => onDrive("cat plan.md 2>&1"), "Plan");
+  // Both sides change it before the next run.
+  await onBoth("echo 'Edited here' > plan.md", "echo 'Edited on Drive' > plan.md");
   // The copy here keeps the name; Drive's is renamed, and both sides have both.
-  expect(await here("cat plan.md plan.md.conflict1")).toBe("Edited here\nEdited on Drive");
-  expect(await onDrive("cat plan.md plan.md.conflict1")).toBe("Edited here\nEdited on Drive");
+  await arrives(() => here("cat plan.md plan.md.conflict1 2>&1"), "Edited here\nEdited on Drive");
+  await arrives(() => onDrive("cat plan.md plan.md.conflict1 2>&1"), "Edited here\nEdited on Drive");
   const conflicts = page.getByRole("region", { name: "Conflict copies" });
-  await expect(conflicts).toContainText("plan.md.conflict1");
+  await expect(conflicts).toContainText("plan.md.conflict1", { timeout: 30_000 });
   await conflicts.scrollIntoViewIfNeeded();
   await evidence(page, testInfo, "014-2-conflicts");
   // Resolved by the owner: the copy is deleted, and leaves the list.
   await here("rm plan.md.conflict1");
-  await run(page);
-  await expect(page.getByRole("region", { name: "Conflict copies" })).toHaveCount(0);
-  expect(await onDrive("ls")).not.toContain("conflict");
+  await expect(page.getByRole("region", { name: "Conflict copies" })).toHaveCount(0, { timeout: 30_000 });
+  await arrives(() => onDrive("ls | grep -c conflict || true"), "0");
 });
 
 test("a missing marker or an empty knowledge base stops the sync with Drive unchanged, and Resync deletes nothing", async ({ page }, testInfo) => {
@@ -236,9 +261,9 @@ test("a missing marker or an empty knowledge base stops the sync with Drive unch
   const main = page.locator('main[data-state="knowledge-base"]');
   const drive = await listing(onDrive);
 
+  // The next timed run stops, and the timer leaves the knowledge base for the owner.
   await here("rm .your-space-sync");
-  await run(page);
-  await expect(main).toHaveAttribute("data-sync-result", "stopped");
+  await expect(main).toHaveAttribute("data-sync-result", "stopped", { timeout: 30_000 });
   await expect(page.locator('[data-sync-notice="marker"]')).toContainText("marker file, .your-space-sync, is missing in the knowledge base");
   expect(await listing(onDrive)).toBe(drive);
   await evidence(page, testInfo, "014-2-stopped-marker");
@@ -249,8 +274,7 @@ test("a missing marker or an empty knowledge base stops the sync with Drive unch
 
   // An emptied knowledge base never reads as "everything was deleted".
   await here("find . -mindepth 1 -delete");
-  await run(page);
-  await expect(main).toHaveAttribute("data-sync-result", "stopped");
+  await expect(main).toHaveAttribute("data-sync-result", "stopped", { timeout: 30_000 });
   await expect(page.locator("[data-sync-notice]")).toHaveAttribute("data-sync-notice", /empty|marker/);
   expect(await listing(onDrive)).toBe(drive);
   // Resync brings the files back from Drive.
@@ -264,13 +288,12 @@ test("deleting over half the files stops the sync; Resync brings them back, and 
   await page.goto(`/knowledge/${KB}`);
   const main = page.locator('main[data-state="knowledge-base"]');
   await here("for i in 1 2 3 4 5 6; do echo \"Batch $i\" > batch-$i.md; done");
-  await run(page);
+  await arrives(() => onDrive("ls | grep -c batch || true"), "6");
   const drive = await listing(onDrive);
   const deleteMost = () => here("rm batch-*.md from-here.md");
 
   await deleteMost();
-  await run(page);
-  await expect(main).toHaveAttribute("data-sync-result", "stopped");
+  await expect(main).toHaveAttribute("data-sync-result", "stopped", { timeout: 30_000 });
   await expect(page.locator('[data-sync-notice="max_delete"]')).toContainText("More than half of the files were deleted in the knowledge base");
   await expect(page.locator("[data-deletions]")).toContainText("7 files to delete");
   expect(await listing(onDrive)).toBe(drive);
@@ -283,8 +306,7 @@ test("deleting over half the files stops the sync; Resync brings them back, and 
   // Stopped again; one more file is deleted after the owner sees the list, so the confirmed list is
   // out of date: nothing is deleted, and the new list shows.
   await deleteMost();
-  await run(page);
-  await expect(page.locator("[data-deletions]")).toContainText("7 files to delete");
+  await expect(page.locator("[data-deletions]")).toContainText("7 files to delete", { timeout: 30_000 });
   await here("rm from-drive.md");
   await page.getByRole("button", { name: "Apply these deletions" }).click();
   const dialog = page.getByRole("alertdialog", { name: "Apply these deletions?" });
@@ -322,10 +344,9 @@ test("deleting over half the files stops the sync; Resync brings them back, and 
   expect(await listing(onDrive)).toBe(await listing(here));
   expect(await onDrive("ls")).not.toMatch(/batch|from-/);
   await here("for i in 1 2 3 4 5 6; do echo \"Again $i\" > again-$i.md; done");
-  await run(page);
+  await arrives(() => onDrive("ls | grep -c again || true"), "6");
   await here("rm again-*.md");
-  await run(page);
-  await expect(main).toHaveAttribute("data-sync-result", "stopped");
+  await expect(main).toHaveAttribute("data-sync-result", "stopped", { timeout: 30_000 });
   await expect(page.locator('[data-sync-notice="max_delete"]')).toBeVisible();
   await run(page, "Resync");
   await expect(main).toHaveAttribute("data-sync-result", "synced");
@@ -343,9 +364,8 @@ test("replacing the data key keeps the Google connection, and the knowledge base
   await asOwner(page);
   await page.goto(`/knowledge/${KB}`);
   await here("echo 'After the new key' > after-key.md");
-  await run(page);
+  await arrives(() => onDrive("cat after-key.md 2>&1"), "After the new key");
   await expect(page.locator('main[data-state="knowledge-base"]')).toHaveAttribute("data-sync-result", "synced");
-  expect(await onDrive("cat after-key.md")).toBe("After the new key");
 });
 
 test("a connection Google refused shows Reconnect, and signing in again resumes the sync", async ({ page }, testInfo) => {
@@ -361,7 +381,8 @@ test("a connection Google refused shows Reconnect, and signing in again resumes 
   await expect(page).toHaveURL(`${ORIGIN}/knowledge?google=connected`);
   await page.goto(`/knowledge/${KB}`);
   await expect(notice).toHaveCount(0);
-  await run(page);
+  await here("echo 'After reconnecting' > reconnected.md");
+  await arrives(() => onDrive("cat reconnected.md 2>&1"), "After reconnecting");
   await expect(page.locator('main[data-state="knowledge-base"]')).toHaveAttribute("data-sync-result", "synced");
 });
 
@@ -390,13 +411,13 @@ test("a first sync keeps the newer copy, backs up a replaced local file, and the
 
   // Drive changes it again: the local copy is replaced a second time, and each earlier copy is kept.
   await remote("echo 'Newest on Drive' > newer.md");
-  await run(page);
-  expect(await local("cat newer.md")).toBe("Newest on Drive");
+  await arrives(() => local("cat newer.md"), "Newest on Drive");
   const kept = await shell(`ys-knowledge.${PROJECT}.${name}.sync`, "cd /v/backups && for f in $(ls -1 | sort); do cat $f/newer.md; done");
   expect(kept).toBe("Older here\nNewer on Drive");
   const backups = page.getByRole("region", { name: "Replaced files" });
+  await expect(backups).toBeVisible({ timeout: 30_000 });
   await backups.getByText("Replaced files").click();
-  await expect(backups.locator("li")).toHaveCount(2);
+  await expect(backups.locator("li")).toHaveCount(2, { timeout: 30_000 });
   await backups.scrollIntoViewIfNeeded();
   await evidence(page, testInfo, "014-2-backups");
   await page.getByRole("button", { name: "Disconnect", exact: true }).click();
@@ -426,8 +447,7 @@ test("a run that stops over more than 500 deletions shows the first 500, and app
 
   // 600 of 1,100 files deleted here: over the limit, so the run stops, and the page has all 600.
   await local("for i in $(seq 1 600); do rm file-$i.md; done");
-  await run(page);
-  await expect(main).toHaveAttribute("data-sync-result", "stopped");
+  await expect(main).toHaveAttribute("data-sync-result", "stopped", { timeout: 30_000 });
   const listed = page.locator("[data-deletions]");
   await expect(listed).toContainText("600 files to delete");
   await expect(listed.locator("li code")).toHaveCount(500);
@@ -449,6 +469,113 @@ test("a run that stops over more than 500 deletions shows the first 500, and app
   await expect(page.getByLabel("Drive folder link")).toBeVisible();
 });
 
+test("the client secret and token are in rclone's memory only: in no container's configuration, file or log", async () => {
+  // rclone has them, for the remote the server made over its socket.
+  const remote = await docker(["exec", RCLONE, "rclone", "rc", "--unix-socket", "/run/ys-sync/rc.sock", "config/get", `name=kb-${KB}`]);
+  expect(remote.stdout).toContain("e2e-refresh-token");
+  expect(remote.stdout).toContain(CLIENT_SECRET);
+  // No container of the installation has them in its environment, command or labels: not rclone's,
+  // whose configuration the engine keeps on disk, nor the server's or the runtime manager's.
+  const ids = new Set<string>();
+  for (const label of [`ai.your-space.installation=${PROJECT}`, `com.docker.compose.project=${PROJECT}`]) {
+    for (const id of (await docker(["ps", "-aq", "--filter", `label=${label}`])).stdout.split("\n").filter(Boolean)) ids.add(id);
+  }
+  expect(ids.size).toBeGreaterThan(3);
+  for (const id of ids) {
+    const config = (await docker(["inspect", id, "--format", "{{json .Config}} {{json .HostConfig.Binds}} {{json .Mounts}}"], false)).stdout;
+    for (const secret of SECRETS) expect(config, id).not.toContain(secret);
+  }
+  // rclone's container mounts no engine socket, runs as user 1000, and writes nothing else but its volumes and /tmp.
+  const rclone = JSON.parse((await docker(["inspect", RCLONE], false)).stdout)[0] as { Config: { User: string; Env: string[] }; HostConfig: { ReadonlyRootfs: boolean; CapDrop: string[] }; Mounts: { Destination: string }[] };
+  expect(rclone.Config.User).toBe("1000:1000");
+  expect(rclone.HostConfig).toMatchObject({ ReadonlyRootfs: true, CapDrop: ["ALL"] });
+  expect(rclone.Mounts.map((m) => m.Destination).sort()).toEqual(["/knowledge/drive-notes", "/remote", "/run/ys-sync", "/state/drive-notes"]);
+  const found = await docker(["exec", RCLONE, "sh", "-c", `grep -rl ${SECRETS.map((x) => `-e '${x}'`).join(" ")} /run/ys-sync /state /knowledge /remote /tmp 2>/dev/null; true`], false);
+  expect(found.stdout.trim()).toBe("");
+  const said = await docker(["logs", RCLONE], false);
+  for (const secret of SECRETS) expect(said.stdout + said.stderr).not.toContain(secret);
+  // Its socket is in a folder only user 1000, rclone's and the server's, opens.
+  expect((await docker(["exec", RCLONE, "stat", "-c", "%a %u", "/run/ys-sync"], false)).stdout.trim()).toBe("700 1000");
+});
+
+test("a restarted rclone syncs again once the server has made its remotes again", async ({ page }) => {
+  await asOwner(page);
+  await page.goto(`/knowledge/${KB}`);
+  // rclone forgets its remotes: its configuration is in memory only.
+  await docker(["restart", RCLONE], false);
+  await here("echo 'After rclone restarted' > restarted.md");
+  await arrives(() => onDrive("cat restarted.md 2>&1"), "After rclone restarted");
+  await expect(page.locator('main[data-state="knowledge-base"]')).toHaveAttribute("data-sync-result", "synced");
+});
+
+/** A knowledge base with many files to copy, so a run takes a while. */
+const BIG = "big";
+const BIG_FOLDER = "1E2eTestFolder0000000000000000gh";
+const bigHere = (script: string) => shell(`ys-knowledge.${PROJECT}.${BIG}`, `cd /v && ${script}`);
+const bigThere = (script: string) => shell(DRIVE_VOLUME, `mkdir -p /v/${BIG_FOLDER} && cd /v/${BIG_FOLDER} && ${script}`);
+const bigRow = async (column: string) => (await sql(`select ${column} from knowledge_sync s join knowledge_base b on b.id = s.knowledge_base_id where b.name = '${BIG}'`))[0];
+const MANY = 30_000;
+
+test("a run goes on when only the server restarts, and the next server records its result", async ({ page }) => {
+  test.setTimeout(400_000);
+  await asOwner(page);
+  await page.goto("/knowledge");
+  const create = page.getByRole("region", { name: "New knowledge base" });
+  await create.getByLabel("Name").fill(BIG);
+  await create.getByRole("button", { name: "Create" }).click();
+  await expect(page.locator(`li[data-knowledge="${BIG}"]`)).toBeVisible();
+  await page.goto(`/knowledge/${BIG}`);
+  await page.getByLabel("Drive folder link").fill(`https://drive.google.com/drive/folders/${BIG_FOLDER}`);
+  await page.getByRole("button", { name: "Connect" }).click();
+  const main = page.locator('main[data-state="knowledge-base"]');
+  await expect(main).toHaveAttribute("data-sync-result", "synced", { timeout: 120_000 });
+  const synced = async () => Number((await sql(`select count(*) from event e join event_knowledge_base k on k.event_id = e.id where e.type = 'knowledge.synced' and k.name = '${BIG}'`))[0]);
+  const before = await synced();
+
+  await bigHere(`mkdir first && cd first && seq 1 ${MANY} | while read i; do echo $i > f-$i; done`);
+  // A timed run starts copying them; the server stops while it is under way.
+  await expect.poll(() => bigRow("job is not null"), { timeout: 60_000, intervals: [100] }).toBe("t");
+  await compose(["stop", "server"]);
+  const job = JSON.parse((await bigRow("job"))!) as { id: number; startedAt: string };
+  // rclone finishes the run without the server, and keeps its result.
+  // Only its state: its result holds the run's whole log, which is long for this many files.
+  const status = async () => {
+    const said = await docker(["exec", RCLONE, "sh", "-c", `rclone rc --unix-socket /run/ys-sync/rc.sock job/status jobid=${job.id} | grep -E '"(finished|success)":'`]);
+    return { finished: said.stdout.includes('"finished": true'), success: said.stdout.includes('"success": true') };
+  };
+  await expect.poll(async () => (await status()).finished, { timeout: 240_000, intervals: [1_000] }).toBe(true);
+  expect((await status()).success).toBe(true);
+  await up();
+  // The next server reads the run's result from rclone, and records it as that run's.
+  await expect.poll(() => bigRow(`job is null and last_run_at = '${job.startedAt}'::timestamptz`), { timeout: 60_000 }).toBe("t");
+  expect(await synced()).toBeGreaterThan(before);
+  await arrives(() => bigThere(`ls first | wc -l`), String(MANY), 240_000);
+  await asOwner(page);
+  await page.goto(`/knowledge/${BIG}`);
+  await expect(main).toHaveAttribute("data-sync-result", "synced");
+});
+
+test("stopping Your Space during a run stops rclone gracefully, and the next start carries the run on without a resync", async ({ page }) => {
+  test.setTimeout(400_000);
+  await bigHere(`mkdir second && cd second && seq 1 ${MANY} | while read i; do echo $i > g-$i; done`);
+  await expect.poll(() => bigRow("job is not null"), { timeout: 60_000, intervals: [100] }).toBe("t");
+  // As `your-space stop` does: the apps and the sync first, then Your Space.
+  await compose(["exec", "-T", "runtime", "stop-apps"]);
+  expect((await docker(["inspect", RCLONE, "--format", "{{.State.Running}}"], false)).stdout.trim()).toBe("false");
+  expect((await docker(["logs", "--tail", "20", RCLONE], false)).stderr).toContain("Signal received: interrupt");
+  await compose(["stop"]);
+  await up();
+  // The server starts rclone again, and the next run copies the rest: no resync is asked of the owner.
+  await arrives(() => bigThere("ls second | wc -l"), String(MANY), 240_000);
+  await expect.poll(() => bigRow("result"), { timeout: 60_000 }).toBe("synced");
+  expect(await bigRow("resync")).toBe("f");
+  await asOwner(page);
+  await page.goto(`/knowledge/${BIG}`);
+  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Disconnect" }).click();
+  await expect(page.getByLabel("Drive folder link")).toBeVisible({ timeout: 60_000 });
+});
+
 test("disconnecting leaves both sides' files, and no secret reached a log or a container left behind", async ({ page }, testInfo) => {
   await asOwner(page);
   await page.goto(`/knowledge/${KB}`);
@@ -463,9 +590,9 @@ test("disconnecting leaves both sides' files, and no secret reached a log or a c
   expect(await listing(onDrive)).toBe(drive);
   expect((await docker(["volume", "ls", "-q", "--filter", `name=${STATE_VOLUME}`])).stdout.trim()).toBe("");
 
-  // Every step's container was removed, and neither the server's nor the runtime manager's log has
-  // the client secret or a token.
+  // With no knowledge base synced, the sync's container is gone, and neither the server's nor the
+  // runtime manager's log has the client secret or a token.
   expect((await docker(["ps", "-aq", "--filter", "label=ai.your-space.role=knowledge-sync", "--filter", `label=ai.your-space.installation=${PROJECT}`])).stdout.trim()).toBe("");
   const all = await logs(["server", "runtime"]);
-  for (const secret of [CLIENT_SECRET, "e2e-refresh-token", "e2e-access-token"]) expect(all).not.toContain(secret);
+  for (const secret of SECRETS) expect(all).not.toContain(secret);
 });

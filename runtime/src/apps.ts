@@ -608,10 +608,11 @@ export async function knowledgeOf(name: string): Promise<{ Name: string; Labels:
  * A short-lived container that gives a new knowledge base's folder to user and group 1000, writable by
  * everyone and with the setgid bit, so files any app writes there get group 1000. It runs the runtime
  * manager's own image, which is on the engine already, with no network and only the capabilities
- * changing the folder's owner and mode needs. A knowledge base's sync state gets mode 0700 instead:
- * only the sync, which runs as user 1000, reads it.
+ * changing the folder's owner and mode needs. A knowledge base's sync state, and the sync's socket,
+ * get mode 0700 instead: only the sync, and the server, which run as user 1000, open them; with
+ * `usernsHost`, in the engine's own user name space, as they then run (sync.ts).
  */
-export function knowledgeInit(image: string, volume: string, mode: "2777" | "0700" = "2777"): Record<string, unknown> {
+export function knowledgeInit(image: string, volume: string, mode: "2777" | "0700" = "2777", usernsHost = false): Record<string, unknown> {
   return {
     Image: image,
     Entrypoint: ["/bin/sh", "-c"],
@@ -622,6 +623,7 @@ export function knowledgeInit(image: string, volume: string, mode: "2777" | "070
     HostConfig: {
       NetworkMode: "none",
       Mounts: [{ Type: "volume", Source: volume, Target: "/knowledge", VolumeOptions: { NoCopy: true } }],
+      ...(usernsHost ? { UsernsMode: "host" } : {}),
       ReadonlyRootfs: true,
       CapDrop: ["ALL"],
       // Root changes the folder's owner, then its mode, keeping the setgid bit, on a folder it no longer owns.
@@ -645,8 +647,8 @@ async function ownImage(): Promise<string> {
  * Runs `knowledgeInit` on the volume and waits for it to finish. A helper the engine couldn't remove
  * still mounts the volume, so the setup fails: deleting the knowledge base removes it first.
  */
-export async function initKnowledge(volume: string, mode: "2777" | "0700" = "2777"): Promise<void> {
-  const { Id } = await engineJson<{ Id: string }>("POST", "/containers/create", knowledgeInit(await ownImage(), volume, mode));
+export async function initKnowledge(volume: string, mode: "2777" | "0700" = "2777", usernsHost = false): Promise<void> {
+  const { Id } = await engineJson<{ Id: string }>("POST", "/containers/create", knowledgeInit(await ownImage(), volume, mode, usernsHost));
   let failed: unknown;
   try {
     await engineJson("POST", `/containers/${Id}/start`);

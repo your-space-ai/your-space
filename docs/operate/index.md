@@ -260,16 +260,17 @@ that server's apps. Otherwise they say when to quit the app and how to reach its
 2. In the installation folder (`~/my-your-space` if you used `setup` and kept its default), stop
    any app still running, then delete Your Space's containers, networks and volumes. If Your Space is
    already stopped, as after quitting the Mac app, its apps are too: skip the first command. The
-   last command removes the outbound proxy of [synced knowledge bases](google-drive.md) and its two
-   networks, a Compose project of its own that `down -v` doesn't touch, named after the
-   installation's Compose project (`your-space` unless you changed it). It does nothing if no
-   knowledge base was ever synced. If `.env` sets `YS_ENGINE_SOCKET`, the proxy is on that engine:
-   the commands for leftovers below remove it.
+   second command removes the sync of [synced knowledge bases](google-drive.md), rclone's container
+   and its outbound proxy, with their two networks: a Compose project of its own that `down -v`
+   doesn't touch, named after the installation's Compose project (`your-space` unless you changed
+   it). It comes first, as rclone's container mounts a volume of Your Space's, and it does nothing if
+   no knowledge base was ever synced. If `.env` sets `YS_ENGINE_SOCKET`, it is on that engine: the
+   commands for leftovers below remove it.
 
    ```sh
    docker compose exec runtime stop-apps
-   docker compose down -v
    docker compose -p your-space_knowledge-sync down
+   docker compose down -v
    ```
 
 3. Delete the installation folder. It holds your settings in `.env`, any set-password link `setup`

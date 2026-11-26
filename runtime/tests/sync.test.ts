@@ -75,6 +75,12 @@ describe("the sync's container", () => {
     expect(rclone.healthcheck).toMatchObject({ test: ["CMD", "rclone", "rc", "--unix-socket", RC_SOCKET, "rc/noop"] });
   });
 
+  it("runs in the engine's own user name space only when the server does, so the socket's user is the same to both", () => {
+    expect(file(["notes"]).services.rclone!.userns_mode).toBeUndefined();
+    const usernsHost = syncServiceFile({ squid: "ubuntu/squid@sha256:squid", rclone: RCLONE_IMAGE, socketVolume: SOCKET_VOLUME, knowledgeBases: ["notes"], fixture: false, usernsHost: true }) as unknown as ComposeFile;
+    expect(usernsHost.services.rclone!.userns_mode).toBe("host");
+  });
+
   it("has no secret: no remote, token or client in its environment, command or labels", () => {
     const rclone = file(["notes", "recipes"]).services.rclone!;
     expect(Object.keys(rclone.environment!).sort()).toEqual(["HOME", "HTTPS_PROXY", "HTTP_PROXY"]);
@@ -271,7 +277,10 @@ describe("running the sync's container", () => {
     await expect(stopSyncs()).rejects.toThrow(/only once Your Space is stopping/);
     await stopAll();
     await stopSyncs();
-    expect(composed.at(-1)!.args).toEqual(["compose", "-p", syncProject(), "stop", "-t", "100"]);
+    expect(composed.slice(-2).map((c) => c.args)).toEqual([
+      ["compose", "-p", syncProject(), "stop", "-t", "100", "rclone"],
+      ["compose", "-p", syncProject(), "stop"],
+    ]);
     await expect(ensureSyncService(["notes"])).rejects.toMatchObject({ status: 409, message: expect.stringContaining("stopping") });
     await expect(restartSyncService()).rejects.toMatchObject({ status: 409 });
   });
