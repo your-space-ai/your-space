@@ -62,6 +62,11 @@ export const DEFAULT_KNOWLEDGE_PATH = "/knowledge";
  */
 const SYSTEM_FOLDERS = ["/proc", "/sys", "/dev", "/etc/resolv.conf", "/etc/hosts", "/etc/hostname"];
 
+/** The system folder or file a path is at or in, if any. */
+export function reservedKnowledgePath(path: string): string | undefined {
+  return SYSTEM_FOLDERS.find((folder) => path === folder || path.startsWith(`${folder}/`));
+}
+
 /**
  * A kit's `knowledge` (journey 014): the app asks for knowledge bases, mounted in its interface service
  * at `<path>/<name>`. The path is absolute, isn't `/`, names no `..`, and is kept normalised.
@@ -78,7 +83,7 @@ export function parseKnowledge(value: unknown): { path: string } {
   if (parts.length > 8 || parts.some((part) => !/^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$/.test(part))) {
     throw new KitError("knowledge.path must be at most 8 folder names deep, each 1 to 64 letters, digits, dots, dashes and underscores, starting with a letter, digit or underscore.");
   }
-  const system = SYSTEM_FOLDERS.find((folder) => path === folder || path.startsWith(`${folder}/`));
+  const system = reservedKnowledgePath(path);
   if (system) throw new KitError(`knowledge.path can't be in ${system}, a system folder or file.`);
   return { path };
 }

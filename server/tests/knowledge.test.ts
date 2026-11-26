@@ -98,11 +98,13 @@ beforeAll(async () => {
     "ys-fixtures/plain/compose.yaml": COMPOSE,
     "ys-fixtures/atlas/compose.yaml": COMPOSE,
     "ys-fixtures/twice/compose.yaml": COMPOSE,
+    "ys-fixtures/etc/compose.yaml": COMPOSE,
     ...plainKit("notes", "knowledge: {}\n"),
     ...plainKit("atlas", "knowledge: {}\n"),
     ...plainKit("vault", "knowledge: { path: /vault/ }\n"),
     ...plainKit("plain"),
     ...plainKit("twice"),
+    ...plainKit("etc", "knowledge: { path: /etc }\n"),
   });
   server = await startServer(t.db, { apps: { runtime, fetch } });
   await createOwnerWithPassword(t.db, OWNER, server.publicUrl);
@@ -326,10 +328,29 @@ describe("giving knowledge bases to apps", () => {
     const detail = (await (await api("/api/apps/notes")).json()) as { knowledge: { bases: { name: string }[] } };
     expect(detail.knowledge.bases.map((base) => base.name)).toEqual(["recipes"]);
     expect((await events("knowledge.revoked")).length).toBe(revoked);
+    // Replaced, it keeps what its containers mount: the one taken away, and not the one added, so a
+    // failed change never leaves it more than it can mount.
+    const granted = (await events("knowledge.granted")).length;
+    runtime.failApply = "The engine stopped.";
+    const replaced = await send("/api/apps/notes/knowledge", { bases: ["course-notes"] }, "PUT");
+    expect((await waitForJob(((await replaced.json()) as { jobId: string }).jobId)).state).toBe("failed");
+    runtime.failApply = undefined;
+    const kept = (await (await api("/api/apps/notes")).json()) as { knowledge: { bases: { name: string }[] } };
+    expect(kept.knowledge.bases.map((base) => base.name)).toEqual(["recipes"]);
+    expect((await events("knowledge.granted")).length).toBe(granted);
+    expect((await events("knowledge.revoked")).length).toBe(revoked);
     // Applied again as it is, it starts with it.
     const again = await send("/api/apps/notes/knowledge", { bases: ["recipes"] }, "PUT");
     expect((await waitForJob(((await again.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
     expect(lastApply("notes").knowledge).toEqual({ path: "/knowledge", bases: ["recipes"] });
+  });
+
+  it("refuses a knowledge base whose folder in the app would be one of the files Docker mounts", async () => {
+    // Refused by its name and the kit's path alone, before the knowledge base is looked for.
+    const { previewId } = await review("etc");
+    const refused = await send("/api/apps", { previewId, knowledge: ["hosts"] });
+    expect(refused.status).toBe(400);
+    expect(((await refused.json()) as { error: string; message: string })).toMatchObject({ error: "reserved_knowledge_path", message: expect.stringContaining("/etc/hosts") });
   });
 
   it("installs from a review once, even when two requests read it before either used it", async () => {
@@ -490,10 +511,12 @@ describe("deleting a knowledge base while the owner changes its apps", () => {
 
   it("keeps it, and the grant of an app that couldn't be applied, even when no container of the app mounts it", async () => {
     expect((await send("/api/knowledge", { name: "unmounted" })).status).toBe(201);
-    // The change saves vault's grant, but its apply fails, so no container of vault's mounts it.
+    // As after an install whose apply failed: vault has the grant, and no container of vault's mounts
+    // it. (A change on the app's page whose apply fails takes back the grants it added.)
+    const [unmounted] = await t.db.select({ id: knowledgeBase.id }).from(knowledgeBase).where(eq(knowledgeBase.name, "unmounted"));
+    await t.db.insert(appKnowledgeBase).values({ appId: await appId("vault"), knowledgeBaseId: unmounted!.id, grantedBy: owner });
     runtime.failApply = "The engine stopped.";
     try {
-      expect((await waitForJob(await jobOf(await send("/api/apps/vault/knowledge", { bases: ["unmounted"] }, "PUT")))).state).toBe("failed");
       expect(runtime.lastApply("ys-vault")!.knowledge!.bases).toEqual([]);
       const refused = await api("/api/knowledge/unmounted", { method: "DELETE" });
       expect(refused.status).toBe(409);

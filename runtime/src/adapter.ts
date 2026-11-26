@@ -130,9 +130,14 @@ function within(path: string, folder: string): boolean {
   return path === folder || path.startsWith(`${folder}/`);
 }
 
+/** Whether a path is at or in one of the system folders or files a mount can't go in. */
+export function reservedPath(path: string): boolean {
+  return SYSTEM_FOLDERS.some((folder) => within(path, folder));
+}
+
 /** Whether a knowledge path is one Your Space mounts knowledge bases under. */
 export function validKnowledgePath(path: string): boolean {
-  return KNOWLEDGE_PATH.test(path) && !SYSTEM_FOLDERS.some((folder) => within(path, folder));
+  return KNOWLEDGE_PATH.test(path) && !reservedPath(path);
 }
 
 /** Your Space's own Caddy: the image a published app's Caddy runs too, and the origin it lets frame apps. */
@@ -583,6 +588,13 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
           setting: "volumes",
           reason: `The file mounts ${target} in the app's knowledge path, ${knowledge.path}, where Your Space mounts the knowledge bases the owner gives the app.`,
         });
+      }
+    }
+    // A knowledge base's folder can land on one of the files Docker mounts, as /etc and hosts do.
+    for (const name of knowledge.bases) {
+      const target = `${knowledge.path}/${name}`;
+      if (reservedPath(target)) {
+        refusals.push({ service: spec.interface.service, setting: "knowledge", reason: `The knowledge base ${name} would be mounted at ${target}, where Docker mounts a file of its own, so the app can't be given it.` });
       }
     }
   }

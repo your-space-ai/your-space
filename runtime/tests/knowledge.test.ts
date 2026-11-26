@@ -80,6 +80,14 @@ describe("mounting knowledge bases", () => {
     expect(services(result.adapted).web!.volumes).toEqual([{ type: "volume", source: "ys-knowledge.ys-e2e.notes", target: "/vault/notes", volume: { nocopy: true } }]);
   });
 
+  it("refuses a knowledge base whose folder would be one of the files Docker mounts, and takes others there", () => {
+    const result = adapt({ ...spec, knowledge: { path: "/etc", bases: ["hosts", "notes"] } }, { services: { web: { image: "busybox" } } });
+    expect(result.adapted).toBeNull();
+    expect(result.refusals).toEqual([expect.objectContaining({ service: "web", setting: "knowledge", reason: expect.stringContaining("/etc/hosts") })]);
+    const notes = adapt({ ...spec, knowledge: { path: "/etc", bases: ["notes"] } }, { services: { web: { image: "busybox" } } });
+    expect(services(notes.adapted).web!.volumes).toEqual([expect.objectContaining({ target: "/etc/notes" })]);
+  });
+
   it("refuses knowledge bases for an app without an interface", () => {
     const result = adapt({ ...spec, interface: null, knowledge: { path: "/knowledge", bases: ["notes"] } }, { services: { web: { image: "busybox" } } });
     expect(result.adapted).toBeNull();

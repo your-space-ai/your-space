@@ -35,7 +35,7 @@ import {
   type SourceFile,
   type SourceMiss,
 } from "./github.ts";
-import { composeOf, kitFromFile, kitFromLink, kitFromSource, KitError, kitIdentity, NotAKitError, type FoundKit } from "./kits.ts";
+import { composeOf, kitFromFile, kitFromLink, kitFromSource, KitError, kitIdentity, NotAKitError, reservedKnowledgePath, type FoundKit } from "./kits.ts";
 import { localSource, type LocalCompose } from "./local.ts";
 import { RuntimeError, type AppSpec, type CheckAnswer, type RegistryCredential, type Runtime, type ServiceState } from "./runtime-client.ts";
 import {
@@ -168,8 +168,14 @@ const MAX_KNOWLEDGE_BASES = 100;
 
 export type AppRow = typeof app.$inferSelect;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
-/** Saves what follows from how a job ended, with the job's own end when it applied the app. */
-type JobEnded = (tx: Tx, applied: boolean) => Promise<void>;
+/**
+ * What follows from how a job ended: `worked` is saved with the job's own end when it applied the
+ * app, and `failed` runs once a job that didn't is recorded as failed.
+ */
+interface JobEnded {
+  worked: (tx: Tx) => Promise<void>;
+  failed: () => Promise<void>;
+}
 
 /** `sure.space.localhost` for Your Space at `space.localhost`, with the same scheme and port. */
 export function appAddress(publicUrl: string, name: string): { origin: string; host: string } {
@@ -901,6 +907,11 @@ export class AppsService {
       throw new AppError(400, "too_many_knowledge_bases", `An app can be given at most ${MAX_KNOWLEDGE_BASES} knowledge bases.`);
     }
     if (!kit?.knowledge) throw new AppError(400, "no_knowledge", `${title}'s kit doesn't ask for knowledge, so it can't be given knowledge bases.`);
+    // Its folder in the app, as /etc and hosts give, can't be one of the files Docker mounts.
+    const reserved = names.find((name) => reservedKnowledgePath(`${kit.knowledge!.path}/${name}`));
+    if (reserved) {
+      throw new AppError(400, "reserved_knowledge_path", `${title} can't be given ${reserved}: its folder would be ${kit.knowledge.path}/${reserved}, a file Docker mounts in every container.`);
+    }
     const rows = await this.db.select({ id: knowledgeBase.id, name: knowledgeBase.name }).from(knowledgeBase).where(inArray(knowledgeBase.name, names));
     const missing = names.filter((name) => !rows.some((row) => row.name === name));
     if (missing.length) throw new AppError(400, "unknown_knowledge_base", `There is no knowledge base called ${missing.join(", ")}.`);
@@ -1071,7 +1082,7 @@ export class AppsService {
       }
       await this.db.transaction(async (tx) => {
         await tx.update(installJob).set({ state: "succeeded", finishedAt: new Date() }).where(eq(installJob.id, jobId));
-        await ended?.(tx, true);
+        await ended?.worked(tx);
       });
     } catch (error) {
       let message = error instanceof AppError || error instanceof RuntimeError ? error.message : "Something went wrong on the server.";
@@ -1084,7 +1095,7 @@ export class AppsService {
             : " Your Space signs in to download a private image only while installing the app: remove it, then install it again, reusing its data, with your image token in place.";
       }
       await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));
-      if (ended) await this.db.transaction((tx) => ended(tx, false)).catch((failure: unknown) => log("error", "app.job_end_failed", errorFields(failure)));
+      await ended?.failed().catch((failure: unknown) => log("error", "app.job_end_failed", errorFields(failure)));
       // Refused because Your Space is stopping: the app starts again with Your Space.
       const stopping = error instanceof RuntimeError && error.status === 409;
       // A failed removal shows as failed too, so the owner sees why and can remove it again.
@@ -1476,6 +1487,7 @@ export class AppsService {
     const row = await this.liveRow(name);
     if (!row.kit?.knowledge) throw new AppError(400, "no_knowledge", `${row.title}'s kit doesn't ask for knowledge, so it can't be given knowledge bases.`);
     const next = await this.knowledgeBases(row.kit, row.title, input);
+    let added: { id: string; name: string }[] = [];
     let removed: { id: string; name: string }[] = [];
     let taken: (typeof appKnowledgeBase.$inferSelect)[] = [];
     // Read and saved only once the app is the job's, with the job: a grant saved without the apply
@@ -1487,7 +1499,7 @@ export class AppsService {
       if (!now?.kit?.knowledge) throw new AppError(400, "no_knowledge", `${row.title}'s kit doesn't ask for knowledge, so it can't be given knowledge bases.`);
       await this.stillExist(tx, next);
       const current = await this.grants(row.id, tx);
-      const added = next.filter((base) => !current.some((c) => c.id === base.id));
+      added = next.filter((base) => !current.some((c) => c.id === base.id));
       removed = current.filter((base) => !next.some((n) => n.id === base.id));
       if (removed.length) {
         taken = await tx
@@ -1496,14 +1508,30 @@ export class AppsService {
           .returning();
       }
       if (added.length) await tx.insert(appKnowledgeBase).values(added.map((base) => ({ appId: row.id, knowledgeBaseId: base.id, grantedBy: actorId })));
-      for (const base of added) await recordEvent(tx, "knowledge.granted", actorId, null, row.id, base);
     };
-    // A knowledge base taken away is gone from the app only once the apply that unmounts it worked.
-    // Until then the app's containers still mount it, so a failed apply gives the grant back, as
-    // deleting a knowledge base does, and the app's page still lists it.
-    const ended = async (tx: Tx, applied: boolean) => {
-      if (applied) for (const base of removed) await recordEvent(tx, "knowledge.revoked", actorId, null, row.id, base);
-      else if (taken.length) await tx.insert(appKnowledgeBase).values(taken).onConflictDoNothing();
+    // The grants follow the apply. Once it worked, the app mounts exactly them. When it failed, the
+    // app keeps what its containers mount, as the runtime manager reports it: a knowledge base taken
+    // away that it still mounts gets its grant back, as deleting a knowledge base does, and one added
+    // that it doesn't mount loses its grant, so the app has what it had and its page says so. Without
+    // the runtime's answer, the grant stays.
+    const ended: JobEnded = {
+      worked: async (tx) => {
+        for (const base of added) await recordEvent(tx, "knowledge.granted", actorId, null, row.id, base);
+        for (const base of removed) await recordEvent(tx, "knowledge.revoked", actorId, null, row.id, base);
+      },
+      failed: async () => {
+        const mounts = (base: { name: string }) => this.runtime.knowledgeUsers(base.name).then(({ apps }) => apps.includes(row.name), () => undefined);
+        const back: typeof taken = [];
+        for (const grant of taken) if ((await mounts(removed.find((base) => base.id === grant.knowledgeBaseId)!)) !== false) back.push(grant);
+        const dropped: typeof added = [];
+        for (const base of added) if ((await mounts(base)) === false) dropped.push(base);
+        await this.db.transaction(async (tx) => {
+          if (back.length) await tx.insert(appKnowledgeBase).values(back).onConflictDoNothing();
+          if (dropped.length) await tx.delete(appKnowledgeBase).where(and(eq(appKnowledgeBase.appId, row.id), inArray(appKnowledgeBase.knowledgeBaseId, dropped.map((base) => base.id))));
+          for (const base of added.filter((b) => !dropped.includes(b))) await recordEvent(tx, "knowledge.granted", actorId, null, row.id, base);
+          for (const base of removed.filter((b) => !back.some((g) => g.knowledgeBaseId === b.id))) await recordEvent(tx, "knowledge.revoked", actorId, null, row.id, base);
+        });
+      },
     };
     return this.granting(next, async () => ({ jobId: (await this.startJob(row.id, "apply", { first, ended })).jobId }));
   }

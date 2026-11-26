@@ -25,8 +25,8 @@ The list shows each knowledge base with the apps that use it.
 When you install an app whose kit asks for knowledge, the review has a **Knowledge** section with
 your knowledge bases. Pick any of them, or none. On the app's page, **Knowledge** adds or removes
 them at any time: saving restarts the app's interface service with the new folders, and its data is
-kept. If that restart fails, the app keeps the knowledge bases you took away, as it still has their
-folders, and its page still lists them; save again once the app starts.
+kept. If that restart fails, the app keeps the knowledge bases whose folders it still has, and its
+page lists those; save again once the app starts.
 
 Each knowledge base is its own folder under the app's knowledge path, `/knowledge` unless the kit
 names another, even when the app has only one. An app given one knowledge base doesn't see the
