@@ -18,6 +18,7 @@ on:
       - package.json
       - .github/workflows/macos-app-build.yml
       - .github/workflows/release-macos-app.yml
+      - .github/workflows/canary-macos.yml
   workflow_call:
     inputs:
       # Release macOS app's: the release's tag, such as v0.1.0-alpha.2.
@@ -72,6 +73,11 @@ jobs:
         run: |
           version=${RELEASE_TAG#v}
           if [[ -z $version ]]; then version=$CANARY_VERSION; fi
+          # Only a pull request builds package.json's version; a caller names the one it ships.
+          if [[ -z $version && $GITHUB_EVENT_NAME != pull_request ]]; then
+            echo '::error::Called with neither release_tag nor version, so there is no version to build.'
+            exit 1
+          fi
           if [[ -z $version ]]; then version=$(node -p 'require("./desktop/package.json").version'); fi
           desktop/scripts/package-macos.sh "$version" "$RUNNER_TEMP/packages"
           name="your-space-macos-${{ matrix.arch }}-$version-preview.zip"

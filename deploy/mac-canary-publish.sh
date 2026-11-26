@@ -6,13 +6,17 @@
 # ZIPs, each with its .sha256, and canary-mac.yml, which lists them (update-feed.mjs --channel canary).
 # It uploads both ZIPs, then canary-mac.yml, each checked once it is there, and only then deletes the
 # older Mac ZIPs, so canary-mac.yml never lists a ZIP that isn't there. A Mac app that read the older
-# canary-mac.yml just before finds its ZIP gone, and its next check gets this build.
+# canary-mac.yml just before finds its ZIP gone, and its next check gets this build. --clobber deletes
+# the older canary-mac.yml before it uploads this one, so for a moment there is none: a Mac app on
+# Canary that checks then says it couldn't check. A run that stops in between leaves none until it is
+# re-run, or until the next day's run, which then builds as for the first Mac canary.
 #
 # It changes only the Mac canary's own files there: canary-mac.yml and the Mac ZIPs. The prerelease is
 # the Canary workflow's: this never creates or publishes it, and never touches its title, its notes,
 # the Linux files, SHA256SUMS or channel.json. It never uploads latest-mac.yml, the file an Alpha Mac
 # app reads, and if the prerelease holds one it stops before changing anything. It changes nothing
-# when canary-mac.yml or a Mac ZIP there names a newer build, such as one whose run stopped part way.
+# when canary-mac.yml or a Mac ZIP there names a newer build, such as one whose run stopped part way,
+# or when canary-mac.yml lists this build as another run signed it.
 #
 # Safe to re-run: once canary-mac.yml is this build's, it only checks the files and finishes the
 # deletions; a file an upload left half there is deleted before its name is uploaded again, and
@@ -134,10 +138,17 @@ for other in "${held[@]}"; do
     exit 0
   fi
 done
+# Another run of this build, signed apart from this one (its digests and date differ), already
+# published it: its ZIPs, which canary-mac.yml lists, stay as they are.
+if [[ $listed == "$version" ]] && ! cmp -s "$dir/canary-mac.yml" "$work/held-canary-mac.yml"; then
+  say "The canary prerelease's canary-mac.yml already lists $version as another run signed it, so its Mac files stay as they are."
+  exit 0
+fi
 
 # Uploads files of this build from DIR. Any of their names an upload left half there (not
 # "uploaded") is deleted first: GitHub refuses the next upload of that name (HTTP 422) until it is.
-# A file already gone (HTTP 404) counts as deleted, and --clobber replaces one that is there.
+# A file already gone (HTTP 404) counts as deleted. --clobber replaces one that is there by deleting
+# it before it uploads the new one, so an upload that then fails leaves the name missing.
 upload() {
   local asset state name paths=()
   list_files || return 1
@@ -162,7 +173,8 @@ check() {
   done
 }
 
-if [[ -n $listed ]] && cmp -s "$dir/canary-mac.yml" "$work/held-canary-mac.yml"; then
+# canary-mac.yml is this build's as this run signed it, so an earlier attempt of this run got past it.
+if [[ $listed == "$version" ]]; then
   say "The canary prerelease's canary-mac.yml already lists $version, so its ZIPs are checked and the older ones deleted."
   check "${zips[@]}"
 else

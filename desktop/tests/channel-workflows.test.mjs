@@ -232,6 +232,13 @@ test("the Mac canary runs only on main once MACOS_CANARY_ENABLED is set, and eve
   assert.match(job(macCanary, "build"), /^ {4}if: needs\.version\.outputs\.build == 'true'$/m);
   // The canary's commit and version, from the version job, never inline in a script.
   assert.match(job(macCanary, "build"), /^ {6}ref: \$\{\{ needs\.version\.outputs\.commit \}\}\n {6}version: \$\{\{ needs\.version\.outputs\.version \}\}$/m);
+  // The jobs after it check out that commit too, so what signs, checks and publishes a build is what
+  // built it; only the version job reads main's newest commit.
+  for (const name of ["sign", "verify", "publish"]) {
+    const checkouts = [...job(macCanary, name).matchAll(/^ {6}- uses: actions\/checkout@.*\n {8}with:\n((?: {10}.*\n)+)/gm)].map(([, options]) => options);
+    assert.deepEqual(checkouts, ["          ref: ${{ needs.version.outputs.commit }}\n          persist-credentials: false\n"], name);
+  }
+  assert.doesNotMatch(job(macCanary, "version"), /^ {10}ref:/m);
   for (const name of jobs(macCanary)) {
     for (const [, script] of job(macCanary, name).matchAll(/^ {8}run: (\|\n(?: {10}.*\n?)+|.+)/gm)) assert.doesNotMatch(script, /\$\{\{/, name);
   }

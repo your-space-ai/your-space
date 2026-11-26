@@ -35,6 +35,9 @@ const linuxFiles = (build, commit) => [
 // A canary-mac.yml for another build, in update-feed.mjs's form.
 const feedFor = build => `version: '${build}'\nfiles:\n${zips(build).map(name => `  - url: ${name}\n`).join("")}`;
 
+// The version job's tests need git, which the Node image the Arm check runs these in doesn't have.
+const withGit = spawnSync("git", ["--version"]).status === 0 ? {} : { skip: "git isn't installed" };
+
 /** A git checkout whose origin/main holds one commit, and another commit that isn't on main. */
 function checkout(t) {
   const dir = mkdtempSync(join(tmpdir(), "ys-mac-canary-git-"));
@@ -124,7 +127,7 @@ function signed(t, build = version) {
 
 // The version job.
 
-test("the version job builds the Linux canary channel.json names, at its commit, when canary-mac.yml isn't there yet or lists an older build", t => {
+test("the version job builds the Linux canary channel.json names, at its commit, when canary-mac.yml isn't there yet or lists an older build", withGit, t => {
   const repo = checkout(t);
   for (const files of [[], [["canary-mac.yml", feedFor(older)]]]) {
     const gh = github(t, { canary: [[{}, [...linuxFiles(version, repo.onMain), ...files]]] });
@@ -135,7 +138,7 @@ test("the version job builds the Linux canary channel.json names, at its commit,
   }
 });
 
-test("the version job builds nothing when canary-mac.yml already lists that build or a newer one", t => {
+test("the version job builds nothing when canary-mac.yml already lists that build or a newer one", withGit, t => {
   const repo = checkout(t);
   for (const listed of [version, newer, "0.1.0-alpha.3.canary.20261128.40"]) {
     const gh = github(t, { canary: [[{}, [...linuxFiles(version, repo.onMain), ["canary-mac.yml", feedFor(listed)]]]] });
@@ -146,7 +149,7 @@ test("the version job builds nothing when canary-mac.yml already lists that buil
   }
 });
 
-test("the version job builds nothing when channel.json isn't there, or SHA256SUMS is missing or another build's", t => {
+test("the version job builds nothing when channel.json isn't there, or SHA256SUMS is missing or another build's", withGit, t => {
   const repo = checkout(t);
   const linux = linuxFiles(version, repo.onMain);
   const without = name => linux.filter(([file]) => file !== name);
@@ -166,7 +169,7 @@ test("the version job builds nothing when channel.json isn't there, or SHA256SUM
   }
 });
 
-test("only a 404 means a file isn't there: any other answer, a file in another form or a commit off main stops the version job", t => {
+test("only a 404 means a file isn't there: any other answer, a file in another form or a commit off main stops the version job", withGit, t => {
   const repo = checkout(t);
   const linux = linuxFiles(version, repo.onMain);
   const gh = github(t, { canary: [[{}, linux]], fail: [{ call: `curl ${canaryFeed}/channel.json`, status: 500, times: 5 }] });
@@ -241,24 +244,31 @@ test("older Mac ZIPs are deleted only once canary-mac.yml lists this build, and 
   assert.ok(deletes.every(i => i > calls.indexOf("gh release download canary canary-mac.yml")), "the older ZIPs go once canary-mac.yml downloads unchanged");
 });
 
-test("an upload of canary-mac.yml that keeps failing leaves the older build listed with its ZIPs, and a re-run finishes", t => {
+// The next day's version job then builds as for the first Mac canary, which finds no canary-mac.yml.
+test("an upload of canary-mac.yml that keeps failing leaves none, and deletes no ZIP, until a re-run", t => {
   const old = zips(older).map(name => [name, `old ${name}`]);
+  const linux = linuxFiles(version, "a".repeat(40));
   const gh = github(t, {
-    canary: [[{}, [...linuxFiles(version, "a".repeat(40)), ...old, ["canary-mac.yml", feedFor(older)]]]],
-    fail: [{ call: "gh release upload canary canary-mac.yml", status: 502, times: 5 }],
+    canary: [[{}, [...linux, ...old, ["canary-mac.yml", feedFor(older)]]]],
+    // gh's --clobber deletes the older canary-mac.yml, then its upload fails.
+    fail: [{ call: "gh release upload canary canary-mac.yml", status: 502, times: 5, apply: "delete" }],
   });
   const dir = signed(t);
   assert.notEqual(gh.publish(dir).status, 0);
   let files = gh.files();
-  assert.equal(files["canary-mac.yml"], feedFor(older));
-  for (const [name, data] of old) assert.equal(files[name], data, `${name} stays while canary-mac.yml lists it`);
+  assert.equal(files["canary-mac.yml"], undefined, "a Mac app on Canary checking now says it couldn't check");
+  for (const [name, data] of old) assert.equal(files[name], data, `${name} stays: nothing is deleted before canary-mac.yml is there`);
+  for (const name of zips(version)) assert.equal(files[name], readFileSync(join(dir, name), "utf8"), name);
   assert.deepEqual(gh.state().slept, [10, 20, 40, 80]);
+  assert.deepEqual(writes(gh.state().calls).filter(call => call.startsWith("gh api DELETE ")), []);
+
 
   const again = gh.publish(dir);
   assert.equal(again.status, 0, again.stderr);
   files = gh.files();
   assert.equal(files["canary-mac.yml"], readFileSync(join(dir, "canary-mac.yml"), "utf8"));
   for (const [name] of old) assert.equal(files[name], undefined, name);
+  for (const [name, data] of linux) assert.equal(files[name], data, name);
 });
 
 test("a re-run once canary-mac.yml lists this build uploads nothing and finishes the deletions", t => {
@@ -271,6 +281,18 @@ test("a re-run once canary-mac.yml lists this build uploads nothing and finishes
   assert.deepEqual(writes(calls).filter(call => call.startsWith("gh release upload")), []);
   assert.equal(writes(calls).filter(call => call.startsWith("gh api DELETE ")).length, 1);
   assert.equal(gh.files()[zips(older)[0]], undefined);
+});
+
+test("a canary-mac.yml that another run signed for this build is left as it is, with its ZIPs", t => {
+  // Run A stopped after uploading its ZIPs, run B of the same build published, then A is re-run.
+  const theirs = [...zips(version).map(name => [name, `B's ${name}`]), ["canary-mac.yml", `${feedFor(version)}releaseDate: 'B'\n`]];
+  const gh = github(t, { canary: [[{}, [...linuxFiles(version, "a".repeat(40)), ...theirs, [zips(older)[0], "old"]]]] });
+  const { status, stderr, stdout, calls } = gh.publish(signed(t));
+  assert.equal(status, 0, stderr);
+  assert.match(stdout, /already lists .* as another run signed it/);
+  assert.deepEqual(writes(calls), []);
+  const files = gh.files();
+  for (const [name, data] of theirs) assert.equal(files[name], data, name);
 });
 
 test("a canary-mac.yml or a Mac ZIP that names a newer build is left as it is", t => {
