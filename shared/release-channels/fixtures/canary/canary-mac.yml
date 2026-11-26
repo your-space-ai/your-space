@@ -1,0 +1,11 @@
+version: '0.1.0-alpha.2.canary.20261201.60'
+files:
+  - url: your-space-macos-arm64-0.1.0-alpha.2.canary.20261201.60.zip
+    sha512: 'VCJwRfR3dh9HpohvajN4plFJ7mRd3bwX/MzKwBMffCotkR38bmNdU2mfNeaRwEJUAN1A9gVgUNkLwMsNb/+5BQ=='
+    size: 37
+  - url: your-space-macos-x64-0.1.0-alpha.2.canary.20261201.60.zip
+    sha512: 'UzZy6Vu4eGojdxZ2MPJgHi5jh1W8cAxDTEivsTFC6603dB5jfu5S2jCSHGyoH3pvch2bsxzS70AzN7tO8lBmeQ=='
+    size: 35
+path: your-space-macos-arm64-0.1.0-alpha.2.canary.20261201.60.zip
+sha512: 'VCJwRfR3dh9HpohvajN4plFJ7mRd3bwX/MzKwBMffCotkR38bmNdU2mfNeaRwEJUAN1A9gVgUNkLwMsNb/+5BQ=='
+releaseDate: '2026-12-01T06:12:00.000Z'

@@ -1,0 +1,11 @@
+version: '0.1.0-alpha.2'
+files:
+  - url: https://github.com/your-space-ai/your-space/releases/download/v0.1.0-alpha.2/your-space-macos-arm64-0.1.0-alpha.2.zip
+    sha512: '/rG2ba1OwREnsLFinbI6ze3LLfYf3pSO94/bN5wweWTrm7fSNGpK0qx/MMvQBtHR+3u/u//a8b+r+jxpuknXvQ=='
+    size: 18
+  - url: https://github.com/your-space-ai/your-space/releases/download/v0.1.0-alpha.2/your-space-macos-x64-0.1.0-alpha.2.zip
+    sha512: '1/eahmctQDtlnuHdjjTfcv3dLE8lmZ8AFBh0Wlq4bsv2TOatusFASfrXKe4Xttrz6qhIP4kGzZXJ6N2lbCOi6w=='
+    size: 16
+path: https://github.com/your-space-ai/your-space/releases/download/v0.1.0-alpha.2/your-space-macos-arm64-0.1.0-alpha.2.zip
+sha512: '/rG2ba1OwREnsLFinbI6ze3LLfYf3pSO94/bN5wweWTrm7fSNGpK0qx/MMvQBtHR+3u/u//a8b+r+jxpuknXvQ=='
+releaseDate: '2026-11-30T18:00:00.000Z'

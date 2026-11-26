@@ -224,14 +224,18 @@ describe("channel.json", () => {
     for (const args of bad) expect(() => channelJson(...args), JSON.stringify(args)).toThrow();
   });
 
-  it("is kept as the Canary workflow writes it, for the test that Alpha clients never get a canary", () => {
-    const kept = readFileSync(new URL("../../shared/release-channels/fixtures/canary/channel.json", import.meta.url), "utf8");
-    const named = JSON.parse(kept) as { channel: string; version: string; commit: string };
-    expect(channelJson(named.channel, named.version, named.commit)).toBe(kept);
-    expect(named.channel).toBe("canary");
-    // A canary whose version contains -alpha. and sorts after the release it follows.
-    expect(named.version).toContain("-alpha.");
-    expect(compareVersions(named.version, "0.1.0-alpha.1")).toBeGreaterThan(0);
+  it("is kept as the Canary workflow and Release publish write it, for the test that Alpha clients never get a canary", () => {
+    const kept = (channel: string) => readFileSync(new URL(`../../shared/release-channels/fixtures/${channel}/channel.json`, import.meta.url), "utf8");
+    const [alpha, build] = ["alpha", "canary"].map((channel) => {
+      const named = JSON.parse(kept(channel)) as { channel: string; version: string; commit: string };
+      expect(channelJson(named.channel, named.version, named.commit)).toBe(kept(channel));
+      expect(named.channel).toBe(channel);
+      return named;
+    });
+    expect(isCanary(alpha!.version)).toBe(false);
+    // A canary whose version contains -alpha. and sorts after the release the alpha feed names.
+    expect(build!.version).toContain("-alpha.");
+    expect(compareVersions(build!.version, alpha!.version)).toBeGreaterThan(0);
   });
 });
 

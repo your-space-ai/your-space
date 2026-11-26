@@ -5,7 +5,9 @@ name: Release publish
 # credentials; nothing else runs unless that passes. Then it publishes the exact npm tarball attached to the release, after checking it
 # against the release's SHA256SUMS, and points the images' `latest` tag at the release's version
 # (prereleases go to npm's `next` tag and leave `latest` alone). A published npm version can never
-# be reused, which is why this happens only on publication, never at draft time.
+# be reused, which is why this happens only on publication, never at draft time. Beside those, it
+# points the Alpha channel's feed, the rolling `alpha` prerelease, at the release, unless the feed
+# already names a newer one (deploy/alpha-feed.sh; spec 016, decision 5). Nothing else writes to it.
 on:
   release:
     types: [published]
@@ -119,6 +121,37 @@ jobs:
           # npm stage needs npm 11.15.0 or newer.
           npm install --global npm@11.18.0
           npm stage publish "./$file" --provenance --access public --tag "$dist_tag"
+
+  # The Alpha channel's feed: the rolling `alpha` prerelease's latest-mac.yml, which lists this
+  # release's update ZIPs by their full links, and channel.json, which names it. Only this job writes
+  # to the `alpha` release, and only once the stranger check has passed, so the feed never names a
+  # release a stranger can't install. It runs the release's own deploy/alpha-feed.sh, from the tag,
+  # with Node and no npm packages. One runs at a time, so two releases published together never
+  # interleave, and either order leaves the feed on the newer one. Safe to re-run: it changes nothing
+  # once the feed names this release or a newer one. npm and images don't wait for it.
+  alpha-feed:
+    needs: stranger
+    if: github.repository == 'your-space-ai/your-space' && startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    concurrency:
+      group: alpha-feed
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Point the alpha feed at this release
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: deploy/alpha-feed.sh "$TAG"
 
   images:
     needs: stranger

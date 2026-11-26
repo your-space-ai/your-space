@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:github.com,2008:https://github.com/your-space-ai/your-space/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/your-space-ai/your-space/releases"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/your-space-ai/your-space/releases.atom"/>
+  <title>Release notes from your-space</title>
+  <updated>2026-12-01T06:20:41Z</updated>
+  <entry>
+    <id>tag:github.com,2008:Repository/1433737679/alpha</id>
+    <updated>2026-11-30T18:40:12Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/your-space-ai/your-space/releases/tag/alpha"/>
+    <title>Alpha channel feed (not a release)</title>
+    <content type="html">&lt;p&gt;The Alpha channel&#39;s feed: latest-mac.yml and channel.json. This isn&#39;t a release.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1433737679/canary</id>
+    <updated>2026-12-01T06:20:41Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/your-space-ai/your-space/releases/tag/canary"/>
+    <title>Canary 0.1.0-alpha.2.canary.20261201.60 (not a release)</title>
+    <content type="html">&lt;p&gt;An unreleased build of main, replaced by the next push to main. It isn&#39;t supported and may not upgrade cleanly.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1433737679/v0.1.0-alpha.2</id>
+    <updated>2026-11-30T18:31:05Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/your-space-ai/your-space/releases/tag/v0.1.0-alpha.2"/>
+    <title>Your Space 0.1.0-alpha.2</title>
+    <content type="html">&lt;p&gt;Your Space is a personal dashboard you run with Docker on your own Mac or Linux machine.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1433737679/v0.1.0-alpha.1</id>
+    <updated>2026-11-24T21:40:41Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/your-space-ai/your-space/releases/tag/v0.1.0-alpha.1"/>
+    <title>Your Space 0.1.0-alpha.1</title>
+    <content type="html">&lt;p&gt;Your Space is a personal dashboard you run with Docker on your own Mac or Linux machine.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+</feed>

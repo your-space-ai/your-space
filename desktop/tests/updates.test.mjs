@@ -248,11 +248,17 @@ test("Later keeps the downloaded update for the next check or quit, and a failed
 });
 
 // The real electron-updater, with the packaged app-update.yml and feeds from update-feed.mjs, behind a
-// stand-in for GitHub: each release's latest-mac.yml and the releases.atom feed, newest first. The
-// rolling `canary` prerelease, which holds a build of main for the CLI, has no Mac app and no feed.
-async function github(t, tags) {
+// stand-in for GitHub: each release's latest-mac.yml and the releases.atom feed, newest first, or the
+// fixture, in the form GitHub serves it. The rolling `alpha` and `canary` prereleases, which hold the
+// channels' feeds, have no release feed of their own; the alpha feed fixture is served at its fixed
+// address. Query strings,
+// such as the generic provider's noCache, don't change what is served.
+const fixtures = join(desktop, "../shared/release-channels/fixtures");
+const alphaFeed = "https://github.com/your-space-ai/your-space/releases/download/alpha";
+
+async function github(t, tags, { atom: recorded } = {}) {
   const dir = await folder(t);
-  const feeds = new Map();
+  const feeds = new Map([[`${alphaFeed}/latest-mac.yml`, await readFile(join(fixtures, "alpha/latest-mac.yml"), "utf8")]]);
   for (const tag of tags.filter(tag => tag.startsWith("v"))) {
     const version = tag.slice(1);
     const release = join(dir, tag);
@@ -262,14 +268,14 @@ async function github(t, tags) {
     feeds.set(`https://github.com/your-space-ai/your-space/releases/download/${tag}/latest-mac.yml`,
       await readFile(join(release, "latest-mac.yml"), "utf8"));
   }
-  const atom = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">` +
+  const atom = recorded ?? `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">` +
     tags.map(tag => `<entry><id>${tag}</id><title>Your Space ${tag.slice(1)}</title>` +
       `<link rel="alternate" type="text/html" href="https://github.com/your-space-ai/your-space/releases/tag/${tag}"/>` +
       `<content type="html">notes</content></entry>`).join("") + "</feed>";
   const requests = [];
   const executor = {
     async request(options) {
-      const url = `${options.protocol}//${options.hostname}${options.path}`;
+      const url = `${options.protocol}//${options.hostname}${options.path}`.replace(/\?.*$/, "");
       requests.push({ url, headers: { ...options.headers } });
       if (url === "https://github.com/your-space-ai/your-space/releases.atom") return atom;
       if (url === "https://github.com/your-space-ai/your-space/releases/latest") {
@@ -281,7 +287,8 @@ async function github(t, tags) {
     },
   };
   const { AppUpdater } = require("electron-updater/out/AppUpdater.js");
-  function app(version) {
+  // An app of a version, reading the packaged app-update.yml (GitHub's releases) or the feed given.
+  function app(version, feed) {
     const adapter = {
       version, name: "Your Space", isPackaged: true,
       appUpdateConfigPath: join(desktop, "app-update.yml"), userDataPath: dir, baseCachePath: dir,
@@ -289,9 +296,10 @@ async function github(t, tags) {
     };
     const updater = configureUpdater(new AppUpdater(null, adapter));
     updater.logger = null;
-    // As on a Mac, whatever this test runs on.
+    // As on a Mac, whatever this test runs on. setFeedURL makes its provider with these, so they come first.
     updater._testOnlyOptions = { platform: "darwin" };
     updater.httpExecutor = executor;
+    if (feed) updater.setFeedURL(feed);
     return updater;
   }
   return { dir, requests, app };
@@ -334,14 +342,60 @@ test("electron-updater offers an alpha app the stable release and betas, a beta 
   assert.equal(await offered(["v0.2.0-alpha.1", "v0.1.1", "v0.1.0"], "0.1.0"), "0.1.1");
 });
 
-test("electron-updater skips the rolling canary prerelease, wherever it is in the feed", async t => {
+test("electron-updater skips the rolling alpha and canary prereleases, wherever they are in the feed", async t => {
   const offered = async (tags, version) => {
     const result = await (await github(t, tags)).app(version).checkForUpdates();
     return result.isUpdateAvailable ? result.updateInfo.version : null;
   };
   assert.equal(await offered(["canary", "v0.1.0-alpha.2", "v0.1.0-alpha.1"], "0.1.0-alpha.1"), "0.1.0-alpha.2");
-  assert.equal(await offered(["canary", "v0.1.0-alpha.1"], "0.1.0-alpha.1"), null);
-  assert.equal(await offered(["canary", "v0.1.0-beta.2", "v0.1.0-beta.1"], "0.1.0-beta.1"), "0.1.0-beta.2");
-  assert.equal(await offered(["canary", "v0.1.1", "v0.1.0"], "0.1.0"), "0.1.1");
-  assert.equal(await offered(["v0.1.0-alpha.2", "canary", "v0.1.0-alpha.1"], "0.1.0-alpha.1"), "0.1.0-alpha.2");
+  assert.equal(await offered(["alpha", "canary", "v0.1.0-alpha.2", "v0.1.0-alpha.1"], "0.1.0-alpha.1"), "0.1.0-alpha.2");
+  assert.equal(await offered(["canary", "alpha", "v0.1.0-alpha.1"], "0.1.0-alpha.1"), null);
+  assert.equal(await offered(["alpha", "canary", "v0.1.0-beta.2", "v0.1.0-beta.1"], "0.1.0-beta.1"), "0.1.0-beta.2");
+  assert.equal(await offered(["canary", "alpha", "v0.1.1", "v0.1.0"], "0.1.0"), "0.1.1");
+  assert.equal(await offered(["v0.1.0-alpha.2", "alpha", "canary", "v0.1.0-alpha.1"], "0.1.0-alpha.1"), "0.1.0-alpha.2");
+});
+
+test("the alpha.1 app, reading the releases feed fixture, finds the newest release and never a canary's files", async t => {
+  const atom = await readFile(join(fixtures, "releases.atom"), "utf8");
+  const { requests, app } = await github(t, ["v0.1.0-alpha.2", "v0.1.0-alpha.1"], { atom });
+  const result = await app("0.1.0-alpha.1").checkForUpdates();
+  assert.equal(result.isUpdateAvailable, true);
+  assert.equal(result.updateInfo.version, "0.1.0-alpha.2");
+  assert.deepEqual(requests.map(r => r.url), [
+    "https://github.com/your-space-ai/your-space/releases.atom",
+    "https://github.com/your-space-ai/your-space/releases/download/v0.1.0-alpha.2/alpha-mac.yml",
+    "https://github.com/your-space-ai/your-space/releases/download/v0.1.0-alpha.2/latest-mac.yml",
+  ]);
+  assert.ok(!requests.some(r => /\/download\/(alpha|canary)\//.test(r.url)));
+});
+
+test("the generic provider at the alpha feed reads latest-mac.yml and follows its full links into the v release, with downgrades off", async t => {
+  const recorded = JSON.parse(await readFile(join(fixtures, "alpha/channel.json"), "utf8")).version;
+  const canary = JSON.parse(await readFile(join(fixtures, "canary/channel.json"), "utf8")).version;
+  const { requests, app } = await github(t, []);
+  const feed = { provider: "generic", url: `${alphaFeed}/` };
+  const updater = app("0.1.0-alpha.1", feed);
+  const result = await updater.checkForUpdates();
+  assert.equal(result.isUpdateAvailable, true);
+  assert.equal(result.updateInfo.version, recorded);
+  // No channel: only latest-mac.yml, at the feed's fixed address, and no releases feed.
+  assert.deepEqual(requests.map(r => r.url), [`${alphaFeed}/latest-mac.yml`]);
+  assert.equal(updater.channel, null);
+  assert.equal(updater.allowDowngrade, false);
+
+  const { MacUpdater } = require("electron-updater/out/MacUpdater.js");
+  const files = updater.updateInfoAndProvider.provider.resolveFiles(result.updateInfo);
+  const release = `https://github.com/your-space-ai/your-space/releases/download/v${recorded}`;
+  assert.deepEqual(files.map(file => file.url.href), [`${release}/your-space-macos-arm64-${recorded}.zip`, `${release}/your-space-macos-x64-${recorded}.zip`]);
+  const pick = arm => MacUpdater.filterFilesForArch(files, arm).map(file => file.url.href);
+  assert.deepEqual(pick(true), [`${release}/your-space-macos-arm64-${recorded}.zip`]);
+  assert.deepEqual(pick(false), [`${release}/your-space-macos-x64-${recorded}.zip`]);
+  assert.match(files[0].info.sha512, /^[A-Za-z0-9+/]{86}==$/);
+
+  // Nothing for an app already on the release, or on a later canary, which contains -alpha. and sorts after it.
+  for (const version of [recorded, canary, "0.1.0-alpha.3", "0.1.0"]) {
+    const later = app(version, feed);
+    assert.equal((await later.checkForUpdates()).isUpdateAvailable, false, version);
+    assert.equal(later.allowDowngrade, false);
+  }
 });
