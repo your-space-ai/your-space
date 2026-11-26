@@ -801,6 +801,27 @@ describe("a knowledge base's sync", () => {
     expect(await status()).toMatchObject({ result: "synced" });
   });
 
+  it("starts a knowledge base's container again when it is gone and its rclone doesn't answer", async () => {
+    // Removed by hand: the runtime manager has no container of it to restart.
+    runtime.syncBases = runtime.syncBases.filter((n) => n !== "notes");
+    rc.unreachable.add("notes");
+    await due("notes");
+    await tick();
+    const starts = runtime.syncStarts.length;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + UNREACHABLE_MS + 1_000);
+    try {
+      await tick();
+    } finally {
+      clock.mockRestore();
+    }
+    expect(runtime.syncRestarts.at(-1)).toBe("notes");
+    rc.unreachable.delete("notes");
+    await tick();
+    expect(runtime.syncStarts.slice(starts)).toEqual([["notes", "recipes"]]);
+    await settled();
+    expect(await status()).toMatchObject({ result: "synced" });
+  });
+
   it("starts no run while its rclone runs one the server doesn't follow, as a server that stopped as it started one leaves", async () => {
     rc.hold = true;
     // Started in notes' rclone, never kept on its row.

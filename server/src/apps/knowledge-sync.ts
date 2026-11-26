@@ -733,7 +733,11 @@ export class KnowledgeSync {
     if (Date.now() - since < UNREACHABLE_MS) return;
     this.unreachableSince.set(row.name, Date.now());
     log("warn", "knowledge.sync_unreachable", { name: row.name });
-    await this.apps.runtime.restartSyncService(row.name).catch((error: unknown) => log("warn", "knowledge.sync_restart_failed", { name: row.name, ...errorFields(error) }));
+    await this.apps.runtime.restartSyncService(row.name).catch((error: unknown) => {
+      log("warn", "knowledge.sync_restart_failed", { name: row.name, ...errorFields(error) });
+      // Its container is gone, as one removed by hand: the next tick starts the containers again.
+      if (error instanceof RuntimeError && error.status === 404) this.service = undefined;
+    });
   }
 
   /**
