@@ -248,6 +248,8 @@ describe("the Google connection", () => {
   });
 
   it("keeps a token only for the client it was signed in with: one saved or removed during the exchange makes the sign-in expired", async () => {
+    // Its own client, so it runs alone too.
+    expect((await send("/api/google-drive", { clientId: CLIENT_ID, clientSecret: CLIENT_SECRET }, "PUT")).status).toBe(200);
     const connected = (await events("google.connected")).length;
     // The operator saves another client while Google answers: the token is the earlier client's.
     duringExchange = async () => void expect((await send("/api/google-drive", { clientId: "5678-efgh.apps.googleusercontent.com", clientSecret: "GOCSPX-another-secret" }, "PUT")).status).toBe(200);
@@ -527,12 +529,15 @@ describe("a knowledge base's sync", () => {
     expect(stopped.summary).toContain("More than half of the files were deleted in the knowledge base");
     expect((await events("knowledge.sync_stopped")).at(-1)).toEqual({ actorId: operator, knowledgeBase: "notes" });
 
-    // The timer leaves it for the owner.
+    // The timer leaves it for the owner, even once it is due. Its last run's time, which the owner
+    // confirms the deletions by, is put back after.
     const ofNotes = () => rc.started().filter((j) => j.params.path2 === "/knowledge/notes").length;
     const runs = ofNotes();
-    await due("recipes");
+    const notes = (await syncRow("notes"))!;
+    await due("notes", "recipes");
     await settled("recipes");
     expect(ofNotes()).toBe(runs);
+    await t.db.update(knowledgeSync).set({ lastRunAt: notes.lastRunAt }).where(eq(knowledgeSync.knowledgeBaseId, notes.knowledgeBaseId));
 
     // The owner confirms the run they saw and how many it listed; the server keeps the list itself.
     const confirm = { action: "apply_deletions", run: stopped.lastRunAt, count: 2 };
@@ -1083,6 +1088,26 @@ describe("a knowledge base's sync", () => {
     expect(rc.mostAtOnce).toBe(1);
   });
 
+  it("restarts its rclone once a run the server doesn't follow passes the time limit, as for one it follows", async () => {
+    rc.hold = true;
+    await rc.of("recipes").call("sync/bisync", { ...bisyncParams("recipes", "left"), _async: true, _group: "knowledge/recipes/left/sync/abcd1234" });
+    const left = rc.running().find((j) => j.knowledgeBase === "recipes")!;
+    const restarts = runtime.syncRestarts.length;
+    await due("recipes");
+    // Within the limit, it waits.
+    await tick();
+    expect(runtime.syncRestarts.length).toBe(restarts);
+    left.startTime = new Date(Date.now() - RUN_LIMIT_MS - 1_000).toISOString();
+    await tick();
+    expect(runtime.syncRestarts.slice(restarts)).toEqual(["recipes"]);
+    // rclone restarted, which forgot the job, and the next run starts, kept on the row.
+    expect(rc.running().filter((j) => j.knowledgeBase === "recipes")).toEqual([]);
+    rc.hold = false;
+    await tick();
+    expect((await syncRow("recipes"))!.job).toMatchObject({ mode: "sync" });
+    await settled();
+  });
+
   it("connects and disconnects a knowledge base without waiting for, or stopping, another's run; its own run is stopped with its rclone", async () => {
     rc.hold = true;
     await due("notes");
@@ -1279,6 +1304,7 @@ describe("a knowledge base's sync", () => {
 
   it("removes the container a connect that failed left behind, so the knowledge base can be deleted", async () => {
     expect((await send("/api/knowledge", { name: "drafts" })).status).toBe(201);
+    const connected = (await events("knowledge.connected")).length;
     // Its container was made, and then didn't answer in time.
     runtime.failSyncServiceAfter = new RuntimeError("rclone-drafts didn't answer in time.", 503, "engine_error");
     try {
@@ -1287,6 +1313,8 @@ describe("a knowledge base's sync", () => {
       runtime.failSyncServiceAfter = undefined;
     }
     expect(await syncRow("drafts")).toBeUndefined();
+    // A connection that was undone isn't recorded.
+    expect((await events("knowledge.connected")).length).toBe(connected);
     expect(runtime.syncBases).toEqual(["drafts", "notes", "recipes"]);
     await tick();
     expect(runtime.syncBases).toEqual(["notes", "recipes"]);

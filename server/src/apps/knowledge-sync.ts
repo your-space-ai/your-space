@@ -473,10 +473,11 @@ export class KnowledgeSync {
           usable((await tx.select().from(googleConnection).where(eq(googleConnection.id, 1)).for("share"))[0]);
           const requested: SyncRequested = { mode: "resync", by: actorId, at: new Date().toISOString() };
           await tx.insert(knowledgeSync).values({ knowledgeBaseId: base.id, folderId, connectedBy: actorId, requested });
-          await recordEvent(tx, "knowledge.connected", actorId, null, null, { id: base.id, name: base.name });
         });
         try {
           await this.startService(this.bases(await this.rows()));
+          // Recorded once its container runs: a connection whose setup failed is undone, with no event.
+          await recordEvent(this.db, "knowledge.connected", actorId, null, null, { id: base.id, name: base.name });
         } catch (error) {
           await this.db.delete(knowledgeSync).where(eq(knowledgeSync.knowledgeBaseId, base.id));
           // Its container may be there, as one that didn't answer in time: the next tick's change of
@@ -708,10 +709,11 @@ export class KnowledgeSync {
    */
   private async instance(row: Row): Promise<string | undefined> {
     try {
-      const { executeId, running } = await this.jobsOf(row.name);
+      const { executeId, running, startTime } = await this.jobsOf(row.name);
       this.unreachableSince.delete(row.name);
       if (running !== undefined) {
         log("warn", "knowledge.sync_untracked", { name: row.name, job: running });
+        await this.untrackedLimit(row, running, startTime);
         return undefined;
       }
       return executeId;
@@ -722,8 +724,20 @@ export class KnowledgeSync {
     }
   }
 
+  /**
+   * A job of a run the server doesn't follow has the time limit of one it does: once it has run longer
+   * than RUN_LIMIT_MS, its knowledge base's rclone is restarted, which ends it, and the next run
+   * carries on from there.
+   */
+  private async untrackedLimit(row: Row, running: number, startTime: string | undefined): Promise<void> {
+    if (!(Date.now() - Date.parse(startTime ?? "") > RUN_LIMIT_MS) || Date.now() - (this.limitedAt.get(row.name) ?? 0) < SERVICE_RETRY_MS) return;
+    log("warn", "knowledge.sync_limit", { name: row.name, job: running });
+    this.limitedAt.set(row.name, Date.now());
+    await this.apps.runtime.restartSyncService(row.name).catch((error: unknown) => log("warn", "knowledge.sync_restart_failed", { name: row.name, ...errorFields(error) }));
+  }
+
   /** The knowledge base's rclone's instance, and a job of a run of its that is under way, if any. */
-  private async jobsOf(name: string): Promise<{ executeId: string; running: number | undefined }> {
+  private async jobsOf(name: string): Promise<{ executeId: string; running: number | undefined; startTime?: string }> {
     const rc = this.rcFor(name);
     const list = await rc.call<{ executeId: string; runningIds?: number[] }>("job/list");
     for (const id of list.runningIds ?? []) {
@@ -733,7 +747,7 @@ export class KnowledgeSync {
         if (error instanceof RcError && /job not found/i.test(error.message)) return undefined;
         throw error;
       });
-      if (job && !job.finished && job.group?.startsWith("knowledge/")) return { executeId: list.executeId, running: id };
+      if (job && !job.finished && job.group?.startsWith("knowledge/")) return { executeId: list.executeId, running: id, startTime: job.startTime };
     }
     return { executeId: list.executeId, running: undefined };
   }
@@ -848,9 +862,10 @@ export class KnowledgeSync {
    */
   private async launch(row: Row, job: Omit<SyncJob, "id" | "executeId">, params: Record<string, unknown>, checked = false, set: Partial<SyncRow> = {}): Promise<void> {
     if (!checked) {
-      const { running } = await this.jobsOf(row.name);
+      const { running, startTime } = await this.jobsOf(row.name);
       if (running !== undefined) {
         log("warn", "knowledge.sync_untracked", { name: row.name, job: running, step: job.step });
+        await this.untrackedLimit(row, running, startTime);
         throw new StepWaits();
       }
     }
