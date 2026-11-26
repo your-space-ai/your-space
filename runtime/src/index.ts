@@ -71,6 +71,7 @@ function failure(res: ServerResponse, error: unknown): void {
 
 const PROJECT_PATH = /^\/apps\/(ys-[a-z][a-z0-9-]{0,29})(\/[a-z]+)?$/;
 const KNOWLEDGE_PATH = /^\/knowledge\/([a-z0-9-]{1,40})(\/sync)?$/;
+const SYNC_RESTART_PATH = /^\/knowledge-sync\/([a-z0-9-]{1,40})\/restart$/;
 
 async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? "/", "http://runtime");
@@ -82,7 +83,7 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (method === "POST" && pathname === "/check") return send(res, 200, await check(validateSpec(await readBody(req))));
   if (method === "POST" && pathname === "/stop-all") {
     const stopped = await stopAll();
-    // The sync too: rclone stops as Ctrl+C stops it, so a run under way saves its state.
+    // The sync too: each rclone stops as Ctrl+C stops it, so a run under way saves its state.
     await stopSyncs();
     return send(res, 200, { stopped });
   }
@@ -95,7 +96,8 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   // The knowledge bases' sync (journey 014): the server names the ones to sync, and reaches rclone itself.
   if (method === "GET" && pathname === "/knowledge-sync") return send(res, 200, await syncService());
   if (method === "PUT" && pathname === "/knowledge-sync") return send(res, 200, await ensureSyncService(validateSyncService(await readBody(req))));
-  if (method === "POST" && pathname === "/knowledge-sync/restart") return send(res, 200, await restartSyncService());
+  const restart = SYNC_RESTART_PATH.exec(pathname);
+  if (method === "POST" && restart) return send(res, 200, await restartSyncService(validateKnowledgeName(restart[1]!)));
   const knowledge = KNOWLEDGE_PATH.exec(pathname);
   if (knowledge && !knowledge[2] && method === "GET") return send(res, 200, await knowledgeUsers(validateKnowledgeName(knowledge[1]!)));
   if (knowledge && !knowledge[2] && method === "DELETE") return (await deleteKnowledge(validateKnowledgeName(knowledge[1]!)), send(res, 200, { ok: true }));

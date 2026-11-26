@@ -315,6 +315,8 @@ export interface SyncJob {
   by?: string;
   /** A resync's tie files still to copy, and those copied. */
   ties?: { pending: string[]; replaced: string[] };
+  /** Set once the run was past its time and its rclone was restarted to stop it. */
+  limited?: boolean;
 }
 
 /** A run the owner asked for, waiting for the run under way to end. */

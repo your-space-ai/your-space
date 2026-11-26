@@ -140,38 +140,44 @@ export class FakeRuntime implements Runtime {
     this.knowledge.delete(name);
   }
 
-  /** The knowledge bases the sync's container mounts, as the runtime manager last started it. */
+  /** The knowledge bases that have an rclone container, as the runtime manager last started them. */
   syncBases: string[] = [];
-  /** Whether the runtime manager runs the browser tests' remote. */
+  /** Whether the runtime manager says the syncs are the browser tests'. */
   syncFixture = false;
-  /** Each start of the sync's service, with its knowledge bases. */
+  /** Each start of the sync's containers, with its knowledge bases. */
   syncStarts: string[][] = [];
-  syncRestarts = 0;
-  /** Called when the sync's container is started again with other mounts, or restarted: rclone forgets its remotes and jobs. */
-  onSyncRecreated: (() => void) | undefined;
-  /** Refuses the next starts of the sync's service, as an engine that can't start it. */
+  /** The knowledge bases whose rclone was restarted, in order. */
+  syncRestarts: string[] = [];
+  /** Called with a knowledge base whose rclone container is started, removed or restarted: that rclone forgets its remotes and jobs. */
+  onSyncRecreated: ((knowledgeBase: string) => void) | undefined;
+  /** Refuses the next starts of the sync's containers, as an engine that can't start them. */
   failSyncService: RuntimeError | undefined;
+  /** Holds the starts of the sync's containers until it resolves. */
+  holdSyncService: Promise<void> | undefined;
   removedSyncs: string[] = [];
-  /** Held until released, so a test can act while the server connects a knowledge base. */
+  /** Holds removeSync until it resolves, to catch a change in between. */
   holdRemoveSync: Promise<void> | undefined;
 
   async syncService(): Promise<SyncService> {
-    return { running: this.syncBases.length > 0, knowledgeBases: [...this.syncBases], fixture: this.syncFixture, socket: "/run/ys-sync/rc.sock" };
+    return { knowledgeBases: [...this.syncBases], running: [...this.syncBases], fixture: this.syncFixture };
   }
 
   async ensureSyncService(knowledgeBases: string[]): Promise<SyncService> {
     this.calls.push({ method: "ensureSyncService", project: knowledgeBases.join(",") });
+    await this.holdSyncService;
     if (this.failSyncService) throw this.failSyncService;
-    const changed = knowledgeBases.join(",") !== this.syncBases.join(",");
+    // Only the containers of knowledge bases added or removed change; the others run on.
+    const changed = [...knowledgeBases.filter((n) => !this.syncBases.includes(n)), ...this.syncBases.filter((n) => !knowledgeBases.includes(n))];
     this.syncStarts.push([...knowledgeBases]);
     this.syncBases = [...knowledgeBases];
-    if (changed) this.onSyncRecreated?.();
+    for (const name of changed) this.onSyncRecreated?.(name);
     return this.syncService();
   }
 
-  async restartSyncService(): Promise<SyncService> {
-    this.syncRestarts++;
-    this.onSyncRecreated?.();
+  async restartSyncService(knowledgeBase: string): Promise<SyncService> {
+    this.syncRestarts.push(knowledgeBase);
+    if (!this.syncBases.includes(knowledgeBase)) throw new RuntimeError(`The knowledge base ${knowledgeBase} doesn't sync, so its sync can't be restarted.`, 404, "engine_error");
+    this.onSyncRecreated?.(knowledgeBase);
     return this.syncService();
   }
 

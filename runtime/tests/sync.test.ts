@@ -1,9 +1,10 @@
-// Synced knowledge bases (journey 014): the runtime manager runs one long-running container of stock
-// `rclone rcd` for every synced knowledge base, and its outbound proxy. The container is hardened, sees
-// only the synced knowledge bases' volumes, their sync state and the socket only the server shares, and
-// has no secret: the server creates the remotes over the socket, and the runtime manager takes only the
-// knowledge bases' names. Changing them recreates it; stopping Your Space stops it as Ctrl+C stops
-// rclone. The engine is a fake; the browser tests run real rclone.
+// Synced knowledge bases (journey 014): the runtime manager runs a long-running container of stock
+// `rclone rcd` for each synced knowledge base, and their outbound proxy. Each is hardened, sees only its
+// knowledge base's volume, its sync state and its own folder of the socket volume only the server
+// shares whole, and has no secret: the server creates the remote over the socket, and the runtime
+// manager takes only the knowledge bases' names. Connecting or disconnecting one adds or removes its
+// container only; stopping Your Space stops them as Ctrl+C stops rclone. The engine is a fake; the
+// browser tests run real rclone.
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { knowledgeStateVolume, knowledgeSyncLabels, knowledgeVolume } from "../src/adapter.ts";
@@ -16,6 +17,7 @@ import {
   RCLONE_IMAGE,
   rcloneCommand,
   rcloneImage,
+  rcloneService,
   removeSync,
   restartSyncService,
   stopSyncs,
@@ -48,10 +50,11 @@ interface ComposeFile {
 
 const SOCKET_VOLUME = `${INSTALLATION}_ys-sync`;
 const file = (bases: string[], fixture = false) => syncServiceFile({ squid: "ubuntu/squid@sha256:squid", rclone: RCLONE_IMAGE, socketVolume: SOCKET_VOLUME, knowledgeBases: bases, fixture }) as unknown as ComposeFile;
+const rcloneOf = (f: ComposeFile, name = "notes") => f.services[rcloneService(name)]!;
 
-describe("the sync's container", () => {
+describe("the sync's containers", () => {
   it("runs stock rclone, pinned to its digest, as user 1000, without capabilities, privileges, engine socket, devices or FUSE", () => {
-    const rclone = file(["notes"]).services.rclone!;
+    const rclone = rcloneOf(file(["notes"]));
     expect(rclone.image).toBe(RCLONE_IMAGE);
     expect(RCLONE_IMAGE).toMatch(/^rclone\/rclone@sha256:[0-9a-f]{64}$/);
     expect(rclone).toMatchObject({ user: "1000:1000", read_only: true, cap_drop: ["ALL"], security_opt: ["no-new-privileges:true"], restart: "unless-stopped" });
@@ -61,46 +64,54 @@ describe("the sync's container", () => {
     expect(rclone).toMatchObject({ stop_signal: "SIGINT", stop_grace_period: "100s" });
   });
 
-  it("runs only rclone's remote control, with its configuration in memory, on a socket in the volume only the server shares", () => {
-    const rclone = file(["notes"]).services.rclone!;
+  it("runs only rclone's remote control, with its configuration in memory, on a socket in its own folder of the volume only the server shares", () => {
+    const rclone = rcloneOf(file(["notes"]));
     expect(rclone.entrypoint).toEqual(["/bin/sh", "-c"]);
     expect(rclone.command).toEqual([rcloneCommand()]);
-    // A socket an earlier container left is removed first: rclone wouldn't start beside it.
+    // Whatever an earlier container left there is removed first: rclone wouldn't start beside it.
     expect(rcloneCommand()).toBe(
-      `rm -f ${RC_SOCKET} && exec rclone rcd --config '' --rc-addr unix://${RC_SOCKET} --rc-no-auth --rc-job-expire-duration 1h -v --use-json-log --color NEVER`,
+      `rm -rf ${RC_SOCKET} && exec rclone rcd --config '' --rc-addr unix://${RC_SOCKET} --rc-no-auth --rc-job-expire-duration 1h -v --use-json-log --color NEVER`,
     );
     expect(RC_SOCKET).toBe("/run/ys-sync/rc.sock");
-    expect(rclone.volumes![0]).toMatchObject({ source: "socket", target: "/run/ys-sync" });
+    // The folder of the socket volume named after the knowledge base: the server reaches it at /run/ys-sync/notes/rc.sock.
+    expect(rclone.volumes![0]).toMatchObject({ source: "socket", target: "/run/ys-sync", volume: { nocopy: true, subpath: "notes" } });
     expect(file(["notes"]).volumes.socket).toEqual({ external: true, name: SOCKET_VOLUME });
     expect(rclone.healthcheck).toMatchObject({ test: ["CMD", "rclone", "rc", "--unix-socket", RC_SOCKET, "rc/noop"] });
   });
 
   it("runs in the engine's own user name space only when the server does, so the socket's user is the same to both", () => {
-    expect(file(["notes"]).services.rclone!.userns_mode).toBeUndefined();
+    expect(rcloneOf(file(["notes"])).userns_mode).toBeUndefined();
     const usernsHost = syncServiceFile({ squid: "ubuntu/squid@sha256:squid", rclone: RCLONE_IMAGE, socketVolume: SOCKET_VOLUME, knowledgeBases: ["notes"], fixture: false, usernsHost: true }) as unknown as ComposeFile;
-    expect(usernsHost.services.rclone!.userns_mode).toBe("host");
+    expect(rcloneOf(usernsHost).userns_mode).toBe("host");
   });
 
   it("has no secret: no remote, token or client in its environment, command or labels", () => {
-    const rclone = file(["notes", "recipes"]).services.rclone!;
-    expect(Object.keys(rclone.environment!).sort()).toEqual(["HOME", "HTTPS_PROXY", "HTTP_PROXY"]);
-    expect(JSON.stringify(rclone)).not.toMatch(/RCLONE_CONFIG|token|client_secret|client_id|refresh/i);
+    for (const name of ["notes", "recipes"]) {
+      const rclone = rcloneOf(file(["notes", "recipes"]), name);
+      expect(Object.keys(rclone.environment!).sort()).toEqual(["HOME", "HTTPS_PROXY", "HTTP_PROXY"]);
+      expect(JSON.stringify(rclone)).not.toMatch(/RCLONE_CONFIG|token|client_secret|client_id|refresh/i);
+    }
   });
 
-  it("mounts each synced knowledge base and its sync state, and the browser tests' remote only with their flag", () => {
-    const rclone = file(["notes", "recipes"]).services.rclone!;
-    expect(rclone.volumes!.map((v) => `${v.source}:${v.target}`)).toEqual([
-      "socket:/run/ys-sync",
-      "kb-notes:/knowledge/notes",
-      "state-notes:/state/notes",
-      "kb-recipes:/knowledge/recipes",
-      "state-recipes:/state/recipes",
-    ]);
-    expect(file(["notes"]).volumes["kb-notes"]).toEqual({ external: true, name: knowledgeVolume(INSTALLATION, "notes") });
-    expect(file(["notes"]).volumes["state-notes"]).toEqual({ external: true, name: knowledgeStateVolume(INSTALLATION, "notes") });
-    expect(rclone.labels!["ai.your-space.knowledge-bases"]).toBe("notes,recipes");
+  it("gives each knowledge base a container of its own, which mounts only it, its sync state and its socket's folder", () => {
+    // rclone writes through a symbolic link to a folder: an app given one knowledge base could
+    // otherwise have a sync write into another, or over its listings or socket.
+    const both = file(["notes", "recipes"]);
+    expect(Object.keys(both.services).sort()).toEqual(["rclone-notes", "rclone-recipes", "ys-egress"]);
+    for (const name of ["notes", "recipes"]) {
+      expect(rcloneOf(both, name).volumes!.map((v) => `${v.source}:${v.target}`)).toEqual([`socket:/run/ys-sync`, `kb-${name}:/knowledge/${name}`, `state-${name}:/state/${name}`]);
+      expect((rcloneOf(both, name).volumes![0] as unknown as { volume: { subpath: string } }).volume.subpath).toBe(name);
+    }
+    expect(both.volumes["kb-notes"]).toEqual({ external: true, name: knowledgeVolume(INSTALLATION, "notes") });
+    expect(both.volumes["state-notes"]).toEqual({ external: true, name: knowledgeStateVolume(INSTALLATION, "notes") });
+    // Its own name only, so another's change leaves its container as it is.
+    expect(rcloneOf(both).labels).toMatchObject({ "ai.your-space.knowledge": "notes", "ai.your-space.role": "knowledge-sync" });
+    expect(rcloneOf(both)).toEqual(rcloneOf(file(["notes"])));
+  });
+
+  it("mounts the browser tests' remote only with their flag", () => {
     expect(file(["notes"]).volumes.fixture).toBeUndefined();
-    expect(file(["notes"], true).services.rclone!.volumes!.at(-1)).toMatchObject({ source: "fixture", target: "/remote" });
+    expect(rcloneOf(file(["notes"], true)).volumes!.at(-1)).toMatchObject({ source: "fixture", target: "/remote" });
     expect(fixtureEnabled({})).toBe(false);
     expect(fixtureEnabled({ YS_E2E_SYNC_FIXTURE: "1" })).toBe(true);
   });
@@ -111,9 +122,9 @@ describe("the sync's container", () => {
     // Never an app's project, which is ys-<app>.
     expect(sync.name).not.toMatch(/^ys-[a-z][a-z0-9-]*$/);
     expect(syncNetwork()).toBe(`${syncProject()}_sync`);
-    expect(sync.services.rclone!.networks).toEqual({ sync: {} });
+    expect(rcloneOf(sync).networks).toEqual({ sync: {} });
     expect(sync.networks.sync).toMatchObject({ internal: true });
-    expect(sync.services.rclone!.environment).toMatchObject({ HTTPS_PROXY: "http://ys-egress:3128", HTTP_PROXY: "http://ys-egress:3128" });
+    expect(rcloneOf(sync).environment).toMatchObject({ HTTPS_PROXY: "http://ys-egress:3128", HTTP_PROXY: "http://ys-egress:3128" });
     expect(SYNC_HOSTS).toEqual(["oauth2.googleapis.com", "www.googleapis.com"]);
     const config = sync.configs.egress.content;
     expect(config).toContain("acl approved dstdomain oauth2.googleapis.com www.googleapis.com");
@@ -145,13 +156,14 @@ describe("the server's request", () => {
   });
 });
 
-describe("running the sync's container", () => {
+describe("running the sync's containers", () => {
   let volumes: Map<string, Record<string, string>>;
   let composed: { args: string[]; file?: ComposeFile }[];
   let inits: string[];
   let containers: engineModule.ContainerSummary[];
   /** Holds Compose's `up` until released, to catch the service being started. */
   let holdUp: Promise<void> | undefined;
+  let created = 0;
 
   beforeEach(() => {
     volumes = new Map([
@@ -167,7 +179,7 @@ describe("running the sync's container", () => {
     vi.mocked(engineModule.pullImage).mockResolvedValue();
     vi.mocked(engineModule.listContainers).mockImplementation(async (labels) => {
       if (labels.includes("com.docker.compose.service=runtime")) return [{ Id: "runtime-id", Names: [], State: "running", Status: "", Labels: {} }];
-      if (labels.some((l) => l === `com.docker.compose.project=${syncProject()}`)) return containers.filter((c) => !labels.includes("com.docker.compose.service=rclone") || c.Id === "rclone");
+      if (labels.some((l) => l === `com.docker.compose.project=${syncProject()}`)) return containers.filter((c) => !labels.includes("ai.your-space.knowledge") || c.Labels["ai.your-space.knowledge"]);
       // What mounts a knowledge base: the sync's container, when it runs.
       return [];
     });
@@ -210,37 +222,65 @@ describe("running the sync's container", () => {
       const f = args.indexOf("-f");
       const entry = { args, file: f > 0 ? (JSON.parse(readFileSync(args[f + 1]!, "utf8")) as ComposeFile) : undefined };
       composed.push(entry);
-      if (args.includes("up")) {
+      // Compose as it treats services: one named is the only one changed; a container whose service
+      // is unchanged keeps its ID; one whose service is gone is removed.
+      const named = args.slice(args.findIndex((a) => a === "up" || a === "stop" || a === "restart") + 1).filter((a) => a.startsWith("rclone-"));
+      if (args.includes("up") && !args.includes("--no-recreate")) {
         await holdUp;
-        const bases = entry.file!.services.rclone!.labels!["ai.your-space.knowledge-bases"]!;
-        const mounts = entry.file!.services.rclone!.volumes!.map((v) => ({ Type: "volume", Name: entry.file!.volumes[v.source]!.name }));
-        containers = [{ Id: "rclone", Names: [], State: "running", Status: "", Labels: { "ai.your-space.role": "knowledge-sync", "ai.your-space.knowledge-bases": bases }, Mounts: mounts }];
+        const services = Object.entries(entry.file!.services).filter(([service]) => service.startsWith("rclone-"));
+        const kept = new Map(containers.map((c) => [c.Labels["com.docker.compose.service"]!, c]));
+        containers = services.map(([service, spec]) => {
+          const was = kept.get(service);
+          const config = JSON.stringify(spec);
+          if (was && was.Labels.config === config) return { ...was, State: "running" };
+          const mounts = spec.volumes!.map((v) => ({ Type: "volume", Name: entry.file!.volumes[v.source]!.name }));
+          return { Id: `${service}-${++created}`, Names: [], State: "running", Status: "", Labels: { ...spec.labels, "com.docker.compose.service": service, config }, Mounts: mounts };
+        });
       }
       if (args.includes("down")) containers = [];
-      if (args.includes("stop")) containers = containers.map((c) => ({ ...c, State: "exited" }));
+      if (args.includes("stop")) containers = containers.map((c) => (named.length === 0 || named.includes(c.Labels["com.docker.compose.service"]!) ? { ...c, State: "exited" } : c));
       return { code: 0, stdout: "", stderr: "" };
     });
   });
 
-  it("makes each knowledge base's sync state, gives the socket's volume to user 1000 alone, and answers once rclone answers", async () => {
+  it("makes each knowledge base's sync state, gives each its socket's folder for user 1000 alone, and answers once its rclone answers", async () => {
     const service = await ensureSyncService(["notes"]);
-    expect(service).toEqual({ running: true, knowledgeBases: ["notes"], fixture: false, socket: RC_SOCKET });
+    expect(service).toEqual({ knowledgeBases: ["notes"], running: ["notes"], fixture: false });
     const state = knowledgeStateVolume(INSTALLATION, "notes");
     expect(volumes.get(state)).toEqual(knowledgeSyncLabels(INSTALLATION, "notes"));
-    expect(inits).toEqual([`${state} chown 1000:1000 /knowledge && chmod 0700 /knowledge`, `${SOCKET_VOLUME} chown 1000:1000 /knowledge && chmod 0700 /knowledge`]);
-    const up = composed.at(-1)!;
-    expect(up.args).toEqual(expect.arrayContaining(["compose", "-p", syncProject(), "up", "-d", "--wait", "--remove-orphans", "--pull", "never"]));
-    expect(up.file!.services.rclone!.image).toBe(RCLONE_IMAGE);
+    expect(inits).toEqual([
+      `${state} chown 1000:1000 /knowledge && chmod 0700 /knowledge`,
+      `${SOCKET_VOLUME} chown 1000:1000 /knowledge && chmod 0700 /knowledge && mkdir -p /knowledge/notes && chown 1000:1000 /knowledge/notes && chmod 0700 /knowledge/notes`,
+    ]);
+    const [up, wait] = composed.slice(-2);
+    expect(up!.args.slice(-5)).toEqual(["up", "-d", "--remove-orphans", "--pull", "never"]);
+    expect(rcloneOf(up!.file!).image).toBe(RCLONE_IMAGE);
+    // Only the new knowledge base's rclone is waited for.
+    expect(wait!.args.slice(-7)).toEqual(["up", "-d", "--wait", "--no-recreate", "--pull", "never", "rclone-notes"]);
   });
 
-  it("changes the mounts when a knowledge base is connected or disconnected, which Compose recreates it for, and removes it with none", async () => {
+  it("adds or removes only the container of a knowledge base connected or disconnected, stopping it first as Ctrl+C stops rclone, and removes all with none", async () => {
     await ensureSyncService(["notes"]);
+    const notes = containers.find((c) => c.Labels["ai.your-space.knowledge"] === "notes")!.Id;
     await ensureSyncService(["notes", "recipes"]);
-    expect(composed.at(-1)!.file!.services.rclone!.volumes!.map((v) => v.target)).toEqual(["/run/ys-sync", "/knowledge/notes", "/state/notes", "/knowledge/recipes", "/state/recipes"]);
+    expect(Object.keys(composed.at(-1)!.file!.services).sort()).toEqual(["rclone-notes", "rclone-recipes", "ys-egress"]);
+    // Notes' rclone runs on, and only recipes' is waited for.
+    expect(containers.find((c) => c.Labels["ai.your-space.knowledge"] === "notes")!.Id).toBe(notes);
+    expect(composed.at(-1)!.args.at(-1)).toBe("rclone-recipes");
+    const before = composed.length;
     await ensureSyncService(["recipes"]);
-    expect(composed.at(-1)!.file!.services.rclone!.volumes!.map((v) => v.target)).toEqual(["/run/ys-sync", "/knowledge/recipes", "/state/recipes"]);
-    expect(await ensureSyncService([])).toMatchObject({ running: false, knowledgeBases: [] });
-    expect(composed.at(-1)!.args).toEqual(["compose", "-p", syncProject(), "down", "--remove-orphans"]);
+    // Notes' rclone stops gracefully before Compose removes it; nothing is waited for.
+    expect(composed.slice(before).map((c) => c.args.slice(3))).toEqual([
+      ["stop", "-t", "100", "rclone-notes"],
+      ["--project-directory", expect.any(String), "-f", expect.any(String), "up", "-d", "--remove-orphans", "--pull", "never"],
+    ]);
+    expect(Object.keys(composed.at(-1)!.file!.services).sort()).toEqual(["rclone-recipes", "ys-egress"]);
+    expect(containers.map((c) => c.Labels["ai.your-space.knowledge"])).toEqual(["recipes"]);
+    expect(await ensureSyncService([])).toMatchObject({ running: [], knowledgeBases: [] });
+    expect(composed.slice(-2).map((c) => c.args)).toEqual([
+      ["compose", "-p", syncProject(), "stop", "-t", "100", "rclone-recipes"],
+      ["compose", "-p", syncProject(), "down", "--remove-orphans"],
+    ]);
   });
 
   it("refuses a knowledge base that isn't on the engine, or a state volume Your Space didn't make", async () => {
@@ -266,22 +306,23 @@ describe("running the sync's container", () => {
     expect(volumes.has(knowledgeStateVolume(INSTALLATION, "notes"))).toBe(false);
   });
 
-  it("restarts rclone as Ctrl+C stops it, for a run past its time", async () => {
-    await ensureSyncService(["notes"]);
-    await restartSyncService();
-    expect(composed.at(-1)!.args).toEqual(["compose", "-p", syncProject(), "restart", "rclone"]);
+  it("restarts a knowledge base's rclone as Ctrl+C stops it, for a run past its time or an rclone that stopped answering", async () => {
+    await ensureSyncService(["notes", "recipes"]);
+    await restartSyncService("notes");
+    expect(composed.at(-1)!.args).toEqual(["compose", "-p", syncProject(), "restart", "-t", "100", "rclone-notes"]);
+    await expect(restartSyncService("drafts")).rejects.toMatchObject({ status: 404 });
   });
 
   it("stops with Your Space's apps as Ctrl+C stops rclone, then starts nothing", async () => {
-    await ensureSyncService(["notes"]);
+    await ensureSyncService(["notes", "recipes"]);
     await expect(stopSyncs()).rejects.toThrow(/only once Your Space is stopping/);
     await stopAll();
     await stopSyncs();
     expect(composed.slice(-2).map((c) => c.args)).toEqual([
-      ["compose", "-p", syncProject(), "stop", "-t", "100", "rclone"],
+      ["compose", "-p", syncProject(), "stop", "-t", "100", "rclone-notes", "rclone-recipes"],
       ["compose", "-p", syncProject(), "stop"],
     ]);
     await expect(ensureSyncService(["notes"])).rejects.toMatchObject({ status: 409, message: expect.stringContaining("stopping") });
-    await expect(restartSyncService()).rejects.toMatchObject({ status: 409 });
+    await expect(restartSyncService("notes")).rejects.toMatchObject({ status: 409 });
   });
 });

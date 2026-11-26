@@ -2,17 +2,17 @@
 // with Google through a state and PKCE that only their session can finish, and connects knowledge
 // bases to Drive folders. The client secret and token are stored encrypted with the data key, move to
 // a new data key, reach only rclone's memory, through its remote control, and are never answered.
-// The server's timer syncs each knowledge base about once a minute, one rclone job at a time; a
-// stopped run waits for the owner; a run's result outlives a server restart; Google's refusal
-// disconnects the connection until the owner signs in again. The runtime manager and rclone are fakes
-// that record what they are asked.
+// The server's timer syncs each knowledge base about once a minute, each through an rclone of its own,
+// side by side and never one knowledge base twice at once; a stopped run waits for the owner; a run's
+// result outlives a server restart; Google's refusal disconnects the connection until the owner signs
+// in again. The runtime manager and the rclones are fakes that record what they are asked.
 import { createHash } from "node:crypto";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, inArray } from "drizzle-orm";
 import { authorizationUrl, challengeOf, DRIVE_SCOPE, folderIdOf, GoogleError, rcloneToken, SignIns } from "../src/apps/google.ts";
 import { moveSettingsToDataKey } from "../src/apps/keys.ts";
-import { bisyncParams } from "../src/apps/bisync.ts";
-import { KnowledgeSync, MAX_DELETIONS, RUN_LIMIT_MS } from "../src/apps/knowledge-sync.ts";
+import { bisyncParams, runFolder } from "../src/apps/bisync.ts";
+import { KnowledgeSync, MAX_DELETIONS, RUN_LIMIT_MS, UNREACHABLE_MS } from "../src/apps/knowledge-sync.ts";
 import { RcError } from "../src/apps/rclone.ts";
 import { RuntimeError } from "../src/apps/runtime-client.ts";
 import { decrypt, encrypt } from "../src/apps/settings.ts";
@@ -20,7 +20,7 @@ import { actor, event, eventKnowledgeBase, googleConnection, knowledgeBase, know
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
-import { FakeRc } from "./helpers/rclone.ts";
+import { FakeRcs } from "./helpers/rclone.ts";
 import { FakeRuntime } from "./helpers/runtime.ts";
 import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
 
@@ -96,7 +96,7 @@ describe("Google's sign-in", () => {
 });
 
 const runtime = new FakeRuntime();
-const rc = new FakeRc();
+const rc = new FakeRcs();
 let t: TestDatabase;
 let server: TestServer;
 let cookie: string;
@@ -119,7 +119,7 @@ const fakeGoogle: typeof fetch = async (input, init) => {
 
 beforeAll(async () => {
   t = await createTestDatabase();
-  server = await startServer(t.db, { apps: { runtime, fetch: fakeGoogle, rclone: rc } });
+  server = await startServer(t.db, { apps: { runtime, fetch: fakeGoogle, rclone: rc.rcFor } });
   await createOwnerWithPassword(t.db, OWNER, server.publicUrl);
   const signedIn = await server.request("/api/auth/sign-in/username", { method: "POST", body: JSON.stringify({ username: OWNER.username, password: OWNER.password }) });
   cookie = cookieHeader(signedIn);
@@ -273,7 +273,7 @@ describe("a knowledge base's sync", () => {
     rc.hold = false;
     rc.answers = [{ lines: [ok] }];
     rc.copies = [];
-    runtime.onSyncRecreated = () => rc.restart();
+    runtime.onSyncRecreated = (name) => rc.restart(name);
   });
 
   it("connects only to a Drive folder's link, through the Google connection, never another remote", async () => {
@@ -322,32 +322,35 @@ describe("a knowledge base's sync", () => {
     expect((await send("/api/knowledge/notes/sync", { folder: FOLDER }, "PUT")).status).toBe(409);
   });
 
-  it("syncs each knowledge base about once a minute, one rclone job at a time across all of them", async () => {
+  it("syncs each knowledge base about once a minute, each in its own rclone, side by side", async () => {
+    const notes = rc.executeIdOf("notes");
     expect((await send("/api/knowledge/recipes/sync", { folder: FOLDER }, "PUT")).status).toBe(202);
     expect(runtime.syncStarts.at(-1)).toEqual(["notes", "recipes"]);
     await settled("recipes");
+    // Connecting recipes left notes' rclone, and the remote in it, as they were.
+    expect(rc.executeIdOf("notes")).toBe(notes);
+    expect(rc.calls.filter((c) => c.command === "sync/bisync" && c.knowledgeBase === "recipes")).toHaveLength(1);
     const runs = () => rc.started().length;
     // Not due yet: both ran within the minute.
-    let before = runs();
+    const before = runs();
     await tick();
     expect(runs()).toBe(before);
 
     rc.hold = true;
     await due();
     await tick();
-    expect(rc.running().map((j) => j.params.path2)).toEqual(["/knowledge/notes"]);
-    // The other is due too, but waits: rclone runs one job at a time.
-    before = runs();
+    // Both at once, each through its own rclone, which mounts only its own knowledge base.
+    expect(rc.running().map((j) => [j.knowledgeBase, j.params.path2]).sort()).toEqual([
+      ["notes", "/knowledge/notes"],
+      ["recipes", "/knowledge/recipes"],
+    ]);
     await tick();
-    await tick();
-    expect(runs()).toBe(before);
-    rc.finish();
+    expect(runs()).toBe(before + 2);
+    rc.finish("notes");
     await tick();
     expect(await status()).toMatchObject({ running: false, result: "synced" });
-    await tick();
-    expect(rc.running().map((j) => j.params.path2)).toEqual(["/knowledge/recipes"]);
+    expect(await status("recipes")).toMatchObject({ running: true });
     rc.finish();
-    await tick();
     await tick();
     expect(rc.running()).toEqual([]);
     expect(rc.mostAtOnce).toBe(1);
@@ -490,11 +493,11 @@ describe("a knowledge base's sync", () => {
 
   it("records each run against Your Space, the owner's actions against the owner, and only runs that changed something", async () => {
     const before = (await events("knowledge.synced")).length;
-    await due();
+    await due("notes");
     await settled();
     expect((await events("knowledge.synced")).length).toBe(before);
     rc.answers = [{ lines: [copied("new.md"), ok] }];
-    await due();
+    await due("notes");
     await settled();
     const synced = await events("knowledge.synced");
     expect(synced.length).toBe(before + 1);
@@ -558,6 +561,69 @@ describe("a knowledge base's sync", () => {
     expect(rc.started().at(-1)!.params).toMatchObject({ dryRun: true });
     expect(await status()).toMatchObject({ result: "stopped", reason: "changed", deletionCounts: { local: 3, remote: 0 } });
     expect((await status())!.summary).toContain("changed since you confirmed them");
+  });
+
+  it("keeps the deletions for the owner when only the dry run was interrupted, and records them as the owner's when applying them was", async () => {
+    rc.answers = [{ success: false, error: "too many deletes", lines: [deleted("a.md"), deleted("b.md"), tooMany] }];
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    const stopped = (await status())!;
+    const confirm = { action: "apply_deletions", run: stopped.lastRunAt, count: 2 };
+    // Interrupted during the dry run, which changes nothing: the same run's deletions wait for the owner.
+    rc.hold = true;
+    expect((await send("/api/knowledge/notes/sync", confirm)).status).toBe(202);
+    await tick();
+    expect((await syncRow())!.job).toMatchObject({ step: "preview" });
+    rc.restart("notes");
+    await tick();
+    expect(await status()).toMatchObject({ running: false, result: "stopped", reason: "max_delete", lastRunAt: stopped.lastRunAt, deletionCounts: { local: 2, remote: 0 } });
+    // Interrupted while applying them: some may be deleted, by the owner, and the list is gone.
+    rc.answers = [{ lines: [deleted("a.md"), deleted("b.md"), ok] }, { lines: [ok] }];
+    const applied = (await events("knowledge.deletions_applied")).length;
+    expect((await send("/api/knowledge/notes/sync", confirm)).status).toBe(202);
+    await tick();
+    rc.finish();
+    await tick();
+    expect((await syncRow())!.job).toMatchObject({ step: "force" });
+    rc.restart("notes");
+    await tick();
+    expect(await status()).toMatchObject({ running: false, result: "failed", deletions: [], deletionCounts: { local: 0, remote: 0 } });
+    expect((await events("knowledge.deletions_applied")).slice(applied).map((e) => e.actorId)).toEqual([owner]);
+    rc.hold = false;
+    rc.answers = [{ lines: [ok] }];
+    await due("notes");
+    await settled();
+    expect(await status()).toMatchObject({ result: "synced" });
+  });
+
+  it("lists backups a run's folder at a time, newest first, only until the page has as many as it shows, and removes those over 30 days old", async () => {
+    // rclone keeps each answer for an hour: never the whole of 30 days' backups at once.
+    const recent = runFolder(new Date(Date.now() - 60_000));
+    const older = runFolder(new Date(Date.now() - 24 * 60 * 60_000));
+    const expired = runFolder(new Date(Date.now() - 31 * 24 * 60 * 60_000));
+    rc.listings.set("/state/notes/backups", [
+      ...Array.from({ length: 600 }, (_, i) => ({ Path: `${recent}/f-${i}.md`, Size: 1 })),
+      { Path: `${older}/old.md`, Size: 2 },
+      { Path: `${expired}/gone.md`, Size: 3 },
+    ]);
+    const from = rc.calls.length;
+    rc.answers = [{ lines: [copied("x.md"), ok] }];
+    await due("notes");
+    await settled();
+    const lists = rc.calls.slice(from).filter((c) => c.command === "operations/list" && String(c.params.fs).startsWith("/state/notes/backups"));
+    expect(lists.map((c) => [c.params.fs, Boolean((c.params.opt as { dirsOnly?: boolean }).dirsOnly)])).toEqual([
+      ["/state/notes/backups", true],
+      [`/state/notes/backups/${recent}`, false],
+    ]);
+    expect(rc.purged).toContain(`/state/notes/backups/${expired}`);
+    const shown = (await status())!.backups as { run: string }[];
+    expect(shown).toHaveLength(500);
+    expect(new Set(shown.map((b) => b.run))).toEqual(new Set([recent]));
+    rc.listings.delete("/state/notes/backups");
+    rc.answers = [{ lines: [copied("y.md"), ok] }];
+    await due("notes");
+    await settled();
+    expect((await status())!.backups).toEqual([]);
   });
 
   it("keeps every deletion a stopped run listed, shows the first 500, and applies them all once confirmed", async () => {
@@ -636,7 +702,7 @@ describe("a knowledge base's sync", () => {
     rc.finish();
     // The next server reads it from rclone by the job kept on the knowledge base's row.
     const before = (await syncRow())!;
-    expect(before.job).toMatchObject({ step: "sync", executeId: rc.executeId });
+    expect(before.job).toMatchObject({ step: "sync", executeId: rc.executeIdOf("notes") });
     const started = new KnowledgeSync(server.apps!);
     await started.tick();
     const after = (await syncRow())!;
@@ -646,19 +712,22 @@ describe("a knowledge base's sync", () => {
     await started.close();
   });
 
-  it("drops a run rclone forgot, as after it restarted, and makes the remote again in the new rclone", async () => {
+  it("records a run its rclone forgot, as after it restarted, as failed, and makes the remote again in the new rclone", async () => {
     rc.hold = true;
-    await due();
+    await due("notes");
     await tick();
     const was = (await syncRow())!;
     expect(was.job).not.toBeNull();
     const made = rc.calls.filter((c) => c.command === "config/create").length;
-    rc.restart();
+    const failed = (await events("knowledge.sync_failed")).length;
+    rc.restart("notes");
     await tick();
     const after = (await syncRow())!;
-    // Nothing is recorded of it, and it is due again a minute later: the next run carries on with recover.
-    expect(after).toMatchObject({ job: null, result: was.result });
-    expect(after.lastRunAt!.getTime()).toBeGreaterThan(was.lastRunAt!.getTime());
+    // It may have changed files before it stopped: a failed run of Your Space's, as the run it was.
+    expect(after).toMatchObject({ job: null, result: "failed", message: expect.stringContaining("interrupted") });
+    expect(after.lastRunAt!.toISOString()).toBe(was.job!.startedAt);
+    expect((await events("knowledge.sync_failed")).slice(failed)).toEqual([{ actorId: operator, knowledgeBase: "notes" }]);
+    expect((await status())!.summary).toContain("didn't finish");
     rc.hold = false;
     await due("notes");
     await tick();
@@ -668,7 +737,7 @@ describe("a knowledge base's sync", () => {
     expect(await status()).toMatchObject({ result: "synced" });
   });
 
-  it("stops a run past its time as Ctrl+C stops rclone, lets the knowledge bases that waited run, then carries on", async () => {
+  it("stops a run past its time by restarting its own rclone as Ctrl+C stops it, says so, then carries on", async () => {
     // Recipes synced, as an earlier test's run of it stopped.
     await send("/api/knowledge/recipes/sync", { action: "sync" });
     await settled("recipes");
@@ -676,66 +745,109 @@ describe("a knowledge base's sync", () => {
     rc.hold = true;
     await due();
     await tick();
-    expect(rc.running().map((j) => j.params.path2)).toEqual(["/knowledge/notes"]);
+    expect(rc.running().map((j) => j.knowledgeBase).sort()).toEqual(["notes", "recipes"]);
+    const recipes = rc.executeIdOf("recipes");
     const row = (await syncRow())!;
-    await t.db.update(knowledgeSync).set({ job: { ...row.job!, startedAt: new Date(Date.now() - RUN_LIMIT_MS - 1_000).toISOString() } }).where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
-    const restarts = runtime.syncRestarts;
+    const startedAt = new Date(Date.now() - RUN_LIMIT_MS - 1_000).toISOString();
+    await t.db.update(knowledgeSync).set({ job: { ...row.job!, startedAt } }).where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
+    const restarts = runtime.syncRestarts.length;
     await tick();
-    expect(runtime.syncRestarts).toBe(restarts + 1);
+    // Only notes' rclone; recipes' run goes on.
+    expect(runtime.syncRestarts.slice(restarts)).toEqual(["notes"]);
+    expect(rc.executeIdOf("recipes")).toBe(recipes);
+    expect(rc.running().map((j) => j.knowledgeBase)).toEqual(["recipes"]);
     await tick();
-    expect((await syncRow())!.job).toBeNull();
-    // The other knowledge base, which waited, runs next; the stopped run's is due again a minute later.
-    await tick();
-    expect(rc.running().map((j) => j.params.path2)).toEqual(["/knowledge/recipes"]);
+    // Recorded, so the owner sees why it didn't finish; the next run carries on at once.
+    expect(await syncRow()).toMatchObject({ job: null, result: "failed", message: expect.stringContaining("longer than 2 hours"), lastRunAt: new Date(startedAt) });
     rc.hold = false;
     rc.finish();
-    await settled("recipes");
-    await tick();
-    // The restarted rclone has run nothing of notes yet: it is due a minute after the interruption.
-    expect(rc.started().filter((j) => j.params.path2 === "/knowledge/notes")).toHaveLength(0);
-    await due("notes");
     await settled();
+    await settled("recipes");
+    expect(rc.started().filter((j) => j.knowledgeBase === "notes" && j.executeId === rc.executeIdOf("notes"))).toHaveLength(1);
     expect(await status()).toMatchObject({ result: "synced" });
   });
 
-  it("changes the sync's service for another knowledge base once the run under way ends, then makes the remotes again", async () => {
+  it("restarts a knowledge base's rclone that hasn't answered for a minute, and no other", async () => {
     rc.hold = true;
-    await due();
+    await due("notes");
     await tick();
-    expect(rc.running().map((j) => j.params.path2)).toEqual(["/knowledge/notes"]);
-    const starts = runtime.syncStarts.length;
-    let answered = false;
-    const disconnecting = api("/api/knowledge/recipes/sync", { method: "DELETE" }).then((r) => ((answered = true), r));
-    await sleep(100);
-    // The run under way isn't stopped: rclone isn't started again until it ends.
-    expect(answered).toBe(false);
-    expect(runtime.syncStarts.length).toBe(starts);
-    rc.finish();
-    expect((await disconnecting).status).toBe(204);
-    expect(runtime.syncStarts.at(-1)).toEqual(["notes"]);
-    expect(await syncRow()).toMatchObject({ job: null, result: "synced" });
+    expect(rc.running().map((j) => j.knowledgeBase)).toEqual(["notes"]);
+    rc.unreachable.add("notes");
+    const restarts = runtime.syncRestarts.length;
+    // Not at once: a container that just started takes a moment to answer.
+    await tick();
+    await tick();
+    expect(runtime.syncRestarts.length).toBe(restarts);
+    const later = Date.now() + UNREACHABLE_MS + 1_000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(later);
+    try {
+      await tick();
+      expect(runtime.syncRestarts.slice(restarts)).toEqual(["notes"]);
+      // The next restart waits as long again.
+      await tick();
+      expect(runtime.syncRestarts.slice(restarts)).toEqual(["notes"]);
+    } finally {
+      clock.mockRestore();
+    }
+    rc.unreachable.delete("notes");
     rc.hold = false;
-    const made = rc.calls.filter((c) => c.command === "config/create").length;
+    rc.finish();
+    await tick();
+    // The restarted rclone forgot the run, which is recorded as interrupted.
+    expect(await syncRow()).toMatchObject({ job: null, result: "failed", message: expect.stringContaining("interrupted") });
     await due();
     await settled();
-    expect(rc.calls.filter((c) => c.command === "config/create").length).toBe(made + 1);
-    // Connected again, the same way.
+    await settled("recipes");
+    expect(await status()).toMatchObject({ result: "synced" });
+  });
+
+  it("starts no run while its rclone runs one the server doesn't follow, as a server that stopped as it started one leaves", async () => {
+    rc.hold = true;
+    // Started in notes' rclone, never kept on its row.
+    await rc.of("notes").call("sync/bisync", { ...bisyncParams("notes", "left"), _async: true, _group: "knowledge/notes/left/sync/abcd1234" });
+    const runs = rc.started().length;
+    await due("notes");
+    await tick();
+    await tick();
+    expect(rc.started().length).toBe(runs);
+    rc.finish();
+    rc.hold = false;
+    await tick();
+    expect(rc.started().length).toBe(runs + 1);
+    await settled();
+    expect(rc.mostAtOnce).toBe(1);
+  });
+
+  it("connects and disconnects a knowledge base without waiting for, or stopping, another's run; its own run is stopped with its rclone", async () => {
+    rc.hold = true;
+    await due("notes");
+    await tick();
+    expect(rc.running().map((j) => j.knowledgeBase)).toEqual(["notes"]);
+    const notes = rc.executeIdOf("notes");
+    // Disconnecting recipes doesn't wait for notes' run, which goes on in its own rclone.
+    expect((await api("/api/knowledge/recipes/sync", { method: "DELETE" })).status).toBe(204);
+    expect(runtime.syncStarts.at(-1)).toEqual(["notes"]);
+    expect(rc.executeIdOf("notes")).toBe(notes);
+    expect(rc.running().map((j) => j.knowledgeBase)).toEqual(["notes"]);
+    // Nor does connecting it again.
+    rc.hold = false;
     expect((await send("/api/knowledge/recipes/sync", { folder: FOLDER }, "PUT")).status).toBe(202);
     await settled("recipes");
     expect(runtime.syncStarts.at(-1)).toEqual(["notes", "recipes"]);
+    expect(rc.executeIdOf("notes")).toBe(notes);
+    rc.finish();
+    await settled();
+    expect(await syncRow()).toMatchObject({ job: null, result: "synced" });
 
-    // Disconnecting a knowledge base whose own run is under way waits for that run too.
+    // Disconnecting a knowledge base whose own run is under way stops its rclone, as Ctrl+C stops it,
+    // which stops the run; the disconnect doesn't wait for the run to end.
     rc.hold = true;
     expect((await send("/api/knowledge/recipes/sync", { action: "sync" })).status).toBe(202);
     await tick();
-    expect(rc.running().map((j) => j.params.path2)).toEqual(["/knowledge/recipes"]);
-    answered = false;
-    const own = api("/api/knowledge/recipes/sync", { method: "DELETE" }).then((r) => ((answered = true), r));
-    await sleep(100);
-    expect(answered).toBe(false);
-    rc.finish();
-    expect((await own).status).toBe(204);
+    expect(rc.running().map((j) => j.knowledgeBase)).toEqual(["recipes"]);
+    expect((await api("/api/knowledge/recipes/sync", { method: "DELETE" })).status).toBe(204);
     expect(runtime.syncStarts.at(-1)).toEqual(["notes"]);
+    expect(rc.running()).toEqual([]);
     rc.hold = false;
     expect((await send("/api/knowledge/recipes/sync", { folder: FOLDER }, "PUT")).status).toBe(202);
     await settled("recipes");

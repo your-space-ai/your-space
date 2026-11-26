@@ -23,7 +23,7 @@ beforeAll(async () => {
       asked.push({ method: req.method ?? "", url: req.url ?? "", body });
       setTimeout(() => {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(req.url?.startsWith("/knowledge-sync") ? JSON.stringify({ running: true, knowledgeBases: ["notes"], fixture: false, socket: "/run/ys-sync/rc.sock" }) : JSON.stringify({ reachable: true, connection: "test" }));
+        res.end(req.url?.startsWith("/knowledge-sync") ? JSON.stringify({ knowledgeBases: ["notes"], running: ["notes"], fixture: false }) : JSON.stringify({ reachable: true, connection: "test" }));
       }, ANSWER_MS);
     });
   });
@@ -47,10 +47,10 @@ describe("the runtime client", () => {
 
   it("asks for the sync's service by the knowledge bases' names, and nothing else", async () => {
     const runtime = socketRuntime(socket, 2_000);
-    expect(await runtime.ensureSyncService(["notes"])).toMatchObject({ running: true, knowledgeBases: ["notes"] });
+    expect(await runtime.ensureSyncService(["notes"])).toMatchObject({ running: ["notes"], knowledgeBases: ["notes"] });
     expect(asked.at(-1)).toEqual({ method: "PUT", url: "/knowledge-sync", body: JSON.stringify({ knowledgeBases: ["notes"] }) });
-    await runtime.restartSyncService();
-    expect(asked.at(-1)).toMatchObject({ method: "POST", url: "/knowledge-sync/restart" });
+    await runtime.restartSyncService("notes");
+    expect(asked.at(-1)).toMatchObject({ method: "POST", url: "/knowledge-sync/notes/restart" });
     await runtime.syncService();
     expect(asked.at(-1)).toMatchObject({ method: "GET", url: "/knowledge-sync" });
   });

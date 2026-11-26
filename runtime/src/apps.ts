@@ -612,11 +612,14 @@ export async function knowledgeOf(name: string): Promise<{ Name: string; Labels:
  * get mode 0700 instead: only the sync, and the server, which run as user 1000, open them; with
  * `usernsHost`, in the engine's own user name space, as they then run (sync.ts).
  */
-export function knowledgeInit(image: string, volume: string, mode: "2777" | "0700" = "2777", usernsHost = false): Record<string, unknown> {
+export function knowledgeInit(image: string, volume: string, mode: "2777" | "0700" = "2777", usernsHost = false, folders: string[] = []): Record<string, unknown> {
+  // Folders of the volume's own, each for user 1000 alone: the sync's sockets, one for each knowledge
+  // base's rclone (sync.ts). Their names are knowledge bases' names, lowercase letters, digits and hyphens.
+  const made = folders.map((f) => ` && mkdir -p /knowledge/${f} && chown ${KNOWLEDGE_OWNER} /knowledge/${f} && chmod 0700 /knowledge/${f}`).join("");
   return {
     Image: image,
     Entrypoint: ["/bin/sh", "-c"],
-    Cmd: [`chown ${KNOWLEDGE_OWNER} /knowledge && chmod ${mode} /knowledge`],
+    Cmd: [`chown ${KNOWLEDGE_OWNER} /knowledge && chmod ${mode} /knowledge${made}`],
     User: "0:0",
     Labels: { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "knowledge-init" },
     NetworkDisabled: true,
@@ -626,8 +629,9 @@ export function knowledgeInit(image: string, volume: string, mode: "2777" | "070
       ...(usernsHost ? { UsernsMode: "host" } : {}),
       ReadonlyRootfs: true,
       CapDrop: ["ALL"],
-      // Root changes the folder's owner, then its mode, keeping the setgid bit, on a folder it no longer owns.
-      CapAdd: ["CHOWN", "FOWNER", "FSETID"],
+      // Root changes the folder's owner, then its mode, keeping the setgid bit, on a folder it no longer
+      // owns; and makes folders in it, which only user 1000 opens, when asked for some.
+      CapAdd: ["CHOWN", "FOWNER", "FSETID", ...(folders.length > 0 ? ["DAC_OVERRIDE"] : [])],
       SecurityOpt: ["no-new-privileges:true"],
       Memory: 32 * 1024 * 1024,
       NanoCpus: 250_000_000,
@@ -647,8 +651,8 @@ async function ownImage(): Promise<string> {
  * Runs `knowledgeInit` on the volume and waits for it to finish. A helper the engine couldn't remove
  * still mounts the volume, so the setup fails: deleting the knowledge base removes it first.
  */
-export async function initKnowledge(volume: string, mode: "2777" | "0700" = "2777", usernsHost = false): Promise<void> {
-  const { Id } = await engineJson<{ Id: string }>("POST", "/containers/create", knowledgeInit(await ownImage(), volume, mode, usernsHost));
+export async function initKnowledge(volume: string, mode: "2777" | "0700" = "2777", usernsHost = false, folders: string[] = []): Promise<void> {
+  const { Id } = await engineJson<{ Id: string }>("POST", "/containers/create", knowledgeInit(await ownImage(), volume, mode, usernsHost, folders));
   let failed: unknown;
   try {
     await engineJson("POST", `/containers/${Id}/start`);

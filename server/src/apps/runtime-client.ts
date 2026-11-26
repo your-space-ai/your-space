@@ -123,14 +123,14 @@ export interface ApplyEvent {
   code?: string;
 }
 
-/** The knowledge bases' sync service (journey 014): stock rclone's remote control, which the server reaches itself. */
+/** The knowledge bases' sync (journey 014): a container of stock rclone's remote control for each, which the server reaches itself. */
 export interface SyncService {
-  running: boolean;
-  /** The knowledge bases it mounts. */
+  /** The knowledge bases that have an rclone container, running or not. */
   knowledgeBases: string[];
+  /** Those whose container runs now. */
+  running: string[];
   /** The browser tests' stand-in for Drive, which only the runtime manager's own environment selects. */
   fixture: boolean;
-  socket: string;
 }
 
 /** What the server needs from a runtime; tests give a fake. */
@@ -157,10 +157,10 @@ export interface Runtime {
   deleteKnowledge(name: string): Promise<void>;
   /** The knowledge bases' sync service as it is now. */
   syncService(): Promise<SyncService>;
-  /** Runs the sync service with exactly these knowledge bases mounted, and answers once rclone answers. */
+  /** Runs an rclone container for exactly each of these knowledge bases, and answers once each new one's rclone answers. */
   ensureSyncService(knowledgeBases: string[]): Promise<SyncService>;
-  /** Stops rclone as Ctrl+C stops it, so a run under way saves its state, and starts it again. */
-  restartSyncService(): Promise<SyncService>;
+  /** Stops a knowledge base's rclone as Ctrl+C stops it, so a run under way saves its state, and starts it again. */
+  restartSyncService(knowledgeBase: string): Promise<SyncService>;
   /** Removes a knowledge base's sync state; it and the Drive folder keep their files. Refused while the service mounts it. */
   removeSync(name: string): Promise<void>;
 }
@@ -270,7 +270,7 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET, callMs = CALL_TIMEOUT
     deleteKnowledge: async (name) => void (await json("DELETE", `/knowledge/${encodeURIComponent(name)}`, undefined, socketPath)),
     syncService: () => json("GET", "/knowledge-sync", undefined, socketPath),
     ensureSyncService: (knowledgeBases) => json("PUT", "/knowledge-sync", { knowledgeBases }, socketPath),
-    restartSyncService: () => json("POST", "/knowledge-sync/restart", {}, socketPath),
+    restartSyncService: (name) => json("POST", `/knowledge-sync/${encodeURIComponent(name)}/restart`, {}, socketPath),
     removeSync: async (name) => void (await json("DELETE", `/knowledge/${encodeURIComponent(name)}/sync`, undefined, socketPath)),
   };
 }

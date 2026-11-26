@@ -1,14 +1,22 @@
-// rclone's remote control (journey 014): the knowledge bases' sync service is stock `rclone rcd`,
-// which the runtime manager runs (runtime/src/sync.ts) and only the server reaches, on a Unix socket
-// in the ys-sync volume. The server creates each knowledge base's remote there and starts each bisync
-// there (knowledge-sync.ts). rclone answers an error with the request it was given, which can hold a
-// remote's token: only its error message is kept, never the request.
+// rclone's remote control (journey 014): each synced knowledge base's sync is a container of stock
+// `rclone rcd`, which the runtime manager runs (runtime/src/sync.ts) and only the server reaches, on a
+// Unix socket in that knowledge base's folder of the ys-sync volume. The server creates the knowledge
+// base's remote there and starts each of its bisyncs there (knowledge-sync.ts). rclone answers an error
+// with the request it was given, which can hold a remote's token: only its error message is kept, never
+// the request.
 import { randomBytes } from "node:crypto";
 import { request } from "node:http";
 
-export const RC_SOCKET = process.env.YS_SYNC_SOCKET ?? "/run/ys-sync/rc.sock";
+/** Where the server mounts the ys-sync volume: each knowledge base's socket is in its folder, `<name>/rc.sock`. */
+export const RC_SOCKETS = process.env.YS_SYNC_SOCKETS ?? "/run/ys-sync";
 /** How long a call waits for rclone, a listing of a large knowledge base included. */
 const CALL_TIMEOUT_MS = 5 * 60_000;
+/**
+ * How long a call that rclone answers at once waits: one about jobs, remotes or rclone itself. A hung
+ * rclone then holds up its own knowledge base's step this long, not five minutes.
+ */
+const QUICK_TIMEOUT_MS = 30_000;
+const QUICK = /^(job|config|core|rc)\//;
 
 export class RcError extends Error {
   /** rclone's HTTP status; 503 when its remote control can't be reached. */
@@ -42,7 +50,7 @@ export interface Rc {
   upload(fs: string, remote: string, name: string, content: string): Promise<void>;
 }
 
-function post(socketPath: string, path: string, body: Buffer, contentType: string): Promise<{ status: number; text: string }> {
+function post(socketPath: string, path: string, body: Buffer, contentType: string, timeoutMs = CALL_TIMEOUT_MS): Promise<{ status: number; text: string }> {
   return new Promise((resolve, reject) => {
     const req = request({ socketPath, method: "POST", path, headers: { "Content-Type": contentType, "Content-Length": body.length } }, (res) => {
       let text = "";
@@ -52,7 +60,7 @@ function post(socketPath: string, path: string, body: Buffer, contentType: strin
       res.on("error", reject);
     });
     req.on("error", (error) => reject(error instanceof RcError ? error : new RcError("The knowledge bases' sync service isn't running.", 503)));
-    req.setTimeout(CALL_TIMEOUT_MS, () => req.destroy(new RcError("The knowledge bases' sync service stopped answering.", 504)));
+    req.setTimeout(timeoutMs, () => req.destroy(new RcError("The knowledge bases' sync service stopped answering.", 504)));
     req.end(body);
   });
 }
@@ -72,10 +80,18 @@ function answer<T>(command: string, { status, text }: { status: number; text: st
   return data as T;
 }
 
-export function socketRc(socketPath = RC_SOCKET): Rc {
+/** A knowledge base's rclone, by the knowledge base's name; tests give fakes. */
+export type RcFor = (knowledgeBase: string) => Rc;
+
+/** The remote control of each knowledge base's rclone, on its socket. */
+export function socketRcs(dir = RC_SOCKETS): RcFor {
+  return (knowledgeBase) => socketRc(`${dir}/${knowledgeBase}/rc.sock`);
+}
+
+export function socketRc(socketPath: string): Rc {
   return {
     async call<T>(command: string, params: Record<string, unknown> = {}) {
-      return answer<T>(command, await post(socketPath, `/${command}`, Buffer.from(JSON.stringify(params)), "application/json"));
+      return answer<T>(command, await post(socketPath, `/${command}`, Buffer.from(JSON.stringify(params)), "application/json", QUICK.test(command) ? QUICK_TIMEOUT_MS : CALL_TIMEOUT_MS));
     },
     async upload(fs, remote, name, content) {
       const boundary = `ys-${randomBytes(12).toString("hex")}`;

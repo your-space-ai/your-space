@@ -1,30 +1,34 @@
 // Synced knowledge bases (journey 014, decision 2026-11-25 "Knowledge bases"): a knowledge base kept
 // in two-way sync with a Google Drive folder. The owner sets up the Google connection once, with the
-// operator's own OAuth client, and connects knowledge bases to folders. One long-running container of
-// stock `rclone rcd`, which the runtime manager runs (runtime/src/sync.ts), syncs them all; the server
-// drives it over its socket (rclone.ts): it creates each knowledge base's remote there, with the client
-// and token, which stay in rclone's memory, and starts each bisync there as a job in the background.
+// operator's own OAuth client, and connects knowledge bases to folders. A long-running container of
+// stock `rclone rcd` for each, which the runtime manager runs (runtime/src/sync.ts), syncs it; the
+// server drives each over its socket (rclone.ts): it creates the knowledge base's remote there, with
+// the client and token, which stay in rclone's memory, and starts each bisync there as a job in the
+// background. A container mounts its own knowledge base only, so no sync writes into another's.
 //
 // About once a minute for each knowledge base, and at once on the owner's Sync now, Resync or Apply
-// these deletions, the server starts a run. rclone keeps a single log for its whole process while a
-// bisync runs, and the server reads each run's deletions, ties and reason from it, so rclone runs one
-// job at a time, whichever knowledge base it is for; none of a knowledge base ever overlaps another,
-// and bisync's lock is the backstop. A run's job is kept on its knowledge base's row, so a server that
-// restarts meanwhile reads its result from rclone, which keeps it for an hour, and records it. A run
-// that stops for safety waits for the owner. Connecting, disconnecting, resyncing and applying
-// deletions are the owner's; each run is Your Space's own.
+// these deletions, the server starts a run. Each knowledge base has its own turn: its runs never
+// overlap, as the server starts none while one is under way, and bisync's lock is the backstop; the
+// knowledge bases' runs go on side by side. rclone keeps a single log for its whole process while a
+// bisync runs, and the server reads each run's deletions, ties and reason from it, so each rclone runs
+// one bisync at a time. A run's job is kept on its knowledge base's row, so a server that restarts
+// meanwhile reads its result from rclone, which keeps it for an hour, and records it. A run that stops
+// for safety waits for the owner. Connecting, disconnecting, resyncing and applying deletions are the
+// owner's; each run is Your Space's own.
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { operatorActorId, recordEvent } from "../actors.ts";
 import { googleConnection, knowledgeBase, knowledgeSync, type SyncDeletion, type SyncJob, type SyncRequested } from "../db/schema.ts";
 import { errorFields, log } from "../log.ts";
 import {
+  backupRuns,
   backupsOf,
   backupsPath,
   bisyncParams,
   changedBy,
   conflictsOf,
   deletionsOf,
+  LISTED,
   localPath,
   logLines,
   outcome,
@@ -43,7 +47,7 @@ import {
   type SyncMode,
 } from "./bisync.ts";
 import { authorizationUrl, exchangeCode, folderIdOf, GoogleError, googleEndpoints, redirectUri, SignIns, type GoogleEndpoints } from "./google.ts";
-import { RcError, socketRc, type Rc, type RcJob } from "./rclone.ts";
+import { RcError, socketRcs, type Rc, type RcFor, type RcJob } from "./rclone.ts";
 import { RuntimeError } from "./runtime-client.ts";
 import { AppError, type AppsService } from "./service.ts";
 import { decrypt, encrypt } from "./settings.ts";
@@ -51,12 +55,12 @@ import { decrypt, encrypt } from "./settings.ts";
 /** Your Space syncs every connected knowledge base about this often while it runs. */
 export const SYNC_INTERVAL_MS = 60_000;
 /**
- * A run that takes longer is stopped as Ctrl+C stops rclone, which restarts, and the next run carries
- * on from there: the other knowledge bases, which wait for it, sync again meanwhile.
+ * A run that takes longer is stopped by restarting its knowledge base's rclone, as Ctrl+C stops it; it
+ * is recorded as failed, and the next run carries on from there.
  */
 export const RUN_LIMIT_MS = 2 * 60 * 60_000;
-/** How long connecting, disconnecting or deleting a knowledge base waits for the run under way to end. */
-export const SERVICE_WAIT_MS = 20_000;
+/** A knowledge base's rclone that hasn't answered for this long, as one hung, is restarted. */
+export const UNREACHABLE_MS = 60_000;
 /**
  * The most deletions a stopped run keeps for the owner to confirm, all of them, as the server compares
  * them with its dry run. A run that lists more stops with reason `too_many`, and can't be applied from
@@ -69,7 +73,7 @@ export const SHOWN_DELETIONS = 500;
 const PREVIEW_FRESH_MS = 30_000;
 /** The conflict copies and backups of a knowledge base whose runs change nothing are listed again this often. */
 const LIST_EVERY_MS = 60 * 60_000;
-/** How long after the sync's service couldn't be started the server tries again. */
+/** How long after the sync's containers couldn't be started the server tries again, or after a run past its time it restarts its rclone again. */
 const SERVICE_RETRY_MS = 15_000;
 
 const CLIENT_ID = /^[A-Za-z0-9._-]{8,300}$/;
@@ -145,22 +149,31 @@ type Row = SyncRow & { name: string };
 export class KnowledgeSync {
   readonly apps: AppsService;
   readonly signIns = new SignIns();
-  readonly rc: Rc;
+  /** Each knowledge base's rclone, by its name. */
+  readonly rcFor: RcFor;
   readonly intervalMs: number;
   /** Knowledge bases being deleted, connected or disconnected: no run starts for them meanwhile. */
   private readonly held = new Set<string>();
-  /** Knowledge bases being deleted or disconnected, which leave the sync's service. */
+  /** Knowledge bases being deleted or disconnected, which leave the sync. */
   private readonly leaving = new Set<string>();
-  /** Changes to the sync's service waiting for the run under way: no other run starts meanwhile. */
-  private pausing = 0;
-  /** One step of the sync at a time: a tick, an owner's run starting, or a change to the service. */
-  private turn: Promise<unknown> = Promise.resolve();
-  /** A tick waiting for its turn: ticks asked for meanwhile wait for it, rather than each for its own. */
+  /** Changes to the sync's containers, one at a time: the timer's, and connecting, disconnecting or deleting a knowledge base. */
+  private serviceTurn: Promise<unknown> = Promise.resolve();
+  /** How many changes to the containers are waiting or under way: the timer leaves them alone meanwhile. */
+  private serviceBusy = 0;
+  /** Each knowledge base's steps, one at a time: its run starting or followed, or an owner's action. */
+  private readonly turns = new Map<string, Promise<unknown>>();
+  /** A knowledge base's step waiting for its turn: ticks meanwhile wait for it, rather than each for its own. */
+  private readonly queuedSteps = new Map<string, Promise<void>>();
+  /** A tick that hasn't started yet: ticks asked for meanwhile are that one. */
   private queuedTick: Promise<void> | undefined;
-  /** The knowledge bases the service was last started with, and whether it is the browser tests'. */
-  private service: { bases: string; fixture: boolean } | undefined;
-  /** When starting the service last failed: it is tried again only after SERVICE_RETRY_MS. */
+  /** The knowledge bases whose containers were last started, and whether the sync is the browser tests'. */
+  private service: { bases: string[]; fixture: boolean } | undefined;
+  /** When starting the containers last failed: it is tried again only after SERVICE_RETRY_MS. */
   private serviceFailed = 0;
+  /** Since when each knowledge base's rclone hasn't answered. */
+  private readonly unreachableSince = new Map<string, number>();
+  /** When the server last restarted each knowledge base's rclone for a run past its time. */
+  private readonly limitedAt = new Map<string, number>();
   /** The remotes made in rclone, by knowledge base: which rclone, and for which connection and folder. */
   private readonly remotes = new Map<string, { executeId: string; version: string; connectedAt: string | null }>();
   /** When each knowledge base's conflict copies and backups were last listed. */
@@ -178,7 +191,7 @@ export class KnowledgeSync {
 
   constructor(apps: AppsService) {
     this.apps = apps;
-    this.rc = apps.config.rclone ?? socketRc();
+    this.rcFor = apps.config.rclone ?? socketRcs();
     this.intervalMs = apps.config.syncIntervalMs ?? SYNC_INTERVAL_MS;
   }
 
@@ -194,10 +207,24 @@ export class KnowledgeSync {
     return (await this.db.select().from(googleConnection).where(eq(googleConnection.id, 1)))[0];
   }
 
-  /** Runs `work` in its turn: one step of the sync at a time. */
-  private inTurn<T>(work: () => Promise<T>): Promise<T> {
-    const next = this.turn.catch(() => undefined).then(work);
-    this.turn = next;
+  /** Runs `work` in the knowledge base's turn: one step of it at a time, whatever the others do. */
+  private inTurnOf<T>(knowledgeBaseId: string, work: () => Promise<T>): Promise<T> {
+    const next = (this.turns.get(knowledgeBaseId) ?? Promise.resolve()).catch(() => undefined).then(work);
+    this.turns.set(knowledgeBaseId, next);
+    void next.catch(() => undefined).then(() => {
+      if (this.turns.get(knowledgeBaseId) === next) this.turns.delete(knowledgeBaseId);
+    });
+    return next;
+  }
+
+  /** Runs `work` in the containers' turn: one change to them at a time. */
+  private inServiceTurn<T>(work: () => Promise<T>): Promise<T> {
+    this.serviceBusy++;
+    const next = this.serviceTurn
+      .catch(() => undefined)
+      .then(work)
+      .finally(() => this.serviceBusy--);
+    this.serviceTurn = next;
     return next;
   }
 
@@ -221,7 +248,7 @@ export class KnowledgeSync {
     return this.held.has(knowledgeBaseId);
   }
 
-  /** Starts the timer: a tick every few seconds, which follows the run under way or starts the next. */
+  /** Starts the timer: a tick every few seconds, which follows each run under way or starts the next. */
   startTimer(): void {
     const every = Math.max(250, Math.min(2_000, Math.floor(this.intervalMs / 4)));
     this.timer = setInterval(() => void this.tick(), every);
@@ -230,14 +257,15 @@ export class KnowledgeSync {
   }
 
   /**
-   * For the server's stop: no run starts from now on, and the step in its turn ends first. A run under
-   * way goes on in rclone; the next server reads its result.
+   * For the server's stop: no run starts from now on, and the steps in their turns end first. Runs
+   * under way go on in rclone; the next server reads their results.
    */
   async close(waitMs = 5_000): Promise<void> {
     this.closed = true;
     if (this.timer) clearInterval(this.timer);
     let timer: NodeJS.Timeout | undefined;
-    await Promise.race([this.turn.catch(() => undefined), new Promise<void>((resolve) => (timer = setTimeout(resolve, waitMs)))]).finally(() => clearTimeout(timer));
+    const steps = Promise.all([this.serviceTurn, ...this.turns.values()].map((t) => t.catch(() => undefined)));
+    await Promise.race([steps, new Promise<void>((resolve) => (timer = setTimeout(resolve, waitMs)))]).finally(() => clearTimeout(timer));
   }
 
   // The Google connection.
@@ -275,7 +303,7 @@ export class KnowledgeSync {
     log("info", "google.client_saved", {});
     // rclone forgets the remotes made with the earlier client: its secret, the token and the access
     // tokens rclone renewed. The next sign-in's runs make them again.
-    await this.inTurn(() => this.forgetRemotes());
+    await this.forgetRemotes();
     return this.google();
   }
 
@@ -405,6 +433,12 @@ export class KnowledgeSync {
     return rows.map((r) => ({ ...r.sync, name: r.name }));
   }
 
+  /** One synced knowledge base, by its ID, with its name. */
+  private async rowOf(knowledgeBaseId: string): Promise<Row | undefined> {
+    const rows = await this.db.select({ sync: knowledgeSync, name: knowledgeBase.name }).from(knowledgeSync).innerJoin(knowledgeBase, eq(knowledgeSync.knowledgeBaseId, knowledgeBase.id)).where(eq(knowledgeSync.knowledgeBaseId, knowledgeBaseId));
+    return rows[0] ? { ...rows[0].sync, name: rows[0].name } : undefined;
+  }
+
   /** The Google connection, ready for a run, or why it isn't. */
   private async usableConnection() {
     return usable(await this.connection());
@@ -413,8 +447,8 @@ export class KnowledgeSync {
   /**
    * Connects a knowledge base to a Drive folder, given by its link. Your Space starts with a resync,
    * which copies both ways and deletes nothing. The body names only the folder: the remote is always
-   * Google Drive, through the Google connection. The sync's service is started again with the
-   * knowledge base mounted, once the run under way, of any knowledge base, ends.
+   * Google Drive, through the Google connection. The knowledge base gets an rclone container of its
+   * own; the others' run on.
    */
   async connect(name: string, input: Record<string, unknown>, actorId: string) {
     const base = await this.knowledgeRow(name);
@@ -426,7 +460,7 @@ export class KnowledgeSync {
     if (!this.hold(base.id)) throw new AppError(409, "busy", "The knowledge base is being deleted, connected or disconnected. Try again when that finishes.");
     try {
       if (await this.syncRow(base.id)) throw new AppError(409, "already_connected", "This knowledge base is connected already. Disconnect it first to sync another folder.");
-      await this.changeService(async (bases) => {
+      await this.inServiceTurn(async () => {
         // No earlier connection's state can read as deletions against this folder.
         await this.apps.runtime.removeSync(name).catch((error: unknown) => {
           throw new AppError(409, error instanceof RuntimeError ? error.code : "busy", error instanceof Error ? error.message : "The knowledge base's earlier sync can't be removed.");
@@ -440,7 +474,7 @@ export class KnowledgeSync {
           await recordEvent(tx, "knowledge.connected", actorId, null, null, { id: base.id, name: base.name });
         });
         try {
-          await this.startService([...bases, name]);
+          await this.startService(this.bases(await this.rows()));
         } catch (error) {
           await this.db.delete(knowledgeSync).where(eq(knowledgeSync.knowledgeBaseId, base.id));
           throw serviceError(error);
@@ -455,7 +489,8 @@ export class KnowledgeSync {
 
   /**
    * Disconnects a knowledge base: its sync state goes, and both it and the Drive folder keep their
-   * files. A run under way, of it or another knowledge base, ends first; none of it starts meanwhile.
+   * files. Its step under way ends first, and none starts meanwhile; then its rclone is stopped as
+   * Ctrl+C stops it, which stops a run under way, and removed. The other knowledge bases' run on.
    */
   async disconnect(name: string, actorId: string): Promise<void> {
     const base = await this.knowledgeRow(name);
@@ -464,8 +499,9 @@ export class KnowledgeSync {
     if (!this.hold(base.id)) throw new AppError(409, "busy", "The knowledge base is being deleted or disconnected already.");
     this.leaving.add(base.id);
     try {
-      await this.changeService(async (bases) => {
-        await this.startService(bases).catch((error: unknown) => {
+      await this.inTurnOf(base.id, async () => {});
+      await this.inServiceTurn(async () => {
+        await this.startService(this.bases(await this.rows())).catch((error: unknown) => {
           throw serviceError(error);
         });
         await this.apps.runtime.removeSync(name).catch((error: unknown) => {
@@ -475,7 +511,7 @@ export class KnowledgeSync {
           await tx.delete(knowledgeSync).where(eq(knowledgeSync.knowledgeBaseId, base.id));
           await recordEvent(tx, "knowledge.disconnected", actorId, null, null, { id: base.id, name: base.name });
         });
-        this.remotes.delete(base.id);
+        this.forget(base.id, name);
       });
     } finally {
       this.release(base.id);
@@ -483,15 +519,16 @@ export class KnowledgeSync {
   }
 
   /**
-   * Takes a knowledge base the caller holds out of the sync's service, before it is deleted: once the
-   * run under way ends, the service is started again without it. Nothing for one that isn't synced.
-   * Its release puts it back, unless it is gone.
+   * Takes a knowledge base the caller holds out of the sync, before it is deleted: once its step under
+   * way ends, its rclone is stopped and removed. Nothing for one that isn't synced. Its release puts
+   * it back, unless it is gone.
    */
   async leaveService(knowledgeBaseId: string): Promise<void> {
     if (!(await this.syncRow(knowledgeBaseId))) return;
     this.leaving.add(knowledgeBaseId);
-    await this.changeService(async (bases) => {
-      await this.startService(bases).catch((error: unknown) => {
+    await this.inTurnOf(knowledgeBaseId, async () => {});
+    await this.inServiceTurn(async () => {
+      await this.startService(this.bases(await this.rows())).catch((error: unknown) => {
         throw serviceError(error);
       });
     });
@@ -500,8 +537,8 @@ export class KnowledgeSync {
   /**
    * The owner's actions: Sync now, which runs once more after a run under way; Resync, which copies
    * both ways and deletes nothing; and Apply these deletions, every one a stopped run listed, which the
-   * owner confirmed by that run and their number. Each starts at once, or after the run under way of
-   * any knowledge base.
+   * owner confirmed by that run and their number. Each starts at once, or after the knowledge base's
+   * run under way.
    */
   async start(name: string, input: Record<string, unknown>, actorId: string): Promise<void> {
     const base = await this.knowledgeRow(name);
@@ -513,7 +550,7 @@ export class KnowledgeSync {
         throw new AppError(400, "deletions_required", "Send the run whose deletions you confirmed, and how many there are.");
       }
     }
-    await this.inTurn(async () => {
+    await this.inTurnOf(base.id, async () => {
       const row = await this.syncRow(base.id);
       if (!row) throw new AppError(404, "not_connected", "This knowledge base isn't connected to Drive.");
       await this.usableConnection();
@@ -554,64 +591,54 @@ export class KnowledgeSync {
   }
 
   /**
-   * One step of the sync, in its turn: the run under way is followed, and the next one starts once it
-   * has ended. Runs the owner asked for go first, then the knowledge bases due, oldest first.
+   * One tick of the sync: the containers are started as the synced knowledge bases need, unless a
+   * change of them is under way; then each knowledge base takes a step in its own turn, so one that
+   * takes long, as a large listing, holds up none of the others. A tick asked for before this one has
+   * started is this one; each knowledge base has at most one step waiting.
    */
   tick(): Promise<void> {
     if (this.closed) return Promise.resolve();
     if (this.queuedTick) return this.queuedTick;
-    const tick = this.inTurn(async () => {
+    const tick = (async () => {
+      await Promise.resolve();
       // From here on, a tick asked for is another: it sees what this one does.
       this.queuedTick = undefined;
       try {
-        await this.advance(true);
+        if (this.serviceBusy === 0) await this.inServiceTurn(() => this.reconcile());
+        const rows = await this.rows();
+        await Promise.all(rows.map((row) => this.step(row.knowledgeBaseId)));
       } catch (error) {
         log("warn", "knowledge.sync_tick_failed", errorFields(error));
       }
-    });
+    })();
     this.queuedTick = tick;
     return tick;
   }
 
-  /**
-   * Follows the run under way, if any; with `startNext`, and none under way, starts the next. Answers
-   * whether a run is under way.
-   */
-  private async advance(startNext: boolean): Promise<boolean> {
-    const rows = await this.rows();
-    const active = rows.find((r) => r.job);
-    const bases = this.bases(rows);
-    // The service runs with exactly these knowledge bases: started once after the server starts, and
-    // again when they change, never while a run is under way. Changes go through `changeService`.
-    if (this.service?.bases !== bases.join(",") && !(active && this.service)) await this.startOrWait(bases);
-    if (active) {
-      await this.follow(active, bases);
-      return Boolean((await this.syncRow(active.knowledgeBaseId))?.job);
-    }
-    // Not before the service has said whether its remotes are Drive or the browser tests' stand-in.
-    if (!startNext || this.pausing > 0 || this.closed || !this.service) return false;
-    const connection = await this.connection();
-    if (!connection?.token || connection.problem) return false;
-    const next = this.next(rows);
-    if (!next) return false;
-    // rclone is asked only when a run starts: each call it answers is kept for an hour.
-    const executeId = await this.instance();
-    if (executeId === undefined) {
-      // Not running, as after Your Space stopped: it is started again, and the run waits for the next tick.
-      await this.startOrWait(bases, true);
-      return false;
-    }
-    await this.begin(next, connection, executeId);
-    return false;
+  /** The knowledge base's next step, in its turn; one already waiting is that one. */
+  private step(knowledgeBaseId: string): Promise<void> {
+    const queued = this.queuedSteps.get(knowledgeBaseId);
+    if (queued) return queued;
+    const step = this.inTurnOf(knowledgeBaseId, async () => {
+      this.queuedSteps.delete(knowledgeBaseId);
+      try {
+        await this.advance(knowledgeBaseId);
+      } catch (error) {
+        log("warn", "knowledge.sync_step_failed", errorFields(error));
+      }
+    });
+    this.queuedSteps.set(knowledgeBaseId, step);
+    return step;
   }
 
   /**
-   * Starts the sync's service with these knowledge bases, unless that failed less than
-   * SERVICE_RETRY_MS ago; `unreachable` when its rclone didn't answer, as one that stopped.
+   * The containers run for exactly the synced knowledge bases: started once after the server starts,
+   * and again if they differ, unless that failed less than SERVICE_RETRY_MS ago.
    */
-  private async startOrWait(bases: string[], unreachable = false): Promise<void> {
+  private async reconcile(): Promise<void> {
+    const bases = this.bases(await this.rows());
+    if (this.service && this.service.bases.join(",") === bases.join(",")) return;
     if (Date.now() - this.serviceFailed < SERVICE_RETRY_MS) return;
-    if (!unreachable && bases.length === 0 && this.service?.bases === "") return;
     try {
       await this.startService(bases);
     } catch (error) {
@@ -620,59 +647,93 @@ export class KnowledgeSync {
     }
   }
 
-  /** The knowledge bases the service mounts: every synced one, except those leaving it. */
+  /** The knowledge bases that sync: every synced one, except those leaving it. */
   private bases(rows: Row[]): string[] {
     return rows.filter((r) => !this.leaving.has(r.knowledgeBaseId)).map((r) => r.name);
   }
 
-  /** Starts the sync's service with exactly these knowledge bases mounted. */
+  /** Starts an rclone container for exactly each of these knowledge bases. */
   private async startService(bases: string[]): Promise<void> {
     const names = [...new Set(bases)].sort();
     const service = await this.apps.runtime.ensureSyncService(names);
-    this.service = { bases: names.join(","), fixture: service.fixture };
+    this.service = { bases: names, fixture: service.fixture };
   }
 
-  /** rclone's instance, which changes when it restarts, or undefined while it can't be reached. */
-  private async instance(): Promise<string | undefined> {
+  /** What the server knows of a knowledge base's rclone, once it no longer syncs. */
+  private forget(knowledgeBaseId: string, name: string): void {
+    this.remotes.delete(knowledgeBaseId);
+    this.listedAt.delete(knowledgeBaseId);
+    this.unreachableSince.delete(name);
+    this.limitedAt.delete(name);
+  }
+
+  /**
+   * One step of a knowledge base, in its turn: its run under way is followed; with none, its next one
+   * starts if it is due or the owner asked for it. Nothing while it is held, before its container is
+   * known to run, or before the containers have said whether they are the browser tests'.
+   */
+  private async advance(knowledgeBaseId: string): Promise<void> {
+    if (this.closed || this.held.has(knowledgeBaseId)) return;
+    const row = await this.rowOf(knowledgeBaseId);
+    if (!row || !this.service?.bases.includes(row.name)) return;
+    if (row.job) return this.follow(row);
+    if (!this.isNext(row)) return;
+    const connection = await this.connection();
+    if (!connection?.token || connection.problem) return;
+    // rclone is asked only when a run starts: each call it answers is kept for an hour.
+    const executeId = await this.instance(row);
+    if (executeId === undefined) return;
+    await this.begin(row, connection, executeId);
+  }
+
+  /** Whether the knowledge base's next run is now: one the owner asked for, or it is due and didn't stop for safety. */
+  private isNext(row: Row): boolean {
+    if (row.requested && !row.requested.again) return true;
+    // A Resync asked for again after an interruption runs when its knowledge base is due, as others do.
+    if (!row.requested?.again && row.result === "stopped") return false;
+    return !row.lastRunAt || Date.now() - row.lastRunAt.getTime() >= this.intervalMs;
+  }
+
+  /**
+   * The knowledge base's rclone's instance, which changes when it restarts; undefined while it can't be
+   * reached, or while it runs a job of this knowledge base's that the server doesn't follow, as one a
+   * server started just before it stopped: bisync's log is rclone's, so two would mix theirs.
+   */
+  private async instance(row: Row): Promise<string | undefined> {
+    const rc = this.rcFor(row.name);
     try {
-      return (await this.rc.call<{ executeId: string }>("job/list")).executeId;
-    } catch {
+      const list = await rc.call<{ executeId: string; runningIds?: number[] }>("job/list");
+      this.unreachableSince.delete(row.name);
+      for (const id of list.runningIds ?? []) {
+        // Every call is a job of rclone's, this one among them; a run's is in a group of Your Space's.
+        const job = await rc.call<RcJob>("job/status", { jobid: id }).catch(() => undefined);
+        if (job && !job.finished && job.group?.startsWith("knowledge/")) {
+          log("warn", "knowledge.sync_untracked", { name: row.name, job: id });
+          return undefined;
+        }
+      }
+      return list.executeId;
+    } catch (error) {
+      if (error instanceof RcError && (error.status === 503 || error.status === 504)) await this.unreachable(row);
+      else log("warn", "knowledge.sync_instance_failed", { name: row.name, ...errorFields(error) });
       return undefined;
     }
   }
 
   /**
-   * Runs `change` with the service's knowledge bases, once no run is under way, and starts none until
-   * it ends. A run under way is waited for, up to SERVICE_WAIT_MS: changing the service stops rclone.
+   * The knowledge base's rclone didn't answer, or not in time: once that has lasted UNREACHABLE_MS, as
+   * with one hung, or whose socket is gone, it is restarted, and the next restart waits as long again.
    */
-  private async changeService(change: (bases: string[]) => Promise<void>): Promise<void> {
-    this.pausing++;
-    try {
-      const deadline = Date.now() + SERVICE_WAIT_MS;
-      for (;;) {
-        const done = await this.inTurn(async () => {
-          if (await this.advance(false)) return false;
-          await change(this.bases(await this.rows()));
-          return true;
-        });
-        if (done) return;
-        if (Date.now() > deadline) throw new AppError(409, "busy", "A knowledge base is syncing now. Try again when its sync finishes.");
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
-    } finally {
-      this.pausing--;
+  private async unreachable(row: Row): Promise<void> {
+    const since = this.unreachableSince.get(row.name);
+    if (since === undefined) {
+      this.unreachableSince.set(row.name, Date.now());
+      return;
     }
-  }
-
-  /** The next run: one the owner asked for, then the knowledge base due longest, none stopped for safety. */
-  private next(rows: Row[]): Row | undefined {
-    const free = rows.filter((r) => !this.held.has(r.knowledgeBaseId));
-    const asked = free.filter((r) => r.requested && !r.requested.again).sort((a, b) => a.requested!.at.localeCompare(b.requested!.at))[0];
-    if (asked) return asked;
-    // A Resync asked for again after an interruption runs when its knowledge base is due, as others do.
-    const now = Date.now();
-    const due = free.filter((r) => (r.requested?.again || r.result !== "stopped") && (!r.lastRunAt || now - r.lastRunAt.getTime() >= this.intervalMs));
-    return due.sort((a, b) => (a.lastRunAt?.getTime() ?? 0) - (b.lastRunAt?.getTime() ?? 0))[0];
+    if (Date.now() - since < UNREACHABLE_MS) return;
+    this.unreachableSince.set(row.name, Date.now());
+    log("warn", "knowledge.sync_unreachable", { name: row.name });
+    await this.apps.runtime.restartSyncService(row.name).catch((error: unknown) => log("warn", "knowledge.sync_restart_failed", { name: row.name, ...errorFields(error) }));
   }
 
   /**
@@ -705,9 +766,9 @@ export class KnowledgeSync {
     }
   }
 
-  /** Makes the knowledge base's remote in rclone, unless this rclone has it for this connection and folder. */
+  /** Makes the knowledge base's remote in its rclone, unless that rclone has it for this connection and folder. */
   private async remote(row: Row, connection: Connection, executeId: string): Promise<void> {
-    const fixture = this.service?.fixture ?? false;
+    const fixture = this.service!.fixture;
     const version = `${connection.clientId} ${connection.updatedAt.toISOString()} ${row.folderId} ${fixture}`;
     const known = this.remotes.get(row.knowledgeBaseId);
     if (known?.executeId === executeId && known.version === version) return;
@@ -722,38 +783,45 @@ export class KnowledgeSync {
     const { type, parameters } = remoteConfig({ clientId: connection.clientId, clientSecret, token, folderId: row.folderId }, fixture);
     // rclone then asks whether to sign in again for a new token; that question is never answered, so it
     // keeps the token it was given, and the access tokens it renews, in memory.
-    await this.rc.call("config/create", { name: remoteName(row.name), type, parameters, opt: { nonInteractive: true } });
+    await this.rcFor(row.name).call("config/create", { name: remoteName(row.name), type, parameters, opt: { nonInteractive: true } });
     this.remotes.set(row.knowledgeBaseId, { executeId, version, connectedAt: connection.connectedAt?.toISOString() ?? null });
   }
 
-  /** Deletes every knowledge base's remote from rclone's memory, as when the OAuth client changes. */
+  /** Deletes every knowledge base's remote from its rclone's memory, as when the OAuth client changes. */
   private async forgetRemotes(): Promise<void> {
-    for (const row of await this.rows()) {
-      await this.rc.call("config/delete", { name: remoteName(row.name) }).catch((error: unknown) => log("warn", "knowledge.remote_delete_failed", { name: row.name, ...errorFields(error) }));
-    }
-    this.remotes.clear();
+    await Promise.all(
+      (await this.rows()).map((row) =>
+        this.inTurnOf(row.knowledgeBaseId, async () => {
+          await this.rcFor(row.name)
+            .call("config/delete", { name: remoteName(row.name) })
+            .catch((error: unknown) => log("warn", "knowledge.remote_delete_failed", { name: row.name, ...errorFields(error) }));
+          this.remotes.delete(row.knowledgeBaseId);
+        }),
+      ),
+    );
   }
 
   /** Puts Your Space's marker at both roots before a resync, copying it from one side to the other. */
   private async markers(name: string): Promise<void> {
-    const here = await this.stat(localPath(name));
-    const there = await this.stat(`${remoteName(name)}:`);
-    if (!here && there) await this.rc.call("operations/copyfile", { srcFs: `${remoteName(name)}:`, srcRemote: SYNC_MARKER, dstFs: localPath(name), dstRemote: SYNC_MARKER });
-    else if (!here) await this.rc.upload(localPath(name), "", SYNC_MARKER, "");
-    if (!there) await this.rc.call("operations/copyfile", { srcFs: localPath(name), srcRemote: SYNC_MARKER, dstFs: `${remoteName(name)}:`, dstRemote: SYNC_MARKER });
+    const rc = this.rcFor(name);
+    const here = await this.stat(rc, localPath(name));
+    const there = await this.stat(rc, `${remoteName(name)}:`);
+    if (!here && there) await rc.call("operations/copyfile", { srcFs: `${remoteName(name)}:`, srcRemote: SYNC_MARKER, dstFs: localPath(name), dstRemote: SYNC_MARKER });
+    else if (!here) await rc.upload(localPath(name), "", SYNC_MARKER, "");
+    if (!there) await rc.call("operations/copyfile", { srcFs: localPath(name), srcRemote: SYNC_MARKER, dstFs: `${remoteName(name)}:`, dstRemote: SYNC_MARKER });
   }
 
-  private async stat(fs: string): Promise<boolean> {
-    const { item } = await this.rc.call<{ item: unknown }>("operations/stat", { fs, remote: SYNC_MARKER });
+  private async stat(rc: Rc, fs: string): Promise<boolean> {
+    const { item } = await rc.call<{ item: unknown }>("operations/stat", { fs, remote: SYNC_MARKER });
     return Boolean(item);
   }
 
-  /** Starts a job in rclone, in the background, and keeps it on the knowledge base's row. */
+  /** Starts a job in the knowledge base's rclone, in the background, and keeps it on its row. */
   private async launch(row: Row, job: Omit<SyncJob, "id" | "executeId">, params: Record<string, unknown>): Promise<void> {
     const command = job.step === "ties" ? "sync/copy" : "sync/bisync";
     // A group of its own: rclone counts each job's transfers by it, as the tie copies read back.
     const group = `knowledge/${row.name}/${job.run}/${job.step}/${randomUUID().slice(0, 8)}`;
-    const started = await this.rc.call<{ jobid: number; executeId: string }>(command, { ...params, _async: true, _group: group });
+    const started = await this.rcFor(row.name).call<{ jobid: number; executeId: string }>(command, { ...params, _async: true, _group: group });
     await this.db
       .update(knowledgeSync)
       .set({ job: { ...job, id: started.jobid, executeId: started.executeId } })
@@ -761,57 +829,64 @@ export class KnowledgeSync {
   }
 
   /**
-   * Reads the run's job: one rclone forgot, as when it restarted or Your Space stopped, was
-   * interrupted; one still under way past RUN_LIMIT_MS is stopped as Ctrl+C stops rclone; one that
-   * finished goes on to the run's next step, or is recorded.
+   * Reads the run's job: one its rclone forgot, as when it restarted or Your Space stopped, was
+   * interrupted; one still under way past RUN_LIMIT_MS is stopped by restarting its rclone, as Ctrl+C
+   * stops it; one that finished goes on to the run's next step, or is recorded.
    */
-  private async follow(row: Row, bases: string[]): Promise<void> {
+  private async follow(row: Row): Promise<void> {
     const job = row.job!;
+    const rc = this.rcFor(row.name);
     let status: RcJob | undefined;
     try {
-      status = await this.rc.call<RcJob>("job/status", { jobid: job.id });
+      status = await rc.call<RcJob>("job/status", { jobid: job.id });
     } catch (error) {
       if (!(error instanceof RcError)) throw error;
-      // rclone isn't running, as after Your Space stopped: it is started again, and its answer then
-      // says whether it still has the job.
-      if (error.status === 503 || error.status === 504) return this.startOrWait(bases, true);
+      // rclone isn't running or doesn't answer: restarted once that lasts, and its answer then says
+      // whether it still has the job.
+      if (error.status === 503 || error.status === 504) return this.unreachable(row);
       // Any other failure, as an answer cut short, says nothing of the job: it is asked again next tick.
       if (!/job not found/i.test(error.message)) {
         log("warn", "knowledge.sync_status_failed", { name: row.name, ...errorFields(error) });
         return;
       }
     }
+    this.unreachableSince.delete(row.name);
     // One rclone no longer has, or a job of the same number of a restarted rclone: interrupted.
     if (!status || status.executeId !== job.executeId) return this.interrupted(row, job);
     if (!status.finished) {
-      if (Date.now() - Date.parse(job.startedAt) > RUN_LIMIT_MS && Date.now() - this.serviceFailed >= SERVICE_RETRY_MS) {
+      if (Date.now() - Date.parse(job.startedAt) > RUN_LIMIT_MS && Date.now() - (this.limitedAt.get(row.name) ?? 0) >= SERVICE_RETRY_MS) {
         log("warn", "knowledge.sync_limit", { name: row.name });
-        await this.apps.runtime.restartSyncService().catch((error: unknown) => {
-          this.serviceFailed = Date.now();
-          log("warn", "knowledge.sync_restart_failed", errorFields(error));
-        });
+        this.limitedAt.set(row.name, Date.now());
+        // Kept on the run, so its interruption is recorded as the time limit's.
+        if (!job.limited) await this.db.update(knowledgeSync).set({ job: { ...job, limited: true } }).where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
+        await this.apps.runtime.restartSyncService(row.name).catch((error: unknown) => log("warn", "knowledge.sync_restart_failed", { name: row.name, ...errorFields(error) }));
       }
       return;
     }
     const lines = logLines(typeof status.output?.output === "string" ? status.output.output : "");
     await this.stepDone(row, job, status, lines);
     // rclone keeps each job's counts until it has a thousand: a run a minute adds up.
-    await this.rc.call("core/stats-delete", { group: status.group }).catch(() => {});
+    await rc.call("core/stats-delete", { group: status.group }).catch(() => {});
   }
 
   /**
-   * A run's job rclone no longer has, as after it restarted or the run's time was up: the run was
-   * interrupted, and nothing is recorded of it. Its knowledge base is due again a minute later, so the
-   * others, which waited for it, run first. The next run carries on with `recover`; a Resync the owner
-   * asked for then runs again, in its turn; deletions they confirmed wait for them to confirm again.
+   * A run's job its rclone no longer has, as after it restarted, Your Space stopped, or the run's time
+   * was up. A dry run before deletions changed nothing: the deletions wait for the owner, confirmed by
+   * the same run. Any other run may have changed files, so it is recorded as one that failed, against
+   * Your Space, and deletions the owner confirmed as theirs; it is due again at once, and carries on
+   * with `recover`. A Resync the owner asked for then runs again, in its turn.
    */
   private async interrupted(row: Row, job: SyncJob): Promise<void> {
+    log("warn", "knowledge.sync_interrupted", { name: row.name, step: job.step, limited: Boolean(job.limited) });
+    if (job.step === "preview") {
+      await this.db.update(knowledgeSync).set({ job: null }).where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
+      return;
+    }
     const requested: SyncRequested | null = job.mode === "resync" && job.by ? { mode: "resync", by: job.by, at: new Date().toISOString(), again: true } : null;
-    await this.db
-      .update(knowledgeSync)
-      .set({ job: null, lastRunAt: new Date(), ...(requested ? { requested } : {}) })
-      .where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId));
-    log("warn", "knowledge.sync_interrupted", { name: row.name, step: job.step });
+    const message = job.limited
+      ? `The sync took longer than ${RUN_LIMIT_MS / 3_600_000} hours, so Your Space stopped it. The next sync carries on from there; a file that takes longer than that to copy never finishes.`
+      : "The sync was interrupted, as when Your Space or its sync stopped. The next sync carries on from there.";
+    await this.finish(row, job, { result: "failed", message }, [], { changed: true, listed: false, interrupted: true, requested });
   }
 
   /** A job ended: the run's next step starts, or the run is recorded. */
@@ -831,7 +906,9 @@ export class KnowledgeSync {
       }
       case "ties": {
         if (!status.success) return this.finish(row, job, ended, lines, { changed: true });
-        const transferred = await this.rc.call<{ transferred: { name: string; what: string; error: string; checked?: boolean }[] }>("core/transferred", { group: status.group }).catch(() => ({ transferred: [] }));
+        const transferred = await this.rcFor(row.name)
+          .call<{ transferred: { name: string; what: string; error: string; checked?: boolean }[] }>("core/transferred", { group: status.group })
+          .catch(() => ({ transferred: [] }));
         const replaced = [...(job.ties?.replaced ?? []), ...transferred.transferred.filter((t) => t.what === "transferring" && !t.error && !t.checked).map((t) => t.name)];
         return this.copyTies(row, { ...job, ties: { pending: job.ties?.pending ?? [], replaced } });
       }
@@ -860,11 +937,16 @@ export class KnowledgeSync {
     await this.launch(row, { ...job, step: "ties", ties: { pending: pending.slice(TIES_PER_COPY), replaced: job.ties?.replaced ?? [] } }, tieCopyParams(row.name, next));
   }
 
-  /** The knowledge base's conflict copies, and the files recent runs replaced; older backups are removed. */
+  /**
+   * The knowledge base's conflict copies, and the files recent runs replaced; older backups are
+   * removed. rclone keeps every answer for an hour, so the backups are listed a run's folder at a time,
+   * newest first, only until the page has as many as it shows.
+   */
   private async listing(name: string): Promise<{ conflicts: string[]; backups: Backup[] } | undefined> {
-    const list = async (fs: string, filter?: Record<string, unknown>): Promise<Listed[]> => {
+    const rc = this.rcFor(name);
+    const list = async (fs: string, opt: Record<string, unknown>, filter?: Record<string, unknown>): Promise<Listed[]> => {
       try {
-        const { list } = await this.rc.call<{ list: Listed[] }>("operations/list", { fs, remote: "", opt: { recurse: true, filesOnly: true, noModTime: true, noMimeType: true }, ...(filter ? { _filter: filter } : {}) });
+        const { list } = await rc.call<{ list: Listed[] }>("operations/list", { fs, remote: "", opt: { noModTime: true, noMimeType: true, ...opt }, ...(filter ? { _filter: filter } : {}) });
         return list ?? [];
       } catch (error) {
         if (error instanceof RcError && /directory not found/i.test(error.message)) return [];
@@ -872,10 +954,15 @@ export class KnowledgeSync {
       }
     };
     try {
-      const conflicts = conflictsOf(await list(localPath(name), { IncludeRule: ["**.conflict[0-9]*"] }));
-      const { backups, expired } = backupsOf(await list(backupsPath(name)), new Date());
-      for (const run of expired) await this.rc.call("operations/purge", { fs: backupsPath(name), remote: run });
-      return { conflicts, backups };
+      const conflicts = conflictsOf(await list(localPath(name), { recurse: true, filesOnly: true }, { IncludeRule: ["**.conflict[0-9]*"] }));
+      const { recent, expired } = backupRuns((await list(backupsPath(name), { dirsOnly: true })).map((e) => e.Path), new Date());
+      for (const run of expired) await rc.call("operations/purge", { fs: backupsPath(name), remote: run });
+      const files: Listed[] = [];
+      for (const run of recent) {
+        if (files.length >= LISTED) break;
+        files.push(...(await list(`${backupsPath(name)}/${run}`, { recurse: true, filesOnly: true })).map((e) => ({ ...e, Path: `${run}/${e.Path}` })));
+      }
+      return { conflicts, backups: backupsOf(files, new Date()).backups };
     } catch (error) {
       log("warn", "knowledge.sync_listing_failed", { name, ...errorFields(error) });
       return undefined;
@@ -886,7 +973,13 @@ export class KnowledgeSync {
    * Keeps a run's result on the knowledge base's sync, and records it against Your Space. Google's
    * refusal disconnects the connection only while it still has the sign-in the run's remote had.
    */
-  private async finish(row: Row, job: SyncJob, ran: Outcome, lines: LogLine[], extra: { changed: boolean; ties?: string[]; deletions?: SyncDeletion[]; listed?: false }): Promise<void> {
+  private async finish(
+    row: Row,
+    job: SyncJob,
+    ran: Outcome,
+    lines: LogLine[],
+    extra: { changed: boolean; ties?: string[]; deletions?: SyncDeletion[]; listed?: false; interrupted?: boolean; requested?: SyncRequested | null },
+  ): Promise<void> {
     const subject = { id: row.knowledgeBaseId, name: row.name };
     if (ran.result === "busy") {
       // bisync's lock: another run of it, as one a restarted rclone left, holds it until it expires.
@@ -931,12 +1024,14 @@ export class KnowledgeSync {
           ...(listed ? { conflicts: listed.conflicts, backups: listed.backups } : {}),
           ...(synced ? { lastSyncedAt: new Date() } : {}),
           ...(synced && job.mode === "resync" ? { resync: false, ties: (extra.ties ?? []).slice(0, 500) } : {}),
+          ...(extra.requested ? { requested: extra.requested } : {}),
         })
         .where(eq(knowledgeSync.knowledgeBaseId, row.knowledgeBaseId))
         .returning({ id: knowledgeSync.knowledgeBaseId });
       // Disconnected meanwhile: nothing is kept.
       if (updated.length === 0) return;
-      if (synced && job.mode === "force" && job.by) await recordEvent(tx, "knowledge.deletions_applied", job.by, null, null, subject);
+      // The owner's deletions, applied, or being applied when the run was interrupted: some may have been made.
+      if ((synced || extra.interrupted) && job.step === "force" && job.by) await recordEvent(tx, "knowledge.deletions_applied", job.by, null, null, subject);
       if (synced && extra.changed) await recordEvent(tx, "knowledge.synced", yourSpace, null, null, subject);
       if (stopped) await recordEvent(tx, "knowledge.sync_stopped", yourSpace, null, null, subject);
       // A run that keeps failing, as while offline, is recorded once.

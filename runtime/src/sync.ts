@@ -1,19 +1,21 @@
-// Synced knowledge bases (journey 014, decision 2026-11-25 "Knowledge bases"): one long-running
-// container of stock rclone's remote control (`rclone rcd`) syncs every synced knowledge base with its
-// Google Drive folder. The runtime manager only runs that container: the official image pinned to its
+// Synced knowledge bases (journey 014, decision 2026-11-25 "Knowledge bases"): long-running
+// containers of stock rclone's remote control (`rclone rcd`), one for each synced knowledge base, sync
+// it with its Google Drive folder. The runtime manager only runs them: the official image pinned to its
 // digest, as user 1000, without capabilities, with a read-only root, no engine socket and no FUSE, on a
-// network whose only way out is a Squid of its own that lets through only Google's token and Drive
+// network whose only way out is a Squid of their own that lets through only Google's token and Drive
 // hosts. rclone's configuration is in memory only (`--config ""`), and its remote control listens only
-// on a Unix socket in a volume that only it and the server mount (ys-sync), owned by user 1000 with
-// mode 0700. The server creates each knowledge base's remote there, with its client and token, and
-// starts each bisync there (server/src/apps/knowledge-sync.ts): nothing secret passes through the
-// runtime manager, and none is in the container's environment, command or files.
+// on a Unix socket in a folder of its own of a volume that only the server mounts whole (ys-sync),
+// owned by user 1000 with mode 0700. The server creates the knowledge base's remote there, with its
+// client and token, and starts each bisync there (server/src/apps/knowledge-sync.ts): nothing secret
+// passes through the runtime manager, and none is in a container's environment, command or files.
 //
-// The container mounts each synced knowledge base at /knowledge/<name> and its sync state, bisync's
-// listings and the files syncs replaced, at /state/<name>, from a volume of Your Space's outside the
-// knowledge base. Connecting or disconnecting a knowledge base changes the mounts, so Compose
-// recreates the container. It stops with SIGINT, bisync's graceful shutdown, so a run under way saves
-// its state for the next one. Once Your Space is stopping (/stop-all), nothing here starts.
+// A knowledge base's container mounts only that knowledge base, at /knowledge/<name>, its sync state,
+// bisync's listings and the files syncs replaced, at /state/<name>, from a volume of Your Space's
+// outside the knowledge base, and its own socket's folder. rclone writes through a symbolic link to a
+// folder, so an app could otherwise have a sync write into another knowledge base, or over another's
+// listings or socket. Connecting or disconnecting a knowledge base adds or removes its container
+// only. Each stops with SIGINT, bisync's graceful shutdown, so a run under way saves its state for the
+// next one. Once Your Space is stopping (/stop-all), nothing here starts.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { EGRESS_IMAGE, EGRESS_PORT, EGRESS_SERVICE, egressConfig, egressService, escapeDollars, knowledgeStateVolume, knowledgeSyncLabels, knowledgeVolume, pinnedImage } from "./adapter.ts";
@@ -41,31 +43,38 @@ export function rcloneImage(env: NodeJS.ProcessEnv = process.env): string {
  * signs in with Google.
  */
 export const SYNC_HOSTS = ["oauth2.googleapis.com", "www.googleapis.com"];
-/** Where the socket's volume is mounted, in the sync's container and in the server's (deploy/stack.yaml). */
+/**
+ * Where a knowledge base's rclone has its socket's folder, the folder of the ys-sync volume named after
+ * the knowledge base; the server mounts the whole volume there too (deploy/stack.yaml), and reaches it
+ * at /run/ys-sync/<name>/rc.sock.
+ */
 export const SOCKET_DIR = "/run/ys-sync";
 export const RC_SOCKET = `${SOCKET_DIR}/rc.sock`;
 /** The socket volume's name in Your Space's own Compose file. */
 export const SOCKET_VOLUME_KEY = "ys-sync";
-/** The sync's service in its Compose project. */
-export const RCLONE_SERVICE = "rclone";
+/** A knowledge base's rclone, a service of the sync's Compose project. */
+export function rcloneService(knowledgeBase: string): string {
+  return `rclone-${knowledgeBase}`;
+}
 /** How long rclone keeps a finished run's result, so a server that restarts meanwhile can read it. */
 export const JOB_EXPIRY = "1h";
 /** How long a stop gives bisync's graceful shutdown: it wraps up in 30 seconds, then cancels and waits up to 60. */
 export const STOP_GRACE_S = 100;
-/** The most knowledge bases one container mounts: two volumes each. */
+/** The most knowledge bases that sync at once: a container each. */
 export const MAX_SYNCED = 100;
 const STOPPING = "Your Space is stopping, so nothing syncs until it starts again.";
 const SYNC_MEMORY = "1g";
 
 /**
  * rclone's remote control, and only that. A socket an earlier container left behind is removed first:
- * rclone doesn't replace one, and wouldn't start. `--rc-no-auth` because rclone refuses to create a
+ * rclone doesn't replace one, and wouldn't start; so is anything else there, as a folder a sync wrote
+ * through a symbolic link. `--rc-no-auth` because rclone refuses to create a
  * remote over a remote control without authentication, and the socket's file permissions are its
  * authentication. `-v`, JSON and no colour: the server reads each bisync's log from its result.
  */
 export function rcloneCommand(): string {
   return [
-    `rm -f ${RC_SOCKET}`,
+    `rm -rf ${RC_SOCKET}`,
     `exec rclone rcd --config '' --rc-addr unix://${RC_SOCKET} --rc-no-auth --rc-job-expire-duration ${JOB_EXPIRY} -v --use-json-log --color NEVER`,
   ].join(" && ");
 }
@@ -104,33 +113,24 @@ function syncLabels(): Record<string, string> {
 export interface SyncServiceSpec {
   squid: string;
   rclone: string;
-  /** The ys-sync volume, which the server mounts too. */
+  /** The ys-sync volume, which the server mounts too; each rclone mounts only its own folder of it. */
   socketVolume: string;
-  /** The synced knowledge bases, by name. */
+  /** The synced knowledge bases, by name: a container each. */
   knowledgeBases: string[];
   fixture: boolean;
   /** The server runs in the engine's own user name space, so rclone does too (`serverUserns`). */
   usernsHost?: boolean;
 }
 
-/** The sync's Compose file: rclone's remote control, and the proxy it reaches Google through. */
-export function syncServiceFile(spec: SyncServiceSpec): Record<string, unknown> {
-  const labels = syncLabels();
-  const config = egressConfig(SYNC_HOSTS);
-  const proxy = `http://${EGRESS_SERVICE}:${EGRESS_PORT}`;
-  const volumes: Record<string, unknown> = { socket: { external: true, name: spec.socketVolume } };
-  const mounts: Record<string, unknown>[] = [{ type: "volume", source: "socket", target: SOCKET_DIR, volume: { nocopy: true } }];
-  for (const name of spec.knowledgeBases) {
-    volumes[`kb-${name}`] = { external: true, name: knowledgeVolume(INSTALLATION, name) };
-    volumes[`state-${name}`] = { external: true, name: knowledgeStateVolume(INSTALLATION, name) };
-    mounts.push({ type: "volume", source: `kb-${name}`, target: `/knowledge/${name}`, volume: { nocopy: true } });
-    mounts.push({ type: "volume", source: `state-${name}`, target: `/state/${name}`, volume: { nocopy: true } });
-  }
-  if (spec.fixture) {
-    volumes.fixture = { external: true, name: fixtureVolume() };
-    mounts.push({ type: "volume", source: "fixture", target: "/remote", volume: { nocopy: true } });
-  }
-  const rclone = {
+/** One knowledge base's rclone: its remote control, which mounts that knowledge base, its state and its socket's folder only. */
+function rcloneServiceOf(spec: SyncServiceSpec, name: string, proxy: string): Record<string, unknown> {
+  const mounts: Record<string, unknown>[] = [
+    { type: "volume", source: "socket", target: SOCKET_DIR, volume: { nocopy: true, subpath: name } },
+    { type: "volume", source: `kb-${name}`, target: `/knowledge/${name}`, volume: { nocopy: true } },
+    { type: "volume", source: `state-${name}`, target: `/state/${name}`, volume: { nocopy: true } },
+  ];
+  if (spec.fixture) mounts.push({ type: "volume", source: "fixture", target: "/remote", volume: { nocopy: true } });
+  return {
     image: spec.rclone,
     entrypoint: ["/bin/sh", "-c"],
     command: [rcloneCommand()],
@@ -139,7 +139,7 @@ export function syncServiceFile(spec: SyncServiceSpec): Record<string, unknown> 
     tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"],
     cap_drop: ["ALL"],
     security_opt: ["no-new-privileges:true"],
-    // No secret: the server creates the remotes over the socket.
+    // No secret: the server creates the remote over the socket.
     environment: { HOME: "/tmp", HTTPS_PROXY: proxy, HTTP_PROXY: proxy },
     ...(spec.usernsHost ? { userns_mode: "host" } : {}),
     networks: { sync: {} },
@@ -161,11 +161,27 @@ export function syncServiceFile(spec: SyncServiceSpec): Record<string, unknown> 
     mem_limit: SYNC_MEMORY,
     cpus: 1,
     pids_limit: 256,
-    labels: { ...labels, "ai.your-space.knowledge-bases": spec.knowledgeBases.join(",") },
+    // Its own knowledge base only, so adding or removing another's container leaves this one running.
+    labels: { ...syncLabels(), "ai.your-space.knowledge": name },
   };
+}
+
+/** The sync's Compose file: a remote control for each knowledge base, and the proxy they reach Google through. */
+export function syncServiceFile(spec: SyncServiceSpec): Record<string, unknown> {
+  const labels = syncLabels();
+  const config = egressConfig(SYNC_HOSTS);
+  const proxy = `http://${EGRESS_SERVICE}:${EGRESS_PORT}`;
+  const volumes: Record<string, unknown> = { socket: { external: true, name: spec.socketVolume } };
+  const services: Record<string, unknown> = { [EGRESS_SERVICE]: egressService(spec.squid, labels, config, ["sync", "egress"]) };
+  for (const name of spec.knowledgeBases) {
+    volumes[`kb-${name}`] = { external: true, name: knowledgeVolume(INSTALLATION, name) };
+    volumes[`state-${name}`] = { external: true, name: knowledgeStateVolume(INSTALLATION, name) };
+    services[rcloneService(name)] = rcloneServiceOf(spec, name, proxy);
+  }
+  if (spec.fixture) volumes.fixture = { external: true, name: fixtureVolume() };
   return {
     name: syncProject(),
-    services: escapeDollars({ [EGRESS_SERVICE]: egressService(spec.squid, labels, config, ["sync", "egress"]), [RCLONE_SERVICE]: rclone }),
+    services: escapeDollars(services),
     networks: {
       sync: { internal: true, driver: "bridge", driver_opts: { "com.docker.network.bridge.gateway_mode_ipv4": "isolated" }, labels },
       egress: { driver: "bridge", labels },
@@ -176,26 +192,30 @@ export function syncServiceFile(spec: SyncServiceSpec): Record<string, unknown> 
 }
 
 export interface SyncService {
-  /** Whether rclone's container runs now. */
-  running: boolean;
-  /** The knowledge bases it mounts. */
+  /** The knowledge bases that have an rclone container, running or not. */
   knowledgeBases: string[];
+  /** Those whose container runs now. */
+  running: string[];
   /** The browser tests' remote: the server creates each remote on a folder of /remote instead of Drive. */
   fixture: boolean;
-  /** Where the server reaches its remote control, in the ys-sync volume. */
-  socket: string;
 }
 
-async function rcloneContainer() {
-  const found = await listContainers([`com.docker.compose.project=${syncProject()}`, `com.docker.compose.service=${RCLONE_SERVICE}`]);
-  return found.find((c) => c.State === "running") ?? found[0];
+/** The knowledge bases' rclone containers, by knowledge base. */
+async function rcloneContainers() {
+  const found = await listContainers([`com.docker.compose.project=${syncProject()}`, "ai.your-space.role=knowledge-sync", "ai.your-space.knowledge"]);
+  const byName = new Map<string, (typeof found)[number]>();
+  for (const c of found) {
+    const name = c.Labels["ai.your-space.knowledge"];
+    if (name && c.Labels["com.docker.compose.service"] === rcloneService(name) && (!byName.has(name) || c.State === "running")) byName.set(name, c);
+  }
+  return byName;
 }
 
-/** The sync's container as it is now. */
+/** The sync's containers as they are now. */
 export async function syncService(): Promise<SyncService> {
-  const container = await rcloneContainer();
-  const mounted = container?.Labels["ai.your-space.knowledge-bases"] ?? "";
-  return { running: container?.State === "running", knowledgeBases: mounted ? mounted.split(",") : [], fixture: fixtureEnabled(), socket: RC_SOCKET };
+  const containers = await rcloneContainers();
+  const names = [...containers.keys()].sort();
+  return { knowledgeBases: names, running: names.filter((n) => containers.get(n)!.State === "running"), fixture: fixtureEnabled() };
 }
 
 /** Validates the server's request: the knowledge bases to sync, by name, and nothing else. */
@@ -274,7 +294,12 @@ async function squidImage(): Promise<string> {
   return squid;
 }
 
-async function compose(file: Record<string, unknown>, args: string[]): Promise<void> {
+async function compose(file: Record<string, unknown> | undefined, args: string[]): Promise<void> {
+  if (!file) {
+    const ran = await docker(["compose", "-p", syncProject(), ...args]);
+    if (ran.code !== 0) throw new EngineError(`Changing the sync failed: ${ran.stderr.split("\n").filter((l) => l.trim()).slice(-3).join(" ").slice(0, 600)}`);
+    return;
+  }
   const dir = mkdtempSync("/tmp/ys-sync-");
   try {
     writeFileSync(join(dir, "compose.json"), JSON.stringify(file), { mode: 0o600 });
@@ -289,16 +314,25 @@ async function projectExists(): Promise<boolean> {
   return (await listContainers([`com.docker.compose.project=${syncProject()}`])).length > 0;
 }
 
+/** Stops these knowledge bases' rclone as Ctrl+C stops it, together, with time for bisync to finish. */
+async function stopRclones(names: string[]): Promise<void> {
+  if (names.length > 0) await compose(undefined, ["stop", "-t", String(STOP_GRACE_S), ...names.map(rcloneService)]);
+}
+
 /**
- * Runs the sync's container with exactly these knowledge bases mounted, and its proxy, and answers once
- * its remote control answers. Compose recreates the container when the mounts change, which stops it
- * with SIGINT first; the server stops nothing it runs. With none, both are removed. The knowledge
- * bases are held meanwhile, so none of them, or its sync state, is deleted under it.
+ * Runs an rclone container for exactly each of these knowledge bases, and their proxy. A knowledge
+ * base no longer named has its rclone stopped first, as Ctrl+C stops it, then removed; one already
+ * running is left as it is, unless its container changes, as when the image does; one stopped, as after
+ * Your Space stopped, is started again. Answers once each new one's remote control answers. With none,
+ * all are removed. The knowledge bases are held meanwhile, so none of them, or its sync state, is
+ * deleted under it.
  */
 export function ensureSyncService(knowledgeBases: string[]): Promise<SyncService> {
   return queued(async () => {
     if (isStopping()) throw new EngineError(STOPPING, 409);
     const names = [...new Set(knowledgeBases)].sort();
+    const before = await rcloneContainers();
+    await stopRclones([...before.keys()].filter((n) => !names.includes(n)));
     if (names.length === 0) {
       if (await projectExists()) {
         const down = await docker(["compose", "-p", syncProject(), "down", "--remove-orphans"]);
@@ -316,13 +350,18 @@ export function ensureSyncService(knowledgeBases: string[]): Promise<SyncService
       const usernsHost = await serverUserns();
       for (const name of names) await ensureVolume(knowledgeStateVolume(INSTALLATION, name), knowledgeSyncLabels(INSTALLATION, name), "0700", usernsHost);
       const socket = await socketVolume();
-      // Only user 1000, rclone's and the server's, reaches the socket.
-      await initKnowledge(socket, "0700", usernsHost);
+      // Only user 1000, rclone's and the server's, reaches the sockets, each in a folder of its own.
+      await initKnowledge(socket, "0700", usernsHost, names);
       const fixture = fixtureEnabled();
       if (fixture) await ensureVolume(fixtureVolume(), { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "sync-fixture" }, "2777");
       // Checked again once the images and volumes are ready, which can take long: a stop may have begun.
       if (isStopping()) throw new EngineError(STOPPING, 409);
-      await compose(syncServiceFile({ squid: proxy, rclone, socketVolume: socket, knowledgeBases: names, fixture, usernsHost }), ["up", "-d", "--wait", "--remove-orphans", "--pull", "never"]);
+      const file = syncServiceFile({ squid: proxy, rclone, socketVolume: socket, knowledgeBases: names, fixture, usernsHost });
+      // Every container as the file says, without waiting for the others: one that doesn't answer, as
+      // one hung, never holds up another knowledge base's.
+      await compose(file, ["up", "-d", "--remove-orphans", "--pull", "never"]);
+      const added = names.filter((n) => !before.has(n));
+      if (added.length > 0) await compose(file, ["up", "-d", "--wait", "--no-recreate", "--pull", "never", ...added.map(rcloneService)]);
     } finally {
       release();
     }
@@ -331,29 +370,31 @@ export function ensureSyncService(knowledgeBases: string[]): Promise<SyncService
 }
 
 /**
- * Stops rclone as Ctrl+C stops it, so a bisync under way shuts down gracefully and saves its state,
- * and starts it again: the server's limit on one run's time. The server creates its remotes again.
+ * Stops a knowledge base's rclone as Ctrl+C stops it, so a bisync under way shuts down gracefully and
+ * saves its state, and starts it again; one stopped is started. The server asks for this when a run is
+ * past its time, or rclone hasn't answered for a while, as one hung. The server creates its remote again.
  */
-export function restartSyncService(): Promise<SyncService> {
+export function restartSyncService(name: string): Promise<SyncService> {
   return queued(async () => {
     if (isStopping()) throw new EngineError(STOPPING, 409);
-    const restarted = await docker(["compose", "-p", syncProject(), "restart", RCLONE_SERVICE]);
+    if (!(await rcloneContainers()).has(name)) throw new EngineError(`The knowledge base ${name} doesn't sync, so its sync can't be restarted.`, 404);
+    const restarted = await docker(["compose", "-p", syncProject(), "restart", "-t", String(STOP_GRACE_S), rcloneService(name)]);
     if (restarted.code !== 0) throw new EngineError(`Restarting the sync failed: ${restarted.stderr.trim().slice(-600)}`);
     return syncService();
   });
 }
 
 /**
- * Stops the sync as Your Space's apps are stopped (`stop-apps`), once Your Space is stopping: rclone
- * stops with SIGINT, so a bisync under way shuts down gracefully, saving its state for the next run,
- * which resumes with `--recover`; then its proxy. A change of the container under way finishes first.
+ * Stops the sync as Your Space's apps are stopped (`stop-apps`), once Your Space is stopping: each
+ * rclone stops with SIGINT, together, so a bisync under way shuts down gracefully, saving its state for
+ * the next run, which resumes with `--recover`; then their proxy. A change under way finishes first.
  */
 export async function stopSyncs(): Promise<void> {
   if (!isStopping()) throw new Error("The syncs stop only once Your Space is stopping.");
   await queued(async () => {
     if (!(await projectExists())) return;
     // rclone first, with time for bisync to finish; then the proxy, as an app's is stopped.
-    await docker(["compose", "-p", syncProject(), "stop", "-t", String(STOP_GRACE_S), RCLONE_SERVICE]);
+    await stopRclones([...(await rcloneContainers()).keys()]).catch(() => {});
     await docker(["compose", "-p", syncProject(), "stop"]);
   });
 }
@@ -361,12 +402,11 @@ export async function stopSyncs(): Promise<void> {
 /**
  * Removes a knowledge base's sync state, bisync's listings and the files syncs replaced; it and the
  * remote folder keep their files, and its next connection starts with a first run that deletes
- * nothing. Refused while the sync's container mounts it: the server takes it out of the sync first.
+ * nothing. Refused while it has an rclone container: the server takes it out of the sync first.
  */
 export function removeSync(name: string): Promise<void> {
   return queued(async () => {
-    const { knowledgeBases } = await syncService();
-    if (knowledgeBases.includes(name)) throw new EngineError(`The knowledge base ${name} is still synced, so its sync can't be removed yet.`, 409);
+    if ((await rcloneContainers()).has(name)) throw new EngineError(`The knowledge base ${name} is still synced, so its sync can't be removed yet.`, 409);
     await deleteKnowledgeState(name);
   });
 }

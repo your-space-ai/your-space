@@ -237,6 +237,16 @@ export interface Backup {
   size: number;
 }
 
+/** A backup folder's runs: those kept 30 days, newest first, and the older ones to remove. Folders Your Space didn't name are left. */
+export function backupRuns(folders: string[], now: Date): { recent: string[]; expired: string[] } {
+  const oldest = now.getTime() - BACKUP_DAYS * 24 * 60 * 60 * 1000;
+  const runs = folders.map((f) => ({ f, time: runTime(f) })).filter((r): r is { f: string; time: Date } => r.time !== undefined);
+  return {
+    recent: runs.filter((r) => r.time.getTime() >= oldest).map((r) => r.f).sort().reverse(),
+    expired: runs.filter((r) => r.time.getTime() < oldest).map((r) => r.f),
+  };
+}
+
 /** The files of a backup folder listing kept 30 days, newest run first, and the older runs to remove. */
 export function backupsOf(entries: Listed[], now: Date): { backups: Backup[]; expired: string[] } {
   const backups: Backup[] = [];
