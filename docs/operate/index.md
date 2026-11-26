@@ -58,6 +58,9 @@ npm install -g @your-space-ai/cli@<version>
 your-space upgrade
 ```
 
+To move to the newest build of a release channel instead, whichever command you have, add
+`--channel alpha` or `--channel canary`: see [Follow a Release Channel](#follow-a-release-channel).
+
 It names both versions and asks first; `--yes` answers for you. Then it:
 
 1. Downloads the release's files and checks them against its checksums, as `init` does, then
@@ -93,11 +96,38 @@ until the files and the database match again.
 - An installation already at the command's version is left as it is.
 - Your Space doesn't go back to an earlier version. `upgrade` refuses an installation that is newer
   than the command, and a server refuses to start on a database a newer version has updated.
+- A version that can't upgrade an installation as old as yours says `Upgrade to <version> first`
+  and changes nothing: upgrade to that version with its own command, then again. No version needs
+  this yet.
 
 The backup holds the database: your account, workspace, sessions and installed apps, with the apps'
 settings still encrypted. It doesn't hold the `ys-secrets` volume, Caddy's certificates or your
-apps' data, which stay in their volumes. Keep backups private, and delete old ones you no longer
-need.
+apps' data, which stay in their volumes. `upgrade` keeps every backup, so `backups/` holds one from
+each version the installation left, each the size of the database. Keep them private, and delete
+old ones you no longer need.
+
+### Follow a Release Channel
+
+`your-space upgrade --channel <name>` moves the installation to the newest build of a release
+channel: `alpha`, the newest release, or `canary`, the newest
+[canary build](../install/canary.md) of `main`.
+
+```sh
+your-space upgrade --channel alpha
+```
+
+It reads the channel's `channel.json`, which names its newest build, then downloads that build's own
+`your-space` command, the Linux executable or the npm package, as the one you ran is. It checks the
+download against that build's `SHA256SUMS`, and that it reports the version `channel.json` names,
+then runs its `upgrade`, which does all of the above. So each version upgrades with its own steps.
+
+- It changes nothing when the installation already runs that build, or a newer one. An installation
+  on a canary moves to Alpha with the first alpha newer than it.
+- If a file is missing or doesn't match, as when a newer canary replaces the canary's files while it
+  runs, it changes nothing: run it again.
+- It stores nothing. Plain `upgrade` still moves the installation to the command's own version.
+- The flag comes with 0.1.0-alpha.2 and the canary builds made since it was added. The command
+  inside the Mac app doesn't take it: the app moves its own workspace when it updates.
 
 ### Restore the Backup by Hand
 

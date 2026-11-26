@@ -13,6 +13,8 @@ import { setupWorkspace, type WorkspaceSetupFlags } from "./commands/setup.ts";
 import { status } from "./commands/status.ts";
 import { stop } from "./commands/stop.ts";
 import { upgrade } from "./commands/upgrade.ts";
+import { upgradeChannel } from "./commands/upgrade-channel.ts";
+import { CHANNELS, type Channel } from "./channel.ts";
 import { CliError, EXIT } from "./errors.ts";
 import { checkEngine } from "./engine.ts";
 import { isMissingProgram } from "./process.ts";
@@ -127,9 +129,18 @@ program
 
 program
   .command("upgrade")
-  .description("upgrade Your Space to this CLI's version, backing up its database first")
+  .description("upgrade Your Space to this CLI's version, or to a channel's newest build, backing up its database first")
   .option("--release-dir <folder>", "use packaged release files and SHA256SUMS from this folder")
-  .action(action(async (ui, g, flags: { releaseDir?: string }) => upgrade(ui, g.workdir, { releaseDir: flags.releaseDir })));
+  .addOption(
+    new Option("--channel <name>", "upgrade to the newest build of this release channel, with that build's own CLI")
+      .choices(CHANNELS)
+      .conflicts(["releaseDir"]),
+  )
+  .action(
+    action(async (ui, g, flags: { releaseDir?: string; channel?: Channel }) =>
+      flags.channel ? upgradeChannel(ui, g.workdir, flags.channel) : upgrade(ui, g.workdir, { releaseDir: flags.releaseDir }),
+    ),
+  );
 
 program
   .command("stop")

@@ -20,7 +20,7 @@ your-space secrets show      [--reveal]
 your-space secrets replace   <auth-secret | database-password> [--yes]
 your-space configure  [--this-machine | --domain <name> | --proxy-url <url>] [--port <n>]
                       [--ignore-checks] [--yes]
-your-space upgrade    [--release-dir <folder>] [--yes]
+your-space upgrade    [--release-dir <folder> | --channel <alpha | canary>] [--yes]
 ```
 
 Every command also takes:
@@ -66,7 +66,7 @@ Compose or the engine gave in `detail` when there was any.
 | `engine_missing` | 2 | No Docker CLI, or no engine running |
 | `engine_unsupported` | 2 | The engine is too old, or on another machine |
 | `compose_missing` | 2 | No Compose plugin, or one older than 2.26.0 |
-| `permission_denied` | 2 | The person can't use the engine, or, for `upgrade` and the commands that hold `.your-space.lock`, can't write to the installation's folder; the message says how to fix it |
+| `permission_denied` | 2 | The person can't use the engine, or, for `upgrade` and the commands that hold `.your-space.lock`, can't write to the installation's folder; for `upgrade --channel`, also the build's CLI couldn't run from the temporary folder (`TMPDIR`). The message says how to fix it |
 | `port_in_use` | 2 | A port the setup needs is taken; `port` and, when known, `by` |
 | `check_failed` | 2 | A domain's names don't resolve; `checks` lists each result |
 | `not_running` | 2 | The command needs Your Space running |
@@ -75,8 +75,8 @@ Compose or the engine gave in `detail` when there was any.
 | `no_owner` | 2 | `owner reset-link` without an owner |
 | `owner_exists` | 2 | `owner create` with an owner |
 | `secret_in_env` | 2 | `secrets replace` for a secret set in `.env` |
-| `download_failed` | 3 | A release file could not be downloaded or read from the selected release folder |
-| `checksum_mismatch` | 2 | The archive failed checksum verification or its packaged image version differs from the CLI version, as when the canary prerelease holds a newer canary build than the CLI's |
+| `download_failed` | 3 | A release file could not be downloaded or read from the selected release folder; for `upgrade --channel`, also the channel's `channel.json`, with `channel` |
+| `checksum_mismatch` | 2 | The archive failed checksum verification or its packaged image version differs from the CLI version, as when the canary prerelease holds a newer canary build than the CLI's. For `upgrade --channel`: the channel's `channel.json` isn't in its form (with `channel`), or the build's CLI isn't listed in or doesn't match its release's `SHA256SUMS`, or isn't the version `channel.json` names |
 | `downgrade_refused` | 2 | `upgrade` in an installation newer than the CLI; `from` and `to` name both versions |
 | `version_unknown` | 2 | `upgrade` in an installation whose `stack.yaml` names no release version |
 | `backup_failed` | 2 | `upgrade` couldn't back up the database; nothing was replaced, and Your Space is started again as before, or, when that fails too, `running: false` and the message says so |
@@ -146,6 +146,16 @@ at its next step and puts the previous version back (`cancelled`); once the new 
 the upgrade runs to its result. The desktop app runs `upgrade --json` on its local installation after it
 updates itself; `--json` answers the question as `--yes` does.
 
+`upgrade --channel <alpha | canary>` (spec 016) moves the installation to the newest build of that
+release channel, which the channel's `channel.json` names, by running that build's own CLI. It
+conflicts with `--release-dir`, and `init` and `setup` don't take it. It stores nothing; `upgrade`
+without it is unchanged. When the installation already runs that build, or a newer one, it changes
+nothing and reports `upToDate`. When the build is the CLI's own version, it upgrades as `upgrade`
+does. Otherwise it downloads the build's CLI, runs its `upgrade` with `--workdir` and the `--yes`,
+`--json` and `--verbose` it was given, and ends with that command's output and exit status. The
+standalone macOS CLI, the one inside the Mac app, refuses it with `usage`: the app moves its own
+local workspace.
+
 ### Other results
 
 | Command | Result |
@@ -158,6 +168,7 @@ updates itself; `--json` answers the question as `--yes` does.
 | `secrets replace` | `{ ok, replaced: "auth-secret" }` |
 | `configure` | `{ ok, setup, env, summary }` |
 | `upgrade` | `{ ok, from, to, backup }`: the versions, and the absolute path of the database backup; `{ ok, from, to, upToDate: true }` when the installation already runs the CLI's version, with nothing changed |
+| `upgrade --channel` | The `upgrade` result of the build's CLI. `{ ok, channel, newest, from, to, upToDate: true }` when nothing changed: `newest` is the version `channel.json` names, and `from` and `to` the installation's, the same as `newest` or newer than it, as on a canary waiting for the next alpha |
 
 ## What Each Command Runs
 
@@ -175,6 +186,7 @@ updates itself; `--json` answers the question as `--yes` does.
 | `secrets replace database-password` | `docker compose run --rm secrets --new database-password`, the guide's `psql` step, then `docker compose restart server` |
 | `start --new-secrets` | `start`; only when it stops with `lost_secrets`: `docker compose run --rm secrets --new auth-secret --new database-password`, `docker compose up -d --wait postgres`, the `psql` step, then `start` again. Secrets that aren't lost are kept |
 | `configure` | Sets the setup's lines in `.env`, then `docker compose up -d --wait` |
+| `upgrade --channel <name>` | Reads the installation's version from `stack.yaml`, holding `.your-space.lock` while it does, then `<releases>/<name>/channel.json` with one request: `{"channel","version","commit"}`, where Alpha's `version` is never a canary and Canary's always is. When that version is later than the installation's and isn't the CLI's own, it downloads `SHA256SUMS` and the build's CLI from the build's release (`v<version>`, or `canary`): `your-space-linux-<arch>` when the running CLI is the Linux executable, otherwise `your-space-ai-cli-<version>.tgz`, whose `package/package.json` must name the version and whose `package/dist/your-space.cjs` runs with Node. It checks the file against `SHA256SUMS`, in a temporary folder only its owner can read (`TMPDIR`), removed afterwards. It runs `<cli> --version`, which must print the version, then `<cli> upgrade --workdir <folder>` with the terminal, passing on SIGINT and SIGTERM |
 | `upgrade` | Reads the installation's version from `stack.yaml`. When the CLI's is later: downloads and checks the release files as `init` does, into a folder beside the installation; `docker compose --project-directory <new release folder> --env-file .env -f <new release folder>/compose.yaml pull --policy missing`; `docker compose up -d --wait postgres` when the database is stopped; `docker compose stop caddy server`; `pg_dump` in the `postgres` service into `backups/<time>-<version>.sql` (mode 0600); replaces `compose.yaml`, `stack.yaml`, `modes/` and `env.example`, adds any setting the new `env.example` sets that `.env` lacks; `docker compose up -d --wait server`, then `docker compose up -d --wait`, so Caddy starts last. When the first of those fails, it stops the server and Caddy, moves the previous files back, restores the backup when a second `pg_dump` differs from it, the new version having changed the database (into a new database, swapped in with `ALTER DATABASE ... RENAME` in one transaction, keeping the replaced one as `yourspace_upgrade_failed_<time>`), and runs `docker compose up -d --wait`. It stops early, leaving `.upgrade-restore` and saying what is left to do by hand, when the new server can't be stopped (nothing is moved back), when the previous files can't be put back, or when the database can't be read or restored (the previous version isn't started). It holds `.your-space.lock` throughout, and from the first file moved until the files and the database are known to match, `.upgrade-restore` |
 
 ## The Server's `show-owner` Command
@@ -195,4 +207,4 @@ when unexpected. It changes nothing.
 
 | Variable | Meaning |
 | --- | --- |
-| `YS_E2E_RELEASES` | Base URL for release downloads instead of `https://github.com/your-space-ai/your-space/releases/download`, for the browser tests' local release |
+| `YS_E2E_RELEASES` | Base URL for release downloads instead of `https://github.com/your-space-ai/your-space/releases/download`, for the browser tests' local release; `upgrade --channel` reads `channel.json` from it too |

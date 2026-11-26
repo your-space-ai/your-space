@@ -17,6 +17,11 @@ export interface RunOptions {
   inputFile?: number;
   /** An open file the program writes its output to, byte for byte, in place of `stdout`. */
   outputFile?: number;
+  /**
+   * Passes SIGINT and SIGTERM on to the program while it runs, instead of ending this process, so
+   * the program decides what they do and this process waits for its result.
+   */
+  forwardSignals?: boolean;
 }
 
 /** Resolves with the exit code, or rejects with ENOENT when the program isn't installed. */
@@ -29,10 +34,22 @@ export function run(program: string, args: string[], options: RunOptions = {}): 
     });
     let stdout = "";
     let stderr = "";
+    const forward = (signal: NodeJS.Signals) => child.kill(signal);
+    const signals: NodeJS.Signals[] = options.forwardSignals ? ["SIGINT", "SIGTERM"] : [];
+    for (const signal of signals) process.on(signal, forward);
+    const done = () => {
+      for (const signal of signals) process.off(signal, forward);
+    };
     child.stdout?.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
     child.stderr?.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
-    child.on("error", reject);
-    child.on("close", (code, signal) => resolve({ code: code ?? (signal ? 128 : 1), stdout, stderr }));
+    child.on("error", (error) => {
+      done();
+      reject(error);
+    });
+    child.on("close", (code, signal) => {
+      done();
+      resolve({ code: code ?? (signal ? 128 : 1), stdout, stderr });
+    });
     // Docker may exit before it reads the whole input (for example, when the server is stopped).
     child.stdin?.on("error", (error: NodeJS.ErrnoException) => {
       if (error.code !== "EPIPE") reject(error);

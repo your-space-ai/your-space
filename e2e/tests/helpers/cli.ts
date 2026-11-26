@@ -66,6 +66,11 @@ export async function makeRelease(version: string, folder: string, change?: (sta
 export async function serveRelease(): Promise<{ url: string; close(): Promise<void> }> {
   const dir = mkdtempSync(join(tmpdir(), "ys-release-"));
   await makeRelease(CLI_VERSION, join(dir, `v${CLI_VERSION}`));
+  return serveFolder(dir);
+}
+
+/** Serves a folder of `<tag>/<file>` as GitHub's release downloads, for YS_E2E_RELEASES. */
+export async function serveFolder(dir: string): Promise<{ url: string; close(): Promise<void> }> {
   const server: Server = createServer((request, response) => {
     const path = join(dir, decodeURIComponent(new URL(request.url ?? "/", "http://x").pathname));
     if (!path.startsWith(dir) || !existsSync(path)) {

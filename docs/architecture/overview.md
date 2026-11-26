@@ -8,6 +8,7 @@ title: "Your Space Architecture Overview"
     Mac launcher → GitHub Releases (update check the owner can turn off) → update, then CLI upgrade
     Owner's browser → localhost / HTTPS proxy or domain → dashboard and server
     Owner's CLI → Docker Compose → server, runtime, installed apps
+    Owner's CLI → channel feed → that build's CLI → upgrade
     External AI agent → CLI → gateway → permitted action in one connected app
 
 The owner manages agent identities, kit-defined app roles and request approval settings in the web UI. Before forwarding, the gateway checks the kit route and HTTP method, obtains any required owner approval, then injects the server-held app credential. The runtime identifies the installed service on its private Docker network. The app checks the injected credential and enforces its native permissions. The [Mac launcher](../install/macos-desktop.md) opens this same dashboard. It can be built from source ahead of the first public DMG. Teams (004), lifecycle tooling (006), SDKs (007), Windows and Linux desktops, and the bundled engine follow publication. The [roadmap](../roadmap.md) gives their delivery stage.

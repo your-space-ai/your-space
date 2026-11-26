@@ -1,6 +1,6 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +9,8 @@ import { backupStamp, failedUpgrade, Moves, rollBack, sameDump } from "../src/co
 import { holdingLock, lockInstallation, refuseWhileRestoreNeeded } from "../src/installation-lock.ts";
 import { Installation } from "../src/installation.ts";
 import { CliError } from "../src/errors.ts";
-import { compareVersions, isVersion, VERSION } from "../src/version.ts";
+import { compareVersions, isCanary, isVersion, VERSION } from "../src/version.ts";
+import { serveReleases, spawnAsync } from "./helpers/releases.ts";
 
 describe("release versions", () => {
   it("are ordered by Semantic Versioning's precedence, prereleases before their release", () => {
@@ -208,8 +209,21 @@ interface Scenario {
   pullFails?: boolean;
 }
 
-/** An installation of `installed` and a release of the CLI's version, then `your-space upgrade` in it. */
-function upgrading(scenario: Scenario, options: { installed?: string; env?: string; global?: string[]; example?: string; lock?: number | string; leftover?: string[]; missing?: string[]; extra?: Record<string, string> } = {}) {
+interface Options {
+  installed?: string;
+  env?: string;
+  global?: string[];
+  example?: string;
+  lock?: number | string;
+  leftover?: string[];
+  missing?: string[];
+  extra?: Record<string, string>;
+  /** Backups that earlier upgrades left in backups/, by name, with what each holds. */
+  backups?: Record<string, string>;
+}
+
+/** An installation of `installed`, a release of the CLI's version in `release`, and the stand-in for Docker. */
+function installation(scenario: Scenario, options: Options = {}) {
   const root = mkdtempSync(join(tmpdir(), "ys-cli-upgrade-"));
   roots.push(root);
   const folder = join(root, "install"), files = join(root, "files"), release = join(root, "release"), bin = join(root, "bin"), fake = join(root, "docker");
@@ -224,6 +238,10 @@ function upgrading(scenario: Scenario, options: { installed?: string; env?: stri
     for (const name of options.leftover) writeFileSync(join(folder, ".upgrade-left", "previous", name), "previous");
   }
   for (const name of options.missing ?? []) rmSync(join(folder, name));
+  if (options.backups) {
+    mkdirSync(join(folder, "backups"), { mode: 0o700 });
+    for (const [name, text] of Object.entries(options.backups)) writeFileSync(join(folder, "backups", name), text, { mode: 0o600 });
+  }
   releaseFiles(files, VERSION);
   if (options.example) writeFileSync(join(files, "env.example"), options.example);
   for (const [name, text] of Object.entries(options.extra ?? {})) writeFileSync(join(files, name), text);
@@ -234,10 +252,13 @@ function upgrading(scenario: Scenario, options: { installed?: string; env?: stri
   writeFileSync(join(bin, "docker"), DOCKER, { mode: 0o700 });
 
   const { DOCKER_CONTEXT: _context, COMPOSE_PROJECT_NAME: _project, ...rest } = process.env;
-  const ran = spawnSync(process.execPath, [command, "--workdir", folder, ...(options.global ?? ["--json"]), "upgrade", "--release-dir", release], {
-    encoding: "utf8",
-    env: { ...rest, PATH: `${bin}:${process.env.PATH}`, DOCKER_HOST: "unix:///var/run/docker.sock", FAKE_DOCKER_DIR: fake },
-  });
+  const variables: NodeJS.ProcessEnv = { ...rest, PATH: `${bin}:${process.env.PATH}`, DOCKER_HOST: "unix:///var/run/docker.sock", FAKE_DOCKER_DIR: fake };
+  return { folder, release, env, fake, variables };
+}
+
+/** What `your-space upgrade` did in an installation: its output, and what it asked Docker. */
+function outcome(made: ReturnType<typeof installation>, ran: { status: number | null; stdout: string; stderr: string }) {
+  const { folder, env, fake } = made;
   const calls = existsSync(join(fake, "calls.jsonl"))
     ? readFileSync(join(fake, "calls.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as { args: string[]; input: string })
     : [];
@@ -249,6 +270,16 @@ function upgrading(scenario: Scenario, options: { installed?: string; env?: stri
     json = undefined;
   }
   return { ran, json, folder, env, calls, compose };
+}
+
+/** An installation of `installed` and a release of the CLI's version, then `your-space upgrade` in it. */
+function upgrading(scenario: Scenario, options: Options = {}) {
+  const made = installation(scenario, options);
+  const ran = spawnSync(process.execPath, [command, "--workdir", made.folder, ...(options.global ?? ["--json"]), "upgrade", "--release-dir", made.release], {
+    encoding: "utf8",
+    env: made.variables,
+  });
+  return outcome(made, ran);
 }
 
 const stackOf = (folder: string) => readFileSync(join(folder, "stack.yaml"), "utf8");
@@ -313,6 +344,42 @@ describe("your-space upgrade", () => {
     expect(readFileSync(join(up.folder, "modes", "mode.yaml"), "utf8")).toBe(`# ${VERSION}\n`);
     expect(readFileSync(join(up.folder, ".env"), "utf8")).toBe(up.env);
     expect(readdirSync(up.folder).sort()).toEqual([".env", "backups", "compose.e2e.yaml", "compose.yaml", "env.example", "modes", "stack.yaml"]);
+  });
+
+  it("keeps every backup earlier upgrades left in backups/, whether it upgrades or puts the previous version back", () => {
+    const earlier = { "20261101T120000Z-0.0.0-test.0.sql": "-- the first upgrade's backup\n", "20261115T120000Z-0.0.0-test.0.canary.20261115.1.sql": "-- the second's\n" };
+    for (const scenario of [{ migrates: true }, { newFails: true }]) {
+      const up = upgrading(scenario, { backups: earlier });
+      expect(up.json?.backup, JSON.stringify(scenario)).toMatch(new RegExp(`/backups/\\d{8}T\\d{6}Z-${OLD.replaceAll(".", "\\.")}\\.sql$`));
+      expect(readdirSync(join(up.folder, "backups")).sort(), JSON.stringify(scenario)).toEqual([...Object.keys(earlier), up.json.backup.split("/").at(-1)].sort());
+      for (const [name, text] of Object.entries(earlier)) expect(readFileSync(join(up.folder, "backups", name), "utf8")).toBe(text);
+    }
+  });
+
+  it("with --channel naming this CLI's own version, upgrades itself, downloading its release as plain upgrade does", async () => {
+    const made = installation({ migrates: true });
+    const channel = isCanary(VERSION) ? "canary" : "alpha";
+    const served = mkdtempSync(join(tmpdir(), "ys-cli-served-"));
+    roots.push(served);
+    const tag = isCanary(VERSION) ? "canary" : `v${VERSION}`;
+    cpSync(made.release, join(served, tag), { recursive: true });
+    mkdirSync(join(served, channel), { recursive: true });
+    const feed = execFileSync(fileURLToPath(new URL("../../deploy/channel-json.sh", import.meta.url)), [channel, VERSION, "69525a9569f68a39b76598af86662a04b6fb2886"], { encoding: "utf8" });
+    writeFileSync(join(served, channel, "channel.json"), feed);
+    const server = await serveReleases(served);
+    try {
+      const ran = await spawnAsync(process.execPath, [command, "--workdir", made.folder, "--json", "upgrade", "--channel", channel], { ...made.variables, YS_E2E_RELEASES: server.url });
+      const up = outcome(made, ran);
+      expect(up.ran.status, up.ran.stdout + up.ran.stderr).toBe(0);
+      expect(up.ran.stdout.trim().split("\n")).toHaveLength(1);
+      expect(up.json).toEqual({ ok: true, from: OLD, to: VERSION, backup: expect.stringMatching(/\/backups\/.+\.sql$/) });
+      expect(server.requests).toEqual([`/${channel}/channel.json`, `/${tag}/SHA256SUMS`, `/${tag}/your-space.tar.gz`]);
+      expect(up.compose.slice(1)).toEqual(["compose stop caddy server", "compose exec -T postgres pg_dump -U yourspace -d yourspace", "compose up -d --wait server", "compose up -d --wait"]);
+      expect(stackOf(up.folder)).toContain(`:${VERSION}\n`);
+      expect(existsSync(join(up.folder, ".your-space.lock"))).toBe(false);
+    } finally {
+      await server.close();
+    }
   });
 
   it("counts as done once the new server is ready, so a Caddy that doesn't start isn't rolled back", () => {

@@ -22,13 +22,19 @@ export function releasePins(stack: string): string[] {
   return Array.from(stack.matchAll(RELEASE_IMAGE), (match) => (match[1] ?? match[2])!);
 }
 
-/**
- * Where a release's files are: its own GitHub release, or for a canary build the rolling `canary`
- * prerelease. YS_E2E_RELEASES points the browser tests at a local release.
- */
+/** Where release downloads are: GitHub's, or the local release YS_E2E_RELEASES points the tests at. */
+export function releasesBase(): string {
+  return (process.env.YS_E2E_RELEASES ?? RELEASES).replace(/\/$/, "");
+}
+
+/** The release that holds a version's files: its own `v` release, or for a canary build the rolling `canary` prerelease. */
+export function releaseTag(version: string): string {
+  return isCanary(version) ? CANARY_TAG : `v${version}`;
+}
+
+/** Where one of a release's files is. */
 export function releaseUrl(version: string, file: string): string {
-  const base = (process.env.YS_E2E_RELEASES ?? RELEASES).replace(/\/$/, "");
-  return `${base}/${isCanary(version) ? CANARY_TAG : `v${version}`}/${file}`;
+  return `${releasesBase()}/${releaseTag(version)}/${file}`;
 }
 
 /**
