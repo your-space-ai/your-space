@@ -166,10 +166,12 @@ your-space upgrade
 ```
 
 With a standalone executable, download and install the new release's as in [step 1](#1-get-the-your-space-command),
-then run `your-space upgrade`. From 0.1.0-alpha.2, `your-space upgrade --channel alpha` does both
-steps itself: it downloads the newest release's command, checks it and runs its `upgrade`, as
-[Follow a Release Channel](../operate/index.md#follow-a-release-channel) describes. `upgrade` names
-both versions and asks first. It backs up the
+then run `your-space upgrade`. From 0.1.0-alpha.2, `your-space upgrade --channel alpha` upgrades
+without installing the new command: it downloads the newest release's command to a temporary
+folder, checks it and runs its `upgrade` from there, as
+[Follow a Release Channel](../operate/index.md#follow-a-release-channel) describes. The command you
+installed stays at its version, and its plain `upgrade` refuses an installation newer than itself,
+so install the new one too when you want to use it. `upgrade` names both versions and asks first. It backs up the
 database before it changes anything, keeps `.env`, your apps and their data, and puts the previous
 version back if the new one doesn't start. [Run Your Space](../operate/index.md) describes each
 step. The [Mac app](macos-desktop.md) updates itself, and its local workspace with it.

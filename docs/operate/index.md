@@ -128,7 +128,8 @@ then runs its `upgrade`, which does all of the above. So each version upgrades w
   runs, it changes nothing: run it again.
 - Ctrl-C while it downloads that build's command stops it with nothing changed. Once that build's
   `upgrade` runs, Ctrl-C reaches it and stops it as above.
-- It stores nothing. Plain `upgrade` still moves the installation to the command's own version.
+- It stores nothing, and doesn't install that build's command: the `your-space` you ran stays at
+  its version. Plain `upgrade` still moves the installation to the command's own version.
 - The flag comes with 0.1.0-alpha.2 and the canary builds made since it was added. The command
   inside the Mac app doesn't take it: the app moves its own workspace when it updates. Don't point
   another `your-space` command at the app's workspace either: the app doesn't start a workspace

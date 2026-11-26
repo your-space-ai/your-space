@@ -155,10 +155,11 @@ does. Otherwise it downloads the build's CLI, runs its `upgrade` with `--workdir
 `--json` and `--verbose` it was given, and ends with that command's output and exit status. The
 standalone macOS CLI, the one inside the Mac app, refuses it with `usage`: the app moves its own
 local workspace. SIGINT or SIGTERM while it downloads or checks the build's CLI stops it with
-`cancelled`, with nothing changed; while the build's `upgrade` runs, they go to that command. When
-a signal ends the build's `upgrade`, or with `--json` it prints nothing, the command fails with
-`cancelled` for SIGINT or SIGTERM and `unexpected` otherwise, with `channel`, `from` and `to`, and
-says to see where the installation was left with `your-space status`. A build's CLI that matches
+`cancelled`, with nothing changed; while the build's `upgrade` runs, they go to that command. With
+`--json`, the build's JSON object is printed once its `upgrade` has ended. When a signal ends the
+build's `upgrade`, whatever it printed first, or with `--json` it prints nothing, the command fails
+with `cancelled` for SIGINT or SIGTERM and `unexpected` otherwise, with `channel`, `from` and `to`,
+and says to see where the installation was left with `your-space status`. A build's CLI that matches
 `SHA256SUMS` but whose `--version` fails, such as one that needs a newer Node.js, fails with
 `unexpected` and what it printed in `detail`.
 

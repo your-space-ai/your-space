@@ -15,8 +15,8 @@ export interface RunOptions {
   env?: NodeJS.ProcessEnv;
   /** Lets the program use the terminal directly, as `logs --follow` does. */
   inherit?: boolean;
-  /** With `inherit`, its output goes to this process's output through a pipe, and is collected too. */
-  relayStdout?: boolean;
+  /** With `inherit`, its output is collected in `stdout` instead of reaching this process's. */
+  collectStdout?: boolean;
   /** An open file the program reads as its input, in place of `input`, such as a database backup. */
   inputFile?: number;
   /** An open file the program writes its output to, byte for byte, in place of `stdout`. */
@@ -38,7 +38,7 @@ export function run(program: string, args: string[], options: RunOptions = {}): 
     const child = spawn(program, args, {
       cwd: options.cwd,
       env: options.env ?? process.env,
-      stdio: options.inherit ? ["inherit", options.relayStdout ? "pipe" : "inherit", "inherit"] : [options.inputFile ?? "pipe", options.outputFile ?? "pipe", "pipe"],
+      stdio: options.inherit ? ["inherit", options.collectStdout ? "pipe" : "inherit", "inherit"] : [options.inputFile ?? "pipe", options.outputFile ?? "pipe", "pipe"],
       timeout: options.timeout,
       signal: options.signal,
     });
@@ -50,10 +50,7 @@ export function run(program: string, args: string[], options: RunOptions = {}): 
     const done = () => {
       for (const signal of signals) process.off(signal, forward);
     };
-    child.stdout?.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString();
-      if (options.relayStdout) process.stdout.write(chunk);
-    });
+    child.stdout?.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
     child.stderr?.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
     child.on("error", (error) => {
       done();

@@ -32,7 +32,8 @@ const OLD = "0.0.0-test.1";
  * `says` for --version, or fails to run, and otherwise prints a result as `upgrade --json` would
  * and exits with FAKE_CLI_EXIT. With FAKE_CLI_WAIT it waits instead, as an upgrade under way
  * does, until SIGINT or SIGTERM stops it: with `bare`, before it has handlers for them, so the
- * signal ends it. FAKE_CLI_KILL ends it with that signal; FAKE_CLI_SILENT prints nothing.
+ * signal ends it. FAKE_CLI_KILL ends it with that signal once it has printed; FAKE_CLI_SILENT
+ * prints nothing.
  */
 const BUILD_CLI = (build: Build, executable: boolean) => `const fs = require("node:fs");
 const path = require("node:path");
@@ -52,10 +53,11 @@ if (process.env.FAKE_CLI_WAIT) {
   setTimeout(() => process.exit(3), 10000);
 }
 record(process.argv.slice(2));
-if (process.env.FAKE_CLI_KILL) process.kill(process.pid, process.env.FAKE_CLI_KILL);
-else if (!process.env.FAKE_CLI_WAIT) {
+if (!process.env.FAKE_CLI_WAIT) {
   const status = Number(process.env.FAKE_CLI_EXIT || 0);
   if (!process.env.FAKE_CLI_SILENT) console.log(JSON.stringify(status ? { ok: false, error: "start_failed", message: "didn't start" } : { ok: true, from: ${JSON.stringify(OLD)}, to: ${JSON.stringify(build.version)}, backup: "/backups/x.sql" }));
+  // Output to a pipe is written at once on Linux, so this signal comes after it.
+  if (process.env.FAKE_CLI_KILL) process.kill(process.pid, process.env.FAKE_CLI_KILL);
   process.exitCode = status;
 }
 `;
@@ -271,8 +273,10 @@ describe("upgrade --channel", () => {
       expect(up.json, signal).toEqual({ ok: false, error: "cancelled", ...versions, message: `Your Space ${ALPHA.version}'s upgrade was stopped by ${signal} ${see}` });
       expect(up.temp(), signal).toEqual([]);
     }
+    // What it printed before the signal isn't printed as its result.
     const killed = await upgrading("alpha", { fake: { FAKE_CLI_KILL: "SIGKILL" } });
     expect(killed.ran.status).toBe(4);
+    expect(killed.ran.stdout.trim().split("\n")).toHaveLength(1);
     expect(killed.json).toEqual({ ok: false, error: "unexpected", ...versions, message: `Your Space ${ALPHA.version}'s upgrade was stopped by SIGKILL ${see}` });
     const silent = await upgrading("alpha", { fake: { FAKE_CLI_SILENT: "1" } });
     expect(silent.ran.status).toBe(4);

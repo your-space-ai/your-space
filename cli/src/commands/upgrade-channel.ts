@@ -200,8 +200,9 @@ async function checkedCli(ui: Ui, build: ChannelBuild, cli: BuildCli, work: stri
 }
 
 /**
- * The build's upgrade ended without a result of its own: a signal ended it, or, with --json, it
- * printed nothing. It may have changed the installation, so this says where to look.
+ * The build's upgrade ended without a result of its own: a signal ended it, whatever it printed
+ * first, or, with --json, it printed nothing. It may have changed the installation, so this says
+ * where to look.
  */
 function noResult(build: ChannelBuild, ran: Ran, fields: Record<string, unknown>): CliError {
   const ended = ran.signal ? `was stopped by ${ran.signal}` : `ended with exit status ${ran.code}`;
@@ -251,12 +252,12 @@ export async function upgradeChannel(ui: Ui, workdir: string, channel: Channel, 
     const program = await checkedCli(ui, build, cli, work);
     ui.outro(`Upgrading to Your Space ${build.version} with its own CLI`);
     const args = ["upgrade", "--workdir", resolve(workdir), ...(ui.yes ? ["--yes"] : []), ...(ui.json ? ["--json"] : []), ...(ui.verbose ? ["--verbose"] : [])];
-    // Its output is the command's: with --json, its one JSON object, passed through here so this
-    // process knows whether it printed one. Ctrl-C reaches it, and this process waits while it
+    // Its output is the command's: with --json, its one JSON object, held here until it ends, so
+    // only a result it finished is printed. Ctrl-C reaches it, and this process waits while it
     // stops at its next step and puts the previous version back.
-    const ran = await run(program.command, [...program.args, ...args], { inherit: true, relayStdout: ui.json, forwardSignals: true });
-    const answered = ui.json ? ran.stdout.trim() !== "" : !ran.signal;
-    if (!answered) throw noResult(build, ran, { channel, from, to: build.version });
+    const ran = await run(program.command, [...program.args, ...args], { inherit: true, collectStdout: ui.json, forwardSignals: true });
+    if (ran.signal || (ui.json && ran.stdout.trim() === "")) throw noResult(build, ran, { channel, from, to: build.version });
+    if (ui.json) process.stdout.write(ran.stdout);
     process.exitCode = ran.code;
   } finally {
     process.off("exit", remove);
