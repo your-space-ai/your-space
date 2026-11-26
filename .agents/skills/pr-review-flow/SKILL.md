@@ -43,7 +43,7 @@ again, but it still restarts the other checks. Don't rely on it to fix a ready p
    thread is unresolved: `gh pr ready <number>`. This starts the browser tests.
 
 6. **On a ready pull request, fix only browser test failures.** Push the fix and wait for the
-   tests to pass. Nothing else is changed while it is ready.
+   tests to pass (`gh pr checks <number>`). Nothing else is changed while it is ready.
 
 7. **Anything else goes back to draft.** A new review finding, a design change or more
    implementation: `gh pr ready <number> --undo`, make the change, go through steps 3 to 5 again,
