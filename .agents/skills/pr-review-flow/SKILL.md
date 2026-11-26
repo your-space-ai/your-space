@@ -24,7 +24,8 @@ again, but it still restarts the other checks. Don't rely on it to fix a ready p
 
 3. **Fix CodeRabbit's findings in rounds.** CodeRabbit reviews each push to the draft. Wait for its
    review of the latest commit, then fix or answer every finding of that round in one commit and
-   push once. Don't push after each fix. For a stack, push the whole stack once per round.
+   push once. Don't push after each fix. For a stack, push the whole stack once per round. If
+   CodeRabbit doesn't review a pushed commit, comment `@coderabbitai review` on the pull request.
 
 4. **Resolve every thread.** Each finding is fixed, or answered with a reply that says why it
    isn't changed. Then resolve its thread. `gh` has no command for this, so use the GraphQL API:
