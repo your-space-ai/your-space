@@ -128,9 +128,9 @@ export class KnowledgeBases {
    * again. The apps are held from the start to the end, so no other change of theirs runs meanwhile,
    * and so is the knowledge base, so no app is given it meanwhile.
    *
-   * Its sync goes with it, and the Drive folder keeps its files. A run under way, of it or another
-   * knowledge base, finishes first, as the sync's service is started again without it, and none of it
-   * starts until the deletion ends.
+   * Its sync goes with it, and the Drive folder keeps its files. Its sync container is stopped as
+   * Ctrl+C stops rclone, which stops its run under way, and removed first; none of its runs starts
+   * until the deletion ends, and other knowledge bases' runs go on.
    */
   async delete(name: string, actorId: string): Promise<void> {
     // Its name is held first, so the row read is the one whose storage the name-based calls change:
@@ -143,7 +143,7 @@ export class KnowledgeBases {
         const sync = KnowledgeSync.for(this.apps);
         if (!sync.hold(row.id)) throw new AppError(409, "busy", "The knowledge base is being deleted, connected or disconnected already.");
         try {
-          // Out of the sync's service first, once the run under way ends: it mounts the knowledge base.
+          // Out of the sync first: its sync container mounts the knowledge base.
           await sync.leaveService(row.id);
           await this.deleteHeld(row, actorId);
         } finally {

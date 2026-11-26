@@ -725,8 +725,8 @@ async function mountedBy(volume: string): Promise<ContainerSummary[]> {
 }
 
 /**
- * What holds each knowledge base in this process now: the sync's container being started with it
- * mounted (sync.ts), or the deletion of the knowledge base or of its sync. One at a time, so neither is
+ * What holds each knowledge base in this process now: the sync's containers being started with it
+ * (sync.ts), or the deletion of the knowledge base or of its sync. One at a time, so neither is
  * deleted while the container is made to mount it, which would make the deleted volumes again, empty
  * and without Your Space's labels. A hold is checked and taken with no wait between the two.
  */
@@ -764,7 +764,7 @@ export function holdKnowledgeBases(names: string[]): () => void {
 
 /**
  * The apps of this installation whose containers mount a knowledge base, running or not, and whether
- * the sync's container mounts it. The server asks before deleting one, so it applies each of them again
+ * it has a sync container. The server asks before deleting one, so it applies each of them again
  * without it, even one it has no grant for, as after a change that couldn't be applied, and takes it
  * out of the sync first.
  */
@@ -818,7 +818,7 @@ async function knowledgeStateOf(name: string): Promise<boolean> {
 /**
  * Deletes a knowledge base's sync state, when it has one: bisync's listings and the files syncs
  * replaced. The knowledge base and the remote folder keep their files; the next connection starts
- * with a first run that deletes nothing. Refused while the sync's container mounts it.
+ * with a first run that deletes nothing. Refused while its sync container mounts it.
  */
 export function deleteKnowledgeState(name: string): Promise<void> {
   return holdingKnowledge(name, "delete", () => removeKnowledgeState(name));

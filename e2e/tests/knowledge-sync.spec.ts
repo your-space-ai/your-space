@@ -1,7 +1,7 @@
 // Journey 014, slice 2: synced knowledge bases. The owner sets up the Google connection with their own
 // OAuth client and signs in; a knowledge base connected to a Drive folder then syncs both ways with
-// real rclone bisync, run by one container of stock `rclone rcd` that the server drives over its
-// socket. Google is never contacted: the browser's sign-in page is answered by the test, the server
+// real rclone bisync, run by a container of stock `rclone rcd` for each knowledge base, which the
+// server drives over its socket. Google is never contacted: the browser's sign-in page is answered by the test, the server
 // exchanges the code with a stand-in (e2e/google), and rclone syncs with a folder of a test volume in
 // place of Drive (YS_E2E_SYNC_FIXTURE in e2e/compose.e2e.yaml). The server syncs every few seconds
 // (YS_E2E_SYNC_INTERVAL_S), so changes arrive without Sync now; the tests wait for files, not runs.
@@ -20,8 +20,11 @@ const KB = "drive-notes";
 const DRIVE_VOLUME = `ys-sync-fixture.${PROJECT}`;
 const KB_VOLUME = `ys-knowledge.${PROJECT}.${KB}`;
 const STATE_VOLUME = `${KB_VOLUME}.sync`;
-/** The sync's container: stock rclone's remote control. */
-const RCLONE = `${PROJECT}_knowledge-sync-rclone-1`;
+/** A knowledge base's sync container: stock rclone's remote control. */
+const rcloneOf = (name: string) => `${PROJECT}_knowledge-sync-rclone-${name}-1`;
+const RCLONE = rcloneOf(KB);
+const containerId = async (name: string) => (await docker(["inspect", name, "--format", "{{.Id}}"], false)).stdout.trim();
+const mountsOf = async (name: string) => (JSON.parse((await docker(["inspect", name, "--format", "{{json .Mounts}}"], false)).stdout) as { Destination: string }[]).map((m) => m.Destination).sort();
 const SECRETS = [CLIENT_SECRET, "e2e-refresh-token", "e2e-access-token"];
 /** Already on the engine: the GitHub stand-in runs it. */
 const SHELL_IMAGE = "node:26-slim";
@@ -203,7 +206,7 @@ test("a knowledge base connected to a Drive folder syncs files created, changed 
 });
 
 test("the sync's network reaches nothing but its proxy, which refuses any host but Google's", async () => {
-  // From a container on the sync's sealed network, as each rclone step is: the GitHub stand-in, on
+  // From a container on the sync's sealed network, as each rclone is: the GitHub stand-in, on
   // the stack's own network, can't be reached directly, and the proxy refuses it. Nothing here
   // reaches Google or the internet.
   const address = (await docker(["inspect", `${PROJECT}-github-1`, "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}"], false)).stdout.trim().split(" ")[0];
@@ -253,6 +256,59 @@ test("a file changed on both sides keeps both copies, and the page lists the con
   await here("rm plan.md.conflict1");
   await expect(page.getByRole("region", { name: "Conflict copies" })).toHaveCount(0, { timeout: 30_000 });
   await arrives(() => onDrive("ls | grep -c conflict || true"), "0");
+});
+
+test("each knowledge base syncs through an rclone of its own, so a symbolic link in one can't have a sync write into another", async ({ page }) => {
+  test.setTimeout(240_000);
+  await asOwner(page);
+  const name = "other";
+  const folder = "1E2eTestFolder0000000000000000ij";
+  const other = (script: string) => shell(`ys-knowledge.${PROJECT}.${name}`, `cd /v && ${script}`);
+  const notes = await containerId(RCLONE);
+  await page.goto("/knowledge");
+  const create = page.getByRole("region", { name: "New knowledge base" });
+  await create.getByLabel("Name").fill(name);
+  await create.getByRole("button", { name: "Create" }).click();
+  await expect(page.locator(`li[data-knowledge="${name}"]`)).toBeVisible();
+  await page.goto(`/knowledge/${name}`);
+  await page.getByLabel("Drive folder link").fill(`https://drive.google.com/drive/folders/${folder}`);
+  await page.getByRole("button", { name: "Connect" }).click();
+  const main = page.locator('main[data-state="knowledge-base"]');
+  await expect(main).toHaveAttribute("data-sync-result", "synced", { timeout: 120_000 });
+  // Each rclone mounts its own knowledge base, its sync state and its socket's folder only; connecting
+  // another left the first running as it was.
+  expect(await mountsOf(rcloneOf(name))).toEqual([`/knowledge/${name}`, "/remote", "/run/ys-sync", `/state/${name}`]);
+  expect(await mountsOf(RCLONE)).toEqual([`/knowledge/${KB}`, "/remote", "/run/ys-sync", `/state/${KB}`]);
+  expect(await containerId(RCLONE)).toBe(notes);
+
+  // An app given only drive-notes makes a symbolic link to where the other knowledge base would be,
+  // and Drive has files under that name: rclone writes through a link to a folder, so in one container
+  // mounting both, the next run would copy them into the other knowledge base.
+  await here(`ln -s /knowledge/${name} evil && ln -s /state/${name} evil-state`);
+  await onDrive("mkdir -p evil evil-state && echo planted > evil/planted.md && echo planted > evil-state/planted.md");
+  const planted = new Date().toISOString();
+  // Drive-notes' next run, started after them, can't: the links lead nowhere in its own container.
+  await expect
+    .poll(async () => (await sql(`select s.last_run_at > '${planted}'::timestamptz and s.job is null from knowledge_sync s join knowledge_base b on b.id = s.knowledge_base_id where b.name = '${KB}'`))[0], { timeout: 60_000 })
+    .toBe("t");
+  expect(await other("ls -A")).toBe(".your-space-sync");
+  expect(await shell(`ys-knowledge.${PROJECT}.${name}.sync`, "find /v -name planted.md")).toBe("");
+  // The app's own knowledge base gets back to syncing once the links are gone.
+  await here("rm evil evil-state");
+  await onDrive("rm -r evil evil-state");
+  await page.goto(`/knowledge/${KB}`);
+  const notesPage = page.locator('main[data-state="knowledge-base"]');
+  await expect(notesPage).toHaveAttribute("data-sync-running", "false", { timeout: 60_000 });
+  if ((await notesPage.getAttribute("data-sync-result")) === "stopped") await run(page, "Resync");
+  await expect(notesPage).toHaveAttribute("data-sync-result", "synced", { timeout: 60_000 });
+
+  // Disconnecting the other removes its rclone only.
+  await page.goto(`/knowledge/${name}`);
+  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Disconnect" }).click();
+  await expect(page.getByLabel("Drive folder link")).toBeVisible();
+  expect((await docker(["ps", "-aq", "--filter", `name=${rcloneOf(name)}`])).stdout.trim()).toBe("");
+  expect(await containerId(RCLONE)).toBe(notes);
 });
 
 test("a missing marker or an empty knowledge base stops the sync with Drive unchanged, and Resync deletes nothing", async ({ page }, testInfo) => {
@@ -470,8 +526,8 @@ test("a run that stops over more than 500 deletions shows the first 500, and app
 });
 
 test("the client secret and token are in rclone's memory only: in no container's configuration, file or log", async () => {
-  // rclone has them, for the remote the server made over its socket before the knowledge base's
-  // next run: rclone was started again without the last one disconnected, and with no remote.
+  // Its rclone has them, for the remote the server made over its socket before the knowledge base's
+  // runs.
   const remote = () => docker(["exec", RCLONE, "rclone", "rc", "--unix-socket", "/run/ys-sync/rc.sock", "config/get", `name=kb-${KB}`]).then((r) => r.stdout);
   await expect.poll(remote, { timeout: 30_000 }).toContain("e2e-refresh-token");
   expect(await remote()).toContain(CLIENT_SECRET);
@@ -486,7 +542,7 @@ test("the client secret and token are in rclone's memory only: in no container's
     const config = (await docker(["inspect", id, "--format", "{{json .Config}} {{json .HostConfig.Binds}} {{json .Mounts}}"], false)).stdout;
     for (const secret of SECRETS) expect(config, id).not.toContain(secret);
   }
-  // rclone's container mounts no engine socket, runs as user 1000, and writes nothing else but its volumes and /tmp.
+  // Its rclone's container mounts no engine socket, runs as user 1000, and writes nothing else but its volumes and /tmp.
   const rclone = JSON.parse((await docker(["inspect", RCLONE], false)).stdout)[0] as { Config: { User: string; Env: string[] }; HostConfig: { ReadonlyRootfs: boolean; CapDrop: string[] }; Mounts: { Destination: string }[] };
   expect(rclone.Config.User).toBe("1000:1000");
   expect(rclone.HostConfig).toMatchObject({ ReadonlyRootfs: true, CapDrop: ["ALL"] });
@@ -541,7 +597,7 @@ test("a run goes on when only the server restarts, and the next server records i
   // rclone finishes the run without the server, and keeps its result.
   // Only its state: its result holds the run's whole log, which is long for this many files.
   const status = async () => {
-    const said = await docker(["exec", RCLONE, "sh", "-c", `rclone rc --unix-socket /run/ys-sync/rc.sock job/status jobid=${job.id} | grep -E '"(finished|success)":'`]);
+    const said = await docker(["exec", rcloneOf(BIG), "sh", "-c", `rclone rc --unix-socket /run/ys-sync/rc.sock job/status jobid=${job.id} | grep -E '"(finished|success)":'`]);
     return { finished: said.stdout.includes('"finished": true'), success: said.stdout.includes('"success": true') };
   };
   await expect.poll(async () => (await status()).finished, { timeout: 240_000, intervals: [1_000] }).toBe(true);
@@ -563,7 +619,7 @@ test("stopping Your Space during a run stops rclone gracefully, and the next sta
   // As `your-space stop` does: the apps and the sync first, then Your Space.
   await compose(["exec", "-T", "runtime", "stop-apps"]);
   // Stopped by SIGINT: rclone exits with 130 once bisync has shut down.
-  expect((await docker(["inspect", RCLONE, "--format", "{{.State.Running}} {{.State.ExitCode}}"], false)).stdout.trim()).toBe("false 130");
+  expect((await docker(["inspect", rcloneOf(BIG), "--format", "{{.State.Running}} {{.State.ExitCode}}"], false)).stdout.trim()).toBe("false 130");
   await compose(["stop"]);
   await up();
   // The server starts rclone again, and the next run copies the rest: no resync is asked of the owner.
@@ -591,7 +647,7 @@ test("disconnecting leaves both sides' files, and no secret reached a log or a c
   expect(await listing(onDrive)).toBe(drive);
   expect((await docker(["volume", "ls", "-q", "--filter", `name=${STATE_VOLUME}`])).stdout.trim()).toBe("");
 
-  // With no knowledge base synced, the sync's container is gone, and neither the server's nor the
+  // With no knowledge base synced, the sync's containers are gone, and neither the server's nor the
   // runtime manager's log has the client secret or a token.
   expect((await docker(["ps", "-aq", "--filter", "label=ai.your-space.role=knowledge-sync", "--filter", `label=ai.your-space.installation=${PROJECT}`])).stdout.trim()).toBe("");
   const all = await logs(["server", "runtime"]);

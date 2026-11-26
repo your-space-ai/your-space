@@ -113,12 +113,12 @@ rather than guess. Your files stay as they are on both sides, and apps keep work
   app was left in **Testing**. **Knowledge** and the knowledge base's page show **Reconnect**, which
   signs in with Google again. Syncs resume after it.
 
-A sync that fails for another reason, such as no internet connection, is tried again a minute
-later. One sync runs at a time, of any knowledge base: the others wait for it, so a long first sync
-of one knowledge base delays the others. **Sync now** during a sync of the same knowledge base runs
-once more after it. Connecting, disconnecting or deleting a synced knowledge base waits up to 20
-seconds for the sync under way, of any knowledge base, to finish, and otherwise asks you to try
-again; no sync of it starts meanwhile.
+A sync that fails for another reason, such as no internet connection, or that was interrupted, as
+when Your Space stopped during it, is tried again a minute later, or at once after an interruption,
+and carries on from where it stopped. Each knowledge base syncs on its own, so a long first sync of
+one doesn't hold up the others. **Sync now** during a sync of the same knowledge base runs once
+more after it. Disconnecting or deleting a synced knowledge base stops its sync under way; no sync
+of it starts meanwhile.
 
 ## Disconnect, change or remove
 
@@ -138,30 +138,35 @@ and the token to the new key with apps' settings, so syncs go on.
 
 ## How it runs
 
-One container syncs every synced knowledge base: rclone's official image, version 1.75.2, pinned to
-its digest for every processor it is published for, running rclone's own remote control
-(`rclone rcd`). Your Space adds no sync program of its own. The runtime manager runs the container
+Each synced knowledge base has a container of its own: rclone's official image, version 1.75.2,
+pinned to its digest for every processor it is published for, running rclone's own remote control
+(`rclone rcd`). Your Space adds no sync program of its own. The runtime manager runs each container
 as user 1000, without capabilities, with a read-only file system, no access to the Docker engine and
-no FUSE. It mounts each synced knowledge base, its sync state, and a volume, `ys-sync`, that only it
-and Your Space's server mount, where rclone's remote control listens on a Unix socket in a folder
-only user 1000 opens; apps never mount it. Its only network is one whose way out is an outbound
-proxy of the sync's own, which lets through only Google's token endpoint (`oauth2.googleapis.com`)
-and the Drive API (`www.googleapis.com`).
+no FUSE. It mounts only its own knowledge base, that knowledge base's sync state, and its own folder
+of a volume, `ys-sync`, that only Your Space's server mounts whole, where rclone's remote control
+listens on a Unix socket only user 1000 opens; apps never mount it. As each container sees one
+knowledge base only, a symbolic link an app makes in a knowledge base can't lead a sync into
+another. Their only network is one whose way out is an outbound proxy of the sync's own, which lets
+through only Google's token endpoint (`oauth2.googleapis.com`) and the Drive API
+(`www.googleapis.com`).
 
 rclone keeps its configuration in memory only. The server creates each knowledge base's Drive
-remote there over the socket, with the client and the token, and starts each sync there. The
+remote in that knowledge base's rclone over its socket, with the client and the token, and starts
+each sync there. Saving another OAuth client removes the remotes from rclone's memory. The
 client secret and the token are never written to a file, never put in a container's environment
 or configuration, and never given to an app; rclone renews the access token from the refresh token
-as it needs, in memory, and Your Space keeps the refresh token it got at sign-in. When rclone's
-container restarts, it has no remote until the server creates them again, which it does before the
-next sync.
+as it needs, in memory, and Your Space keeps the refresh token it got at sign-in. When an rclone
+container restarts, it has no remote until the server creates it again, which it does before the
+next sync. One that stops answering for a minute is restarted.
 
 rclone keeps a finished sync's result for an hour. A sync goes on when only the server restarts, as
 during an update, and the server records its result, and what it changed, when it starts again.
 Stopping your apps (`docker compose exec runtime stop-apps`, which `your-space stop` runs) stops
-rclone as Ctrl+C stops it, so a sync under way shuts down gracefully, and the next sync carries on
-from there. Connecting or disconnecting a knowledge base changes what the container mounts, so it
-is started again then, once the sync under way has finished.
+each rclone as Ctrl+C stops it, so a sync under way shuts down gracefully, and the next sync carries
+on from there; the knowledge base's page shows the interrupted sync as one that didn't finish. A
+sync interrupted during the first sync after a resync can't always carry on, and then asks for
+**Resync** again. Connecting a knowledge base starts its container; disconnecting or deleting it
+stops and removes it; the other containers run on.
 
 On the Docker engine:
 
@@ -170,16 +175,21 @@ On the Docker engine:
   by its time, with the files that sync replaced at their paths in the knowledge base.
   Disconnecting or deleting the knowledge base deletes it; removing an app or deleting its data
   never does.
-- `<installation>_knowledge-sync`: the Compose project of the sync: rclone's container,
-  `<installation>_knowledge-sync-rclone-1`, and its outbound proxy. It starts with the first
-  synced knowledge base, stops with your apps, and is removed when no knowledge base syncs;
+- `<installation>_knowledge-sync`: the Compose project of the sync: each knowledge base's rclone
+  container, `<installation>_knowledge-sync-rclone-<name>-1`, and their outbound proxy. It starts with
+  the first synced knowledge base, stops with your apps, and is removed when no knowledge base syncs;
   [Remove Your Space](index.md#remove-your-space) removes it.
-- `<installation>_ys-sync`: the volume of rclone's socket. It holds nothing durable.
+- `<installation>_ys-sync`: the volume of rclone's sockets, a folder for each knowledge base. It
+  holds nothing durable.
 
 `<installation>` is your installation's Compose project name, `your-space` unless you changed it.
 
 A sync that runs longer than two hours, as the first sync of a very large folder can, is stopped
-as Ctrl+C stops rclone, and the next sync carries on with the files it didn't copy; meanwhile the
-other knowledge bases sync again. A file that is being copied when a sync stops is copied again
-from the start, so a single file that takes longer than two hours to copy, as a very large one on a
-slow connection can, never finishes. Keep files that large out of a synced folder.
+as Ctrl+C stops rclone, the page says so, and the next sync carries on with the files it didn't
+copy. A file that is being copied when a sync stops is copied again from the start, so a single file
+that takes longer than two hours to copy, as a very large one on a slow connection can, never
+finishes. Keep files that large out of a synced folder.
+
+Each sync compares files by size, modification time and checksum, so it reads every file of the
+knowledge base each time, about once a minute: a large knowledge base on a slow disk keeps its
+container busy, and its syncs come further apart than a minute.

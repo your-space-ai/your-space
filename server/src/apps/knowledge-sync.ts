@@ -1041,7 +1041,7 @@ export class KnowledgeSync {
   }
 }
 
-/** A failure to start the sync's service, for the owner. */
+/** A failure to start the sync's containers, for the owner. */
 function serviceError(error: unknown): AppError {
   if (error instanceof AppError) return error;
   const status = error instanceof RuntimeError && error.status === 409 ? 409 : 503;

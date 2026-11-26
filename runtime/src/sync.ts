@@ -227,7 +227,7 @@ export function validateSyncService(body: unknown): string[] {
   return [...new Set(knowledgeBases.map((name) => validateKnowledgeName(String(name))))].sort();
 }
 
-/** One change to the sync's container at a time. */
+/** One change to the sync's containers at a time. */
 let changing: Promise<unknown> = Promise.resolve();
 function queued<T>(work: () => Promise<T>): Promise<T> {
   const next = changing.catch(() => undefined).then(work);
