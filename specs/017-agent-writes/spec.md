@@ -140,12 +140,13 @@ For an agent to create and update records:
 4. **Retries.** An operation ID required on every write, scoped to the agent, installation and
    route and bound to a fingerprint of the request (decision 4). An outcome that isn't known is
    never resent.
-5. **Outcomes for writes.** A 2xx means the app applied the write, even when the response is then
-   refused for its size or for containing the credential: that is `succeeded` with the result
-   withheld, not `unknown`, so the agent doesn't retry an applied write. `409` and `412` are
-   `conflict`. A timeout or a 5xx is `unknown`.
+5. **Outcomes for writes.** A 2xx other than `202` means the app applied the write, even when the
+   response is then refused for its size or for containing the credential: that is `succeeded`
+   with the result withheld, not `unknown`, so the agent doesn't retry an applied write. A `202`
+   only says the app accepted the work, so it is `unknown`, as it is for reads today. `409` and
+   `412` are `conflict`. A timeout or a 5xx is `unknown`.
 6. **Approvals that show the change.** A pending write shows the owner the method, the route with
-   its path values, and the body, formatted, before anything reaches the app. Writes ask first by
+   its path values, every query value, and the body, formatted, before anything reaches the app. Writes ask first by
    default, and the per-agent Ask for all writes switch returns (decision 6).
 7. **What changed.** The owner sees each write's record and outcome, and can open what it sent
    (decision 7).
@@ -224,12 +225,16 @@ characters, and Your Space keeps it with the request, unique per agent, installa
 - The same operation ID with the same input returns the first request's ID and its outcome,
   pending, succeeded, refused or unknown, and sends nothing.
 - The same operation ID with other input is a `409` conflict.
-- Your Space never sends a write again on its own, and an `unknown` outcome stays unknown. The
-  agent finds out by reading, then sends a new write with a new operation ID if it wasn't applied.
-- An app that accepts a client-chosen record ID, as Twenty does, makes that safe too: a create
-  route lists `id` as required, the agent picks the ID once, and a second create with it is refused
-  by the app (Twenty answers `400`, a duplicate entry) instead of making a second record. The kit
-  guide says so.
+- Your Space never sends a write again on its own, and an `unknown` outcome stays unknown.
+- A read that finds no record doesn't prove a create failed: the app may still be applying it. So a
+  create is sent again, under a new operation ID, only on a route whose `required` fields include a
+  record ID the app keeps unique, as Twenty does: the agent picks the ID once and reuses it, and a
+  second create with it is refused by the app (Twenty answers `400`, a duplicate entry) instead of
+  making a second record. On a create route without one, the agent doesn't resend after an
+  `unknown` outcome; it reports the request ID for the owner to check in the app. The kit guide
+  says which routes are which.
+- An update names the fields it sets, so sending it again sets the same values; the agent may
+  resend it under a new operation ID after reading the record.
 
 This needs nothing from the app beyond what Twenty does today. Operation IDs aren't sent to the
 app.
@@ -348,16 +353,19 @@ agent writes before alpha.2, and the onboarding runs there.
   A read has no body. Query fields stay scalar and declared. The gateway sends the body as JSON.
 - **FR-003**: Every write carries an operation ID of 1 to 128 printable characters. The same ID for
   the same agent, installation and route returns the first request and its outcome, and sends
-  nothing; with other input it is a `409` conflict. Your Space never resends a write.
-- **FR-004**: A write's outcome is `succeeded` for a 2xx, `conflict` for a `409` or `412`,
-  `refused` for another 4xx, and `unknown` for a timeout, a 5xx or a broken connection. A 2xx whose
+  nothing; with other input it is a `409` conflict. Your Space never resends a write. The agent
+  guide says a create is resent after an `unknown` outcome only on a route that requires a record
+  ID the app keeps unique.
+- **FR-004**: A write's outcome is `succeeded` for a 2xx other than `202`, `conflict` for a `409`
+  or `412`, `refused` for another 4xx, and `unknown` for a `202`, a timeout, a 5xx or a broken
+  connection. A 2xx whose
   response fails the response check is `succeeded` with the result withheld, saying why.
 - **FR-005**: A write route asks the owner unless the owner set it to Allow for that agent and
   installation. Ask for all writes, per agent and installation, makes every write ask. A pending
   write waits 24 hours; a read 15 minutes. Approval re-checks current authority and dispatches the
   exact request once.
-- **FR-006**: The pending request shows the owner the agent, app, action, method, path and the
-  body, formatted.
+- **FR-006**: The pending request shows the owner the agent, app, action, method, path, every
+  query value and the body, formatted.
 - **FR-007**: Activity shows each write's action, record ID when known, and outcome. The owner can
   open the request sent for 30 days; it is stored encrypted under the data key, moved by its
   rotation, and then deleted.
