@@ -154,13 +154,17 @@ need changing before its app could install again.
 - **FR-004**: An agent's call names an installation, a method among `GET`, `POST`, `PATCH`, `PUT` and
   `DELETE`, and a path under the kit's `api`, with an optional query and an optional JSON body of at
   most 32 KiB; a `GET` has no body. The path is up to 2048 characters of RFC 3986 path characters
-  (unreserved, sub-delimiters, `:`, `@` and percent-encoded octets) and `/`. Percent-encoding is
+  (unreserved, sub-delimiters other than `;`, `:`, `@` and percent-encoded octets) and `/`. A `;`,
+  which some apps read as starting path parameters they strip before routing, is refused, so the
+  gateway and the app see the same path. Percent-encoding is
   decoded once to check and match the path: a segment that decodes to `.` or `..`, or contains an
   encoded `/`, `\` or NUL, is refused, as is an empty segment other than a trailing one. The path is
   sent as given, and is under the `api` and matched against routes that ask by its decoded segments,
   so an encoding can't move a call outside the API or past a route that asks. A segment that still
   contains `%` after that one decode is refused, so an app that decodes again can't be led to a path
-  the gateway didn't check. Query names and values
+  the gateway didn't check. A route that asks matches its literal segments ignoring letter case and
+  a trailing `/`, so an app that routes case-insensitively or ignores a trailing slash can't be
+  reached past it; matching too much only asks the owner once more. Query names and values
   are text, encoded by the gateway.
 - **FR-005**: The gateway sends the call with the grant's credential only. The response check, the
   outcomes and the result are journey 017's.
