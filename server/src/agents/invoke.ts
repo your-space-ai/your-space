@@ -191,6 +191,12 @@ async function run(db: Db, dataKey: string, admission: Admission): Promise<Outco
   let result: unknown;
   try {
     const response = await dispatchAppAction(dispatch.args);
+    // A credential bound or replaced while the app answered is redacted too, along with those bound at
+    // admission.
+    const bound = await db.$client.query("select credential from agent_credential where app_id=$1", [
+      dispatch.args.installation.id,
+    ]);
+    const redact = [...dispatch.redact, ...bound.rows.map((row) => decrypt(dataKey, row.credential))];
     if (response.status >= 200 && response.status < 300 && response.status !== 202) {
       // The app's JSON response, unchanged, unless it echoes the app credential, is too large or isn't
       // JSON. A read that can't be passed on stays unknown; a write was applied, so it succeeded, and the
@@ -199,13 +205,13 @@ async function run(db: Db, dataKey: string, admission: Admission): Promise<Outco
         status = "succeeded";
         if (response.usable) {
           try {
-            result = passAgentResult(response.body, dispatch.redact);
+            result = passAgentResult(response.body, redact);
           } catch {
             // Withheld.
           }
         }
       } else if (response.usable) {
-        result = passAgentResult(response.body, dispatch.redact);
+        result = passAgentResult(response.body, redact);
         status = "succeeded";
       }
     } else if (response.status >= 400 && response.status < 500 && response.status !== 408) status = "refused";

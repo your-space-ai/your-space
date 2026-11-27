@@ -8,7 +8,7 @@ import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { createOwnerWithPassword } from "./helpers/owner.ts";
 import { TEST_DATA_KEY as key } from "./helpers/env.ts";
 import { parseAgentAccess, type AgentAccess } from "../src/apps/agent-kit.ts";
-import { decrypt } from "../src/apps/settings.ts";
+import { decrypt, encrypt } from "../src/apps/settings.ts";
 import { moveSettingsToDataKey } from "../src/apps/keys.ts";
 import { MIGRATIONS_FOLDER, runMigrations } from "../src/migrate.ts";
 import { app } from "../src/db/schema.ts";
@@ -133,6 +133,17 @@ it("sends each route with only its own credential, and never a route whose crede
   const read = await invoke(t.db, key, verifier, { installationId: installation, actionId: "list" });
   expect(read).toEqual({ id: read.id, status: "unknown" });
 
+  // So is one bound while the app was answering.
+  vi.mocked(dispatchAppAction).mockImplementationOnce(async () => {
+    await t.pool.query("update agent_credential set credential=$2 where app_id=$1 and name='setup'", [
+      installation,
+      encrypt(key, "rotated-admin-key"),
+    ]);
+    return { status: 200, body: { leaked: "rotated-admin-key" }, usable: true };
+  });
+  expect((await invoke(t.db, key, verifier, { installationId: installation, actionId: "list" })).status).toBe("unknown");
+  await t.pool.query("update agent_credential set credential=$2 where app_id=$1 and name='setup'", [installation, encrypt(key, admin)]);
+
   // Replacing the admin credential withdraws only the setup role from the grant.
   const third = await binding({ revision: second.revision, enabledRoles: ["editor", "setup"], credentials: { setup: admin + "-2" } });
   expect((await t.pool.query("select roles from agent_grant")).rows[0].roles).toEqual(["editor"]);
@@ -149,16 +160,17 @@ it("keeps a kit with one credential working as before, and moves named credentia
   const single = parseAgentAccess({
     credential: { binding: "service", inject: { location: "header", name: "X-API-Key" } },
     routes: { list: { method: "GET", path: "/items", effect: "read" } },
-    roles: { reader: { title: "Reader", routes: ["list"] } },
+    // A role with no routes uses no credential, and its grant still goes with the others.
+    roles: { reader: { title: "Reader", routes: ["list"] }, empty: { title: "Empty", routes: [] } },
   });
   installation = await install(single);
   await expect(binding({ revision: 0, enabledRoles: ["reader"], credentials: { service: records } })).rejects.toThrow(
     /supply credential/,
   );
-  const bound = await binding({ revision: 0, enabledRoles: ["reader"], credential: records });
-  await allow(["reader"], 0, bound.revision);
+  const bound = await binding({ revision: 0, enabledRoles: ["reader", "empty"], credential: records });
+  await allow(["reader", "empty"], 0, bound.revision);
   // Replacing a kit's only credential still clears its grants.
-  await binding({ revision: bound.revision, enabledRoles: ["reader"], credential: records + "-2" });
+  await binding({ revision: bound.revision, enabledRoles: ["reader", "empty"], credential: records + "-2" });
   expect((await t.pool.query("select count(*) from agent_grant")).rows[0].count).toBe("0");
   const next = key + "-next";
   await moveSettingsToDataKey(t.db, { dataKey: next, previousDataKey: key });

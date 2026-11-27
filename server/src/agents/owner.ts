@@ -103,9 +103,9 @@ export async function bind(client: pg.PoolClient, id: string, body: Record<strin
     );
   }
   // A replacement credential or kit could represent broader upstream authority. Regrant explicitly:
-  // the roles that use a changed credential, or all of them for a new kit or a kit's only credential.
+  // the roles that use a changed credential, or every grant for a new kit or a kit's only credential.
   const affected = Object.keys(access.roles).filter((role) => changed.includes(roleCredential(access, role) ?? ""));
-  if (!current || (changed.length && affected.length === Object.keys(access.roles).length))
+  if (!current || (changed.length && (!access.credentials || affected.length === Object.keys(access.roles).length)))
     await client.query("delete from agent_grant where app_id=$1", [id]);
   else
     await client.query(
