@@ -27,6 +27,7 @@ services:
           req.on("end", () => {
             let body = {};
             try { if (text) body = JSON.parse(text); } catch { return send(400, {}); }
+            if (!body || typeof body !== "object" || Array.isArray(body)) return send(400, {});
             const index = records.findIndex((record) => req.url === "/items/" + record.id);
             if (req.url === "/items" && req.method === "GET") return send(200, { data: { items: records }, totalCount: records.length });
             if (req.url === "/items" && req.method === "POST") {

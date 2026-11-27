@@ -42,8 +42,8 @@ decided.
 
 Your Space sends each write once and doesn't match a retry to an earlier write. When a write's
 outcome is `unknown`, the app may or may not have applied it: check in the app before sending it
-again. An app that lets a create choose its record ID, and refuses a second create of the same ID,
-lets an agent retry a create safely.
+again. An app that lets a create choose its record ID, and refuses a second create of the same ID
+before changing anything else, lets an agent retry a create safely.
 
 A request returns the app's JSON response under `result`, unchanged: the shape its API gives, up to
 256 KiB. Your Space withholds a response that isn't JSON, is larger, or contains the app credential.
