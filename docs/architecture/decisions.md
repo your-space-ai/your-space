@@ -180,7 +180,38 @@ knowledge base. [Journey 014](https://github.com/your-space-ai/your-space/blob/m
   stop still waits for the owner. A run that finds bisync's lock held is tried again a minute later.
 - **Files apps write (owner decision, 2026-11-26).** Sync runs as user 1000, so an app that writes
   into a knowledge base should run as user 1000 or with a umask of 002. Otherwise sync may be unable
-  to write into folders the app made; that run fails and the next one tries again, deleting nothing.
+  to write into folders the app made. **Corrected (2026-11-26, checked on rclone 1.75.2):** this
+  said such a run fails and the next one tries again, deleting nothing. bisync changes the
+  Drive folder first, so by the time it fails on the knowledge base's side it may already have
+  deleted in Drive files deleted in the knowledge base; it deletes nothing in the knowledge base. It
+  then asks for a resync, so the knowledge base stops for the owner, whose Resync copies both ways
+  and deletes nothing. A folder another user made fails such a run even with a umask of 002, when a
+  Drive file is added to it or deleted from it, as only a folder's owner can set its modification
+  time.
+- **Taking a knowledge base away finishes after a restart (owner decision, 2026-11-26).** The owner
+  required that taking a knowledge base from an app, or deleting it, finishes when Your Space comes
+  back from a restart in the middle of it, preferably with no schema change. Each time Your Space
+  checks its apps, at start once the runtime manager answers and about every 15 seconds after, it
+  compares the knowledge bases each running app's containers mount, as the runtime manager reports
+  them, with the app's grants, and applies again any app that mounts one it isn't given, until it
+  doesn't. A failed apply is tried again after a minute, then twice as long each time, up to an
+  hour. A stopped app gets its current grants when it next starts. Saving the pending change, which
+  changes the schema, was the fallback for a case the check couldn't cover; it covers a restart
+  during a change on the app's page and during a deletion. The apply is recorded as
+  `knowledge.revoked` against Your Space.
+- **Smaller cases (2026-11-26).** Accepted by the owner: **Apply these deletions** checks its list
+  with a dry run, and the forced run then lists both sides again, so a file deleted in the seconds
+  between them is deleted on the other side too (v1). Kept: creating a knowledge base fails when the
+  container that set up its folder can't be removed, and connecting one is refused with `503` when
+  apps run on another engine than Your Space's server (`YS_ENGINE_SOCKET`), since the server and the
+  sync containers share the sockets' volume. Defaults picked under the owner's "pick sensible
+  defaults": a relative link to a folder inside the knowledge base is followed, so a Drive folder at
+  its path lands in that folder, and no link is followed out of it; an empty Drive folder at a
+  link's path stops the knowledge base with `link` too, though rclone reports that run as
+  successful; and a Drive file that replaces a link's `.rclonelink` file replaces the link here, and
+  that run stops rather than read as synced. That last case relies on the backups being on a mount
+  of their own: on the knowledge base's own mount, rclone moves the new file into the backups,
+  reports success, and the next run deletes it in Drive.
 - **Google Drive first, with the operator's own OAuth client.** rclone's shared client ID stops
   working during 2026 ([rclone Drive docs](https://rclone.org/drive/)). The token is encrypted with
   the data key and moved when the data key changes, as

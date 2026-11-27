@@ -78,6 +78,11 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   a link here. A Drive folder at the path of a link out of the knowledge base stops it, naming the
   path, until the owner removes the folder or the link (see **Links**). The owner adopted this once
   it was checked against the pinned stock rclone.
+- **Taking a knowledge base away finishes after a restart (2026-11-26).** The owner asked for a
+  guarantee that it finishes when Your Space is back. Your Space compares the knowledge bases each
+  running app's containers mount, as the runtime manager reports them, with the app's grants, and
+  applies again any app that mounts one it isn't given (see **Finishing after a restart**). No
+  pending change is saved and the schema doesn't change, as the owner preferred.
 - **No permissioning in v1.** Every mount is read-write, for every app given the knowledge base. There
   is no writer role, read-only mount or folder ownership yet. The owner: "i dont want to build a
   solution before we've run into a problem here".
@@ -90,13 +95,34 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   `<path>/<name>`, where `path` is an absolute path that isn't `/` and names no `..`, and `name` is
   lowercase letters, digits and hyphens. Changing an app's knowledge bases recreates its interface
   service. Removing an app, and deleting its data, never deletes a knowledge base.
+- **Taking a knowledge base away.** A knowledge base taken from an app, or deleted, leaves the app
+  once the apply that recreates it without the folder works. When that apply fails, the app keeps
+  the knowledge bases its containers still mount, as the runtime manager reports them.
+- **Finishing after a restart (2026-11-26).** When Your Space stops or restarts before that apply
+  ends, it finishes the change once it is back. Each time it checks its apps, at start once the
+  runtime manager answers and about every 15 seconds after, it compares the knowledge bases each
+  running app's containers mount, as the runtime manager reports them, with the app's grants. An
+  app that mounts one it isn't given is applied again, with only its grants, until it no longer
+  mounts it. An apply that fails is tried again later: after a minute, then twice as long each
+  time, up to an hour. A stopped app is left as it is: it gets its current grants when it next
+  starts. Nothing new is saved for this: the containers' mounts are the record.
 - **File ownership.** A new knowledge base's folder belongs to user and group 1000, is writable by
-  everyone, and gives new files its group. Sync runs as user 1000. An app that writes into a
-  knowledge base should run as user 1000, as most self-hosted images do, or with a umask of 002, so
-  the files and folders it makes stay writable by their group (2026-11-26). Otherwise sync may not
-  be able to change the app's files or write into folders it made: that run fails with a permission
-  error, and the next run tries again; nothing is deleted. Likewise an app that runs as another user
-  can create files but may not be able to change files another user wrote.
+  everyone, and gives new files its group. A short-lived container of the runtime manager's own
+  image sets it up. Creating the knowledge base fails when that container can't be removed after,
+  since it still mounts the volume; deleting the knowledge base removes such a container first.
+- **Files apps write.** Sync runs as user 1000. An app that writes into a knowledge base should run
+  as user 1000, as most self-hosted images do, or with a umask of 002, so the files and folders it
+  makes stay writable by their group (2026-11-26). Otherwise sync may not be able to change the
+  app's files or write into folders it made. Even with a umask of 002, a folder another user made
+  fails a run that adds a Drive file to it or deletes one from it, as only a folder's owner can set
+  its modification time (checked on rclone 1.75.2). Likewise an app that runs as another user can
+  create files but may not be able to change files another user wrote.
+- **A run that fails on a permission error.** By then it may already have made its changes in
+  Drive: bisync changes the Drive folder first, so files deleted here are deleted in Drive too.
+  Here it deletes nothing: a file deleted in Drive is still here. bisync then asks for a resync, so
+  the knowledge base stops (`resync`) until the owner chooses **Resync**, which copies both ways and
+  deletes nothing: a file whose deletion here didn't happen goes back to Drive. While the app's
+  folder stays one sync can't write into, the resync fails the same way.
 - **Sync safety.** Deleting the owner's files on Drive is the worst failure here, so every run uses
   bisync's own checks and stops for the owner rather than guess, with one exception: the resync Your
   Space runs by itself to finish an interrupted run (see **Interrupted runs**). The checks:
@@ -120,9 +146,12 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
     shows the listed deletions and, once the owner confirms, runs that one sync past the limit
     (`--force`); the next run has the limit again. Just before the forced run, Your Space
     lists the deletions again without changing anything (`--dry-run`); if the list differs from the
-    one the owner confirmed, it doesn't run and shows the new list for confirmation.
+    one the owner confirmed, it doesn't run and shows the new list for confirmation. The forced run
+    then lists both sides again itself, so a file deleted in the seconds between that check and the
+    run is deleted on the other side too. This is accepted for v1 (owner decision, 2026-11-26).
   - Overwrites keep the replaced copy. A local file replaced by a sync is moved to a backup folder
-    of that run in Your Space's sync state, outside the knowledge base. The knowledge base is
+    of that run in Your Space's sync state, outside the knowledge base and on a mount of its own
+    (see **Links** for why it must be). The knowledge base is
     bisync's Path2 and the Drive folder its Path1, so this is `--backup-dir2`, with a folder per run.
     A file replaced in several runs keeps each earlier copy. Backups are kept for 30 days. A Drive
     file replaced by a sync keeps its earlier version only in Drive's own version history, for as
@@ -148,13 +177,24 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   - A Drive folder at such a link's path, or under it, stops the knowledge base with its own reason
     (`link`), naming the path. Nothing is written where the link leads, such as the knowledge base's
     own sync state. bisync then needs a resync, and Your Space doesn't run one by itself for it.
+  - An empty Drive folder there stops it the same way. rclone reports that run as successful, so
+    the server reads the finished run's lines too: one that says the path escapes from its parent
+    stops the knowledge base with `link`, naming the path, whatever bisync reported (default picked
+    2026-11-26).
   - It stays stopped until the owner removes the Drive folder, or removes the link here and its
     `.rclonelink` file in Drive, which would otherwise bring the link back, then chooses
     **Resync**. A resync while the folder and the link are both there stops the same way.
-  - A Drive file at a link's path never writes into the link's target.
-  - A link written relative to where it is, to a folder in the knowledge base itself, is the one
-    link rclone follows: a Drive folder at its path is written where it leads, still inside the
-    knowledge base, and later runs move it there in Drive too.
+  - A Drive file at a link's path never writes into the link's target. It replaces the link here, as
+    when the link's `.rclonelink` file in Drive is replaced by a file of the link's own name. rclone
+    then can't keep the replaced link in the run's backups, so that run fails and stops (`resync`),
+    with the Drive file on both sides; **Resync** syncs again (checked on rclone 1.75.2). This holds
+    because the backups are on a mount of their own: with them on the knowledge base's own mount,
+    rclone moves the new file into the backups instead, reports success, and the next run deletes it
+    in Drive.
+  - The one link rclone follows is a link written relative to where it is, to a folder in the
+    knowledge base itself (default picked 2026-11-26). A Drive folder at its path is written into
+    the folder it leads to, still inside the knowledge base, and later runs move those files to that
+    folder in Drive too. No link is ever followed out of the knowledge base.
 - **The sync containers.** One container for each synced knowledge base, run by the runtime manager
   for Your Space: the stock rclone image running `rclone rcd`, unprivileged, with no engine access
   and no FUSE. It mounts only that knowledge base's volume, its own sync state (bisync's listings and
@@ -163,7 +203,9 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   knowledge base, its state and its socket. Its remote control listens only on a Unix socket
   in that folder, in a volume only the server mounts whole, protected by file permissions, as the
   runtime manager's socket is. Connecting or disconnecting a knowledge base adds or removes its
-  container only; the others keep running.
+  container only; the others keep running. The server and the sync containers share the sockets'
+  volume, so knowledge bases sync only when apps run on the engine Your Space's server runs on:
+  with `YS_ENGINE_SOCKET` set to another engine, connecting one is refused with `503`.
 - **When it syncs.** About once a minute for each synced knowledge base, on its own timer, and at
   once on **Sync now**: the server starts each run through that knowledge base's remote control
   (`sync/bisync`, run in the background), with the options listed under sync safety. Runs of one
@@ -205,8 +247,9 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   stopped or failed against Your Space. An interrupted run may have changed files, so it is recorded
   as failed. An interrupted **Apply these deletions** is still recorded as the owner's applied
   deletions, since some may have been made. Your Space's own resync of an interrupted run is recorded
-  as `knowledge.resync_requested` against Your Space. Runs that change nothing aren't recorded one
-  by one; the page shows when the last one finished.
+  as `knowledge.resync_requested` against Your Space. Its own apply that finishes taking a knowledge
+  base from an app after a restart is recorded as `knowledge.revoked` against Your Space. Runs that
+  change nothing aren't recorded one by one; the page shows when the last one finished.
 
 ## Acceptance
 
@@ -217,6 +260,9 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   field, or a `path` that is relative, `/` or contains `..`, is refused in the review.
 - Remove an app and delete its data: its knowledge bases and their files remain. Delete a knowledge
   base: it leaves the apps that had it.
+- Take a knowledge base from a running app, and stop the runtime manager and the server before the
+  apply ends: the app's container still mounts it and has no grant for it. Start them again: once
+  Your Space is back, the app's container no longer mounts it. A stopped app isn't started for it.
 - Sync, run in tests against a fixture remote that production can't select: a file created, changed
   or deleted on either side reaches the other; a file changed on both sides leaves a conflict copy
   that the page lists.
@@ -243,7 +289,10 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   followed: an app links to the knowledge base's own sync state and the fixture remote has a folder
   at the link's path; the run stops with reason `link`, naming the path, nothing is written into the
   sync state, and Your Space runs no resync of its own. With the link and its `.rclonelink` file
-  removed, **Resync** syncs again.
+  removed, **Resync** syncs again. An empty folder at the link's path stops the run the same way.
+- A link's `.rclonelink` file in the fixture remote replaced by a file of the link's name: that run
+  doesn't read as synced, the file is in the knowledge base and the remote, and **Resync** syncs
+  again.
 - The token is in no file in the sync containers' volumes, and in no container's environment or
   configuration (`docker inspect`). Restart a knowledge base's sync container: it syncs again once
   the server has created its remote again.
@@ -258,8 +307,8 @@ Each slice is one reviewable PR with an owner-visible result checked in a browse
 order.
 
 1. **Local knowledge bases and mounts.** The Knowledge page, the runtime's knowledge volumes, the kit
-   field, the install review's picker, the app page's editor and the mounts. Result: two fixture apps
-   see each other's files.
+   field, the install review's picker, the app page's editor, the mounts, and finishing a knowledge
+   base's removal after a restart. Result: two fixture apps see each other's files.
 2. **Synced knowledge bases.** The Google connection with the operator's client, the encrypted token
    and its key rotation, the rclone sync containers and the remotes the server creates in them, the
    timed runs, status, conflicts, Sync now, Resync and Apply these deletions, and the operator
