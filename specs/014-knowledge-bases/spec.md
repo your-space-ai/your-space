@@ -221,6 +221,14 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
     knowledge base itself (default picked 2026-11-26). A Drive folder at its path is written into
     the folder it leads to, still inside the knowledge base, and later runs move those files to that
     folder in Drive too. No link is ever followed out of the knowledge base.
+  - A file, not a link, whose name ends in `.rclonelink` is read as a link of the name without the
+    suffix, so it stops the sync until an app or the owner renames it (checked on rclone 1.75.2,
+    open question below). Nothing is deleted or overwritten on either side. A normal run fails
+    while listing, before anything changes, and the next run tries again a minute later; rclone's
+    error names the file, the page's message doesn't. A resync, as the first run after connecting
+    is, copies the other files and then stops (`resync`), and **Resync** stops the same way. When a
+    link of the name without the suffix is there too, the file is skipped and the link syncs as
+    above, until that link is gone.
 - **The sync containers.** One container for each synced knowledge base, run by the runtime
   manager for Your Space: the stock rclone image running `rclone rcd`, as root in the container
   with only `DAC_OVERRIDE` and `FOWNER` (see **Files the sync reads and writes**), every other
@@ -277,7 +285,8 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   deletions the owner confirmed, are recorded against the owner; each sync run that changed files,
   stopped or failed against Your Space. An interrupted run may have changed files, so it is recorded
   as failed. An interrupted **Apply these deletions** is still recorded as the owner's applied
-  deletions, since some may have been made. Your Space's own resync of an interrupted run is recorded
+  deletions, since some may have been made, and so is one that failed or stopped once its log shows
+  it deleted any of them. Your Space's own resync of an interrupted run is recorded
   as `knowledge.resync_requested` against Your Space. Its own apply that finishes taking a knowledge
   base from an app after a restart is recorded as `knowledge.revoked` against Your Space when that
   apply works, unless the runtime manager then still reports the app mounting it. Runs that change
@@ -402,6 +411,10 @@ These are recorded, not scheduled. Each is opt-in, so a v1 kit never breaks.
 - Which of Google's redirect addresses work for each way Your Space is reached (`localhost`, an HTTPS
   domain, a private address), and what the guide says for the ones Google refuses.
 - Per-knowledge-base size limits, and how a first sync of a large folder shows progress.
+- A file, not a link, named with `.rclonelink` at the end stops the sync until it is renamed (see
+  **Links**), which an app can do whatever its permissions. Whether Your Space should sync such a
+  file, skip it, or stop with a reason of its own that names it, is the owner's to decide; no
+  fixture-remote acceptance case is added for it until then.
 - The Obsidian kit's Compose file: a kit pins a public Compose file, and the image's maintainers
   publish none. [Journey 015](../015-private-sources/spec.md) lets a kit pin a Compose file in a
   private repository; until it lands, the Obsidian demo waits.
