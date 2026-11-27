@@ -231,7 +231,8 @@ the app's response, and keeps no operation IDs, no record of earlier writes to m
 conflict status. A retry is a new request. An `unknown` outcome means Your Space doesn't know
 whether the app applied the write; the agent finds out from the app, as any API client would. An app
 that lets the client choose a record ID, as Twenty does, refuses a second create with the same ID,
-which an agent can use.
+which an agent can use, unless the request upserts: Twenty's `?upsert=true` updates the existing
+record instead, so a repeat can overwrite another actor's edit.
 
 **Considered:** an operation ID on every write, kept by Your Space, returning the first outcome for
 a repeat (the recommendation); passing it to the app as `Idempotency-Key`, which Twenty ignores.
