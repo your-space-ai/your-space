@@ -4,9 +4,9 @@
 
 **Created**: 2026-11-26
 
-**Status**: Proposed. The owner settled decisions 1 to 4 and 6 on 2026-11-26 and set the rule for
-the rest: a role grants an agent a route at an HTTP method, with approvals, and Your Space adds
-nothing past that without a reason. Two decisions were dropped under that rule; two are open, each
+**Status**: Proposed. The owner settled decisions 1 to 4, 6 and 8 on 2026-11-26 and set the rule
+for the rest: a role grants an agent a route at an HTTP method, with approvals, and Your Space adds
+nothing past that without a reason. Two decisions were dropped under that rule; decision 9 is open,
 with a recommendation. Nothing is built.
 
 **Input**: The owner, on 2026-11-26: an agent should be able to do real work in an app through Your
@@ -46,7 +46,7 @@ and [gateway contract](../005-owner-agent/contracts/gateway.md), and
 | 5 | What happens to an edit of a record that changed since the agent read it? | **Dropped:** the app applies it as it applies any client's edit |
 | 6 | Does a write route ask the owner first when neither the kit nor the owner has set it? | **Decided:** yes, it asks; a read nobody set defaults to Allow. Owner: "default to ask." |
 | 7 | What does the owner see of what a write changed? | **Dropped:** Activity stays as it is, and the app keeps its own history of its records |
-| 8 | Where does the Twenty kit with write routes live? | Open. Recommended: in the owner's own private kits repository, installed through the GitHub connection (015) |
+| 8 | Where does the Twenty kit with write routes live? | **Decided:** in a private kits repository in the project's GitHub organization, installed through the GitHub connection (015). Owner: "twenty kit, put it in a private kit repo on the your space ai org" |
 | 9 | Which release carries it? | Open. Recommended: Canary as each pull request merges, and alpha.2 |
 
 ## What Exists Today
@@ -264,12 +264,15 @@ Twenty records each change with the API key's name.
 
 ## 8. Where the Twenty Kit Lives
 
-**Recommended:** in the owner's own kits repository, private, created by the owner, and installed
-through the GitHub connection (015). This repository's tests use the neutral fixture app, with write
-routes, and its docs a neutral example.
+**Decided (2026-11-26):** in a private kits repository in the project's GitHub organization. The
+owner: "twenty kit, put it in a private kit repo on the your space ai org". The workspace installs it
+through the GitHub connection (015), pinned to a commit like any kit link. The kit holds the
+custom object's own names, which stay out of this repository; this repository's tests use the
+neutral fixture app, with write routes, and its docs a neutral example.
 
-Why it can't be left to the app or the agent: the kit holds the owner's custom object, so it isn't
-generic enough for this repository, and a new repository is the owner's to create.
+A fine-grained GitHub token has one resource owner, so the connection's token must be owned by that
+organization, with Contents read on the kits repository; a token owned by another account can't
+read it.
 
 The kit adds:
 
@@ -284,7 +287,9 @@ No route declares `upsert`, a batch route or a delete. To move the installed app
 owner removes it, keeping its data, installs it again from the kit, binds both keys and grants the
 agent again: a kit change retires agent access, as today.
 
-**Considered:** a Twenty kit in this repository or the official kits repository.
+**Considered:** the owner's own private kits repository (the recommendation); installing the kit
+file from the server with `install-app --kit -`, with no repository; a Twenty kit in this repository
+or the official kits repository.
 
 ## 9. Which Release Carries It
 
