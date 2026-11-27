@@ -4,8 +4,8 @@
 
 **Created**: 2026-11-26
 
-**Status**: Proposed. The owner settled decision 1 on 2026-11-26; eight are open, each with a
-recommendation. Nothing is built.
+**Status**: Proposed. The owner settled decisions 1 and 2 on 2026-11-26; seven are open, each with
+a recommendation. Nothing is built.
 
 **Input**: The owner, on 2026-11-26: an agent should be able to do real work in an app through Your
 Space, never holding the app's own credential. The first case is onboarding records into a CRM:
@@ -35,13 +35,13 @@ and [gateway contract](../005-owner-agent/contracts/gateway.md), and
 
 ## Decisions
 
-Decision 1 is settled; the rest are open. Each section below gives the options, the trade-offs and a
+Decisions 1 and 2 are settled; the rest are open. Each section below gives the options, the trade-offs and a
 recommendation, and for a settled one, what was decided.
 
 | # | Question | Recommendation or decision |
 | --- | --- | --- |
-| 1 | Are schema and admin operations, such as creating a custom object, in scope? | **Decided:** in, through setup roles of their own, apart from record roles. Each route names the app credential it is sent with, so a setup route uses an admin credential and a record route a narrower one. Setup routes always ask. Owner: "should be separate roles that give separate access. could also have a role that give permission over the setup itself and control thingsl ike the data model." |
-| 2 | Can a kit declare routes that delete? | Yes, `effect: delete`, always asking first, in roles of their own. The Twenty kit declares none yet |
+| 1 | Are schema and admin operations, such as creating a custom object, in scope? | **Decided:** in, through setup roles of their own, apart from record roles. Each route names the app credential it is sent with, so a setup route uses an admin credential and a record route a narrower one. Owner: "should be separate roles that give separate access. could also have a role that give permission over the setup itself and control thingsl ike the data model." |
+| 2 | Can a kit declare routes that delete? | **Decided:** yes, `effect: delete`, in roles of their own. Whether a delete asks first is set like any route's: Ask by default, and the owner can set Allow. The Twenty kit declares none yet. Owner: "this should be defined in the role permissions, it shouldn't always require an approval tho"; "there are some reasonable deletions" |
 | 3 | How does a kit declare a write's body? | The top-level field names the route accepts, each value any JSON; the app validates the values |
 | 4 | What makes a retried write safe? | An operation ID on every write, kept by Your Space: the same ID returns the first outcome and never sends the write again |
 | 5 | What happens to an edit made on a record that changed since the agent read it? | The later write wins, and only the fields it names change. Refusing a stale edit needs the app's support, which Twenty lacks |
@@ -216,8 +216,8 @@ agentAccess:
 - The response check refuses a response that contains any credential bound to the installation.
 
 **Setup routes.** A route that changes the data model declares `effect: setup`, with `POST`,
-`PATCH` or `PUT`. It always asks the owner: an override can't set it to Allow, and the approval shows
-its body like any write's. Reading the data model is a read: Twenty's record key could read an
+`PATCH` or `PUT`. Like every write it asks the owner by default, and the owner can set it to Allow
+(decision 2 settled that no effect is held to Ask); the approval shows its body like any write's. Reading the data model is a read: Twenty's record key could read an
 object's metadata (`200`), so a kit may put that in a record role. Operation IDs and outcomes work
 as for other writes. Deleting objects and fields is decision 2.
 
@@ -230,18 +230,21 @@ of per route; a route in two roles would then have no single credential.
 
 ## 2. Deleting
 
-**Recommended:** the format supports deletes, and they always ask. A route with `method: DELETE`
-declares `effect: delete`; like a setup route, it always asks the owner, and an override can't set
-it to Allow. A kit puts deletes in roles of their own, such as a Remover beside the Editor, in line
-with decision 1, so granting create and update never grants delete. The Twenty kit declares no
-deletes yet: onboarding doesn't need them, and its record key's role can't delete. A setup role may
-include deleting objects or fields the same way.
+**Decided (2026-11-26):** deletes are in, in roles of their own, and whether one asks first is set
+like any route's. The owner: "this should be defined in the role permissions, it shouldn't always
+require an approval tho", and "there are some reasonable deletions".
 
-Why: a delete is the one write an agent can't correct with another write, so it always reaches the
-owner first. Keeping it in its own role makes the owner choose it on purpose.
+- A route with `method: DELETE` declares `effect: delete`. A kit puts deletes in roles of their own,
+  such as a Remover beside the Editor, so granting create and update never grants delete.
+- A delete asks the owner by default. The kit may recommend Ask or Allow for it, and the owner can
+  set Ask or Allow for it per agent and installation, as for any write (decision 6). Ask for all
+  writes covers deletes.
+- Deleting objects or fields is a setup route with `method: DELETE`, in the Setup role, and follows
+  the same rule: Ask by default, Allow if the owner sets it.
+- The Twenty kit declares no deletes yet: onboarding doesn't need them, and its record key's role
+  can't delete.
 
-**Considered:** no deletes in this spec (the earlier recommendation), refusing `DELETE` until a kit
-needs it. **Considered:** deletes with Ask by default but an Allow the owner can set, as for creates.
+**Considered:** deletes always asking, with no Allow (the recommendation); no deletes in this spec.
 
 ## 3. A Write's Body
 
@@ -318,8 +321,7 @@ declared read and field for each route.
 
 **Recommended:**
 
-- **Setup and delete routes always ask** (decisions 1 and 2); an override can't change that.
-- **Writes ask first.** A create or update route without an override asks the owner, whatever the kit
+- **Writes ask first.** A create, update, delete or setup route without an override asks the owner, whatever the kit
   recommends, until the owner sets it to Allow for that agent and installation. A kit may recommend
   `approval: allow` for a write; the dashboard shows the recommendation, and the owner applies it.
 - **Ask for all writes comes back**, per agent and installation, and overrides a write route set to
@@ -388,7 +390,7 @@ agent writes before alpha.2, and the onboarding runs there.
 
 1. **Let my agent set up the app.** The owner binds an Admin-role key as the kit's setup credential
    and grants an agent the Setup role. The agent adds a field to the custom object; the request
-   always waits for the owner, who sees the field's definition and approves. Another agent with only
+   waits for the owner, as writes do by default, who sees the field's definition and approves. Another agent with only
    the Editor role can't call it, and its requests never carry the admin key.
 2. **Let my agent add records.** The owner installs the Twenty kit with write routes, binds a key,
    and grants an agent the Editor role. The agent lists its actions and sees each write's effect and
@@ -432,8 +434,7 @@ agent writes before alpha.2, and the onboarding runs there.
   connection. A 2xx whose
   response fails the response check is `succeeded` with the result withheld, saying why.
 - **FR-005**: A write route asks the owner unless the owner set it to Allow for that agent and
-  installation. Setup and delete routes always ask, and no override changes that. Ask for all
-  writes, per agent and installation, makes every write ask. A pending
+  installation; this holds for create, update, delete and setup routes alike. Ask for all writes, per agent and installation, makes every write ask. A pending
   write waits 24 hours; a read 15 minutes. Approval re-checks current authority and dispatches the
   exact request once.
 - **FR-006**: The pending request shows the owner the agent, app, action, method, path, every
