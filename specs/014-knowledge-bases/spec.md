@@ -133,10 +133,12 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   capabilities it adds effective only for a container's root user, never for user 1000 (checked
   on Docker 28.3.3 and 29). The sync writes with a umask of 0, so the files and folders it makes
   are readable and writable by everyone (`0666`, `0777`) and owned by the sync's user: an app
-  running as any user can read them, change them, replace them and delete them. That is the
-  lease's limit: an app can't change the mode of a file the sync wrote, or set its time to anything
-  but now. A file that changed in Drive is replaced by such a copy, even where the app had made it
-  readable only by itself. The sync never changes the owner or mode of a file an app made. Between
+  running as any user can read them, change them, replace them and delete them, where the folders
+  above them let it. In a folder an app made `0700`, other apps reach nothing; in one it made
+  `0755`, they can change its files but not replace or delete them. That is the lease's limit: an
+  app can't change the mode of a file the sync wrote, or set its time to anything but now. A file
+  that changed in Drive is replaced by such a copy, even where the app had made it readable only by
+  itself. The sync never changes the owner or mode of a file an app made. Between
   apps nothing changes (see **No permissioning in v1**): a file keeps the owner and mode the app
   that made it gave it, so another app running as another user may not be able to change it.
   Checked on rclone 1.75.2.
@@ -160,7 +162,8 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   - Only one run per knowledge base at a time, with a lock that expires if a run dies
     (`--resilient --recover --max-lock 2m`). A run that finds the lock held changes nothing and is
     tried again a minute later. An owner's **Resync** or **Apply these deletions** that finds it
-    held is kept for that next run, and the deletions to apply are listed again first, as below.
+    held, or that can't start, as when rclone doesn't answer, is kept for that next run, with the
+    deletions to apply, which are listed again first, as below.
   - The first run copies both ways and deletes nothing (`--resync --resync-mode newer`): a file on
     only one side is copied to the other, and where both sides have a file, the newer copy wins.
     Files are compared by size, modification time and checksum (`--compare size,modtime,checksum`),
@@ -253,7 +256,7 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   the backstop. Different knowledge bases sync side by side. Drive can't notify a self-hosted
   server, and rclone has no built-in watcher of local files, so a change waits for the next run. A
   run stopped by the safety checks stops the automatic runs of that knowledge base until the owner
-  chooses an action.
+  chooses an action, and a **Sync now** asked for while that run was under way is dropped with it.
 - **Run results.** The server records each run's result, conflicts and backups, reading them from
   the knowledge base's rclone over its socket. A run keeps going when only the server restarts;
   rclone keeps a finished run's result for an hour, and the server reads the runs it missed when it
