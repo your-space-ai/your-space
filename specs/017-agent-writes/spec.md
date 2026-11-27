@@ -4,10 +4,10 @@
 
 **Created**: 2026-11-26
 
-**Status**: Proposed. The owner settled decisions 1 to 4 on 2026-11-26 and set the rule for the
-rest: a role grants an agent a route at an HTTP method, with approvals, and Your Space adds nothing
-past that without a reason. Two decisions were dropped under that rule; three are open, each with a
-recommendation. Nothing is built.
+**Status**: Proposed. The owner settled decisions 1 to 4 and 6 on 2026-11-26 and set the rule for
+the rest: a role grants an agent a route at an HTTP method, with approvals, and Your Space adds
+nothing past that without a reason. Two decisions were dropped under that rule; two are open, each
+with a recommendation. Nothing is built.
 
 **Input**: The owner, on 2026-11-26: an agent should be able to do real work in an app through Your
 Space, never holding the app's own credential. The first case is onboarding records into a CRM:
@@ -44,7 +44,7 @@ and [gateway contract](../005-owner-agent/contracts/gateway.md), and
 | 3 | How does a kit declare a write's body? | **Decided:** it doesn't. Owner: "lets not get granular like this, the role allows an agent access to a specific route + http verb, nothing more granular." |
 | 4 | What makes a retried write safe? | **Decided:** nothing in Your Space. The gateway forwards each write and returns the app's response; retries and duplicates are the agent's and the app's. Owner: "what no please none of this machinery, no made up operation ids. agent just has access to the api route at a verb, we are not adding more machinery past that without a reaason" |
 | 5 | What happens to an edit of a record that changed since the agent read it? | **Dropped:** the app applies it as it applies any client's edit |
-| 6 | Does a write route ask the owner first when neither the kit nor the owner has set it? | Open. Recommended: yes, it asks; a read still runs directly |
+| 6 | Does a write route ask the owner first when neither the kit nor the owner has set it? | **Decided:** yes, it asks; a read still runs directly. Owner: "default to ask." |
 | 7 | What does the owner see of what a write changed? | **Dropped:** Activity stays as it is, and the app keeps its own history of its records |
 | 8 | Where does the Twenty kit with write routes live? | Open. Recommended: in the owner's own private kits repository, installed through the GitHub connection (015) |
 | 9 | Which release carries it? | Open. Recommended: Canary as each pull request merges, and alpha.2 |
@@ -142,7 +142,7 @@ For an agent to write through a route at a method:
 5. **The response check** applies to writes, and refuses a response that contains any credential
    bound to the installation, not only the one used. A 2xx whose response fails the check reports
    `succeeded` without a result, since the app applied the write; a read's stays `unknown`.
-6. **Approval default** for a write route nobody set (decision 6).
+6. **Approval default.** A write route nobody set asks first (decision 6).
 7. **Discovery and CLI.** `actions` already lists each route's method; `invoke`'s input file may
    have `body`.
 
@@ -245,13 +245,13 @@ Your Space claims nothing about it.
 
 ## 6. Approval for a Write Route Nobody Set
 
-**Recommended:** a write route asks the owner first when the owner hasn't set it and the kit doesn't
-recommend Allow; a read still runs directly. The owner sets Ask or Allow per route as today, and a
-kit's `approval` is the default until then.
+**Decided (2026-11-26):** it asks. The owner: "default to ask." A write route asks the owner first
+when the owner hasn't set it and the kit doesn't recommend Allow; a read still runs directly. The
+owner sets Ask or Allow per route as today, and a kit's `approval` is the default until then. This
+is 005's FR-11 rule ("absent a recommendation ask on writes and allow reads"), kept.
 
-Why it can't be left to the app or the agent: approvals are Your Space's; an app can't ask the owner
-before an agent's request reaches it, and a kit that leaves `approval` out shouldn't make an agent's
-writes run unseen on the first grant.
+Why it is Your Space's: an app can't ask the owner before an agent's request reaches it, and a kit
+that leaves `approval` out shouldn't make an agent's writes run unseen on the first grant.
 
 **Considered:** the same default as reads, Allow unless the kit or the owner says Ask.
 
@@ -331,8 +331,8 @@ and only the owner chooses its channel.
   without a result.
 - **FR-005**: The response check refuses a response that contains any credential bound to the
   installation.
-- **FR-006**: Approvals work for writes as for reads, with decision 6's default for a write route
-  nobody set.
+- **FR-006**: Approvals work for writes as for reads: the owner's setting, then the kit's
+  `approval`, else Ask for a write and Allow for a read.
 - **FR-007**: `your-space agent invoke`'s input file may have `body`.
 - **FR-008**: The neutral fixture app gains create, update and delete routes, and the server and
   browser tests cover them: a write that asks and is approved or denied, one set to Allow, a body
