@@ -197,8 +197,8 @@ step. The [Mac app](macos-desktop.md) updates itself, and its local workspace wi
   it. A kit in a private repository that needs such a value can't be installed yet.
 - **Installed apps don't update.** A newer kit or Compose file reaches an installed app only when you
   remove the app, keeping its data, and install it again.
-- **Agents only read.** A kit can give an agent routes that read, never ones that create or change
-  records. See [Give an agent access to one app](../apps/agent-access.md).
+- **Agent writes are new.** A kit can give an agent routes that create, change or delete records.
+  They have run against a test app only so far. See [Give an agent access to one app](../apps/agent-access.md).
 - **One account.** Only the owner signs in; inviting other people isn't available yet.
 - **No email.** Your Space sends no email. When you need a new set-password link, run
   `your-space owner reset-link` on the machine that runs Your Space ([recovery](../operate/recovery.md)).

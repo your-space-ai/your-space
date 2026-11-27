@@ -72,7 +72,7 @@ test("kit grants and exact approvals route real reads to the installed app", asy
 
   const app = page.getByRole("region", { name: "App connections" });
   await app.locator("summary").click();
-  // Agents only read: the kit's roles name no write, and there is no Ask for all writes.
+  // There is no Ask for all writes: each route asks or runs as the owner sets it (spec 017).
   await expect(app).not.toContainText("No verified review");
   await app.getByLabel("App credential", { exact: true }).fill("local-fixture-key");
   await app.getByRole("checkbox", { name: /Inspector/ }).check();
@@ -142,4 +142,105 @@ test("kit grants and exact approvals route real reads to the installed app", asy
   });
   expect(refused.code).not.toBe(0);
   expect(refused.json).toMatchObject({ error: "agent_request_failed", reason: "invalid_input" });
+});
+
+test("an agent creates, edits and deletes records through the routes its roles grant", async ({ page, baseURL }) => {
+  await resetStack();
+  const owner = await createOwner();
+  await setPassword(page, owner.url);
+  await signIn(page, "sam");
+  const installed = await serverCommand("install-app", [
+    "https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/records.yaml",
+  ]);
+  expect(installed.json?.ok, installed.json?.error).toBe(true);
+  await page.getByRole("link", { name: "Agents", exact: true }).click();
+  await page.getByLabel("New agent name").fill("Writing agent");
+  await page.getByRole("button", { name: "Create agent" }).click();
+  await page.getByRole("button", { name: "Issue key" }).click();
+  const key = await page.getByLabel("New agent key", { exact: true }).inputValue();
+  await page.getByRole("button", { name: "Dismiss key" }).click();
+
+  const app = page.getByRole("region", { name: "App connections" });
+  await app.locator("summary").click();
+  await app.getByLabel("App credential", { exact: true }).fill("local-fixture-key");
+  await app.getByRole("checkbox", { name: /Editor/ }).check();
+  await app.getByRole("checkbox", { name: /Remover/ }).check();
+  await app.getByRole("button", { name: "Save connection" }).click();
+  await expect(app.locator("summary")).toContainText("Credential saved");
+  const settings = page.getByRole("region", { name: "Manage agents" });
+  const access = settings.locator("details").filter({ has: page.locator("summary", { hasText: /records/i }) });
+  await access.locator("summary").click();
+  await access.getByRole("checkbox", { name: /Editor/ }).check();
+  // A write nobody set asks first; a read runs directly.
+  await expect(access.getByLabel("Approval for create").locator("option").first()).toHaveText("Use default (ask)");
+  await expect(access.getByLabel("Approval for list").locator("option").first()).toHaveText("Use default (allow)");
+  await access.getByRole("button", { name: "Save agent access" }).click();
+  await expect(access.locator("summary")).toContainText("Editor");
+
+  const cli = cliIn(process.cwd(), { YOUR_SPACE_URL: baseURL!, YOUR_SPACE_AGENT_KEY: key });
+  const run = async (args: string[], input?: unknown) => {
+    const outcome = await cli.run(["--json", "agent", ...args], { input: JSON.stringify(input) });
+    expect(outcome.code, JSON.stringify(outcome.json)).toBe(0);
+    return outcome.json;
+  };
+  const discovered = await run(["actions"]);
+  expect(discovered.actions.map((a: { actionId: string; method: string }) => a.actionId + " " + a.method).sort()).toEqual([
+    "create POST",
+    "edit PATCH",
+    "list GET",
+    "show GET",
+  ]);
+  const installationId = discovered.actions[0].installationId;
+  const invoke = (actionId: string, input: unknown) => run(["invoke", installationId, actionId, "--input-stdin"], input);
+
+  // The create waits for the owner, who sees the body it will send, then reaches the app once.
+  const id = "5d1c8e3a-7b2f-4a9e-9c6d-1e4f8a2b7c30";
+  const asked = await invoke("create", { body: { id, title: "Call the plumber" } });
+  expect(asked.status).toBe("pending");
+  const pending = page.getByRole("region", { name: "Pending approvals" });
+  await pending.locator("summary").click();
+  await expect(pending.locator("pre")).toContainText("Call the plumber");
+  await pending.getByRole("button", { name: "Approve once" }).click();
+  await expect(pending.getByText("No requests awaiting approval.")).toBeVisible();
+  const created = await run(["request", asked.id]);
+  expect(created).toMatchObject({ status: "succeeded", result: { data: { createItem: { id, title: "Call the plumber" } } } });
+
+  // Set to Allow, an edit runs directly; the app changes only the field sent.
+  await access.locator("summary").click();
+  await access.getByLabel("Approval for edit").selectOption("allow");
+  await access.getByRole("button", { name: "Save agent access" }).click();
+  await expect(access).not.toHaveAttribute("open", "");
+  const edited = await invoke("edit", { path: { id }, body: { done: true } });
+  expect(edited).toMatchObject({ status: "succeeded", result: { data: { updateItem: { id, title: "Call the plumber", done: true } } } });
+  const afterEdit = await invoke("list", {});
+  expect(afterEdit.result.data.items).toContainEqual({ id, title: "Call the plumber", done: true, revision: 2 });
+
+  // A second create of the same record ID reaches the app, which refuses it: Your Space keeps no operation ID.
+  await access.locator("summary").click();
+  await access.getByLabel("Approval for create").selectOption("allow");
+  await access.getByRole("button", { name: "Save agent access" }).click();
+  await expect(access).not.toHaveAttribute("open", "");
+  const again = await cli.run(["--json", "agent", "invoke", installationId, "create", "--input-stdin"], {
+    input: JSON.stringify({ body: { id, title: "Call the plumber" } }),
+  });
+  expect(again.json).toMatchObject({ error: "agent_request_failed", status: "refused" });
+
+  // A delete is granted only with its own role, then asks first like any write nobody set.
+  const remove = { path: { id } };
+  const unGranted = await cli.run(["--json", "agent", "invoke", installationId, "remove", "--input-stdin"], {
+    input: JSON.stringify(remove),
+  });
+  expect(unGranted.json).toMatchObject({ error: "agent_request_failed", reason: "denied" });
+  await access.locator("summary").click();
+  await access.getByRole("checkbox", { name: /Remover/ }).check();
+  await access.getByRole("button", { name: "Save agent access" }).click();
+  await expect(access.locator("summary")).toContainText("Remover");
+  const removal = await invoke("remove", remove);
+  expect(removal.status).toBe("pending");
+  await pending.locator("summary").click();
+  await pending.getByRole("button", { name: "Approve once" }).click();
+  await expect(pending.getByText("No requests awaiting approval.")).toBeVisible();
+  expect((await run(["request", removal.id])).status).toBe("succeeded");
+  const listed = await invoke("list", {});
+  expect(listed.result.data.items.map((item: { id: string }) => item.id)).not.toContain(id);
 });

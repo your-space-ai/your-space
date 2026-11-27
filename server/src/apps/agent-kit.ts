@@ -1,21 +1,27 @@
-// The declaration lives in the pinned installation kit. Only this module turns a
-// declared route and validated scalar fields into an upstream request. Agents only read
-// (decision 2026-11-23, Alpha scope): every route is a GET with effect: read. The app's JSON
-// response reaches the agent unchanged (decision 2026-11-24), so a route declares no output.
+// The declaration lives in the pinned installation kit. Only this module turns a declared route,
+// its validated scalar fields and the agent's body into an upstream request. A role grants a route at
+// its HTTP method and nothing finer (spec 017): a write route declares no effect and no body, and the
+// body passes to the app, which checks it. The app's JSON response reaches the agent unchanged
+// (decision 2026-11-24), so a route declares no output.
 type FieldType = "string" | "uuid" | "integer" | "boolean";
 type Fields = Record<string, FieldType>;
+const WRITE_METHODS = ["POST", "PATCH", "PUT", "DELETE"] as const;
 export interface AgentRoute {
-  method: "GET";
+  method: "GET" | (typeof WRITE_METHODS)[number];
   path: string;
-  effect: "read";
+  /** Only a GET declares it, as `read`. A stored route with `effect: write`, from before the cut, is left out of every role. */
+  effect?: "read";
   approval?: "ask" | "allow";
   pathParams?: Fields;
   queryFields?: Fields;
 }
-/** Fields only a write route could use, before agents became read-only. */
-const WRITE_FIELDS = ["bodyFields", "operationId", "expectedRevision", "receipt"];
-const READS_ONLY =
-  "Agents only read in this version of Your Space: each route is a GET with effect: read, without a body, an operation ID, a revision or a receipt.";
+/** Fields of the write routes cut on 2026-11-23: Your Space no longer checks bodies or matches retries. */
+const CUT_FIELDS = ["bodyFields", "operationId", "expectedRevision", "receipt"];
+const ROUTE_SHAPE =
+  "A route is a GET with effect: read, or a POST, PATCH, PUT or DELETE with no effect. A role grants the route at its method: a route declares no body fields, operation ID, revision or receipt, and the app checks the body.";
+/** The largest body, in bytes of JSON, that a write sends to the app. */
+export const AGENT_BODY_LIMIT = 32 * 1024;
+export const isWrite = (route: Pick<AgentRoute, "method">) => route.method !== "GET";
 const NO_OUTPUT_FIELDS =
   "outputFields was removed: Your Space passes the app's JSON response to the agent unchanged. Remove outputFields from the route.";
 /** The largest app result, in bytes of JSON, that an agent gets; the transport stops reading past it. */
@@ -75,14 +81,18 @@ function parseFields(value: unknown): Fields {
 }
 function parseRoute(value: unknown): AgentRoute {
   const declared = mapping(value);
-  check(declared.effect !== "write" && !WRITE_FIELDS.some((name) => Object.hasOwn(declared, name)), READS_ONLY);
+  check(!CUT_FIELDS.some((name) => Object.hasOwn(declared, name)), ROUTE_SHAPE);
   check(!Object.hasOwn(declared, "outputFields"), NO_OUTPUT_FIELDS);
   const r = keys(value, ["method", "path", "effect", "approval", "pathParams", "queryFields"]);
   const { method, path, effect, approval } = r;
-  check(method === "GET" && effect === "read", READS_ONLY);
+  check(
+    (method === "GET" && effect === "read") ||
+      (WRITE_METHODS.includes(method as (typeof WRITE_METHODS)[number]) && effect === undefined),
+    ROUTE_SHAPE,
+  );
   check(approval === undefined || approval === "allow" || approval === "ask", "Unknown approval setting.");
   check(typeof path === "string" && path.startsWith("/") && path.length <= 512, "Expected a relative route path.");
-  const route: AgentRoute = { method, path, effect, approval };
+  const route = { method, path, ...(effect ? { effect } : {}), approval } as AgentRoute;
   for (const slot of ["pathParams", "queryFields"] as const) {
     if (r[slot] !== undefined) route[slot] = parseFields(r[slot]);
   }
@@ -173,8 +183,23 @@ function validateInput(fields: Fields, values: unknown): Record<string, string |
   }
   return result;
 }
-export function renderAgentRequest(route: AgentRoute, input: unknown): { method: string; path: string; headers: Record<string, string> } {
-  const values = keys(input === undefined ? {} : input, ["path", "query"]);
+export function renderAgentRequest(
+  route: AgentRoute,
+  input: unknown,
+): { method: string; path: string; headers: Record<string, string>; body?: string } {
+  const values = keys(input === undefined ? {} : input, ["path", "query", "body"]);
+  // A write's body is the agent's JSON, sent as it is: the app checks it. Only its size is limited here.
+  let body: string | undefined;
+  if (values.body !== undefined) {
+    check(isWrite(route), "A read takes no body.");
+    try {
+      body = JSON.stringify(values.body);
+    } catch {
+      // Not JSON.
+    }
+    check(typeof body === "string", "The body must be JSON.");
+    check(Buffer.byteLength(body) <= AGENT_BODY_LIMIT, "The body is larger than 32 KiB.");
+  }
   const params = validateInput(route.pathParams ?? {}, values.path === undefined ? {} : values.path);
   const query = validateInput(route.queryFields ?? {}, values.query === undefined ? {} : values.query);
   let path = route.path.replace(/\{([^{}]+)\}/g, (_, k: string) => {
@@ -186,7 +211,7 @@ export function renderAgentRequest(route: AgentRoute, input: unknown): { method:
   const search = new URLSearchParams();
   for (const key of Object.keys(query).sort()) search.set(key, String(query[key]));
   if (search.size) path += "?" + search.toString();
-  return { method: route.method, path, headers: {} };
+  return { method: route.method, path, headers: {}, ...(body === undefined ? {} : { body }) };
 }
 export function agentCredentialHeader(access: AgentAccess, secret: string): Record<string, string> {
   check(typeof secret === "string" && /^[\x21-\x7e]{1,8192}$/.test(secret), "Invalid app credential.");

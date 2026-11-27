@@ -65,7 +65,7 @@ beforeEach(async () => {
   });
   vi.mocked(dispatchAppAction)
     .mockReset()
-    .mockResolvedValue({ status: 200, body: item });
+    .mockResolvedValue({ status: 200, body: item, usable: true });
 });
 afterEach(async () => {
   await t?.destroy();
@@ -261,7 +261,7 @@ it("isolates two actors and unrelated installation catalogs through discovery, i
   );
   expect(dispatchAppAction).not.toHaveBeenCalled();
 
-  vi.mocked(dispatchAppAction).mockResolvedValueOnce({ status: 200, body: [{ degrees: 19, sensor: { room: "hall" } }] });
+  vi.mocked(dispatchAppAction).mockResolvedValueOnce({ status: 200, body: [{ degrees: 19, sensor: { room: "hall" } }], usable: true });
   const outcome = await invoke(t.db, key, secondVerifier, reading);
   expect(outcome).toMatchObject({ status: "succeeded", result: [{ degrees: 19, sensor: { room: "hall" } }] });
   expect(dispatchAppAction).toHaveBeenCalledWith(
@@ -362,7 +362,7 @@ it("retires the old grant, credential and pending approval when a kit changes it
   );
 });
 
-it("leaves out the write routes of a kit stored before agents became read-only", async () => {
+it("leaves out the effect: write routes of a kit stored before writes were cut", async () => {
   // Stored as written then; parseKit refuses write routes now.
   const stored = {
     ...access,
@@ -410,13 +410,13 @@ it("saves no result when the app echoes its credential, answers too much or answ
     { text: "x".repeat(256 * 1024) },
   ];
   for (const body of echoes) {
-    vi.mocked(dispatchAppAction).mockResolvedValueOnce({ status: 200, body });
+    vi.mocked(dispatchAppAction).mockResolvedValueOnce({ status: 200, body, usable: true });
     const outcome = await invoke(t.db, key, verifier, list);
     expect(outcome).toEqual({ id: outcome.id, status: "unknown" });
     expect(JSON.stringify(await requestOutcome(t.db, verifier, outcome.id, key))).not.toContain(secret);
   }
-  // The transport refuses a body that isn't JSON.
-  vi.mocked(dispatchAppAction).mockRejectedValueOnce(new Error("App returned an invalid result"));
+  // The transport marks a body that isn't JSON unusable.
+  vi.mocked(dispatchAppAction).mockResolvedValueOnce({ status: 200, body: null, usable: false });
   expect(await invoke(t.db, key, verifier, list)).toMatchObject({ status: "unknown" });
   const results = (await t.pool.query("select result from agent_request where status='unknown'")).rows;
   expect(results).toHaveLength(4);

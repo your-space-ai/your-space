@@ -52,20 +52,48 @@ describe("a pinned agent-access kit", () => {
     }
   });
 
-  it("refuses write routes and every field only a write used, naming why", () => {
+  it("accepts a write route by its method alone and refuses what a cut write route declared", () => {
+    const routes = {
+      list,
+      show,
+      create: { method: "POST", path: "/items" },
+      edit: { method: "PATCH", path: "/items/{id}", pathParams: { id: "integer" }, approval: "allow" },
+      replace: { method: "PUT", path: "/items/{id}", pathParams: { id: "integer" } },
+      remove: { method: "DELETE", path: "/items/{id}", pathParams: { id: "integer" } },
+    };
+    const parsed = parseKit(JSON.stringify({ ...fixture, agentAccess: { ...fixture.agentAccess, routes } })).agentAccess!;
+    expect(parsed.routes.create).toEqual({ method: "POST", path: "/items" });
+    expect(parsed.routes.edit!.approval).toBe("allow");
     for (const route of [
       write,
       { ...write, effect: "read" },
+      { method: "POST", path: "/items", effect: "write" },
+      { method: "POST", path: "/items", effect: "create" },
       { ...list, method: "POST" },
-      { ...list, bodyFields: { title: "string" } },
-      { ...list, operationId: { in: "header", name: "Idempotency-Key" } },
-      { ...list, expectedRevision: { in: "header", name: "If-Match" } },
-      { ...list, receipt: { route: "list", param: "id" } },
+      { ...list, method: "OPTIONS", effect: undefined },
+      { method: "POST", path: "/items", bodyFields: { title: "string" } },
+      { method: "POST", path: "/items", operationId: { in: "header", name: "Idempotency-Key" } },
+      { method: "PATCH", path: "/items", expectedRevision: { in: "header", name: "If-Match" } },
+      { method: "POST", path: "/items", receipt: { route: "list", param: "id" } },
     ]) {
       expect(() =>
         parseKit(JSON.stringify({ ...fixture, agentAccess: { ...fixture.agentAccess, routes: { list, show, edit: route } } })),
-      ).toThrow(/Agents only read/);
+      ).toThrow(/A route is a GET with effect: read, or a POST, PATCH, PUT or DELETE with no effect/);
     }
+  });
+
+  it("sends a write's body as the agent's JSON, up to 32 KiB, and no body on a read", () => {
+    const create = { method: "POST" as const, path: "/items" };
+    const body = { title: "new", company: { create: { name: "Nested" } }, tags: [1, null] };
+    expect(renderAgentRequest(create, { body })).toEqual({
+      method: "POST",
+      path: "/items",
+      headers: {},
+      body: JSON.stringify(body),
+    });
+    expect(renderAgentRequest(create, {})).toEqual({ method: "POST", path: "/items", headers: {} });
+    expect(() => renderAgentRequest(create, { body: { text: "x".repeat(32 * 1024) } })).toThrow(/32 KiB/);
+    expect(() => renderAgentRequest(list, { body: {} })).toThrow(/A read takes no body/);
   });
 
   it("refuses outputFields, saying the app's response is passed through", () => {

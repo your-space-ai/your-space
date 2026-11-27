@@ -2,7 +2,7 @@
 
 The gateway contract defines owner controls, agent access and the results returned to each caller.
 
-**Alpha scope (2026-11-23).** Agents only read: every route is a GET with `effect: read`, so invocations carry no body, operation ID or expected revision, and nothing reconciles an uncertain write. Approvals, grants, keys and request outcomes stay. The rows below describe reads; see the [alpha scope](../../../docs/architecture/decisions.md#alpha-scope).
+**Writes (2026-11-26, [journey 017](../../017-agent-writes/spec.md)).** The input gains `body`, a write's JSON of at most 32 KiB, sent to the app as it is. The gateway keeps no operation ID or expected revision and doesn't match retries; a write's 2xx response that can't be passed on is `succeeded` without a result. Before that, **alpha scope (2026-11-23):** agents only read: every route is a GET with `effect: read`, so invocations carry no body, operation ID or expected revision, and nothing reconciles an uncertain write. Approvals, grants, keys and request outcomes stay. The rows below describe reads; see the [alpha scope](../../../docs/architecture/decisions.md#alpha-scope).
 
 | Caller | Operation | Contract |
 | --- | --- | --- |
@@ -16,7 +16,7 @@ The gateway contract defines owner controls, agent access and the results return
 
 CLI commands include `your-space agent actions --json` and `your-space agent invoke <installation-id> <action-id> --input-stdin --json`. Resolve the workspace URL and agent key from the externally supplied environment (`YOUR_SPACE_URL`, `YOUR_SPACE_AGENT_KEY`). Discover, invoke and request lookup must work without Docker or operator access on the agent machine. Machine-readable failures distinguish invalid credential, unavailable action or grant, approval pending, denied or expired approval, app refusal, app unavailability, and no usable answer. Denials disclose no resources outside the caller’s scope. Credential values never appear in argv, output, help examples, discovery or logs.
 
-An action ID is exactly the kit route ID. The invoke input has two named objects, `path` and `query`, validated against the route’s `pathParams` and `queryFields`. Omitted objects are empty. Reject unknown fields, a `body` included. The canonical request also includes installation, actor, route and kit revision.
+An action ID is exactly the kit route ID. The invoke input has two named objects, `path` and `query`, validated against the route’s `pathParams` and `queryFields`, and, for a write, `body` (journey 017). Omitted objects are empty. Reject unknown fields, and a `body` on a read. The canonical request also includes installation, actor, route and kit revision.
 
 ## Owner HTTP API
 

@@ -81,18 +81,22 @@ export async function catalog(client: pg.PoolClient, id: string) {
   ).rows[0];
   const declared = row?.kit?.agentAccess as AgentAccess | undefined;
   if (!row || !declared || !row.interface) forbidden();
-  const access = readsOnly(declared);
+  const access = withoutCutWrites(declared);
   const digest = hash(JSON.stringify([row.kit, row.kit_source, row.commit]));
   return { row, access, digest, current: row.kit_digest === digest };
 }
 /**
- * Agents only read (decision 2026-11-23, Alpha scope). A kit stored before then may still declare
- * write routes; they are left out, so no role grants them. A kit stored before 2026-11-24 may still
- * give its routes outputFields; nothing reads them, and the app's response reaches the agent unchanged.
+ * A kit stored before writes were cut (2026-11-23, Alpha scope) may still declare write routes with
+ * `effect: write`. They stay left out, so a server upgrade never adds a write to a role the owner
+ * granted for reads; a write route of spec 017 declares no effect. A kit stored before 2026-11-24 may
+ * still give its routes outputFields; nothing reads them, and the app's response reaches the agent
+ * unchanged.
  */
-function readsOnly(access: AgentAccess): AgentAccess {
+function withoutCutWrites(access: AgentAccess): AgentAccess {
   const routes = Object.fromEntries(
-    Object.entries(access.routes).filter(([, route]) => route.method === "GET" && route.effect === "read"),
+    Object.entries(access.routes).filter(([, route]) =>
+      route.method === "GET" ? route.effect === "read" : (route as { effect?: string }).effect === undefined,
+    ),
   );
   const roles = Object.fromEntries(
     Object.entries(access.roles).map(([id, role]) => [id, { ...role, routes: role.routes.filter((r) => Object.hasOwn(routes, r)) }]),

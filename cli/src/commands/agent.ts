@@ -72,9 +72,9 @@ export function registerAgentCommands(program: Command, ui: () => Ui): void {
   agent.command("actions").description("list available kit actions").action(() => callAgent(ui(), "/api/agent/actions"));
   agent.command("request <id>").description("check a previously submitted request").action((id: string) =>
     callAgent(ui(), "/api/agent/requests/" + encodeURIComponent(id)));
-  // Agents only read (decision 2026-11-23, Alpha scope): an action takes path and query fields.
+  // An action takes path and query fields, and a write its body, sent to the app as it is (spec 017).
   agent.command("invoke <installation-id> <action-id>").description("submit a kit action")
-    .requiredOption("--input-stdin", "read the path and query input object from stdin")
+    .requiredOption("--input-stdin", "read the input object (path, query and a write's body) from stdin")
     .action(async (installationId: string, actionId: string) => {
       const input = await readInput();
       await callAgent(ui(), "/api/agent/invoke", { installationId, actionId, input });

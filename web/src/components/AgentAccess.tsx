@@ -176,7 +176,9 @@ export function GrantEditor({ agent, app, grant }: { agent: Agent; app: AgentIns
           {routes.map((id) => {
             const route = app.routes[id];
             if (!route) return null;
-            const asks = overrides[id] ?? route.approval ?? "allow";
+            // A write nobody set asks first, as the gateway does (spec 017).
+            const fallback = route.approval ?? (route.method === "GET" ? "allow" : "ask");
+            const asks = overrides[id] ?? fallback;
             return (
               <label className="agent-route" key={id}>
                 <span>
@@ -195,7 +197,7 @@ export function GrantEditor({ agent, app, grant }: { agent: Agent; app: AgentIns
                     setOverrides(next);
                   }}
                 >
-                  <option value="">Use default ({route.approval ?? "allow"})</option>
+                  <option value="">Use default ({fallback})</option>
                   <option value="ask">Ask</option>
                   <option value="allow">Allow</option>
                 </select>
