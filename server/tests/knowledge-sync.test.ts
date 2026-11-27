@@ -276,7 +276,11 @@ describe("the Google connection", () => {
   });
 
   it("keeps the connection when Google refuses a new sign-in, and says why", async () => {
+    // Its own connection, so it runs alone too.
+    expect((await send("/api/google-drive", { clientId: CLIENT_ID, clientSecret: CLIENT_SECRET }, "PUT")).status).toBe(200);
+    expect(await signInWithGoogle()).toBe(`${server.publicUrl}/knowledge?google=connected`);
     const before = (await connection())!.token;
+    expect(before).toBeTruthy();
     tokenAnswer = { status: 400, body: { error: "invalid_grant", error_description: "Bad Request" } };
     expect(await signInWithGoogle()).toBe(`${server.publicUrl}/knowledge?google=refused`);
     tokenAnswer = { status: 200, body: { access_token: ACCESS, refresh_token: REFRESH, expires_in: 3599, scope: "openid" } };
@@ -1070,13 +1074,25 @@ describe("a knowledge base's sync", () => {
     await tick();
     expect(rc.started().length).toBe(runs + 1);
     await resyncAsOwner();
-    // A run whose stats can't be read goes by its log.
+    // A run whose stats can't be read is never taken as synced: its job stays, and they are read
+    // again next tick.
     rc.answers = [{ lines: [ok], lastError: escapes }];
     rc.failures.set("core/stats", new RcError("rclone answered 500.", 500));
+    const before = rc.started().length;
     await send("/api/knowledge/notes/sync", { action: "sync" });
+    const asked = () => {
+      const job = rc.started()[before];
+      return job ? rc.calls.filter((c) => c.params.group === job.group).map((c) => c.command) : [];
+    };
+    for (let i = 0; i < 50 && asked().length === 0; i++) await tick();
+    expect(asked()).toEqual(["core/stats"]);
+    expect((await syncRow())!.job).not.toBeNull();
     await settled();
-    expect(await status()).toMatchObject({ result: "synced" });
+    expect(asked()).toEqual(["core/stats", "core/stats", "core/stats-delete"]);
+    expect(await status()).toMatchObject({ result: "stopped", reason: "link", detail: escapes });
+    expect((await events("knowledge.sync_stopped")).slice(stops)).toHaveLength(2);
     rc.answers = [{ lines: [ok] }];
+    await resyncAsOwner();
   });
 
   it("records the owner's deletions as applied by a forced run that bisync reports successful but that stops at a link", async () => {
@@ -1411,6 +1427,42 @@ describe("a knowledge base's sync", () => {
     await settled("recipes");
   });
 
+  it("disconnects once when asked twice at once: a disconnect that read the sync before the other ended doesn't disconnect it again", async () => {
+    const recipes = (await syncRow("recipes"))!.knowledgeBaseId;
+    const disconnects = (await events("knowledge.disconnected")).length;
+    // The first disconnect's read of the sync answers only once the second has ended.
+    const instance = sync() as unknown as { syncRow: (id: string) => Promise<unknown> };
+    const read = instance.syncRow;
+    let open: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    let waiting = false;
+    instance.syncRow = async function (this: unknown, id: string) {
+      const row = await read.call(this, id);
+      if (!waiting && id === recipes) {
+        waiting = true;
+        await gate;
+      }
+      return row;
+    };
+    let first: Promise<Response> | undefined;
+    let second: Response | undefined;
+    try {
+      first = api("/api/knowledge/recipes/sync", { method: "DELETE" });
+      for (let i = 0; i < 200 && !waiting; i++) await sleep(5);
+      expect(waiting).toBe(true);
+      second = await api("/api/knowledge/recipes/sync", { method: "DELETE" });
+    } finally {
+      delete (instance as { syncRow?: unknown }).syncRow;
+      open();
+    }
+    const statuses = [(await first!).status, second!.status];
+    expect(statuses.filter((s) => s === 204)).toHaveLength(1);
+    expect((await events("knowledge.disconnected")).length).toBe(disconnects + 1);
+    expect(await syncRow("recipes")).toBeUndefined();
+    expect((await send("/api/knowledge/recipes/sync", { folder: FOLDER }, "PUT")).status).toBe(202);
+    await settled("recipes");
+  });
+
   it("disconnects the Google connection when Google refuses the token, until the owner signs in again", async () => {
     rc.answers = [{ success: false, error: "bisync aborted", lines: [tokenRefused] }];
     await send("/api/knowledge/notes/sync", { action: "sync" });
@@ -1634,8 +1686,8 @@ describe("a knowledge base's sync", () => {
     expect(await status()).toBeNull();
     expect(runtime.knowledge.has("notes")).toBe(true);
     const disconnected = (await events("knowledge.disconnected")).map((e) => [e.actorId, e.knowledgeBase]);
-    // Notes now, and recipes three times before.
-    expect(disconnected).toHaveLength(4);
+    // Notes now, and recipes four times before.
+    expect(disconnected).toHaveLength(5);
     expect(disconnected).toEqual(expect.arrayContaining([[owner, "notes"], [owner, "recipes"]]));
 
     expect((await api("/api/knowledge/recipes", { method: "DELETE" })).status).toBe(204);

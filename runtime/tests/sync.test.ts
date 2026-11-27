@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { knowledgeStateVolume, knowledgeSyncLabels, knowledgeVolume } from "../src/adapter.ts";
-import { deleteKnowledge, INSTALLATION, stopAll } from "../src/apps.ts";
+import { deleteKnowledge, INSTALLATION, SpecError, stopAll } from "../src/apps.ts";
 import * as engineModule from "../src/engine.ts";
 import {
   ensureSyncService,
@@ -166,6 +166,8 @@ describe("the server's request", () => {
     expect(() => validateSyncService({ knowledgeBases: ["Notes"] })).toThrow();
     expect(() => validateSyncService({ knowledgeBases: ["../x"] })).toThrow();
     expect(() => validateSyncService({})).toThrow(/Name the knowledge bases/);
+    // Only names, never a value that reads as one.
+    for (const bad of [["notes"], 7, { toString: 1 }]) expect(() => validateSyncService({ knowledgeBases: [bad] }), JSON.stringify(bad)).toThrow(SpecError);
   });
 });
 

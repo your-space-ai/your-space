@@ -507,10 +507,10 @@ export class KnowledgeSync {
    */
   async disconnect(name: string, actorId: string): Promise<void> {
     const base = await this.knowledgeRow(name);
-    const row = await this.syncRow(base.id);
-    if (!row) throw new AppError(404, "not_connected", "This knowledge base isn't connected to Drive.");
     if (!this.hold(base.id)) throw new AppError(409, "busy", "The knowledge base is being deleted or disconnected already.");
     try {
+      // Read once held: a disconnect that held it before has committed, so this one finds it gone.
+      if (!(await this.syncRow(base.id))) throw new AppError(404, "not_connected", "This knowledge base isn't connected to Drive.");
       await this.inTurnOf(base.id, async () => {});
       await this.inServiceTurn(async () => {
         // Only once its step has ended: the timer's changes to the containers meanwhile keep its rclone.
@@ -937,16 +937,17 @@ export class KnowledgeSync {
     const lines = logLines(typeof status.output?.output === "string" ? status.output.output : "");
     // A job that succeeded can still have counted an error its log doesn't show, as bisync's folder
     // at a link's path that is empty in Drive. Read before its counts are deleted; when that fails,
-    // the log alone says how it ended, and the next run, which meets the same error, reads it.
-    const lastError = status.success
-      ? await rc
-          .call<{ lastError?: unknown }>("core/stats", { group: status.group })
-          .then((stats) => (typeof stats.lastError === "string" ? stats.lastError : ""))
-          .catch((error: unknown) => {
-            log("warn", "knowledge.sync_stats_failed", { name: row.name, ...errorFields(error) });
-            return "";
-          })
-      : "";
+    // the job stays on the row and is read again next tick, as rclone keeps a finished job an hour.
+    let lastError = "";
+    if (status.success) {
+      try {
+        const stats = await rc.call<{ lastError?: unknown }>("core/stats", { group: status.group });
+        lastError = typeof stats.lastError === "string" ? stats.lastError : "";
+      } catch (error) {
+        log("warn", "knowledge.sync_stats_failed", { name: row.name, ...errorFields(error) });
+        return;
+      }
+    }
     try {
       await this.stepDone(row, job, status, lines, lastError);
     } catch (error) {

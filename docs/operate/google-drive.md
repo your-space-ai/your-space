@@ -99,7 +99,10 @@ The knowledge base's page shows when it last synced, and what to do when a sync 
   absolute link: when the Drive folder has a folder at such a link's path, empty or not, the sync
   stops, as [When a sync stops](#when-a-sync-stops) says, and writes nothing where the link leads. A link
   written relative to where it is, to a folder in the knowledge base itself, is followed: files of a
-  Drive folder at its path are written where it leads, still in the knowledge base. A file, not a
+  Drive folder at its path are written where it leads, still in the knowledge base. One exception
+  to that: the sync reads and hashes files by their path, so an app that swaps one of its folders
+  for a link just as the sync reads it can point that read elsewhere among what the knowledge base's
+  sync container mounts. What is read then goes only to the Drive folder. A file, not a
   link, whose name ends in `.rclonelink` is read as a link, so the sync can't read it: until that
   file is renamed, every sync fails before changing anything, and **Resync** copies the other
   files, then stops.

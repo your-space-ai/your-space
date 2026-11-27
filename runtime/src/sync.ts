@@ -249,7 +249,8 @@ export function validateSyncService(body: unknown): string[] {
   if (Object.keys(rest).length > 0) throw new SpecError(`The sync service takes knowledge bases only: ${Object.keys(rest).join(", ")} isn't a field.`);
   if (!Array.isArray(knowledgeBases)) throw new SpecError("Name the knowledge bases to sync.");
   if (knowledgeBases.length > MAX_SYNCED) throw new SpecError(`At most ${MAX_SYNCED} knowledge bases sync at once.`);
-  return [...new Set(knowledgeBases.map((name) => validateKnowledgeName(String(name))))].sort();
+  if (knowledgeBases.some((name) => typeof name !== "string")) throw new SpecError("Knowledge bases must be a list of their names.");
+  return [...new Set((knowledgeBases as string[]).map((name) => validateKnowledgeName(name)))].sort();
 }
 
 /** One change to the sync's containers at a time. */
