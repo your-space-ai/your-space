@@ -149,7 +149,10 @@ need changing before its app could install again.
   today; any other call runs directly.
 - **FR-007**: A change to an installed app's kit, source, commit, Compose file or images keeps its
   bound credentials and grants, and stales its pending requests. A grant whose credential isn't bound
-  is unavailable until the owner picks another. Removing an app ends them (decision 9).
+  is unavailable until the owner picks another; a credential the new kit no longer names stays
+  stored, not deleted. Bound credentials no longer depend on a stamp of the kit they were bound under.
+  Removing an app ends them (decision 9). Journey 019's in-place kit updates rely on this and change
+  no trigger of their own.
 - **FR-008**: The migration gives each 017 grant the credential its roles used and turns its routes
   that asked into routes that ask (decision 8). Bindings' enabled roles, grants' roles and route
   overrides stay in the database, unread.
