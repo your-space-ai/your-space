@@ -7,10 +7,10 @@
 **Status**: Decided. The owner settled every decision on 2026-11-26, with one rule throughout: a
 role grants an agent a route at an HTTP method, with approvals, and Your Space adds nothing past that
 without a reason. Two decisions were dropped under that rule, and a third, which release carries
-it, as out of scope for a feature. Writes on one app credential per installation are built in
-[PR #142](https://github.com/your-space-ai/your-space/pull/142); a credential per role (decision 1)
-follows in [PR #143](https://github.com/your-space-ai/your-space/pull/143), and the live run against
-a real app (FR-010) after them.
+it, as out of scope for a feature. Writes are built in
+[PR #142](https://github.com/your-space-ai/your-space/pull/142), and a credential per role
+(decision 1) in [PR #143](https://github.com/your-space-ai/your-space/pull/143); the live run against
+a real app (FR-010) is still to come.
 
 **Input**: The owner, on 2026-11-26: an agent should be able to do real work in an app through Your
 Space, never holding the app's own credential. The first case is onboarding records into a CRM:
