@@ -207,8 +207,9 @@ socket, for that knowledge base only:
   itself, and keeps that line, which names the path. For an empty Drive folder there, bisync makes
   no folder, logs no error and reports success (rclone 1.75.2), so for a job that succeeded the
   server reads `core/stats` of its group too, before deleting the counts: a `lastError` of
-  `… path escapes from parent` stops the run with reason `link` the same way, keeping that error; a
-  stats call that fails leaves the log alone to say how the job ended. Google's refusal
+  `… path escapes from parent` stops the run with reason `link` the same way, keeping that error; when
+  that stats call fails, the job stays on its row and its stats are read again on the next tick,
+  so the run is never recorded as synced unread. Google's refusal
   (`unauthorized`) is read only from a line that starts with rclone's own words and the request the
   token was for, `… Get "https://…": couldn't fetch token: invalid_grant` (or `invalid_client`,
   `unauthorized_client`, `deleted_client`), or `googleapi: Error 401: …`, never from words further
