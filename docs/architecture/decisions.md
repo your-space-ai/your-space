@@ -115,7 +115,7 @@ The return must answer the three reasons the connection was cut: no operator reg
 - **Deletes.** In, in roles of their own: "there are some reasonable deletions". Whether one asks first is set like any route's: "this should be defined in the role permissions, it shouldn't always require an approval tho".
 - **Bodies.** A kit doesn't describe a body: "lets not get granular like this, the role allows an agent access to a specific route + http verb, nothing more granular." The body passes through for the app to validate, as JSON of at most 32 KiB. A body can create linked records through a route granted for one object, as Twenty's nested `create` does; the app credential's own role limits what it can do. Query fields stay declared, as for reads, so an option such as Twenty's `upsert` passes only through a route that declares it.
 - **No retry machinery.** "what no please none of this machinery, no made up operation ids." Your Space keeps no operation IDs and doesn't match repeats; retries, duplicates and stale edits are the agent's and the app's, as for any API client. This supersedes the operation-ID replay, expected revisions and receipts of [journey 005](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/spec.md)'s FR-07, and the 2026-11-23 reason that an app must honor `Idempotency-Key` and `If-Match`. Keeping a copy of what a write sent was dropped by the same rule.
-- **Approval default.** A write route that neither the kit nor the owner set asks first; a read runs directly: "default to ask."
+- **Approval default.** A write route that neither the kit nor the owner set asks first; a read nobody set defaults to Allow: "default to ask."
 
 ### Kit-defined roles, server-held credentials and approvals
 

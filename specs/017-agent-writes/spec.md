@@ -44,7 +44,7 @@ and [gateway contract](../005-owner-agent/contracts/gateway.md), and
 | 3 | How does a kit declare a write's body? | **Decided:** it doesn't. Owner: "lets not get granular like this, the role allows an agent access to a specific route + http verb, nothing more granular." |
 | 4 | What makes a retried write safe? | **Decided:** nothing in Your Space. The gateway forwards each write and returns the app's response; retries and duplicates are the agent's and the app's. Owner: "what no please none of this machinery, no made up operation ids. agent just has access to the api route at a verb, we are not adding more machinery past that without a reaason" |
 | 5 | What happens to an edit of a record that changed since the agent read it? | **Dropped:** the app applies it as it applies any client's edit |
-| 6 | Does a write route ask the owner first when neither the kit nor the owner has set it? | **Decided:** yes, it asks; a read still runs directly. Owner: "default to ask." |
+| 6 | Does a write route ask the owner first when neither the kit nor the owner has set it? | **Decided:** yes, it asks; a read nobody set defaults to Allow. Owner: "default to ask." |
 | 7 | What does the owner see of what a write changed? | **Dropped:** Activity stays as it is, and the app keeps its own history of its records |
 | 8 | Where does the Twenty kit with write routes live? | Open. Recommended: in the owner's own private kits repository, installed through the GitHub connection (015) |
 | 9 | Which release carries it? | Open. Recommended: Canary as each pull request merges, and alpha.2 |
@@ -246,7 +246,7 @@ Your Space claims nothing about it.
 ## 6. Approval for a Write Route Nobody Set
 
 **Decided (2026-11-26):** it asks. The owner: "default to ask." A write route asks the owner first
-when the owner hasn't set it and the kit doesn't recommend Allow; a read still runs directly. The
+when the owner hasn't set it and the kit doesn't recommend Allow; a read nobody set defaults to Allow. The
 owner sets Ask or Allow per route as today, and a kit's `approval` is the default until then. This
 is 005's FR-11 rule ("absent a recommendation ask on writes and allow reads"), kept.
 
