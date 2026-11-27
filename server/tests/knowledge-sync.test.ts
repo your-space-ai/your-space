@@ -1123,6 +1123,62 @@ describe("a knowledge base's sync", () => {
     }
   });
 
+  it("keeps the owner's Apply these deletions, and the deletions, when its dry run can't start, and applies them at the next run", async () => {
+    rc.answers = [{ success: false, error: "too many deletes", lines: [deleted("a.md"), deleted("b.md"), tooMany] }];
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    const stopped = (await status())!;
+    const applied = (await events("knowledge.deletions_applied")).length;
+    rc.failures.set("sync/bisync", new RcError("rclone didn't answer.", 503));
+    const runs = rc.started().length;
+    expect((await send("/api/knowledge/notes/sync", { action: "apply_deletions", run: stopped.lastRunAt, count: 2 })).status).toBe(202);
+    await tick();
+    await tick();
+    expect(rc.started()).toHaveLength(runs);
+    // Asked for again, confirmed by the same deletions, and due a minute later.
+    const row = (await syncRow())!;
+    expect(row).toMatchObject({ job: null, result: "failed", requested: { mode: "force", by: owner, again: true, run: row.lastRunAt!.toISOString(), count: 2 } });
+    expect(row.deletions.map((d) => d.path).sort()).toEqual(["a.md", "b.md"]);
+    // That run is the owner's: its dry run lists the same deletions, and they are applied.
+    rc.answers = [{ lines: [deleted("a.md"), deleted("b.md"), ok] }, { lines: [{ level: "info", msg: "Deleted", object: "a.md" }, ok] }];
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 120_000);
+    try {
+      await tick();
+    } finally {
+      clock.mockRestore();
+    }
+    await settled();
+    expect(rc.started().slice(runs).map((j) => [j.params.dryRun === true, j.params.force === true])).toEqual([
+      [true, true],
+      [false, true],
+    ]);
+    expect(await status()).toMatchObject({ result: "synced", deletions: [] });
+    expect((await events("knowledge.deletions_applied")).slice(applied).map((e) => e.actorId)).toEqual([owner]);
+  });
+
+  it("drops a Sync now asked for during a run that stops for safety, so nothing runs until the owner chooses", async () => {
+    rc.hold = true;
+    rc.answers = [{ success: false, error: "too many deletes", lines: [deleted("a.md"), deleted("b.md"), tooMany] }];
+    await due("notes");
+    await tick();
+    expect(rc.running().map((j) => j.knowledgeBase)).toEqual(["notes"]);
+    expect((await send("/api/knowledge/notes/sync", { action: "sync" })).status).toBe(202);
+    expect(await syncRow()).toMatchObject({ requested: { mode: "sync" } });
+    const started = rc.started().length;
+    rc.hold = false;
+    rc.finish();
+    await settled();
+    await tick();
+    expect(rc.started()).toHaveLength(started);
+    expect(await syncRow()).toMatchObject({ result: "stopped", reason: "max_delete", requested: null });
+    // A Sync now the owner asks for after the stop still runs.
+    rc.answers = [{ lines: [ok] }];
+    expect((await send("/api/knowledge/notes/sync", { action: "sync" })).status).toBe(202);
+    await settled();
+    expect(rc.started()).toHaveLength(started + 1);
+    expect(await status()).toMatchObject({ result: "synced" });
+  });
+
   it("gives a resync of its own that was interrupted in turn another, but not one stopped for its time limit", async () => {
     await interruptRun();
     // A server of its own, which hasn't restarted an rclone for a run past its time yet.

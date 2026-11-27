@@ -806,7 +806,19 @@ export class KnowledgeSync {
     } catch (error) {
       const message = error instanceof AppError || error instanceof RcError ? error.message : "The sync couldn't start.";
       log("warn", "knowledge.sync_start_failed", { name: row.name, ...errorFields(error) });
-      await this.finish(row, { ...job, id: 0, executeId, step: "sync" }, error instanceof RcError ? outcome(false, [], message) : { result: "failed", message }, [], { changed: false, listed: false });
+      // The owner's Resync or Apply these deletions that couldn't start is kept for the next run, with
+      // the deletions to apply, as one bisync's lock refused is: a resync deletes nothing, and the
+      // deletions are applied only once a dry run lists them again.
+      const again: SyncRequested | null =
+        requested && asked !== "sync"
+          ? { mode: asked, by: requested.by, at: new Date().toISOString(), again: true, ...(asked === "force" ? { run: job.startedAt, count: row.deletions.length } : {}) }
+          : null;
+      await this.finish(row, { ...job, id: 0, executeId, step: "sync" }, error instanceof RcError ? outcome(false, [], message) : { result: "failed", message }, [], {
+        changed: false,
+        listed: false,
+        ...(again ? { requested: again } : {}),
+        ...(asked === "force" ? { deletions: row.deletions, keepDeletions: true } : {}),
+      });
     }
   }
 
@@ -1108,7 +1120,17 @@ export class KnowledgeSync {
     job: SyncJob,
     ran: Outcome,
     lines: LogLine[],
-    extra: { changed: boolean; ties?: string[]; deletions?: SyncDeletion[]; listed?: false; interrupted?: boolean; requested?: SyncRequested | null; succeeded?: boolean },
+    extra: {
+      changed: boolean;
+      ties?: string[];
+      deletions?: SyncDeletion[];
+      /** The deletions are kept for the owner whatever the result, as for an apply of them that couldn't start. */
+      keepDeletions?: boolean;
+      listed?: false;
+      interrupted?: boolean;
+      requested?: SyncRequested | null;
+      succeeded?: boolean;
+    },
   ): Promise<void> {
     const subject = { id: row.knowledgeBaseId, name: row.name };
     if (ran.result === "busy") {
@@ -1167,11 +1189,13 @@ export class KnowledgeSync {
           side: ended.side ?? null,
           message: ended.message?.slice(0, 1000) ?? null,
           // Every one of them, which the owner confirms and the server compares with its dry run.
-          deletions: kept ? deletions : [],
+          deletions: kept || extra.keepDeletions ? deletions : [],
           ...(listed ? { conflicts: listed.conflicts, backups: listed.backups } : {}),
           ...(synced ? { lastSyncedAt: new Date() } : {}),
           ...(synced && job.mode === "resync" ? { resync: false, ties: (extra.ties ?? []).slice(0, 500) } : {}),
-          ...(extra.requested ? { requested: extra.requested } : {}),
+          // A Sync now asked for during a run that stopped for safety goes with it: no run starts until
+          // the owner chooses one for the stop.
+          ...(extra.requested ? { requested: extra.requested } : stopped && row.requested?.mode === "sync" ? { requested: null } : {}),
           // An interruption gives one resync of Your Space's own, until a run syncs or stops for the
           // owner; a resync of its own stopped for its time limit gives none, and one Google refused
           // never ran, so its interruption still gives it.

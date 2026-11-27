@@ -450,7 +450,8 @@ export function restartSyncService(name: string): Promise<SyncService> {
 export async function stopSyncs(): Promise<void> {
   if (!isStopping()) throw new Error("The syncs stop only once Your Space is stopping.");
   await queued(async () => {
-    if (!(await projectExists())) return;
+    // Only a project the engine says isn't there is left alone: when it can't tell, the stops are tried.
+    if (!(await projectExists().catch(() => true))) return;
     // rclone first, with time for bisync to finish; then the proxy, as an app's is stopped. That stops
     // any rclone still running too, so only its failure says the sync didn't stop, even when listing
     // the rclones failed.

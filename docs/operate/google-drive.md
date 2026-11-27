@@ -109,7 +109,9 @@ The knowledge base's page shows when it last synced, and what to do when a sync 
   syncs both ways like any other. What the sync writes from Drive is readable and writable by
   everyone, a file that changed in Drive included, even one the app had made readable only by
   itself. An app can change, replace or delete such a file, but not change its mode or set its time
-  to anything but now. Between apps, a file keeps the modes the app that made it gave it.
+  to anything but now. Between apps, a file or folder keeps the modes the app that made it gave it:
+  in a folder an app made `0700`, other apps reach nothing, and in one it made `0755`, they can
+  change its files but not replace or delete them.
 
 ## When a sync stops
 
@@ -161,7 +163,9 @@ other. It does this once for each interruption, and never without the marker fil
 otherwise the sync stops and waits for **Resync**. If that resync fails, as while offline, and the
 next sync still needs one, the sync stops and waits for you to choose **Resync**. Each knowledge base syncs on its own, so a long
 first sync of one doesn't hold up the others. **Sync now** during a sync of the same knowledge base runs once
-more after it. Disconnecting or deleting a synced knowledge base stops its sync under way; no sync
+more after it, unless that sync stops for one of the reasons above. A **Resync** or **Apply these
+deletions** that can't start, as when the sync's rclone doesn't answer, is tried again at the next
+sync. Disconnecting or deleting a synced knowledge base stops its sync under way; no sync
 of it starts meanwhile.
 
 ## Disconnect, change or remove
