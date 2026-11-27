@@ -328,7 +328,7 @@ describe("taking a knowledge base away when Your Space restarts during it", () =
     // apply doesn't replace, still mounting it.
     await t.db.delete(appKnowledgeBase).where(eq(appKnowledgeBase.appId, await appId("ledger")));
     const original = runtime.knowledgeUsers.bind(runtime);
-    runtime.knowledgeUsers = async (name: string) => (name === "invoices" ? { apps: ["ledger"] } : original(name));
+    runtime.knowledgeUsers = async (name: string) => (name === "invoices" ? { apps: ["ledger"], syncing: false } : original(name));
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.now();
     try {
