@@ -99,7 +99,9 @@ such a link, the sync stops and names the path: remove that folder in Drive, or 
 its `.rclonelink` file in Drive, then choose **Resync** (see
 [When a sync stops](../operate/google-drive.md#when-a-sync-stops)). A link written relative to
 where it is, to a folder in the knowledge base itself, is followed: the files of a Drive folder at
-its path are written where it leads, still in the knowledge base.
+its path are written where it leads, still in the knowledge base. Don't give a file, rather than a
+link, a name ending in `.rclonelink`: the sync reads it as a link, so it syncs nothing more until
+the file is renamed.
 
 The knowledge base's page shows:
 

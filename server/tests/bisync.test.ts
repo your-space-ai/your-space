@@ -13,6 +13,7 @@ import {
   localFs,
   backupsFs,
   logLines,
+  madeAnyOf,
   MAX_DELETE,
   outcome,
   printedName,
@@ -402,6 +403,39 @@ describe("reading rclone's log", () => {
     expect(changedBy(logLines(json([{ level: "info", msg: "Moved (server-side) to: a.md.conflict1", object: "a.md" }])))).toBe(true);
     expect(changedBy(logLines(json([{ level: "info", msg: "Bisync successful" }, { level: "info", msg: "There was nothing to transfer" }])))).toBe(false);
     expect(changedBy(logLines(json([{ level: "notice", msg: "Skipped delete as --dry-run is set (size 8)", object: "a.md" }])))).toBe(false);
+  });
+
+  it("tells a forced run that deleted any of the owner's deletions, in Drive or into the backups, from one that deleted none of them", () => {
+    const deletions = [
+      { side: "local" as const, path: "a.md" },
+      { side: "remote" as const, path: "notes/b c.md" },
+    ];
+    expect(madeAnyOf(logLines(json([{ level: "info", msg: "Deleted", object: "a.md" }])), deletions)).toBe(true);
+    expect(madeAnyOf(logLines(json([{ level: "info", msg: "Moved into backup dir", object: "notes/b c.md" }])), deletions)).toBe(true);
+    expect(madeAnyOf(logLines(json([{ level: "info", msg: "Deleted", object: "other.md" }])), deletions)).toBe(false);
+    // A replaced file's old copy moved into the backups, a dry run's skipped deletion, or a line that only lists it.
+    expect(madeAnyOf(logLines(json([{ level: "info", msg: "Moved (server-side)", object: "a.md" }])), deletions)).toBe(false);
+    expect(madeAnyOf(logLines(json([{ level: "notice", msg: "Skipped delete as --dry-run is set (size 8)", object: "a.md" }])), deletions)).toBe(false);
+    expect(madeAnyOf(logLines(json([{ level: "info", msg: "- Path1    Queue delete              - kb-notes:a.md" }])), deletions)).toBe(false);
+  });
+
+  it("fails a run, and stops a resync, at a file named like a link's .rclonelink, as rclone 1.75.2 reads it as a link", () => {
+    // An app's file report.rclonelink, with no link report beside it.
+    const normalRun = [
+      { level: "error", msg: "Failed to read link size: readlink /knowledge/kb/report: no such file or directory", object: "report.rclonelink" },
+      { level: "error", msg: "error during march: hash: failed to open: readlink /knowledge/kb/report: no such file or directory", object: "march" },
+      { level: "error", msg: "There were errors while building listings. Aborting as it is too dangerous to continue." },
+      { level: "error", msg: "Bisync critical error: hash: failed to open: readlink /knowledge/kb/report: no such file or directory" },
+      { level: "error", msg: "Bisync aborted. Error is retryable without --resync due to --resilient mode." },
+    ];
+    const resync = [
+      { level: "error", msg: "Failed to read link size: readlink /knowledge/kb/report: no such file or directory", object: "report.rclonelink" },
+      { level: "error", msg: "Failed to copy: failed to open source object: lstat /knowledge/kb/report: no such file or directory", object: "report.rclonelink" },
+      { level: "error", msg: "Bisync critical error: failed to open source object: lstat /knowledge/kb/report: no such file or directory" },
+      { level: "error", msg: "Bisync aborted. Must run --resync to recover." },
+    ];
+    expect(outcome(false, logLines(json(normalRun)), "bisync aborted")).toEqual({ result: "failed", message: "Bisync aborted. Error is retryable without --resync due to --resilient mode." });
+    expect(outcome(false, logLines(json(resync)), "bisync aborted")).toEqual({ result: "stopped", reason: "resync", message: "Bisync aborted. Must run --resync to recover." });
   });
 });
 

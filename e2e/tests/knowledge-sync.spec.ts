@@ -128,6 +128,9 @@ test("the owner sets up Google Drive with their own OAuth client and signs in", 
   expect(secret).toMatch(/^v2\./);
   expect(secret).not.toContain(CLIENT_SECRET);
   await expect(page.locator("body")).not.toContainText(CLIENT_SECRET);
+  // Nor kept in the form, which is gone: no field on the page holds it.
+  await expect(drive.getByLabel("Client secret")).toHaveCount(0);
+  expect(await page.locator("input, textarea").evaluateAll((fields, secret) => fields.some((f) => (f as HTMLInputElement).value.includes(secret)), CLIENT_SECRET)).toBe(false);
 
   await drive.getByRole("button", { name: "Sign in with Google" }).click();
   await expect(page).toHaveURL(`${ORIGIN}/knowledge?google=connected`);
@@ -193,13 +196,17 @@ test("a knowledge base connected to a Drive folder syncs files created, changed 
   await evidence(page, testInfo, "014-2-synced");
 
   // Created and changed on either side: they arrive on the other without Sync now, at the next timed run.
+  const syncedBy = () =>
+    sql(`select a.kind from event e join actor a on a.id = e.actor_id join event_knowledge_base k on k.event_id = e.id where e.type = 'knowledge.synced' and k.name = '${KB}' order by e.created_at, e.id`);
+  const recorded = (await syncedBy()).length;
   await here("echo 'Changed here' > from-drive.md && echo 'New here' > new-here.md");
   await onDrive("echo 'Changed on Drive' > from-here.md && echo 'New on Drive' > new-there.md");
   await arrives(() => here("cat from-here.md new-there.md 2>&1"), "Changed on Drive\nNew on Drive");
   await arrives(() => onDrive("cat from-drive.md new-here.md 2>&1"), "Changed here\nNew here");
   await expect(main).toHaveAttribute("data-sync-result", "synced");
-  // A run that changed files is recorded against Your Space, not the owner.
-  expect(await sql("select a.kind from event e join actor a on a.id = e.actor_id where e.type = 'knowledge.synced'")).toContain("operator");
+  // A timed run that changed files is recorded against Your Space, not the owner.
+  await expect.poll(async () => (await syncedBy()).length, { timeout: 60_000 }).toBeGreaterThan(recorded);
+  expect(new Set((await syncedBy()).slice(recorded))).toEqual(new Set(["operator"]));
 
   // Deleted on either side.
   await here("rm new-here.md");
@@ -282,15 +289,28 @@ test("the sync's network reaches nothing but its proxy, which refuses any host b
       request.on("error", (error) => resolve(error.code));
       request.end();
     });
-    Promise.all([direct(), proxied("github:8080"), proxied("${address}:8080")]).then((answers) => {
+    // A tunnel, as rclone reaches Drive through: refused too, by name or address, rather than tried.
+    const tunnel = (target) => new Promise((resolve) => {
+      const request = http.request({ host: "ys-egress", port: 3128, method: "CONNECT", path: target, agent: false });
+      request.on("connect", (response, socket) => { socket.destroy(); resolve(response.statusCode); });
+      request.on("response", (response) => { response.resume(); resolve(response.statusCode); });
+      request.on("error", (error) => resolve(error.code));
+      request.end();
+    });
+    Promise.all([direct(), proxied("github:8080"), proxied("${address}:8080"), tunnel("github:443"), tunnel("${address}:443")]).then((answers) => {
       console.log(JSON.stringify(answers));
       process.exit(0);
     });`;
   const result = await docker(["run", "--rm", "--network", `${PROJECT}_knowledge-sync_sync`, "--user", "1000:1000", SHELL_IMAGE, "node", "-e", script], false);
-  const [direct, byName, byAddress] = JSON.parse(result.stdout) as [string, number, number];
+  const [direct, byName, byAddress, tunnelByName, tunnelByAddress] = JSON.parse(result.stdout) as [string, number, number, number, number];
   expect(direct).not.toBe("connected");
   expect(byName).toBe(403);
   expect(byAddress).toBe(403);
+  expect(tunnelByName).toBe(403);
+  expect(tunnelByAddress).toBe(403);
+  // And each rclone is on the sealed network alone, so a probe from there stands for it.
+  const networks = JSON.parse((await docker(["inspect", RCLONE, "--format", "{{json .NetworkSettings.Networks}}"], false)).stdout) as Record<string, unknown>;
+  expect(Object.keys(networks)).toEqual([`${PROJECT}_knowledge-sync_sync`]);
 });
 
 test("a file changed on both sides keeps both copies, and the page lists the conflict copy", async ({ page }, testInfo) => {

@@ -35,6 +35,7 @@ import {
   LISTED,
   localFs,
   logLines,
+  madeAnyOf,
   outcome,
   remoteConfig,
   remoteName,
@@ -509,10 +510,11 @@ export class KnowledgeSync {
     const row = await this.syncRow(base.id);
     if (!row) throw new AppError(404, "not_connected", "This knowledge base isn't connected to Drive.");
     if (!this.hold(base.id)) throw new AppError(409, "busy", "The knowledge base is being deleted or disconnected already.");
-    this.leaving.add(base.id);
     try {
       await this.inTurnOf(base.id, async () => {});
       await this.inServiceTurn(async () => {
+        // Only once its step has ended: the timer's changes to the containers meanwhile keep its rclone.
+        this.leaving.add(base.id);
         await this.startService(this.bases(await this.rows())).catch((error: unknown) => {
           throw serviceError(error);
         });
@@ -537,9 +539,9 @@ export class KnowledgeSync {
    */
   async leaveService(knowledgeBaseId: string): Promise<void> {
     if (!(await this.syncRow(knowledgeBaseId))) return;
-    this.leaving.add(knowledgeBaseId);
     await this.inTurnOf(knowledgeBaseId, async () => {});
     await this.inServiceTurn(async () => {
+      this.leaving.add(knowledgeBaseId);
       await this.startService(this.bases(await this.rows())).catch((error: unknown) => {
         throw serviceError(error);
       });
@@ -1180,8 +1182,11 @@ export class KnowledgeSync {
       // Disconnected meanwhile: nothing is kept.
       if (updated.length === 0) return;
       // The owner's deletions, applied, or being applied when the run was interrupted: some may have been
-      // made. Applied too by a forced run that bisync reports successful but that stops at a link.
-      if ((synced || extra.interrupted || extra.succeeded) && job.step === "force" && job.by) await recordEvent(tx, "knowledge.deletions_applied", job.by, null, null, subject);
+      // made. Applied too by a forced run that bisync reports successful but that stops at a link, and
+      // by one that failed or stopped once its log shows it deleted any of them, as one that can't
+      // write in the knowledge base does after deleting in Drive.
+      const applied = synced || extra.interrupted || extra.succeeded || madeAnyOf(lines, row.deletions);
+      if (applied && job.step === "force" && job.by) await recordEvent(tx, "knowledge.deletions_applied", job.by, null, null, subject);
       if (synced && extra.changed) await recordEvent(tx, "knowledge.synced", yourSpace, null, null, subject);
       if (stopped) await recordEvent(tx, "knowledge.sync_stopped", yourSpace, null, null, subject);
       // A run that keeps failing, as while offline, is recorded once.

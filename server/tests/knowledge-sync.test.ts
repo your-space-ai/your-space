@@ -1095,6 +1095,34 @@ describe("a knowledge base's sync", () => {
     await resyncAsOwner();
   });
 
+  it("records the owner's deletions as applied by a forced run that stopped after deleting any of them, and not by one that deleted none", async () => {
+    // rclone 1.75.2's lines for a forced run that deletes in Drive, then can't write a file Drive added here.
+    const cantWrite = [
+      { level: "error", msg: "Failed to copy: openat locked/n.md.8e8aa770.partial: permission denied", object: "locked/n.md" },
+      { level: "error", msg: "Bisync critical error: openat locked/n.md.8e8aa770.partial: permission denied" },
+      { level: "error", msg: "Bisync aborted. Must run --resync to recover." },
+    ];
+    for (const [made, recorded] of [
+      [[{ level: "info", msg: "Deleted", object: "a.md" }], [owner]],
+      [[{ level: "info", msg: "Moved into backup dir", object: "b.md" }], [owner]],
+      [[{ level: "info", msg: "Deleted", object: "other.md" }], []],
+      [[], []],
+    ] as const) {
+      rc.answers = [{ success: false, error: "too many deletes", lines: [deleted("a.md"), deleted("b.md", "Path1"), tooMany] }];
+      await send("/api/knowledge/notes/sync", { action: "sync" });
+      await settled();
+      const stopped = (await status())!;
+      const applied = (await events("knowledge.deletions_applied")).length;
+      rc.answers = [{ lines: [deleted("a.md"), deleted("b.md", "Path1"), ok] }, { success: false, error: "bisync aborted", lines: [...made, ...cantWrite] }];
+      expect((await send("/api/knowledge/notes/sync", { action: "apply_deletions", run: stopped.lastRunAt, count: 2 })).status).toBe(202);
+      await settled();
+      expect(rc.started().at(-1)!.params).toMatchObject({ force: true });
+      expect(await status()).toMatchObject({ result: "stopped", reason: "resync" });
+      expect((await events("knowledge.deletions_applied")).slice(applied).map((e) => e.actorId), JSON.stringify(made)).toEqual(recorded);
+      await resyncAsOwner();
+    }
+  });
+
   it("gives a resync of its own that was interrupted in turn another, but not one stopped for its time limit", async () => {
     await interruptRun();
     // A server of its own, which hasn't restarted an rclone for a run past its time yet.
@@ -1287,6 +1315,41 @@ describe("a knowledge base's sync", () => {
     expect((await api("/api/knowledge/recipes/sync", { method: "DELETE" })).status).toBe(204);
     expect(runtime.syncStarts.at(-1)).toEqual(["notes"]);
     expect(rc.running()).toEqual([]);
+    rc.hold = false;
+    expect((await send("/api/knowledge/recipes/sync", { folder: FOLDER }, "PUT")).status).toBe(202);
+    await settled("recipes");
+  });
+
+  it("takes a knowledge base out of the sync's containers only once its step under way ends, whatever the timer does meanwhile", async () => {
+    rc.hold = true;
+    await due("recipes");
+    await tick();
+    expect(rc.running().map((j) => j.knowledgeBase)).toEqual(["recipes"]);
+    const recipes = (await syncRow("recipes"))!.knowledgeBaseId;
+    let open: () => void = () => {};
+    rc.gates.set("job/status", new Promise<void>((resolve) => (open = resolve)));
+    let disconnecting: Promise<Response> | undefined;
+    try {
+      const asked = () => rc.calls.filter((c) => c.knowledgeBase === "recipes" && c.command === "job/status").length;
+      const before = asked();
+      // Recipes' step follows its run, and waits for rclone's answer.
+      void tick();
+      for (let i = 0; i < 200 && asked() === before; i++) await sleep(5);
+      expect(asked()).toBe(before + 1);
+      const starts = runtime.syncStarts.length;
+      disconnecting = api("/api/knowledge/recipes/sync", { method: "DELETE" });
+      for (let i = 0; i < 200 && !sync().isHeld(recipes); i++) await sleep(5);
+      expect(sync().isHeld(recipes)).toBe(true);
+      // A tick meanwhile changes no container: recipes' rclone runs on until its step ends.
+      void tick();
+      await sleep(50);
+      expect(runtime.syncStarts.slice(starts)).toEqual([]);
+    } finally {
+      rc.gates.delete("job/status");
+      open();
+    }
+    expect((await disconnecting!).status).toBe(204);
+    expect(runtime.syncStarts.at(-1)).toEqual(["notes"]);
     rc.hold = false;
     expect((await send("/api/knowledge/recipes/sync", { folder: FOLDER }, "PUT")).status).toBe(202);
     await settled("recipes");
@@ -1515,8 +1578,8 @@ describe("a knowledge base's sync", () => {
     expect(await status()).toBeNull();
     expect(runtime.knowledge.has("notes")).toBe(true);
     const disconnected = (await events("knowledge.disconnected")).map((e) => [e.actorId, e.knowledgeBase]);
-    // Notes now, and recipes twice before.
-    expect(disconnected).toHaveLength(3);
+    // Notes now, and recipes three times before.
+    expect(disconnected).toHaveLength(4);
     expect(disconnected).toEqual(expect.arrayContaining([[owner, "notes"], [owner, "recipes"]]));
 
     expect((await api("/api/knowledge/recipes", { method: "DELETE" })).status).toBe(204);

@@ -363,6 +363,16 @@ export function changedBy(lines: LogLine[]): boolean {
   return lines.some((l) => /^(Copied|Deleted|Moved|Renamed|Made directory|Removed directory|Server side copied)\b/.test(l.msg.trim()));
 }
 
+/**
+ * Whether a run's log shows it made any of these deletions: rclone 1.75.2 logs `Deleted` for a file it
+ * deletes in Drive, and `Moved into backup dir` for one it moves from the knowledge base into the
+ * run's backups, each with the file's path as the line's object.
+ */
+export function madeAnyOf(lines: LogLine[], deletions: Deletion[]): boolean {
+  const paths = new Set(deletions.map((d) => d.path));
+  return lines.some((l) => (l.msg.trim() === "Deleted" || l.msg.trim() === "Moved into backup dir") && l.object !== undefined && paths.has(l.object));
+}
+
 /** A run's backup folder's name, which sorts by time: 2026-11-25T17-05-00-123Z. */
 export function runFolder(at: Date): string {
   return at.toISOString().replace(/[:.]/g, "-");

@@ -452,8 +452,11 @@ export async function stopSyncs(): Promise<void> {
   await queued(async () => {
     if (!(await projectExists())) return;
     // rclone first, with time for bisync to finish; then the proxy, as an app's is stopped. That stops
-    // any rclone still running too, so only its failure says the sync didn't stop.
-    await stopRclones([...(await rcloneContainers()).keys()]).catch(() => {});
+    // any rclone still running too, so only its failure says the sync didn't stop, even when listing
+    // the rclones failed.
+    await rcloneContainers()
+      .then((found) => stopRclones([...found.keys()]))
+      .catch(() => {});
     const stopped = await docker(["compose", "-p", syncProject(), "stop"]);
     if (stopped.code !== 0) throw new EngineError(`Stopping the sync failed: ${stopped.stderr.trim().slice(-600)}`);
   });

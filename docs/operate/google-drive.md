@@ -99,7 +99,10 @@ The knowledge base's page shows when it last synced, and what to do when a sync 
   absolute link: when the Drive folder has a folder at such a link's path, empty or not, the sync
   stops, as [When a sync stops](#when-a-sync-stops) says, and writes nothing where the link leads. A link
   written relative to where it is, to a folder in the knowledge base itself, is followed: files of a
-  Drive folder at its path are written where it leads, still in the knowledge base.
+  Drive folder at its path are written where it leads, still in the knowledge base. A file, not a
+  link, whose name ends in `.rclonelink` is read as a link, so the sync can't read it: until that
+  file is renamed, every sync fails before changing anything, and **Resync** copies the other
+  files, then stops.
 - Your Space owns the knowledge base's files, and apps lease them: whatever user an app runs as,
   and whatever modes it gives its files and folders, the sync reads and changes them, and the app
   can change what the sync writes. A folder an app made for itself, or a file only it can read,
@@ -127,11 +130,12 @@ side until you act.
 - **The knowledge base or the folder is empty**, or **the marker file is missing** on one side, as
   when a folder was replaced, emptied or moved. **Resync** puts the marker back and copies both
   ways, deleting nothing.
-- **The Drive folder has a folder where the knowledge base has a link**, at the link's path or
-  under it; the page names the path. The sync doesn't write through such a link, so it stops, and
-  nothing is written where the link leads. Remove that folder in Drive, or remove the link in the
-  knowledge base and its `.rclonelink` file in Drive, which otherwise brings the link back. Then
-  choose **Resync**. Your Space doesn't resync by itself for this, even after an interruption.
+- **The Drive folder has a folder where the knowledge base has a link** that leads out of the
+  knowledge base or is absolute, at the link's path or under it; the page names the path. The sync
+  doesn't write through such a link, so it stops, and nothing is written where the link leads.
+  Remove that folder in Drive, or remove the link in the knowledge base and its `.rclonelink` file
+  in Drive, which otherwise brings the link back. Then choose **Resync**. Your Space doesn't resync
+  by itself for this, even after an interruption.
 - **The sync needs a resync**, as when it couldn't write in the knowledge base, on a full disk for
   example; an app's permissions never cause this. By then that sync may already have changed the
   Drive folder: it makes its changes there first, so files deleted in the knowledge base are deleted

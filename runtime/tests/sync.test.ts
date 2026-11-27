@@ -435,5 +435,15 @@ describe("running the sync's containers", () => {
     // A stop the engine refuses, rclone's and then the whole project's, says so rather than answer that the sync stopped.
     composeFails = "stop";
     await expect(stopSyncs()).rejects.toThrow(/Stopping the sync failed: the engine failed/);
+    // Listing the rclones fails: the whole project's stop still stops them.
+    composeFails = undefined;
+    const list = vi.mocked(engineModule.listContainers).getMockImplementation()!;
+    vi.mocked(engineModule.listContainers).mockImplementation(async (labels) => {
+      if (labels.includes("ai.your-space.role=knowledge-sync")) throw new engineModule.EngineError("the engine failed to list");
+      return list(labels);
+    });
+    const before = composed.length;
+    await stopSyncs();
+    expect(composed.slice(before).map((c) => c.args)).toEqual([["compose", "-p", syncProject(), "stop"]]);
   });
 });
