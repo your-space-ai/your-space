@@ -4,7 +4,8 @@
 
 **Created**: 2026-11-26
 
-**Status**: Proposed. Nine decisions are open, each with a recommendation. Nothing is built.
+**Status**: Proposed. The owner settled decision 1 on 2026-11-26; eight are open, each with a
+recommendation. Nothing is built.
 
 **Input**: The owner, on 2026-11-26: an agent should be able to do real work in an app through Your
 Space, never holding the app's own credential. The first case is onboarding records into a CRM:
@@ -20,23 +21,27 @@ and [gateway contract](../005-owner-agent/contracts/gateway.md), and
 ## At a Glance
 
 - **Who:** an owner who wants an external agent to create and change records in an installed app,
-  with the same key, roles, approvals and activity that reads use today.
+  and, through a role of its own, to set up the app's data model, with the same key, roles,
+  approvals and activity that reads use today.
 - **Done when:** a version 2 kit can declare routes that create and update records, with a JSON
   body; an agent invokes them through `your-space agent invoke` with only its Your Space key; writes
   ask the owner first unless the owner allows them; a retried write never applies twice through
-  Your Space; the owner sees what each write sent and what it did; and a live external agent has
-  created, linked and updated records in a real Twenty installation through the kit's routes.
-- **Not covered:** changing an app's data model (custom objects and fields), batch writes, and
-  anything an app's credential can't already do. Deleting records is decision 2.
+  Your Space; a setup role changes the app's data model with an admin credential that a record role
+  never uses; the owner sees what each write sent and what it did; and a live external agent has
+  created a custom object's field, then created, linked and updated records in a real Twenty
+  installation through the kit's routes.
+- **Not covered:** batch writes, and anything an app's credentials can't already do. Deleting is
+  decision 2.
 
 ## Decisions
 
-Open. Each section below gives the options, the trade-offs and a recommendation.
+Decision 1 is settled; the rest are open. Each section below gives the options, the trade-offs and a
+recommendation, and for a settled one, what was decided.
 
-| # | Question | Recommendation |
+| # | Question | Recommendation or decision |
 | --- | --- | --- |
-| 1 | Are schema and admin operations, such as creating a custom object, in scope? | Out. Agents change records; the owner shapes the app's data model in the app |
-| 2 | Can a kit declare routes that delete records? | Not yet. Create and update only; delete waits for a case that needs it |
+| 1 | Are schema and admin operations, such as creating a custom object, in scope? | **Decided:** in, through setup roles of their own, apart from record roles. Each route names the app credential it is sent with, so a setup route uses an admin credential and a record route a narrower one. Setup routes always ask. Owner: "should be separate roles that give separate access. could also have a role that give permission over the setup itself and control thingsl ike the data model." |
+| 2 | Can a kit declare routes that delete? | Yes, `effect: delete`, always asking first, in roles of their own. The Twenty kit declares none yet |
 | 3 | How does a kit declare a write's body? | The top-level field names the route accepts, each value any JSON; the app validates the values |
 | 4 | What makes a retried write safe? | An operation ID on every write, kept by Your Space: the same ID returns the first outcome and never sends the write again |
 | 5 | What happens to an edit made on a record that changed since the agent read it? | The later write wins, and only the fields it names change. Refusing a stale edit needs the app's support, which Twenty lacks |
@@ -112,6 +117,8 @@ can't delete, destroy or change settings (2026-11-26):
 | `POST /rest/opportunities` with `company: {create: {…}}` | `201`; a new company is created with it |
 | `DELETE /rest/companies/{id}` | `403`, the role can't delete |
 | `POST /rest/metadata/objects` with that key | `403`; an admin's token creates the object |
+| `POST /rest/metadata/fields`, `PATCH /rest/metadata/fields/{id}` with that key | `403`; an Admin-role API key: `201`, `200` |
+| `GET /rest/metadata/objects/{id}` with that key | `200` |
 | `POST /rest/<plural name>` for a custom object | `201`; a custom object has REST routes at its plural name |
 | `POST /rest/batch/companies` with two records | `201`; both created |
 
@@ -152,42 +159,89 @@ For an agent to create and update records:
    (decision 7).
 8. **Discovery and CLI.** `actions` lists each route's effect and body fields;
    `invoke --operation-id <id>` is required for a write; `request <id>` shows a write's outcome.
-9. **Roles.** No new mechanism: a kit groups write routes into their own roles, such as an Editor
-   beside the Reader, and the owner grants them per agent and installation as today.
-10. **The response check** stays as it is for reads and applies to writes' responses too.
+9. **Roles and credentials.** A kit groups write routes into roles of their own, such as an Editor
+   beside the Reader, and setup routes into a Setup role, and the owner grants each per agent and
+   installation as today. Today an installation binds one app credential, used for every route; a
+   setup route needs an admin credential that a record route must never be sent with (decision 1).
+   So a kit names several credentials, each route names the one it is sent with, and the owner binds
+   each separately.
+10. **The response check** stays as it is for reads and applies to writes' responses too, refusing
+    a response that contains any credential bound to the installation, not only the one used.
 11. **The Twenty kit's routes** (decision 8): create and update for companies, opportunities and
     the custom object, with each body's fields named, `id` among a create's, and relation IDs such
     as `companyId` for links; list and show for the custom object, so an agent can look a record up
     before creating it and after an outcome it doesn't know.
 
-Storage needs no migration: `ask_all_writes`, `operation_id` and its unique index are there, and
-`input` and `result` are already covered by the data-key rotation.
+`ask_all_writes`, `operation_id` and its unique index are there, and `input` and `result` are
+already covered by the data-key rotation. Binding more than one credential per installation needs a
+migration: `agent_binding.credential` holds one. Each bound credential gets a row of its own, under
+the data key and moved by its rotation, and the existing value becomes the row of the kit's only
+credential.
 
 ## 1. Schema and Admin Operations
 
-**Recommended:** out. A kit declares routes that create and change records; it doesn't declare
-routes that change an app's data model, and the owner creates a custom object and its fields in the
-app, once, as an admin. The owner binds an app credential whose role can't change the data model;
-Twenty's API key roles do this today (a key without settings permission got `403` creating an
-object).
+**Decided (2026-11-26):** in, through roles of their own. The owner: "should be separate roles that
+give separate access. could also have a role that give permission over the setup itself and control
+thingsl ike the data model." A kit declares setup routes, such as Twenty's metadata routes for
+objects and fields, in a setup role apart from its record roles, and the owner grants each role to
+an agent separately. Granting a record role never grants setup, and the reverse.
 
-Why: a schema change affects every user of the app and its own interface, can't be undone the way
-a record edit can, and is rare: for onboarding it happens once, before any records. Your Space
-can't tell an admin route from a record route by its path; the credential's role can.
+**Credentials per route.** A record-only grant must never need an admin credential. So a kit names
+each credential it uses, and each route names the one it is sent with:
 
-**Considered:** schema routes in the kit, always asking first. The approval would show an object
-definition the owner would rather make in the app's own settings, and the agent's credential would
-need admin rights for every other route too.
+```yaml
+agentAccess:
+  credentials:
+    records: {inject: {location: header, name: Authorization, scheme: Bearer}}
+    setup:   {inject: {location: header, name: Authorization, scheme: Bearer}}
+  roles:
+    reader: {title: Reader, routes: [list-companies]}
+    setup:  {title: Setup, routes: [create-field, update-field]}
+  routes:
+    create-field:
+      method: POST
+      path: /rest/metadata/fields
+      effect: setup
+      credential: setup
+      bodyFields: [objectMetadataId, type, name, label, description, options]
+```
 
-## 2. Deleting Records
+- The owner binds each credential on the installation separately: for Twenty, an API key whose role
+  reads and writes records for `records`, and an Admin-role key for `setup`. A route whose
+  credential isn't bound isn't available; nothing falls back to another credential.
+- Each role's routes use one credential, so the dashboard shows which credential a role needs, and
+  the parser refuses a role that mixes them.
+- A kit with one credential keeps today's `credential` entry, and its routes need no `credential`
+  field. Stored kits keep working.
+- The response check refuses a response that contains any credential bound to the installation.
 
-**Recommended:** not in this spec. The parser accepts `effect: create` and `effect: update` and
-refuses `DELETE` and `effect: delete`, saying delete isn't supported yet. Onboarding doesn't need
-it, a delete is the one write an agent can't correct with another write, and Twenty's API key role
-can exclude it. A later change can add `effect: delete`, always asking first.
+**Setup routes.** A route that changes the data model declares `effect: setup`, with `POST`,
+`PATCH` or `PUT`. It always asks the owner: an override can't set it to Allow, and the approval shows
+its body like any write's. Reading the data model is a read: Twenty's record key could read an
+object's metadata (`200`), so a kit may put that in a record role. Operation IDs and outcomes work
+as for other writes. Deleting objects and fields is decision 2.
 
-**Considered:** `effect: delete` now, always asking first, with no Allow. It adds a third approval
-rule and a route no current kit would use.
+Checked live on Twenty v2.62.0: with the record key, creating a field or renaming one got `403`;
+with an Admin-role key, both succeeded (`201`, `200`).
+
+**Considered:** schema operations out, with the owner shaping the data model in the app's own
+settings (the recommendation). **Considered:** one credential per role, or per access level, instead
+of per route; a route in two roles would then have no single credential.
+
+## 2. Deleting
+
+**Recommended:** the format supports deletes, and they always ask. A route with `method: DELETE`
+declares `effect: delete`; like a setup route, it always asks the owner, and an override can't set
+it to Allow. A kit puts deletes in roles of their own, such as a Remover beside the Editor, in line
+with decision 1, so granting create and update never grants delete. The Twenty kit declares no
+deletes yet: onboarding doesn't need them, and its record key's role can't delete. A setup role may
+include deleting objects or fields the same way.
+
+Why: a delete is the one write an agent can't correct with another write, so it always reaches the
+owner first. Keeping it in its own role makes the owner choose it on purpose.
+
+**Considered:** no deletes in this spec (the earlier recommendation), refusing `DELETE` until a kit
+needs it. **Considered:** deletes with Ask by default but an Allow the owner can set, as for creates.
 
 ## 3. A Write's Body
 
@@ -264,7 +318,8 @@ declared read and field for each route.
 
 **Recommended:**
 
-- **Writes ask first.** A write route without an override asks the owner, whatever the kit
+- **Setup and delete routes always ask** (decisions 1 and 2); an override can't change that.
+- **Writes ask first.** A create or update route without an override asks the owner, whatever the kit
   recommends, until the owner sets it to Allow for that agent and installation. A kit may recommend
   `approval: allow` for a write; the dashboard shows the recommendation, and the owner applies it.
 - **Ask for all writes comes back**, per agent and installation, and overrides a write route set to
@@ -309,8 +364,12 @@ The kit adds an Editor role with:
   and relation IDs (`companyId` and the custom object's relation fields) for links;
 - `list-<object>` and `show-<object>` for the custom object, also in the Reader role.
 
-No route declares `upsert`, a batch route or a delete. The owner binds a Twenty API key whose role
-reads and updates those objects and can't delete, destroy or change settings. To move the installed
+And a Setup role, sent with the `setup` credential, with `list-objects` and `show-object` (reads),
+and `create-object`, `update-object`, `create-field` and `update-field` under `/rest/metadata`.
+
+No route declares `upsert`, a batch route or a delete. The owner binds two Twenty API keys: one
+whose role reads and updates those objects and can't delete, destroy or change settings, for the
+Reader and Editor roles, and an Admin-role key for the Setup role. To move the installed
 app to the new kit, the owner removes it, keeping its data, installs it again from the kit, binds the
 key and grants the agent again: a kit change retires agent access, as today.
 
@@ -327,30 +386,38 @@ agent writes before alpha.2, and the onboarding runs there.
 
 ## User Scenarios
 
-1. **Let my agent add records.** The owner installs the Twenty kit with write routes, binds a key,
+1. **Let my agent set up the app.** The owner binds an Admin-role key as the kit's setup credential
+   and grants an agent the Setup role. The agent adds a field to the custom object; the request
+   always waits for the owner, who sees the field's definition and approves. Another agent with only
+   the Editor role can't call it, and its requests never carry the admin key.
+2. **Let my agent add records.** The owner installs the Twenty kit with write routes, binds a key,
    and grants an agent the Editor role. The agent lists its actions and sees each write's effect and
    fields. It creates a company with an ID it chose; the request waits for the owner, who sees the
    body and approves. The agent reads the outcome and the new record.
-2. **Link records.** The agent creates an opportunity with that company's ID, and a record of the
+3. **Link records.** The agent creates an opportunity with that company's ID, and a record of the
    custom object linked to both. In Twenty, the records show each other.
-3. **Update a record.** The agent changes one field of the opportunity. Only that field changes.
-4. **Let it run.** The owner sets `create-company` to Allow; the agent's next creates run directly.
+4. **Update a record.** The agent changes one field of the opportunity. Only that field changes.
+5. **Let it run.** The owner sets `create-company` to Allow; the agent's next creates run directly.
    The owner turns on Ask for all writes; the next create waits again.
-5. **Retry safely.** The agent resends a create with the same operation ID and gets the first
+6. **Retry safely.** The agent resends a create with the same operation ID and gets the first
    outcome; nothing is sent. With a new operation ID and the same record ID, Twenty refuses the
    duplicate and the agent sees `refused`.
-6. **See what it did.** In Activity, the owner opens a write and sees what was sent and which record
+7. **See what it did.** In Activity, the owner opens a write and sees what was sent and which record
    it made. A request the owner denied changed nothing in Twenty.
-7. **Stop it.** The owner removes the Editor role while the agent runs; its next write is denied and
+8. **Stop it.** The owner removes the Editor role while the agent runs; its next write is denied and
    nothing reaches Twenty. Key rotation, revocation and disabling work as for reads.
 
 ## Requirements
 
 - **FR-001**: A version 2 kit route may declare `method: POST`, `PATCH` or `PUT` with `effect:
-  create` or `effect: update`, a `bodyFields` list of top-level field names and an optional
-  `required` list drawn from it. `GET` stays `effect: read`. `DELETE`, `effect: delete` and
-  `effect: write` are refused with a message saying which writes are supported. A stored route with
-  `effect: write`, from before the cut, stays out of every role.
+  create`, `effect: update` or `effect: setup`, or `method: DELETE` with `effect: delete`, a
+  `bodyFields` list of top-level field names and an optional `required` list drawn from it. `GET`
+  stays `effect: read`. `effect: write` is refused with a message saying which effects are
+  supported. A stored route with `effect: write`, from before the cut, stays out of every role.
+- **FR-001a**: A kit declares either one `credential`, as today, or named `credentials`; with named
+  credentials each route names one, and each role's routes all name the same one. The owner binds
+  each credential separately, encrypted under the data key and moved by its rotation. A route whose
+  credential isn't bound is unavailable. A request carries only its route's credential.
 - **FR-002**: Invocation input has `path`, `query` and `body`. A write's body is a JSON object of at
   most 32 KiB and 16 levels deep, with only the route's `bodyFields` and all its `required` fields.
   A read has no body. Query fields stay scalar and declared. The gateway sends the body as JSON.
@@ -365,7 +432,8 @@ agent writes before alpha.2, and the onboarding runs there.
   connection. A 2xx whose
   response fails the response check is `succeeded` with the result withheld, saying why.
 - **FR-005**: A write route asks the owner unless the owner set it to Allow for that agent and
-  installation. Ask for all writes, per agent and installation, makes every write ask. A pending
+  installation. Setup and delete routes always ask, and no override changes that. Ask for all
+  writes, per agent and installation, makes every write ask. A pending
   write waits 24 hours; a read 15 minutes. Approval re-checks current authority and dispatches the
   exact request once.
 - **FR-006**: The pending request shows the owner the agent, app, action, method, path, every
@@ -377,20 +445,20 @@ agent writes before alpha.2, and the onboarding runs there.
   `your-space agent invoke` takes `--operation-id`, required for a write, and its input file may
   have `body`.
 - **FR-009**: The response check applies to writes as to reads: JSON, at most 256 KiB, never
-  containing the app credential.
-- **FR-010**: Nothing in this spec changes an app's data model; the docs say to bind a credential
-  whose role can't.
+  containing any credential bound to the installation.
+- **FR-010**: The docs say to bind each credential with the narrowest role its routes need: a record
+  credential whose role can't change the data model, and an admin credential only for setup.
 - **FR-011**: The neutral fixture app gains create and update routes, and the server and browser
   tests cover writes: approval with the body shown, denial with no change, Allow, Ask for all
   writes, operation ID replay and conflict, an unknown outcome not resent, a refused body field, a
   refused undeclared query field, and the outcome of a 2xx whose response fails the check.
-- **FR-012**: The Twenty kit (decision 8) declares the Editor role and routes above and passes the
-  parser.
+- **FR-012**: The Twenty kit (decision 8) declares the Editor and Setup roles, their routes and
+  two credentials, and passes the parser.
 - **FR-013**: [Give an external agent access to one app](../../docs/apps/agent-access.md), 005's
   contracts, the decision record and the roadmap describe writes when they ship.
 - **FR-014**: Acceptance needs a live run: a real external agent, with only its Your Space key,
-  creates a company, an opportunity and a custom object record in a Twenty installation at the
-  kit's pinned release, links them, updates one, has one approved and one denied, and retries one
+  adds a field to a custom object through the Setup role, then creates a company, an opportunity
+  and a custom object record in a Twenty installation at the kit's pinned release, links them, updates one, has one approved and one denied, and retries one
   with the same operation ID; the records are then checked in Twenty.
 
 ## Sources
