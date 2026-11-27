@@ -109,7 +109,9 @@ The knowledge base's page shows:
   base.
 - Why a sync stopped, when it did, with **Resync**, which copies both ways and deletes nothing, and,
   after more than half of the files were deleted on one side, the deletions (the first 500 in the
-  order the sync found them, and how many more) and **Apply these deletions**. Where both sides changed a file, Resync keeps
+  order the sync found them, and how many more) and **Apply these deletions**. Over 10,000
+  deletions are more than Your Space lists for you to confirm, so it offers only **Resync** (see
+  [When a sync stops](../operate/google-drive.md#when-a-sync-stops)). Where both sides changed a file, Resync keeps
   the newer copy rather than both: a copy it replaced here is under **Replaced files**, and one it
   replaced in Drive is in the file's version history there.
 - **Reconnect**, when Google refused Your Space's access.

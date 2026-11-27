@@ -148,7 +148,9 @@ side until you act.
 - **Google refused Your Space's access**, for example because you removed it in your
   [Google account](https://myaccount.google.com/permissions), the client's secret changed, or the
   app was left in **Testing**. **Knowledge** and the knowledge base's page show **Reconnect**, which
-  signs in with Google again. Syncs resume after it.
+  signs in with Google again. Syncs resume after it. **Reconnect** signs in with the client Your
+  Space saved, so when the client's secret changed, first save the new one with **Change client**,
+  then sign in.
 
 A sync that fails for another reason, such as no internet connection, or that was interrupted, as
 when Your Space stopped during it, is tried again a minute later, or at once after an interruption,
@@ -222,12 +224,11 @@ On the Docker engine:
   Disconnecting or deleting the knowledge base deletes it; removing an app or deleting its data
   never does. To keep the replaced files before you disconnect or delete it, copy them out into an
   archive in the current folder, here for the knowledge base `notes`. The archive is written under
-  another name first, so a copy that fails keeps an earlier archive; list it before you disconnect
-  or delete the knowledge base:
+  another name first, so a copy that fails keeps an earlier archive, and it is listed only once the
+  copy worked. If the command fails, don't disconnect or delete the knowledge base:
 
   ```sh
-  (umask 077 && docker run --rm -v ys-knowledge.your-space.notes.sync:/sync:ro alpine tar -cf - -C /sync backups > notes-backups.tar.part) && mv notes-backups.tar.part notes-backups.tar
-  tar -tf notes-backups.tar
+  (umask 077 && docker run --rm -v ys-knowledge.your-space.notes.sync:/sync:ro alpine tar -cf - -C /sync backups > notes-backups.tar.part) && mv notes-backups.tar.part notes-backups.tar && tar -tf notes-backups.tar
   ```
 - `<installation>_knowledge-sync`: the Compose project of the sync: each knowledge base's rclone
   container, `<installation>_knowledge-sync-rclone-<name>-1`, and their outbound proxy. It starts with

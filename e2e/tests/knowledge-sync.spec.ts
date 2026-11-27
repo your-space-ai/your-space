@@ -24,7 +24,9 @@ const STATE_VOLUME = `${KB_VOLUME}.sync`;
 const rcloneOf = (name: string) => `${PROJECT}_knowledge-sync-rclone-${name}-1`;
 const RCLONE = rcloneOf(KB);
 const containerId = async (name: string) => (await docker(["inspect", name, "--format", "{{.Id}}"], false)).stdout.trim();
-const mountsOf = async (name: string) => (JSON.parse((await docker(["inspect", name, "--format", "{{json .Mounts}}"], false)).stdout) as { Destination: string }[]).map((m) => m.Destination).sort();
+/** A container's mounts, by where it mounts them: the volume's name, or the bind's source. */
+const mountsOf = async (name: string) =>
+  Object.fromEntries((JSON.parse((await docker(["inspect", name, "--format", "{{json .Mounts}}"], false)).stdout) as { Destination: string; Name?: string; Source: string }[]).map((m) => [m.Destination, m.Name || m.Source]));
 const SECRETS = [CLIENT_SECRET, "e2e-refresh-token", "e2e-access-token"];
 /** Already on the engine: the GitHub stand-in runs it. */
 const SHELL_IMAGE = "node:26-slim";
@@ -212,7 +214,14 @@ test("the sync's network reaches nothing but its proxy, which refuses any host b
   // From a container on the sync's sealed network, as each rclone is: the GitHub stand-in, on
   // the stack's own network, can't be reached directly, and the proxy refuses it. Nothing here
   // reaches Google or the internet.
-  const address = (await docker(["inspect", `${PROJECT}-github-1`, "--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}"], false)).stdout.trim().split(" ")[0];
+  const [network, address] = (await docker(["inspect", `${PROJECT}-github-1`, "--format", "{{range $name, $net := .NetworkSettings.Networks}}{{$name}} {{$net.IPAddress}} {{end}}"], false)).stdout.trim().split(" ");
+  // From the GitHub stand-in's own network, the same address and port answer, so a refusal below is the sync network's.
+  const reach = `
+    const socket = require("node:net").connect({ host: "${address}", port: 8080, timeout: 3000 });
+    socket.on("connect", () => { socket.destroy(); console.log("connected"); });
+    socket.on("error", (error) => console.log(error.code));
+    socket.on("timeout", () => { socket.destroy(); console.log("timeout"); });`;
+  expect((await docker(["run", "--rm", "--network", network!, "--user", "1000:1000", SHELL_IMAGE, "node", "-e", reach], false)).stdout.trim()).toBe("connected");
   const script = `
     const net = require("node:net");
     const http = require("node:http");
@@ -279,8 +288,17 @@ test("each knowledge base syncs through an rclone of its own, which mounts only 
   await expect(main).toHaveAttribute("data-sync-result", "synced", { timeout: 120_000 });
   // Each rclone mounts its own knowledge base, its sync state and its socket's folder only, as defence
   // in depth besides links syncing as links (below); connecting another left the first running as it was.
-  expect(await mountsOf(rcloneOf(name))).toEqual([`/knowledge/${name}`, "/remote", "/run/ys-sync", `/state/${name}`]);
-  expect(await mountsOf(RCLONE)).toEqual([`/knowledge/${KB}`, "/remote", "/run/ys-sync", `/state/${KB}`]);
+  // Each knowledge base's own volumes, and the same socket volume and fixture remote for both.
+  const other = await mountsOf(rcloneOf(name));
+  const first = await mountsOf(RCLONE);
+  expect(Object.keys(other).sort()).toEqual([`/knowledge/${name}`, "/remote", "/run/ys-sync", `/state/${name}`]);
+  expect(Object.keys(first).sort()).toEqual([`/knowledge/${KB}`, "/remote", "/run/ys-sync", `/state/${KB}`]);
+  expect(other[`/knowledge/${name}`]).toBe(`ys-knowledge.${PROJECT}.${name}`);
+  expect(other[`/state/${name}`]).toBe(`ys-knowledge.${PROJECT}.${name}.sync`);
+  expect(first[`/knowledge/${KB}`]).toBe(KB_VOLUME);
+  expect(first[`/state/${KB}`]).toBe(STATE_VOLUME);
+  expect(other["/run/ys-sync"]).toBe(first["/run/ys-sync"]);
+  expect(other["/remote"]).toBe(DRIVE_VOLUME);
   expect(await containerId(RCLONE)).toBe(notes);
 
   // Disconnecting the other removes its rclone only.
@@ -486,12 +504,10 @@ test("replacing the data key keeps the Google connection, and the knowledge base
   const written = new Date().toISOString();
   await arrives(() => onDrive("cat after-key.md 2>&1"), "After the new key");
   await expect(page.locator('main[data-state="knowledge-base"]')).toHaveAttribute("data-sync-result", "synced");
-  // A run that started after the file was written, so this server's, syncs. Runs of one knowledge
-  // base never overlap, so a sync that ended after that run started is that run or a later one.
+  // A run that started after the file was written, so this server's, synced: the row keeps the start
+  // of the last run that ended, with its result, as it no longer names a run once it ends.
   const row = (column: string, where = "true") => sql(`select ${column} from knowledge_sync s join knowledge_base b on b.id = s.knowledge_base_id where b.name = '${KB}' and ${where}`);
-  let started: string | null = null;
-  await expect.poll(async () => (started = (await row("s.job->>'startedAt'", `(s.job->>'startedAt')::timestamptz > '${written}'`))[0] ?? null), { timeout: 30_000, intervals: [100] }).not.toBeNull();
-  await expect.poll(async () => (await row(`s.result = 'synced' and s.last_synced_at >= '${started}'::timestamptz`))[0], { timeout: 30_000 }).toBe("t");
+  await expect.poll(async () => (await row("s.result", `s.last_run_at > '${written}'::timestamptz`))[0] ?? null, { timeout: 90_000 }).toBe("synced");
 });
 
 test("a connection Google refused shows Reconnect, and signing in again resumes the sync", async ({ page }, testInfo) => {
@@ -665,9 +681,12 @@ test("a run goes on when only the server restarts, and the next server records i
   await expect(main).toHaveAttribute("data-sync-result", "synced", { timeout: 120_000 });
   const synced = async () => Number((await sql(`select count(*) from event e join event_knowledge_base k on k.event_id = e.id where e.type = 'knowledge.synced' and k.name = '${BIG}'`))[0]);
 
+  // Made while the server is stopped, so no run starts between them and `made`: the first run once
+  // it is back copies every file, and the server stops again while that run is under way.
+  await compose(["stop", "server"]);
   await bigHere(`mkdir first && cd first && seq 1 ${MANY} | while read i; do echo $i > f-$i; done`);
   const made = new Date().toISOString();
-  // A timed run that starts once they are all there copies them; the server stops while it is under way.
+  await up();
   await expect.poll(async () => (await runSince(made)) ?? null, { timeout: 60_000, intervals: [100] }).not.toBeNull();
   await compose(["stop", "server"]);
   // Counted once the server is stopped: only the next server can record the run under way.
@@ -735,10 +754,14 @@ async function firstRunAfterResync(page: Page, folder: string, resync: () => Pro
   await bigHere(`mkdir ${folder} && cd ${folder} && seq 1 ${MANY} | while read i; do echo $i > ${folder}-$i; done`);
   const made = new Date().toISOString();
   await up();
-  // The next server records the resync, and the run after it copies the files.
-  await expect.poll(async () => (await runSince(made)) ?? null, { timeout: 60_000, intervals: [100] }).not.toBeNull();
+  // The next server records the resync, and the run after it copies the files: the one the poll saw,
+  // as the row no longer names it once it ends.
+  let seen: string | null = null;
+  await expect
+    .poll(async () => (seen = (await runSince(made)) ?? null), { timeout: 60_000, intervals: [100] })
+    .not.toBeNull();
   expect(await bigRow("resync")).toBe("f");
-  return JSON.parse((await runSince(made))!) as { id: number };
+  return JSON.parse(seen!) as { id: number };
 }
 /** The owner's Resync of the big knowledge base: refused while a timed run is under way, so asked again until it comes between two. */
 const ownersResync = (page: Page) => async () => {

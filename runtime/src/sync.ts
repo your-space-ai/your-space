@@ -381,19 +381,20 @@ export function ensureSyncService(knowledgeBases: string[]): Promise<SyncService
       // Only now, with everything ready, so a change that fails before leaves the running ones as
       // they are; then Compose removes them.
       await stopRclones(gone);
+      // And again once they stopped: a stop of Your Space that began meanwhile starts nothing.
+      if (isStopping()) throw new EngineError(STOPPING, 409);
       const file = syncServiceFile({ squid: proxy, rclone, socketVolume: socket, knowledgeBases: names, fixture, usernsHost });
-      // Every container as the file says, without waiting for the others: one that doesn't answer, as
-      // one hung, never holds up another knowledge base's.
-      await compose(file, ["up", "-d", "--remove-orphans", "--pull", "never"]);
       const added = names.filter((n) => !before.has(n));
-      if (added.length > 0) {
-        try {
-          await compose(file, ["up", "-d", "--wait", "--no-recreate", "--pull", "never", ...added.map(rcloneService)]);
-        } catch (error) {
-          // Removed, so the next try makes them again and waits for them: one left would pass as ready.
-          await compose(file, ["rm", "-f", "-s", ...added.map(rcloneService)]).catch(() => {});
-          throw error;
-        }
+      try {
+        // Every container as the file says, without waiting for the others: one that doesn't answer, as
+        // one hung, never holds up another knowledge base's.
+        await compose(file, ["up", "-d", "--remove-orphans", "--pull", "never"]);
+        if (added.length > 0) await compose(file, ["up", "-d", "--wait", "--no-recreate", "--pull", "never", ...added.map(rcloneService)]);
+      } catch (error) {
+        // The new ones are removed, even those a first start that failed made, so the next try makes
+        // them again and waits for them: one left would pass as ready.
+        if (added.length > 0) await compose(file, ["rm", "-f", "-s", ...added.map(rcloneService)]).catch(() => {});
+        throw error;
       }
     } finally {
       release();
@@ -411,6 +412,8 @@ export function restartSyncService(name: string): Promise<SyncService> {
   return queued(async () => {
     if (isStopping()) throw new EngineError(STOPPING, 409);
     if (!(await rcloneContainers()).has(name)) throw new EngineError(`The knowledge base ${name} doesn't sync, so its sync can't be restarted.`, 404);
+    // Checked again after the engine answered: a stop of Your Space that began meanwhile restarts nothing.
+    if (isStopping()) throw new EngineError(STOPPING, 409);
     const restarted = await docker(["compose", "-p", syncProject(), "restart", "-t", String(STOP_GRACE_S), rcloneService(name)]);
     if (restarted.code !== 0) throw new EngineError(`Restarting the sync failed: ${restarted.stderr.trim().slice(-600)}`);
     return syncService();

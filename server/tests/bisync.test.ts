@@ -15,6 +15,7 @@ import {
   logLines,
   MAX_DELETE,
   outcome,
+  printedName,
   remoteConfig,
   runFolder,
   runTime,
@@ -155,6 +156,37 @@ describe("reading rclone's log", () => {
     expect(outcome(false, [line("error", "-                   Access test failed: Path1 file not found in Path2 - invalid_grant too many deletes.md"), line("error", "couldn't list directory")] as never).result).toBe("failed");
     // A network failure on the token endpoint isn't a refusal: the connection stays.
     expect(outcome(false, [line("error", "couldn't fetch token: Post \"https://oauth2.googleapis.com/token\": dial tcp: i/o timeout")] as never).result).toBe("failed");
+  });
+
+  it("reads each stop only from bisync's own words at the start of a line, never from an app's file named like them", () => {
+    // rclone 1.75.2's words, captured: bisync's critical error for an empty side, and the job's
+    // error for a lock held and for the deletion limit, which bisync's lines don't name.
+    const empty = [
+      line("error", "Empty current Path2 listing. Cannot sync to an empty directory: /state/notes/bisync/x.path2.lst-new"),
+      line("error", "Bisync critical error: empty current Path2 listing: /state/notes/bisync/x.path2.lst-new"),
+      line("error", "Bisync aborted. Error is retryable without --resync due to --resilient mode."),
+    ];
+    expect(outcome(false, empty as never, "bisync aborted")).toMatchObject({ result: "stopped", reason: "empty", side: "local" });
+    const lock = 'prior lock file found: /state/notes/bisync/x.lck \nTip: this indicates that another bisync run (of these same paths) either is still running or was interrupted before completion. \nIf you\'re SURE you want to override this safety feature, you can delete the lock file with the following command, then run bisync again: \nrclone deletefile "/state/notes/bisync/x.lck"';
+    expect(outcome(false, [], lock)).toMatchObject({ result: "busy" });
+    expect(outcome(false, [line("notice", "Bisync aborted. Please try again.")] as never, "too many deletes")).toMatchObject({ result: "stopped", reason: "max_delete" });
+    // An error of the local file system holds the app's path, as for a file the sync can't read: it
+    // fails the run, which is tried again, whatever the file's name says.
+    for (const name of [
+      'too many deletes (>50%, 1 of 2) on Path1 "kb-notes:". Run with --force if desired.md',
+      "too many deletes",
+      "Empty current Path1 listing. Cannot sync to an empty directory: x.md",
+      "Access test failed: Path1 count 1, Path2 count 0 - .your-space-sync",
+      "check file check failed",
+      "prior lock file found: x.lck",
+      "Bisync aborted. Must run --resync to recover.",
+      "path1 and path2 are out of sync, run --resync to recover",
+      "cannot find prior Path1 or Path2 listings.md",
+    ]) {
+      const unreadable = `Failed to sync: reading source directory: open /knowledge/notes/${name}: permission denied`;
+      expect(outcome(false, [line("error", unreadable)] as never, "bisync aborted"), name).toMatchObject({ result: "failed" });
+      expect(outcome(false, [], `open /knowledge/notes/${name}: permission denied`), name).toMatchObject({ result: "failed" });
+    }
   });
 
   // rclone 1.75.2's lines when Google's token endpoint refuses the refresh, captured with a stand-in
@@ -323,6 +355,28 @@ describe("reading rclone's log", () => {
     expect(sameDeletions(found, [{ side: "local", path: "gone on drive.md" }, found[1]!])).toBe(false);
   });
 
+  it("keeps a name's spaces at its end, and reads a name bisync quotes, as rclone 1.75.2 prints them", () => {
+    // Captured: a name with a quote is printed as Go quotes it; one with a space at its end as it is.
+    const lines = logLines(
+      json([
+        { level: "notice", msg: '- Path2             File was deleted                            - "draft\\"v2.md"' },
+        { level: "notice", msg: "- Path2             File was deleted                            - report.md " },
+        { level: "notice", msg: "- Path2             File was deleted                            - report.md" },
+        { level: "notice", msg: '- Path1             File was deleted                            - "notes/a\\nb\\t\\\\c\\x1b\\u00e9.md"' },
+      ]),
+    );
+    expect(deletionsOf(lines)).toEqual([
+      { side: "local", path: 'draft"v2.md' },
+      { side: "local", path: "report.md " },
+      { side: "local", path: "report.md" },
+      { side: "remote", path: "notes/a\nb\t\\c\u001b\u00e9.md" },
+    ]);
+    // A list that differs only by a space at a name's end is another list.
+    expect(sameDeletions([{ side: "local", path: "report.md " }], [{ side: "local", path: "report.md" }])).toBe(false);
+    expect(printedName('"not "go" quoted"')).toBe('"not "go" quoted"');
+    expect(printedName('"bad \\q escape"')).toBe('"bad \\q escape"');
+  });
+
   it("finds the files a resync left different only because both have the same size and time", () => {
     const tie = (path: string) => ({ level: "error", msg: `-                   Checksum not equal in listing. Path1: aaa, Path2: bbb - ${path}` });
     const end = [
@@ -333,6 +387,11 @@ describe("reading rclone's log", () => {
     // A name with " - " in it is the whole name, as rclone 1.75.2 writes it, so the right file is copied.
     const real = { level: "error", msg: "-                   Checksum not equal in listing. Path1: 9448a1bf333fadd2a57965ec38487b89, Path2: e5828c564f71fea3a12dde8bd5d27063 - Lecture 1 - Intro, part 2.md" };
     expect(tiesOf(logLines(json([real, ...end])))).toEqual(["Lecture 1 - Intro, part 2.md"]);
+    // Captured: a name with a quote is printed as Go quotes it, and one with a space at its end as it
+    // is; the copy's filter then names the file itself.
+    const quoted = { level: "error", msg: '-                   Checksum not equal in listing. Path1: 74b87337454200d4d33f80c4663dc5e5, Path2: 65ba841e01d6db7733e90a5b7f9e6f80 - "tie\\"q.md"' };
+    expect(tiesOf(logLines(json([quoted, tie("spaced.md "), ...end])))).toEqual(['tie"q.md', "spaced.md "]);
+    expect(tieCopyParams("notes", tiesOf(logLines(json([quoted, ...end]))))._filter).toEqual({ IncludeRule: ['/tie"q.md'] });
     // Anything else wrong as well, and the knowledge base's copy doesn't replace Drive's.
     expect(tiesOf(logLines(json([tie("a.md"), { level: "error", msg: "couldn't list directory" }, ...end])))).toEqual([]);
   });

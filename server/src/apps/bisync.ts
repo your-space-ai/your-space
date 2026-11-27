@@ -163,12 +163,61 @@ const side = (path: string): "local" | "remote" => (path === "Path1" ? "remote" 
 
 const DELETED = /^- (Path1|Path2)\s+File was deleted\s+- (.+)$/;
 
-/** The deletions a run found: files deleted on one side, which it deletes, or would, on the other. */
+const GO_ESCAPES: Record<string, number> = { a: 7, b: 8, f: 12, n: 10, r: 13, t: 9, v: 11, "\\": 92, '"': 34, "'": 39 };
+
+/**
+ * A file's name as bisync prints it at the end of its lines about one file: as it is, or quoted as Go
+ * quotes it (`strconv.Quote`) when it holds a quote, a backslash or a character that isn't printable,
+ * a line break among them (rclone 1.75.2). A name printed as it is never starts with a quote, since
+ * one that holds a quote is always quoted. Its spaces, at its end too, are the name's.
+ */
+export function printedName(printed: string): string {
+  if (printed.length < 2 || !printed.startsWith('"') || !printed.endsWith('"')) return printed;
+  const body = printed.slice(1, -1);
+  const bytes: number[] = [];
+  const text = (value: string) => bytes.push(...Buffer.from(value, "utf8"));
+  for (let i = 0; i < body.length; i++) {
+    const char = String.fromCodePoint(body.codePointAt(i)!);
+    i += char.length - 1;
+    if (char === '"') return printed;
+    if (char !== "\\") {
+      text(char);
+      continue;
+    }
+    const next = body[++i];
+    if (next === undefined) return printed;
+    if (next in GO_ESCAPES) {
+      bytes.push(GO_ESCAPES[next]!);
+    } else if (next === "x" || next === "u" || next === "U") {
+      const digits = { x: 2, u: 4, U: 8 }[next];
+      const hex = body.slice(i + 1, i + 1 + digits);
+      if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length !== digits) return printed;
+      i += digits;
+      if (next === "x") bytes.push(parseInt(hex, 16));
+      else text(String.fromCodePoint(parseInt(hex, 16)));
+    } else if (/[0-7]/.test(next)) {
+      const octal = body.slice(i, i + 3);
+      if (!/^[0-7]{3}$/.test(octal)) return printed;
+      i += 2;
+      bytes.push(parseInt(octal, 8));
+    } else {
+      return printed;
+    }
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
+
+/**
+ * The deletions a run found: files deleted on one side, which it deletes, or would, on the other.
+ * Each line is read from its start only, as a name's spaces at its end are the name's.
+ */
 export function deletionsOf(lines: LogLine[]): Deletion[] {
   const found = new Map<string, Deletion>();
   for (const { msg } of lines) {
-    const match = DELETED.exec(msg.trim());
-    if (match) found.set(`${match[1]}\u0000${match[2]}`, { side: side(match[1]!), path: match[2]! });
+    const match = DELETED.exec(msg.trimStart());
+    if (!match) continue;
+    const path = printedName(match[2]!);
+    found.set(`${match[1]}\u0000${path}`, { side: side(match[1]!), path });
   }
   return [...found.values()];
 }
@@ -189,7 +238,7 @@ const TIE = /Checksum not equal in listing\. Path1: \S*, Path2: \S* - (.+)$/;
  */
 export function tiesOf(lines: LogLine[]): string[] {
   const errors = lines.filter((l) => l.level === "error" || l.level === "critical");
-  const ties = errors.map((l) => TIE.exec(l.msg.trim())?.[1]).filter((path): path is string => path !== undefined);
+  const ties = errors.map((l) => TIE.exec(l.msg.trimStart())?.[1]).filter((path): path is string => path !== undefined).map(printedName);
   const onlyTies = errors.every((l) => TIE.test(l.msg) || /path1 and path2 are out of sync|Bisync aborted/.test(l.msg));
   return onlyTies ? [...new Set(ties)] : [];
 }
@@ -252,6 +301,24 @@ export function linkPathOf(message: string | null | undefined): string | undefin
   return (ESCAPES.exec(trimmed) ?? ESCAPED.exec(trimmed))?.[1];
 }
 
+/**
+ * bisync's own words for why it stopped, as rclone 1.75.2 says them, each read from the start of a
+ * line, or of the job's error, never from inside one: an error of the local file system holds an
+ * app's path, which can name a file `too many deletes.md` or `Must run --resync.md`. A critical
+ * error follows `Bisync critical error: `. What follows the words is bisync's own, such as a root or
+ * a listing's path in Your Space's sync state, or the marker's name.
+ */
+const CRITICAL = "(?:Bisync critical error: )?";
+const STOPS = {
+  tooMany: new RegExp(`^(?:too many deletes \\(>\\d+%, \\d+ of \\d+\\) on (Path1|Path2) |${CRITICAL}too many deletes$)`),
+  empty: new RegExp(`^${CRITICAL}[Ee]mpty current (Path1|Path2) listing[.:] `),
+  marker: new RegExp(`^(?:Access test failed: Path1 count \\d+, Path2 count \\d+ - |${CRITICAL}check file check failed$)`),
+  lock: new RegExp(`^${CRITICAL}prior lock file found: `),
+  resync: new RegExp(
+    `^(?:Bisync aborted\\. Must run --resync to recover\\.$|${CRITICAL}(?:path1 and path2 are out of sync, run --resync to recover$|cannot find prior Path1 or Path2 listings\\b))`,
+  ),
+};
+
 /** The side whose marker is missing, from bisync's line about it: its start is bisync's, its end the marker's name. */
 const MARKER_MISSING = /^-\s+Access test failed: (Path1|Path2) file not found in (Path1|Path2) - /;
 
@@ -269,22 +336,25 @@ export function outcome(success: boolean, lines: LogLine[], error = "", lastErro
   if (clash) return { result: "stopped", reason: "link", message: clash.slice(0, 1000) };
   if (success) return { result: "synced" };
   const failures = failureLines(lines);
-  const text = [...failures, error].join("\n");
+  const said = (stop: RegExp) => [...failures, error.trim()].map((msg) => stop.exec(msg)).filter((match) => match !== null);
   const message = (lines.filter((l) => l.level === "error" || l.level === "critical").at(-1)?.msg.trim() ?? failures.at(-1) ?? (error || "rclone didn't say why.")).slice(0, 600);
   // Each line on its own, from its start: never the lines joined, as a path can hold a line break.
   // Its message is Google's refusal as rclone words it, without the request it was for.
   const refusal = [...failures, error.trim()].map((msg) => REFUSED.exec(msg)).find((match) => match !== null);
   if (refusal) return { result: "unauthorized", message: (refusal[1] ?? refusal[2]!).slice(0, 600) };
-  const tooMany = /too many deletes.* on (Path1|Path2)/.exec(text);
-  if (tooMany || /too many deletes/.test(text)) return { result: "stopped", reason: "max_delete", ...(tooMany ? { side: side(tooMany[1]!) } : {}), message };
-  const empty = /Empty current (Path1|Path2) listing/.exec(text);
+  const tooMany = said(STOPS.tooMany);
+  if (tooMany.length) {
+    const onSide = tooMany.find((match) => match[1])?.[1];
+    return { result: "stopped", reason: "max_delete", ...(onSide ? { side: side(onSide) } : {}), message };
+  }
+  const empty = said(STOPS.empty)[0];
   if (empty) return { result: "stopped", reason: "empty", side: side(empty[1]!), message };
-  if (/check file check failed|Access test failed/.test(text)) {
+  if (said(STOPS.marker).length) {
     const missing = lines.map((l) => MARKER_MISSING.exec(l.msg.trim())).find((m) => m !== null);
     return { result: "stopped", reason: "marker", ...(missing ? { side: side(missing[2]!) } : {}), message };
   }
-  if (/prior lock file found|lock file found/i.test(text)) return { result: "busy", message };
-  if (/run --resync to recover|Must run --resync|cannot find prior Path1 or Path2 listings/i.test(text)) return { result: "stopped", reason: "resync", message };
+  if (said(STOPS.lock).length) return { result: "busy", message };
+  if (said(STOPS.resync).length) return { result: "stopped", reason: "resync", message };
   return { result: "failed", message };
 }
 

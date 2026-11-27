@@ -108,8 +108,12 @@ class FakeRc implements Rc {
       case "operations/copyfile":
         all.markers.add(params.dstFs as string);
         return answer({});
-      case "operations/list":
-        return answer({ list: all.list(params.fs as string, (params.opt ?? {}) as Json) });
+      case "operations/list": {
+        // With the call's filter, as rclone applies it: only what one of its rules includes.
+        const rules = ((params._filter as { IncludeRule?: string[] } | undefined)?.IncludeRule ?? []).map(filterRule);
+        const listed = all.list(params.fs as string, (params.opt ?? {}) as Json);
+        return answer({ list: rules.length ? listed.filter((e) => rules.some((rule) => rule.test(e.Path))) : listed });
+      }
       case "operations/purge":
         all.purged.push(`${params.fs as string}/${params.remote as string}`);
         return answer({});
@@ -248,4 +252,30 @@ export class FakeRcs {
     if (under && entries.size === 0) throw new RcError("error in ListJSON: directory not found", 500);
     return [...entries.values()].filter((e) => (opt.recurse || !e.Path.includes("/")) && (!opt.filesOnly || !e.IsDir) && (!opt.dirsOnly || e.IsDir));
   }
+}
+
+/**
+ * An rclone filter rule as a regular expression, for what the server's rules use: `**` for anything,
+ * `*` and `?` within a folder, `[…]` and `\` escapes. One that starts with `/` is anchored at the root;
+ * any other matches at the end of a path, at any depth.
+ */
+function filterRule(rule: string): RegExp {
+  const rooted = rule.startsWith("/");
+  const body = rooted ? rule.slice(1) : rule;
+  let pattern = "";
+  for (let i = 0; i < body.length; i++) {
+    const char = body[i]!;
+    if (char === "*" && body[i + 1] === "*") {
+      pattern += ".*";
+      i++;
+    } else if (char === "*") pattern += "[^/]*";
+    else if (char === "?") pattern += "[^/]";
+    else if (char === "[") {
+      const end = body.indexOf("]", i);
+      pattern += body.slice(i, end + 1);
+      i = end;
+    } else if (char === "\\") pattern += `\\${body[++i] ?? ""}`;
+    else pattern += char.replace(/[.+^${}()|]/g, "\\$&");
+  }
+  return new RegExp(`${rooted ? "^" : "(?:^|/)"}${pattern}$`);
 }

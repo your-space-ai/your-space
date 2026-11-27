@@ -483,7 +483,7 @@ export class KnowledgeSync {
         try {
           await this.startService(this.bases(await this.rows()));
           // Recorded once its container runs: a connection whose setup failed is undone, with no event.
-          await recordEvent(this.db, "knowledge.connected", actorId, null, null, { id: base.id, name: base.name });
+          await this.db.transaction((tx) => recordEvent(tx, "knowledge.connected", actorId, null, null, { id: base.id, name: base.name }));
         } catch (error) {
           await this.db.delete(knowledgeSync).where(eq(knowledgeSync.knowledgeBaseId, base.id));
           // Its container may be there, as one that didn't answer in time: the next tick's change of
@@ -1084,7 +1084,8 @@ export class KnowledgeSync {
       const files: Listed[] = [];
       for (const run of recent) {
         if (files.length >= LISTED) break;
-        files.push(...(await list(`${backupsFs(name)}/${run}`, { recurse: true, filesOnly: true })).map((e) => ({ ...e, Path: `${run}/${e.Path}` })));
+        // One by one: a run's listing can be longer than a call takes arguments.
+        for (const e of await list(`${backupsFs(name)}/${run}`, { recurse: true, filesOnly: true })) files.push({ ...e, Path: `${run}/${e.Path}` });
       }
       return { conflicts, backups: backupsOf(files, new Date()).backups };
     } catch (error) {
@@ -1143,11 +1144,13 @@ export class KnowledgeSync {
       }
       const synced = ended.result === "synced";
       const stopped = ended.result === "stopped";
-      // More deletions than the owner can confirm: the run stays stopped, and none of them is kept. A
-      // stop at a link keeps none either: bisync lists a run's deletions before it stops there, but the
-      // owner resyncs, which deletes nothing, rather than confirm them.
-      const kept = stopped && ended.reason !== "link";
-      const tooMany = kept && deletions.length > MAX_DELETIONS;
+      // More deletions than the owner can confirm: none of them is kept, and a run stopped by the
+      // deletion limit says that is why. A run that stopped for another reason, such as a missing
+      // marker, after bisync listed its deletions, keeps its reason. A stop at a link keeps none
+      // either: bisync lists a run's deletions before it stops there, but the owner resyncs, which
+      // deletes nothing, rather than confirm them.
+      const kept = stopped && ended.reason !== "link" && deletions.length <= MAX_DELETIONS;
+      const tooMany = stopped && ended.reason === "max_delete" && deletions.length > MAX_DELETIONS;
       const updated = await tx
         .update(knowledgeSync)
         .set({
@@ -1158,7 +1161,7 @@ export class KnowledgeSync {
           side: ended.side ?? null,
           message: ended.message?.slice(0, 1000) ?? null,
           // Every one of them, which the owner confirms and the server compares with its dry run.
-          deletions: kept && !tooMany ? deletions : [],
+          deletions: kept ? deletions : [],
           ...(listed ? { conflicts: listed.conflicts, backups: listed.backups } : {}),
           ...(synced ? { lastSyncedAt: new Date() } : {}),
           ...(synced && job.mode === "resync" ? { resync: false, ties: (extra.ties ?? []).slice(0, 500) } : {}),

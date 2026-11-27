@@ -169,6 +169,10 @@ describe("running the sync's containers", () => {
   let holdUp: Promise<void> | undefined;
   /** A Compose command that fails, by its subcommand, as on an engine that stopped answering. */
   let composeFails: string | undefined;
+  /** A first `up` that makes its containers, then fails, as when one of them can't start. */
+  let upFails = false;
+  /** Holds Compose's `stop` until released. */
+  let holdStop: Promise<void> | undefined;
   /** Your Space's server, on this engine unless the apps run on another. */
   let server: engineModule.ContainerSummary[];
   let created = 0;
@@ -183,6 +187,8 @@ describe("running the sync's containers", () => {
     containers = [];
     holdUp = undefined;
     composeFails = undefined;
+    upFails = false;
+    holdStop = undefined;
     server = [{ Id: "server-id", Names: [], State: "running", Status: "", Labels: {} }];
     vi.mocked(engineModule.engineInfo).mockResolvedValue({ reachable: true, arch: "amd64", connection: "unix:///var/run/docker.sock" });
     vi.mocked(engineModule.inspectImage).mockResolvedValue({ ref: "ubuntu/squid:latest", registry: "docker.io", digest: "sha256:squid", platforms: [], runsHere: true });
@@ -250,8 +256,10 @@ describe("running the sync's containers", () => {
           return { Id: `${service}-${++created}`, Names: [], State: "running", Status: "", Labels: { ...spec.labels, "com.docker.compose.service": service, config }, Mounts: mounts };
         });
       }
+      if (upFails && args.includes("up") && !args.includes("--no-recreate")) return { code: 1, stdout: "", stderr: "a container didn't start" };
       if (args.includes("down")) containers = [];
       if (args.includes("rm")) containers = containers.filter((c) => !named.includes(c.Labels["com.docker.compose.service"]!));
+      if (args.includes("stop")) await holdStop;
       if (args.includes("stop")) containers = containers.map((c) => (named.length === 0 || named.includes(c.Labels["com.docker.compose.service"]!) ? { ...c, State: "exited" } : c));
       return { code: 0, stdout: "", stderr: "" };
     });
@@ -326,6 +334,16 @@ describe("running the sync's containers", () => {
     expect(composed.at(-1)!.args).toContain("--wait");
   });
 
+  it("removes a container a first start made before it failed, so the next try waits for it again", async () => {
+    upFails = true;
+    await expect(ensureSyncService(["notes"])).rejects.toThrow(/Starting the sync failed/);
+    expect(composed.at(-1)!.args.slice(-4)).toEqual(["rm", "-f", "-s", "rclone-notes"]);
+    expect(containers).toEqual([]);
+    upFails = false;
+    await ensureSyncService(["notes"]);
+    expect(composed.at(-1)!.args.slice(-7)).toEqual(["up", "-d", "--wait", "--no-recreate", "--pull", "never", "rclone-notes"]);
+  });
+
   it("refuses to sync when Your Space's server isn't on the engine, as with apps on another one", async () => {
     server = [];
     await expect(ensureSyncService(["notes"])).rejects.toMatchObject({ status: 503, message: expect.stringContaining("YS_ENGINE_SOCKET") });
@@ -381,7 +399,23 @@ describe("running the sync's containers", () => {
   it("stops with Your Space's apps as Ctrl+C stops rclone, then starts nothing", async () => {
     await ensureSyncService(["notes", "recipes"]);
     await expect(stopSyncs()).rejects.toThrow(/only once Your Space is stopping/);
-    await stopAll();
+    // Your Space's stop begins while a change stops a disconnected knowledge base's rclone: the
+    // change starts nothing after.
+    let release: () => void = () => {};
+    holdStop = new Promise((resolve) => (release = resolve));
+    const changing = ensureSyncService(["notes"]);
+    changing.catch(() => {});
+    try {
+      for (let i = 0; i < 200 && !composed.some((c) => c.args.includes("stop")); i++) await new Promise((r) => setTimeout(r, 5));
+      expect(composed.at(-1)!.args.slice(-4)).toEqual(["stop", "-t", "100", "rclone-recipes"]);
+      await stopAll();
+    } finally {
+      release();
+      holdStop = undefined;
+    }
+    const stopping = composed.length;
+    await expect(changing).rejects.toMatchObject({ status: 409, message: expect.stringContaining("stopping") });
+    expect(composed.slice(stopping)).toEqual([]);
     await stopSyncs();
     expect(composed.slice(-2).map((c) => c.args)).toEqual([
       ["compose", "-p", syncProject(), "stop", "-t", "100", "rclone-notes", "rclone-recipes"],

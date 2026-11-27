@@ -474,18 +474,24 @@ describe("a knowledge base's sync", () => {
     expect(rc.running()).toHaveLength(1);
     let open: () => void = () => {};
     rc.gates.set("job/status", new Promise<void>((resolve) => (open = resolve)));
-    const asked = () => rc.calls.filter((c) => c.command === "job/status").length;
-    const before = asked();
-    // A tick that waits for rclone's answer, and twenty more meanwhile.
-    const first = tick();
-    for (let i = 0; i < 200 && asked() === before; i++) await sleep(5);
-    expect(asked()).toBe(before + 1);
-    const more = Array.from({ length: 20 }, () => tick());
-    rc.gates.delete("job/status");
-    open();
-    await first;
-    await Promise.all(more);
-    expect(asked() - before).toBe(2);
+    try {
+      const asked = () => rc.calls.filter((c) => c.command === "job/status").length;
+      const before = asked();
+      // A tick that waits for rclone's answer, and twenty more meanwhile.
+      const first = tick();
+      for (let i = 0; i < 200 && asked() === before; i++) await sleep(5);
+      expect(asked()).toBe(before + 1);
+      const more = Array.from({ length: 20 }, () => tick());
+      rc.gates.delete("job/status");
+      open();
+      await first;
+      await Promise.all(more);
+      expect(asked() - before).toBe(2);
+    } finally {
+      // Let go even when a check failed, so the next tests' calls to rclone aren't held.
+      rc.gates.delete("job/status");
+      open();
+    }
     rc.hold = false;
     rc.finish();
     await settled();
@@ -533,7 +539,8 @@ describe("a knowledge base's sync", () => {
   it("keeps a stopped run's reason and deletions, waits for the owner, and applies the deletions confirmed once a dry run lists them again", async () => {
     const deletions = [{ side: "local", path: "a.md" }, { side: "local", path: "b.md" }] as const;
     rc.answers = [{ success: false, error: "too many deletes", lines: [deleted("a.md"), deleted("b.md"), tooMany] }];
-    rc.listings.set(":local,links:/knowledge/notes", [{ Path: "plan.md.conflict1", Size: 3 }]);
+    // The conflict copy, and a file that isn't one, which the listing's filter leaves out.
+    rc.listings.set(":local,links:/knowledge/notes", [{ Path: "plan.md.conflict1", Size: 3 }, { Path: "plan.md", Size: 3 }]);
     await send("/api/knowledge/notes/sync", { action: "sync" });
     await settled();
     const stopped = (await status())!;
@@ -546,9 +553,14 @@ describe("a knowledge base's sync", () => {
     const ofNotes = () => rc.started().filter((j) => j.params.path2 === ":local,links:/knowledge/notes").length;
     const runs = ofNotes();
     const notes = (await syncRow("notes"))!;
+    // The timer does run: recipes, due too, is synced. It stops too, with the answer notes' run had,
+    // and stays stopped for the tests below until one resyncs it.
+    const ofRecipes = () => rc.started().filter((j) => j.params.path2 === ":local,links:/knowledge/recipes").length;
+    const recipesRuns = ofRecipes();
     await due("notes", "recipes");
     await settled("recipes");
     expect(ofNotes()).toBe(runs);
+    expect(ofRecipes()).toBe(recipesRuns + 1);
     await t.db.update(knowledgeSync).set({ lastRunAt: notes.lastRunAt }).where(eq(knowledgeSync.knowledgeBaseId, notes.knowledgeBaseId));
 
     // The owner confirms the run they saw and how many it listed; the server keeps the list itself.
@@ -716,6 +728,25 @@ describe("a knowledge base's sync", () => {
     expect(stopped).toMatchObject({ result: "stopped", reason: "too_many", side: "local", deletions: [], deletionCounts: { local: 0, remote: 0 } });
     expect(stopped.summary).toContain("more than Your Space can list for you to confirm");
     expect((await send("/api/knowledge/notes/sync", { action: "apply_deletions", run: stopped.lastRunAt, count: MAX_DELETIONS + 1 })).status).toBe(409);
+    rc.answers = [{ lines: [ok] }];
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    expect(await status()).toMatchObject({ result: "synced" });
+  });
+
+  it("keeps a missing marker as the reason, after bisync listed more deletions than the owner can confirm", async () => {
+    // bisync lists a run's deletions before it checks the markers.
+    const marker = [
+      { level: "error", msg: "Access test failed: Path1 count 1, Path2 count 0 - .your-space-sync" },
+      { level: "error", msg: "-                   Access test failed: Path1 file not found in Path2 - .your-space-sync" },
+      { level: "error", msg: "Bisync critical error: check file check failed" },
+    ];
+    rc.answers = [{ success: false, error: "bisync aborted", lines: [...Array.from({ length: MAX_DELETIONS + 1 }, (_, i) => deleted(`f-${i}.md`)), ...marker] }];
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    const stopped = (await status())!;
+    expect(stopped).toMatchObject({ result: "stopped", reason: "marker", side: "local", deletions: [], deletionCounts: { local: 0, remote: 0 } });
+    expect(stopped.summary).toContain("marker file, .your-space-sync, is missing in the knowledge base");
     rc.answers = [{ lines: [ok] }];
     await send("/api/knowledge/notes/sync", { action: "sync" });
     await settled();
