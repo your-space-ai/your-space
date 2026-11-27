@@ -40,7 +40,7 @@ applies the actual api key, agent never sees the api key."
 | 5 | What does a kit change do to app keys and grants? | **Decided:** keeps them. A grant is to the app, so a new kit, source, commit or Compose file leaves it and the bound keys in place |
 | 6 | How is a route that asks written? | Open. Recommended: a method and a path, where `*` stands for one path segment, such as `DELETE /rest/companies/*` |
 | 7 | Whose list is it? | Open. Recommended: each agent's, per app, beside the key it uses |
-| 8 | What happens to 017's Ask settings? | Open. Recommended: every route that asked under 017 becomes a route that asks, so nothing runs unseen that didn't before |
+| 8 | What happens to 017's grants and Ask settings? | Open. Recommended: each grant keeps its key and its routes that asked, and waits for the owner to confirm it before it works, since a 018 grant reaches the whole API on that key |
 | 9 | Does removing an app keep its agent access? | Open. Recommended: no. Removing an app, even keeping its data, ends its grants and app keys, as today; only a kit change keeps them |
 | 10 | What about kits that still list roles and routes? | Open. Recommended: they keep installing; Your Space ignores the lists and takes the API's path from the routes' common prefix until the kit names it |
 
@@ -100,17 +100,26 @@ One agent can run freely while another asks before the same call.
 **Considered:** one list per app, for every agent. Fewer settings, but every agent of the app would
 ask the same way.
 
-## 8. 017's Ask Settings
+## 8. 017's Grants and Ask Settings
 
-**Recommended:** every route that asked under 017, by the owner's setting, the kit's recommendation
-or a write's default, becomes a route that asks on the same grant, with its path template's
-parameters as `*`. A route set to Allow, or a read that ran directly, becomes nothing. The owner's
-live setup has every route on Allow, so it carries over with no routes that ask. Each grant takes the
-credential its roles used. A grant whose roles used more than one credential, such as a record role
-and a setup role, takes none: it is unavailable, and **Agents** asks the owner to pick the app key
-that agent uses, rather than Your Space guessing which one.
+**Recommended:** a 017 grant reached only its roles' routes, while a 018 grant reaches the whole API
+on its key, so an upgrade must not widen it unseen: a read-only grant on a key that can also write
+would otherwise gain those writes. So each migrated grant waits for the owner:
 
-**Considered:** starting every grant blank, as the new default. Simpler, but a write that waited for
+- It takes the credential its roles used. A grant whose roles used more than one credential, such as
+  a record role and a setup role, takes none, and the owner picks the app key that agent uses.
+- Every route that asked under 017, by the owner's setting, the kit's recommendation or a write's
+  default, becomes a route that asks on the grant, with its path template's parameters as `*`. A
+  route set to Allow, or a read that ran directly, becomes nothing.
+- It is unavailable until the owner confirms it in **Agents**, which says the agent will reach the
+  app's whole API with that key, and shows the routes that ask. Confirming is one click per grant.
+
+The owner's live setup has one grant, with every route on Allow: it becomes Twenty access with the
+`records` key and no routes that ask, working once the owner confirms it.
+
+**Considered:** carrying grants over working, with their routes that asked (the earlier
+recommendation): a grant's reach would grow to the whole API without the owner seeing it.
+**Considered:** starting every grant blank and working, as the new default: a write that waited for
 the owner yesterday would run directly after an upgrade.
 
 ## 9. Removing an App
@@ -149,7 +158,9 @@ need changing before its app could install again.
   decoded once to check and match the path: a segment that decodes to `.` or `..`, or contains an
   encoded `/`, `\` or NUL, is refused, as is an empty segment other than a trailing one. The path is
   sent as given, and is under the `api` and matched against routes that ask by its decoded segments,
-  so an encoding can't move a call outside the API or past a route that asks. Query names and values
+  so an encoding can't move a call outside the API or past a route that asks. A segment that still
+  contains `%` after that one decode is refused, so an app that decodes again can't be led to a path
+  the gateway didn't check. Query names and values
   are text, encoded by the gateway.
 - **FR-005**: The gateway sends the call with the grant's credential only. The response check, the
   outcomes and the result are journey 017's.
@@ -162,15 +173,17 @@ need changing before its app could install again.
   Removing an app ends them (decision 9). Journey 019's in-place kit updates rely on this and change
   no trigger of their own.
 - **FR-008**: The migration gives each 017 grant the credential its roles used, or none when they
-  used several, which leaves it unavailable until the owner picks one, and turns its routes that
-  asked into routes that ask (decision 8). Bindings' enabled roles, grants' roles and route
+  used several, turns its routes that asked into routes that ask, and leaves it unavailable until the
+  owner confirms it, picking a key where it has none (decision 8). No grant reaches a route after an
+  upgrade that it couldn't reach before, until the owner confirms it. Bindings' enabled roles, grants' roles and route
   overrides stay in the database, unread.
 - **FR-009**: Activity records each call's method and path, without its query.
 - **FR-010**: The CLI has `your-space agent apps`, `your-space agent call <installation-id> <METHOD>
   <path> [--body-stdin]` and `your-space agent request <id>`; `invoke` and `actions` are gone.
 - **FR-011**: Tests cover a call under and outside the API, malformed paths, a route that asks and
   one that doesn't, the grant's credential sent alone, a kit change that keeps the grant, removal
-  that ends it, the migration from a 017 grant, and an old kit's derived API path.
+  that ends it, the migration from a 017 grant, including a read-only grant on a key that can also
+  write, which reaches nothing until the owner confirms it, and an old kit's derived API path.
 - **FR-012**: The agent access guide, 005's contracts, the decision record, the roadmap, the fixture
   kits and the owner's Twenty kit describe the new model.
 - **FR-013**: Acceptance repeats journey 017's live run on the owner's installation through `agent
