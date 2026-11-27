@@ -488,12 +488,13 @@ describe("a knowledge base's sync", () => {
       await Promise.all(more);
       expect(asked() - before).toBe(2);
     } finally {
-      // Let go even when a check failed, so the next tests' calls to rclone aren't held.
+      // Let go even when a check failed, so the next tests' calls to rclone aren't held, and end the
+      // run it held.
       rc.gates.delete("job/status");
       open();
+      rc.hold = false;
+      rc.finish();
     }
-    rc.hold = false;
-    rc.finish();
     await settled();
   });
 
@@ -728,6 +729,24 @@ describe("a knowledge base's sync", () => {
     expect(stopped).toMatchObject({ result: "stopped", reason: "too_many", side: "local", deletions: [], deletionCounts: { local: 0, remote: 0 } });
     expect(stopped.summary).toContain("more than Your Space can list for you to confirm");
     expect((await send("/api/knowledge/notes/sync", { action: "apply_deletions", run: stopped.lastRunAt, count: MAX_DELETIONS + 1 })).status).toBe(409);
+    rc.answers = [{ lines: [ok] }];
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    expect(await status()).toMatchObject({ result: "synced" });
+  });
+
+  it("stops as too_many when the dry run before applying deletions lists more than the owner can confirm", async () => {
+    rc.answers = [{ success: false, error: "too many deletes", lines: [deleted("a.md"), deleted("b.md"), tooMany] }];
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    const stopped = (await status())!;
+    // Many more were deleted in the knowledge base after the owner looked.
+    rc.answers = [{ lines: [...Array.from({ length: MAX_DELETIONS + 1 }, (_, i) => deleted(`f-${i}.md`)), ok] }];
+    const runs = rc.started().length;
+    expect((await send("/api/knowledge/notes/sync", { action: "apply_deletions", run: stopped.lastRunAt, count: 2 })).status).toBe(202);
+    await settled();
+    expect(rc.started().length).toBe(runs + 1);
+    expect(await status()).toMatchObject({ result: "stopped", reason: "too_many", side: "local", deletions: [], deletionCounts: { local: 0, remote: 0 } });
     rc.answers = [{ lines: [ok] }];
     await send("/api/knowledge/notes/sync", { action: "sync" });
     await settled();

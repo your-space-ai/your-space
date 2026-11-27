@@ -1038,7 +1038,10 @@ export class KnowledgeSync {
         if (Date.now() - Date.parse(status.endTime) > PREVIEW_FRESH_MS) return this.launch(row, job, bisyncParams(row.name, job.run, { force: true, dryRun: true }));
         const deletions = deletionsOf(lines);
         if (!sameDeletions(deletions, row.deletions)) {
-          return this.finish(row, job, { result: "stopped", reason: "changed", message: "The files to delete changed since the owner confirmed them." }, lines, { changed: false, deletions });
+          // The side the files were deleted on, when it is one, as the deletion limit's stop names it.
+          const sides = [...new Set(deletions.map((d) => d.side))];
+          const changed: Outcome = { result: "stopped", reason: "changed", ...(sides.length === 1 ? { side: sides[0] } : {}), message: "The files to delete changed since the owner confirmed them." };
+          return this.finish(row, job, changed, lines, { changed: false, deletions });
         }
         return this.launch(row, { ...job, step: "force" }, bisyncParams(row.name, job.run, { force: true }));
       }
@@ -1145,12 +1148,13 @@ export class KnowledgeSync {
       const synced = ended.result === "synced";
       const stopped = ended.result === "stopped";
       // More deletions than the owner can confirm: none of them is kept, and a run stopped by the
-      // deletion limit says that is why. A run that stopped for another reason, such as a missing
-      // marker, after bisync listed its deletions, keeps its reason. A stop at a link keeps none
-      // either: bisync lists a run's deletions before it stops there, but the owner resyncs, which
-      // deletes nothing, rather than confirm them.
+      // deletion limit, or a dry run that listed other deletions than the owner confirmed, says that
+      // is why. A run that stopped for another reason, such as a missing marker, after bisync listed
+      // its deletions, keeps its reason. A stop at a link keeps none either: bisync lists a run's
+      // deletions before it stops there, but the owner resyncs, which deletes nothing, rather than
+      // confirm them.
       const kept = stopped && ended.reason !== "link" && deletions.length <= MAX_DELETIONS;
-      const tooMany = stopped && ended.reason === "max_delete" && deletions.length > MAX_DELETIONS;
+      const tooMany = stopped && (ended.reason === "max_delete" || ended.reason === "changed") && deletions.length > MAX_DELETIONS;
       const updated = await tx
         .update(knowledgeSync)
         .set({

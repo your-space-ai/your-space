@@ -93,11 +93,13 @@ chosen folder: shortcuts in it, and Google Docs, Sheets and Slides, stay in Driv
 
 Symbolic links an app makes in a synced knowledge base sync as links: Drive keeps each as a small
 `<name>.rclonelink` file holding the link's target, and a `.rclonelink` file made in Drive becomes a
-link here, with whatever target it holds. The sync never follows a link out of the knowledge base.
-If the Drive folder has a folder, empty or not, where the knowledge base has such a link, the sync
-stops and names the path: remove that folder in Drive, or the link here and its `.rclonelink` file
-in Drive, then choose **Resync** (see
-[When a sync stops](../operate/google-drive.md#when-a-sync-stops)).
+link here, with whatever target it holds. The sync never follows a link out of the knowledge base,
+or any absolute link. If the Drive folder has a folder, empty or not, where the knowledge base has
+such a link, the sync stops and names the path: remove that folder in Drive, or the link here and
+its `.rclonelink` file in Drive, then choose **Resync** (see
+[When a sync stops](../operate/google-drive.md#when-a-sync-stops)). A link written relative to
+where it is, to a folder in the knowledge base itself, is followed: the files of a Drive folder at
+its path are written where it leads, still in the knowledge base.
 
 The knowledge base's page shows:
 
@@ -111,8 +113,9 @@ The knowledge base's page shows:
   after more than half of the files were deleted on one side, the deletions (the first 500 in the
   order the sync found them, and how many more) and **Apply these deletions**. Over 10,000
   deletions are more than Your Space lists for you to confirm, so it offers only **Resync** (see
-  [When a sync stops](../operate/google-drive.md#when-a-sync-stops)). Where both sides changed a file, Resync keeps
-  the newer copy rather than both: a copy it replaced here is under **Replaced files**, and one it
+  [When a sync stops](../operate/google-drive.md#when-a-sync-stops)). Where both sides changed a
+  file, Resync keeps the newer copy rather than both, and so does the resync Your Space runs itself
+  to finish an interrupted sync: a copy it replaced here is under **Replaced files**, and one it
   replaced in Drive is in the file's version history there.
 - **Reconnect**, when Google refused Your Space's access.
 - **Disconnect**, which stops the sync. The knowledge base and the Drive folder both keep their
