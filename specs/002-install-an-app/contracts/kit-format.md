@@ -122,9 +122,16 @@ into knowledge bases should run as user 1000, or give group 1000, which the know
 the files and folders it makes there, read and write on files and read, write and search on folders
 (decision 2026-11-26). A umask of 002 keeps those for files and folders the app makes with the
 usual modes; it can't add them to a mode the app sets itself, like `0700`, so such an app must ask
-for them. The sync with Google Drive runs as user 1000, and can't change files or write into
-folders that only another user can write, so that sync fails with a permission error and is
-retried; changes it made before the error, deletions included, stay made.
+for them. Even then, a folder the app made while running as another user than 1000 can't take a file
+from Drive or lose one deleted there, as only a folder's owner can set its modification time
+(rclone 1.75.2). The sync with
+Google Drive runs as user 1000, and can't change files or write into folders that only another user
+can write: that sync stops with a permission error, and the knowledge base waits for the owner's
+Resync. Before the error it may already have changed the Drive folder, deleting there files deleted
+in the knowledge base; it deletes nothing in the knowledge base. A file it can't read fails a sync
+before it changes anything, and the sync is tried again; a resync, as the first sync after connecting
+is, stops on it once it has copied the knowledge base's other files to Drive, until the owner's
+Resync.
 
 Every field except `kit` and `source` is optional. A kit given with a Compose file on this machine
 may leave out `source`, and its `source` isn't matched. Any other kit without `source` is refused, as

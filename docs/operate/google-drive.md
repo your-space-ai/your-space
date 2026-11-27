@@ -96,30 +96,38 @@ The knowledge base's page shows when it last synced, and what to do when a sync 
   small file named after it with `.rclonelink` at the end, holding the link's target, such as
   `notes.rclonelink`; a `.rclonelink` file you add in Drive becomes a link in the knowledge base,
   leading wherever its text says. The sync never follows a link out of the knowledge base, or any
-  absolute link: when the Drive folder has a folder at such a link's path, the sync stops, as
-  [When a sync stops](#when-a-sync-stops) says, and writes nothing where the link leads. A link
+  absolute link: when the Drive folder has a folder at such a link's path, empty or not, the sync
+  stops, as [When a sync stops](#when-a-sync-stops) says, and writes nothing where the link leads. A link
   written relative to where it is, to a folder in the knowledge base itself, is followed: files of a
   Drive folder at its path are written where it leads, still in the knowledge base.
 - The sync runs as user 1000. Apps that write into a synced knowledge base should run as user
   1000, as most self-hosted images do, or give the files they make group read and write, and the
   folders group read, write and search. A umask of 002 keeps those for files and folders made with
-  the usual modes, but can't add them to a mode the app sets itself, like `0700`. Otherwise the
-  sync can't change such an app's files or write into the folders it made: that sync fails with a
-  permission error and is tried again a minute later. Changes it made before the error, which can
-  include deleting in Drive files removed in the knowledge base, stay made.
+  the usual modes, but can't add them to a mode the app sets itself, like `0700`. Even then, a
+  folder an app made while running as another user than 1000 can't take a file from Drive or lose
+  one deleted in Drive, as only a folder's owner can set its modification time. Otherwise the sync can't change such an app's
+  files or write into the folders it made, and stops, as
+  [When a sync stops](#when-a-sync-stops) says. A file the sync can't read, as one only its app can,
+  fails each sync before it changes anything; the sync is tried again a minute later. A resync, as
+  the first sync after connecting and **Resync** are, stops on it instead, once it has copied the
+  knowledge base's other files to Drive, deleting nothing, and waits for **Resync**.
 
 ## When a sync stops
 
 Deleting your files on Drive is the worst thing a sync could do, so it stops and waits for you
-rather than guess. Your files stay as they are on both sides, and apps keep working on the local copy.
+rather than guess. Apps keep working on the local copy, and no sync changes the files on either
+side until you act.
 
 - **More than half of the files were deleted** on one side since the last sync. The page lists the
   deletions, the first 500 of them by name and how many more. **Resync** copies them back from the
   other side and deletes nothing. **Apply these deletions** deletes all of them on the other side
   too, for this one sync, once you confirm: just before, Your Space checks the list again, and if
-  more files were deleted since, it deletes nothing and shows you the new list. Over 10,000
-  deletions are more than Your Space lists for you to confirm: then only **Resync** is offered, and
-  to delete the files, delete them on the other side too.
+  more files were deleted since, it deletes nothing and shows you the new list. The sync that then
+  deletes them lists both sides again as it starts, so a file deleted in the seconds after that
+  check is deleted on the other side too, without being listed for you; Drive keeps a file the sync
+  deletes there in its trash, and one it deletes in the knowledge base is under **Replaced files**.
+  Over 10,000 deletions are more than Your Space lists for you to confirm: then only **Resync** is
+  offered, and to delete the files, delete them on the other side too.
 - **The knowledge base or the folder is empty**, or **the marker file is missing** on one side, as
   when a folder was replaced, emptied or moved. **Resync** puts the marker back and copies both
   ways, deleting nothing.
@@ -128,6 +136,15 @@ rather than guess. Your files stay as they are on both sides, and apps keep work
   nothing is written where the link leads. Remove that folder in Drive, or remove the link in the
   knowledge base and its `.rclonelink` file in Drive, which otherwise brings the link back. Then
   choose **Resync**. Your Space doesn't resync by itself for this, even after an interruption.
+- **The sync needs a resync**, as when it couldn't write in the knowledge base: into a folder an app
+  made that user 1000 can't write into, or over a file it can't change. By then that sync may
+  already have changed the Drive folder: it makes its changes there first, so files deleted in the
+  knowledge base are deleted in Drive too, and files new here are copied there. In the knowledge
+  base it deletes nothing, so a file deleted in Drive is still here. Let user 1000 write there, then
+  choose **Resync**, which copies both ways and deletes nothing: a file deleted in Drive whose
+  deletion didn't reach the knowledge base goes back to Drive. While the folder stays one the sync
+  can't write into, Resync stops the same way. A Drive file that replaced a link's `.rclonelink`
+  file stops a sync this way too: the file is on both sides, and **Resync** syncs again.
 - **Google refused Your Space's access**, for example because you removed it in your
   [Google account](https://myaccount.google.com/permissions), the client's secret changed, or the
   app was left in **Testing**. **Knowledge** and the knowledge base's page show **Reconnect**, which

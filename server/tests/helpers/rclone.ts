@@ -15,6 +15,8 @@ export interface JobAnswer {
   lines: Json[];
   /** For a copy: the files it copied, by name. */
   copied: string[];
+  /** The last error the job's stats counted, which a job that succeeded can have too. */
+  lastError: string;
 }
 
 interface Job extends RcJob {
@@ -146,6 +148,11 @@ class FakeRc implements Rc {
       case "core/transferred": {
         const job = [...this.jobs.values()].find((j) => j.group === params.group);
         return answer({ transferred: (job?.answer.copied ?? []).map((name) => ({ name, what: "transferring", error: "", checked: false, group: params.group })) });
+      }
+      case "core/stats": {
+        const job = [...this.jobs.values()].find((j) => j.group === params.group);
+        const lastError = job?.answer.lastError;
+        return answer({ errors: lastError ? 1 : 0, ...(lastError ? { lastError } : {}) });
       }
       case "core/stats-delete":
         return answer({});

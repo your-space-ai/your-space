@@ -128,6 +128,9 @@ function rcloneServiceOf(spec: SyncServiceSpec, name: string, proxy: string): Re
   const mounts: Record<string, unknown>[] = [
     { type: "volume", source: "socket", target: SOCKET_DIR, volume: { nocopy: true, subpath: name } },
     { type: "volume", source: `kb-${name}`, target: `/knowledge/${name}`, volume: { nocopy: true } },
+    // A volume of its own, outside the knowledge base: rclone moves a replaced file into the backups
+    // only within one mount, and such a move can leave neither the link nor the Drive file that
+    // replaced it here (journey 014, Links).
     { type: "volume", source: `state-${name}`, target: `/state/${name}`, volume: { nocopy: true } },
   ];
   if (spec.fixture) mounts.push({ type: "volume", source: "fixture", target: "/remote", volume: { nocopy: true } });

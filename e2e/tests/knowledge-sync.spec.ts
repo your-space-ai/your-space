@@ -291,8 +291,8 @@ test("each knowledge base syncs through an rclone of its own, which mounts only 
   expect(await containerId(RCLONE)).toBe(notes);
 });
 
-test("links sync as links and are never followed out: a Drive folder at a link to the sync's own state stops the sync, naming it", async ({ page }, testInfo) => {
-  test.setTimeout(240_000);
+test("links sync as links and are never followed out: a Drive folder at a link to the sync's own state, empty or not, stops the sync, naming it, and a Drive file replacing a link is kept", async ({ page }, testInfo) => {
+  test.setTimeout(420_000);
   await asOwner(page);
   await page.goto(`/knowledge/${KB}`);
   const main = page.locator('main[data-state="knowledge-base"]');
@@ -332,6 +332,38 @@ test("links sync as links and are never followed out: a Drive folder at a link t
 
   // Deleting the links and the folder here deletes their files in Drive too.
   await here("rm -r state inside back");
+  await arrives(() => listing(onDrive), before);
+  expect(await listing(here)).toBe(before);
+
+  // An empty Drive folder at such a link's path stops it the same way, though bisync reports that run
+  // as successful: the server reads the folder it couldn't make from the run's stats.
+  await onBoth(`ln -s /state/${KB} empty`, "mkdir empty");
+  await expect(main).toHaveAttribute("data-sync-result", "stopped", { timeout: 60_000 });
+  await expect(notice).toContainText("Drive has a folder at empty where this knowledge base has a link");
+  await expect(notice).toContainText("path escapes from parent");
+  expect(await here("readlink empty")).toBe(`/state/${KB}`);
+  await onBoth("rm empty", "rm -r empty && rm -f empty.rclonelink");
+  await run(page, "Resync");
+  await expect(main).toHaveAttribute("data-sync-result", "synced");
+
+  // A Drive file that replaces a link's .rclonelink: that run doesn't read as synced, the Drive file
+  // is on both sides, never lost, and Resync syncs again.
+  await here("printf t > target.md && ln -s target.md tolink");
+  await arrives(() => onDrive("cat tolink.rclonelink 2>&1"), "target.md");
+  // A run that synced since, so the next one sees only Drive's change.
+  const linked = (await main.getAttribute("data-last-run")) ?? "";
+  await expect(main).not.toHaveAttribute("data-last-run", linked, { timeout: 60_000 });
+  await expect(main).toHaveAttribute("data-sync-result", "synced", { timeout: 60_000 });
+  await onDrive("rm tolink.rclonelink && printf plain > tolink");
+  await expect(main).toHaveAttribute("data-sync-result", "stopped", { timeout: 60_000 });
+  const plain = (side: (script: string) => Promise<string>) => side("if [ -L tolink ]; then echo link; else cat tolink; fi");
+  expect(await plain(here)).toBe("plain");
+  expect(await plain(onDrive)).toBe("plain");
+  await run(page, "Resync");
+  await expect(main).toHaveAttribute("data-sync-result", "synced");
+  expect(await plain(here)).toBe("plain");
+  expect(await plain(onDrive)).toBe("plain");
+  await here("rm tolink target.md");
   await arrives(() => listing(onDrive), before);
   expect(await listing(here)).toBe(before);
 });

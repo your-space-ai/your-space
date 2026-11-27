@@ -91,6 +91,17 @@ describe("a run's options", () => {
     expect(JSON.stringify(remoteConfig(remote, false))).not.toMatch(/links/);
   });
 
+  it("keeps the backups on the sync state's mount, never on the knowledge base's", () => {
+    // With both on one mount, rclone 1.75.2 moves a replaced file into the backups: a Drive file that
+    // replaced a link's .rclonelink is then moved there as the link's backup, the run reports success,
+    // and the next run deletes the file in Drive. With the backups on a mount of their own, that move
+    // is a copy, which fails: the run stops, with the Drive file on both sides. The runtime manager
+    // mounts the sync state as a volume of its own at /state/<name> (runtime/tests/sync.test.ts).
+    expect(backupsFs("notes").startsWith(":local,links:/state/notes/")).toBe(true);
+    expect(`${backupsFs("notes")}/`.startsWith(`${localFs("notes")}/`)).toBe(false);
+    expect(String(bisyncParams("notes", "r").backupDir2).startsWith(`${localFs("notes")}/`)).toBe(false);
+  });
+
   it("copies both ways and deletes nothing for a resync, the newer copy winning; checks deletions with a dry run before forcing them", () => {
     expect(bisyncParams("notes", "r", { resync: true })).toMatchObject({ resync: true, resyncMode: "newer" });
     expect(bisyncParams("notes", "r", { force: true, dryRun: true })).toMatchObject({ force: true, dryRun: true });
@@ -127,12 +138,10 @@ describe("reading rclone's log", () => {
       [false, [line("error", "Bisync critical error: path1 and path2 are out of sync, run --resync to recover")], "bisync aborted", { result: "stopped", reason: "resync" }],
       // A run interrupted before bisync kept a backup of its listings, as right after a resync.
       [false, [line("error", "Bisync critical error: cannot find prior Path1 or Path2 listings, likely due to critical error on prior run"), line("error", "Bisync aborted. Error is retryable without --resync due to --resilient mode.")], "bisync aborted", { result: "stopped", reason: "resync" }],
-      [false, [line("error", 'couldn\'t list directory: Get "https://www.googleapis.com/drive/v3/files": couldn\'t fetch token: invalid_grant: maybe token expired? - try refreshing with "rclone config reconnect kb-notes:"')], "bisync aborted", { result: "unauthorized" }],
       [false, [line("error", "googleapi: Error 401: Invalid Credentials, authError")], "bisync aborted", { result: "unauthorized" }],
       [false, [line("error", "prior lock file found: /state/notes/bisync/x.lck")], "bisync aborted", { result: "busy" }],
       [false, [line("error", 'couldn\'t list directory: Get "https://www.googleapis.com/drive/v3/files": proxyconnect tcp: dial tcp: lookup ys-egress: no such host')], "bisync aborted", { result: "failed" }],
       // A run that failed before it logged anything: rclone's error for the job.
-      [false, [], "couldn't fetch token: invalid_grant: maybe token expired?", { result: "unauthorized" }],
       [false, [], "didn't find section in config file", { result: "failed", message: "didn't find section in config file" }],
     ];
     for (const [success, lines, error, expected] of cases) expect(outcome(success, lines as never, error), JSON.stringify(lines)).toMatchObject(expected);
@@ -146,6 +155,77 @@ describe("reading rclone's log", () => {
     expect(outcome(false, [line("error", "-                   Access test failed: Path1 file not found in Path2 - invalid_grant too many deletes.md"), line("error", "couldn't list directory")] as never).result).toBe("failed");
     // A network failure on the token endpoint isn't a refusal: the connection stays.
     expect(outcome(false, [line("error", "couldn't fetch token: Post \"https://oauth2.googleapis.com/token\": dial tcp: i/o timeout")] as never).result).toBe("failed");
+  });
+
+  // rclone 1.75.2's lines when Google's token endpoint refuses the refresh, captured with a stand-in
+  // for that endpoint (the remote's `token_url`), so Google itself was never asked.
+  const URL = "https://www.googleapis.com/drive/v3/files?alt=json&fields=files%28id%2Cname%2Csize%2Cmd5Checksum%2Csha1Checksum%2Csha256Checksum%2Ctrashed%2CexplicitlyTrashed%2CmodifiedTime%2CcreatedTime%2CmimeType%2Cparents%2CwebViewLink%2CshortcutDetails%2CexportLinks%2CresourceKey%29%2CnextPageToken%2CincompleteSearch&includeItemsFromAllDrives=true&pageSize=1000&prettyPrint=false&q=trashed%3Dfalse+and+%28%271AbCdEfGh%27+in+parents%29&supportsAllDrives=true";
+  const REFUSALS = {
+    invalid_grant: 'invalid_grant: maybe token expired? - try refreshing with "rclone config reconnect kb-kb:"',
+    deleted_client: 'deleted_client: maybe token expired? - try refreshing with "rclone config reconnect kb-kb:"',
+    invalid_client: "invalid_client: if you're using your own client id/secret, make sure they're properly set up following the docs",
+    unauthorized_client: "unauthorized_client: if you're using your own client id/secret, make sure they're properly set up following the docs",
+  };
+  const listing = (reason: string) => `couldn't list directory: Get "${URL}": couldn't fetch token: ${reason}`;
+  /** A run after a resync: its listing of the Drive folder fails first. */
+  const normalRun = (reason: string) => [
+    { level: "error", msg: `error reading source root directory: ${listing(reason)}`, object: "Google drive root ''" },
+    { level: "error", msg: `error during march: ${listing(reason)}`, object: "march" },
+    { level: "error", msg: "There were errors while building listings. Aborting as it is too dangerous to continue." },
+    { level: "error", msg: `Bisync critical error: ${listing(reason)}` },
+    { level: "error", msg: "Bisync aborted. Error is retryable without --resync due to --resilient mode." },
+  ];
+  /** A resync: its access check fails first. */
+  const resync = (reason: string) => [
+    { level: "error", msg: `error reading source root directory: ${listing(reason)}`, object: "Google drive root ''" },
+    { level: "error", msg: `error during findCheckFiles: ${listing(reason)}` },
+    { level: "error", msg: `Bisync critical error: ${listing(reason)}` },
+    { level: "error", msg: "Bisync aborted. Must run --resync to recover." },
+  ];
+
+  it("reads Google's refusal from where rclone fetched the token, and keeps only that as the message", () => {
+    for (const [code, reason] of Object.entries(REFUSALS)) {
+      for (const lines of [normalRun(reason), resync(reason)]) {
+        expect(outcome(false, logLines(json(lines)), "bisync aborted"), code).toEqual({ result: "unauthorized", message: `couldn't fetch token: ${reason}` });
+      }
+      // The marker's check before a resync of Your Space's own, as the remote control answers it.
+      expect(outcome(false, [], listing(reason)), code).toEqual({ result: "unauthorized", message: `couldn't fetch token: ${reason}` });
+    }
+    // Google's server failing isn't a refusal: the run failed, and the next one tries again.
+    expect(outcome(false, logLines(json(normalRun('oauth2: "internal_failure"'))), "bisync aborted").result).toBe("failed");
+    expect(outcome(false, logLines(json(resync('oauth2: "internal_failure"'))), "bisync aborted")).toMatchObject({ result: "stopped", reason: "resync" });
+  });
+
+  it("never reads an app's file, named like Google's refusal, as one", () => {
+    // rclone 1.75.2's lines for files an app can't let the sync read, or folders it can't let it write
+    // into, named like the lines above: user 1234 made them, umask 022, mode 000 for the files.
+    const unreadable = (path: string) => [
+      { level: "error", msg: `error during march: hash: failed to open: open /knowledge/kb/${path}: permission denied`, object: "march" },
+      { level: "error", msg: "There were errors while building listings. Aborting as it is too dangerous to continue." },
+      { level: "error", msg: `Bisync critical error: hash: failed to open: open /knowledge/kb/${path}: permission denied` },
+      { level: "error", msg: "Bisync aborted. Error is retryable without --resync due to --resilient mode." },
+    ];
+    for (const path of [
+      "invalid_grant notes.md",
+      "couldn't fetch token: invalid_grant: x/a.md",
+      "n\nBisync critical error: couldn't list directory: couldn't fetch token: invalid_grant: x",
+      "googleapi: Error 401: Invalid Credentials, authError",
+      // No name holds a `/`, so no path holds the request's `https://`.
+      'x: Get "https:/www.googleapis.com/drive": couldn\'t fetch token: invalid_grant: y',
+    ]) {
+      // A run that failed while listing, which changed nothing and is tried again.
+      expect(outcome(false, logLines(json(unreadable(path))), "bisync aborted"), path).toMatchObject({ result: "failed" });
+    }
+    // A Drive file in a folder the sync can't write into, named like a refusal: bisync wants a resync.
+    const partial = "openat couldn't fetch token: invalid_grant/new.md.0cbf105b.partial: permission denied";
+    const unwritable = [
+      { level: "error", msg: `Failed to copy: ${partial}`, object: "couldn't fetch token: invalid_grant/new.md" },
+      { level: "error", msg: "not deleting files as there were IO errors", object: "Local file system at /knowledge/kb" },
+      { level: "notice", msg: `Received error: ${partial} - retrying as --resilient is set. Retry 1/3`, object: "copy1to2" },
+      { level: "error", msg: `Bisync critical error: ${partial}` },
+      { level: "error", msg: "Bisync aborted. Must run --resync to recover." },
+    ];
+    expect(outcome(false, logLines(json(unwritable)), "bisync aborted")).toMatchObject({ result: "stopped", reason: "resync" });
   });
 
   it("stops for the owner at a Drive folder where the knowledge base has a link, naming its path, before any other reason", () => {
@@ -167,6 +247,10 @@ describe("reading rclone's log", () => {
     const time = [{ level: "error", msg: "Bisync critical error: failed to set directory modtime: chtimesat notes/out: path escapes from parent" }, { level: "error", msg: "Bisync aborted. Must run --resync to recover." }];
     expect(outcome(false, logLines(json(time)))).toMatchObject({ result: "stopped", reason: "link" });
     expect(linkPathOf(outcome(false, logLines(json(time))).message)).toBe("notes/out");
+    // A resync with the folder there, or a run with an empty folder under the link.
+    const metadata = [{ level: "error", msg: "Bisync critical error: failed to set metadata on directory: failed to set times: chtimesat out: path escapes from parent" }, { level: "error", msg: "Bisync aborted. Must run --resync to recover." }];
+    expect(outcome(false, logLines(json(metadata)))).toMatchObject({ result: "stopped", reason: "link" });
+    expect(linkPathOf(outcome(false, logLines(json(metadata))).message)).toBe("out");
     // The path is the app's: a link named like Google's refusal, a lock or a stop is still this stop,
     // so it can't disconnect Google, and its whole name is named.
     // rclone keeps a line break in the name as it is in `msg` (in `object` it is ␊).
@@ -177,9 +261,39 @@ describe("reading rclone's log", () => {
     }
     expect(linkPathOf(null)).toBeUndefined();
     expect(linkPathOf("Bisync aborted. Must run --resync to recover.")).toBeUndefined();
-    // Only bisync's own critical error: the words in a file's line, or a run that synced, aren't it.
+    // Only bisync's own critical error: the words in a file's line aren't it.
     expect(outcome(false, [{ level: "info", msg: "- Path1             File is new                                 - path escapes from parent" }, { level: "error", msg: "couldn't list directory" }])).toMatchObject({ result: "failed" });
-    expect(outcome(true, logLines(json(escapes("notes/out"))))).toEqual({ result: "synced" });
+    expect(outcome(true, [{ level: "info", msg: "- Path1             File is new                                 - path escapes from parent" }])).toEqual({ result: "synced" });
+    // A run that synced with the error in its log stops the same way.
+    expect(outcome(true, logLines(json(escapes("notes/out"))))).toMatchObject({ result: "stopped", reason: "link" });
+  });
+
+  it("stops for the owner at an empty Drive folder where the knowledge base has a link, which bisync reports as successful", () => {
+    // rclone 1.75.2 over rcd, the knowledge base with a link l to /etc that synced, and an empty Drive
+    // folder l beside its l.rclonelink: bisync logs no error and succeeds, and the job's stats count
+    // the error. Every run would try again and never make the folder.
+    const lines = logLines(
+      json([
+        { level: "info", msg: "- Path1             File is new                                 - l" },
+        { level: "info", msg: "- Path1             Queue copy to Path2                         - :local{b6816}:/knowledge/kb/l" },
+        { level: "info", msg: "Making directory", object: "l" },
+        { level: "info", msg: "Bisync successful" },
+      ]),
+    );
+    const run = outcome(true, lines, "", "mkdirat l: statat l: path escapes from parent");
+    expect(run).toEqual({ result: "stopped", reason: "link", message: "mkdirat l: statat l: path escapes from parent" });
+    // The page names the path from the stats' error as from bisync's.
+    expect(linkPathOf(run.message)).toBe("l");
+    expect(linkPathOf("failed to set metadata on directory: failed to set times: chtimesat out: path escapes from parent")).toBe("out");
+    for (const name of ["notes/invalid_grant: a b", "a\ninvalid_grant: b", "x: statat x"]) {
+      const named = outcome(true, lines, "", `mkdirat ${name}: statat ${name}: path escapes from parent`);
+      expect(named, name).toMatchObject({ result: "stopped", reason: "link" });
+      expect(linkPathOf(named.message), name).toBe(name);
+    }
+    // Any other error such a run counted leaves it synced, as before; so does a failed run's last error alone.
+    expect(outcome(true, lines, "", "openat a.md.partial: permission denied")).toEqual({ result: "synced" });
+    expect(outcome(true, lines)).toEqual({ result: "synced" });
+    expect(outcome(false, [], "bisync aborted", "mkdirat l: statat l: path escapes from parent")).toMatchObject({ result: "failed" });
   });
 
   it("reads JSON lines, and keeps any other line as a notice", () => {

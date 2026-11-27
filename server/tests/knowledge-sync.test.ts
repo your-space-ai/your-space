@@ -175,6 +175,14 @@ const deleted = (path: string, side = "Path2") => ({ level: "info", msg: `- ${si
 const tooMany = { level: "error", msg: 'too many deletes (>50%, 2 of 3) on Path2 "/knowledge/notes/". Run with --force if desired.' };
 const copied = (path: string) => ({ level: "info", msg: "Copied (new)", object: path });
 const ok = { level: "info", msg: "Bisync successful" };
+/**
+ * rclone 1.75.2's critical error when Google's token endpoint refuses to refresh the token, captured
+ * with a stand-in for that endpoint (its request's URL shortened here).
+ */
+const tokenRefused = {
+  level: "error",
+  msg: 'Bisync critical error: couldn\'t list directory: Get "https://www.googleapis.com/drive/v3/files?alt=json&pageSize=1000&q=trashed%3Dfalse+and+%28%271AbCdEfGhIjKlMnOpQrStUvWxYz%27+in+parents%29": couldn\'t fetch token: invalid_grant: maybe token expired? - try refreshing with "rclone config reconnect kb-notes:"',
+};
 const SECRETS = [CLIENT_SECRET, ACCESS, REFRESH];
 
 /** Signs in with Google as the owner's browser would: Google sends it back with the state and a code. */
@@ -992,6 +1000,51 @@ describe("a knowledge base's sync", () => {
     await resyncAsOwner();
   });
 
+  it("stops for the owner at an empty Drive folder where the knowledge base has a link, which bisync reports as successful", async () => {
+    const stops = (await events("knowledge.sync_stopped")).length;
+    const runs = rc.started().length;
+    // rclone 1.75.2 over rcd: no error in the log, and the folder it couldn't make only in the job's stats.
+    const escapes = "mkdirat notes/out: statat notes/out: path escapes from parent";
+    rc.answers = [{ lines: [{ level: "info", msg: "- Path1             File is new                                 - notes/out" }, { level: "info", msg: "Making directory", object: "notes/out" }, ok], lastError: escapes }];
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    // Its stats are read before they are deleted.
+    const group = rc.started().at(-1)!.group;
+    expect(rc.calls.filter((c) => c.params.group === group).map((c) => c.command)).toEqual(["core/stats", "core/stats-delete"]);
+    const stopped = await status();
+    expect(stopped).toMatchObject({ running: false, result: "stopped", reason: "link", detail: escapes, deletions: [] });
+    expect(stopped!.summary).toContain("Drive has a folder at notes/out where this knowledge base has a link");
+    expect((await events("knowledge.sync_stopped")).slice(stops)).toEqual([{ actorId: operator, knowledgeBase: "notes" }]);
+    // The timer leaves it to the owner, rather than run it again every minute.
+    await due("notes");
+    await tick();
+    expect(rc.started().length).toBe(runs + 1);
+    await resyncAsOwner();
+    // A run whose stats can't be read goes by its log.
+    rc.answers = [{ lines: [ok], lastError: escapes }];
+    rc.failures.set("core/stats", new RcError("rclone answered 500.", 500));
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    expect(await status()).toMatchObject({ result: "synced" });
+    rc.answers = [{ lines: [ok] }];
+  });
+
+  it("records the owner's deletions as applied by a forced run that bisync reports successful but that stops at a link", async () => {
+    rc.answers = [{ success: false, error: "too many deletes", lines: [deleted("a.md"), deleted("b.md"), tooMany] }];
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    const stopped = (await status())!;
+    const applied = (await events("knowledge.deletions_applied")).length;
+    rc.answers = [{ lines: [deleted("a.md"), deleted("b.md"), ok] }, { lines: [{ level: "info", msg: "Deleted", object: "a.md" }, ok], lastError: "mkdirat out: statat out: path escapes from parent" }];
+    expect((await send("/api/knowledge/notes/sync", { action: "apply_deletions", run: stopped.lastRunAt, count: 2 })).status).toBe(202);
+    await settled();
+    expect(rc.started().at(-1)!.params).toMatchObject({ force: true });
+    expect(await status()).toMatchObject({ result: "stopped", reason: "link", deletions: [] });
+    expect((await events("knowledge.deletions_applied")).slice(applied).map((e) => e.actorId)).toEqual([owner]);
+    rc.answers = [{ lines: [ok] }];
+    await resyncAsOwner();
+  });
+
   it("gives a resync of its own that was interrupted in turn another, but not one stopped for its time limit", async () => {
     await interruptRun();
     // A server of its own, which hasn't restarted an rclone for a run past its time yet.
@@ -1190,7 +1243,7 @@ describe("a knowledge base's sync", () => {
   });
 
   it("disconnects the Google connection when Google refuses the token, until the owner signs in again", async () => {
-    rc.answers = [{ success: false, error: "bisync aborted", lines: [{ level: "error", msg: 'Bisync critical error: couldn\'t list directory: couldn\'t fetch token: invalid_grant: maybe token expired? - try refreshing with "rclone config reconnect kb-notes:"' }] }];
+    rc.answers = [{ success: false, error: "bisync aborted", lines: [tokenRefused] }];
     await send("/api/knowledge/notes/sync", { action: "sync" });
     await settled();
     expect(await (await api("/api/google-drive")).json()).toMatchObject({ state: "disconnected", problem: expect.stringContaining("invalid_grant") });
@@ -1216,9 +1269,37 @@ describe("a knowledge base's sync", () => {
     expect(await status()).toMatchObject({ disconnected: false, result: "synced" });
   });
 
+  it("keeps the Google connection when an app's file, named like Google's refusal, fails a run", async () => {
+    // rclone 1.75.2's log of a run that can't read a file an app made, mode 000 as another user, named
+    // like the line Google's refusal makes: the run failed, and is tried again a minute later.
+    const path = "/knowledge/notes/couldn't fetch token: invalid_grant: maybe token expired?.md";
+    rc.answers = [
+      {
+        success: false,
+        error: "bisync aborted",
+        lines: [
+          { level: "error", msg: `error during march: hash: failed to open: open ${path}: permission denied`, object: "march" },
+          { level: "error", msg: "There were errors while building listings. Aborting as it is too dangerous to continue." },
+          { level: "error", msg: `Bisync critical error: hash: failed to open: open ${path}: permission denied` },
+          { level: "error", msg: "Bisync aborted. Error is retryable without --resync due to --resilient mode." },
+        ],
+      },
+    ];
+    const refusals = (await events("google.refused")).length;
+    await send("/api/knowledge/notes/sync", { action: "sync" });
+    await settled();
+    expect(await (await api("/api/google-drive")).json()).toMatchObject({ state: "connected", problem: null });
+    expect(await status()).toMatchObject({ disconnected: false, result: "failed" });
+    expect((await events("google.refused")).length).toBe(refusals);
+    rc.answers = [{ lines: [ok] }];
+    await due("notes");
+    await settled();
+    expect(await status()).toMatchObject({ result: "synced" });
+  });
+
   it("doesn't disconnect a sign-in the owner made while a run had the earlier one Google refused", async () => {
     rc.hold = true;
-    rc.answers = [{ success: false, error: "bisync aborted", lines: [{ level: "error", msg: "Bisync critical error: couldn't fetch token: invalid_grant: maybe token expired?" }] }];
+    rc.answers = [{ success: false, error: "bisync aborted", lines: [tokenRefused] }];
     expect((await send("/api/knowledge/notes/sync", { action: "sync" })).status).toBe(202);
     await tick();
     expect(rc.running()).toHaveLength(1);
@@ -1244,7 +1325,7 @@ describe("a knowledge base's sync", () => {
     await recorded(sync());
     expect(await syncRow()).toMatchObject({ job: null, result: "failed", interrupted: true });
     // Google refuses it: the owner reconnects, and the interruption still gives a resync.
-    rc.answers = [needsResync, { success: false, error: "bisync aborted", lines: [{ level: "error", msg: "Bisync critical error: couldn't fetch token: invalid_grant: maybe token expired?" }] }];
+    rc.answers = [needsResync, { success: false, error: "bisync aborted", lines: [tokenRefused] }];
     await due("notes");
     await recorded(sync());
     expect(await status()).toMatchObject({ result: "unauthorized", disconnected: true });

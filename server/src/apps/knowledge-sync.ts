@@ -921,8 +921,20 @@ export class KnowledgeSync {
       return;
     }
     const lines = logLines(typeof status.output?.output === "string" ? status.output.output : "");
+    // A job that succeeded can still have counted an error its log doesn't show, as bisync's folder
+    // at a link's path that is empty in Drive. Read before its counts are deleted; when that fails,
+    // the log alone says how it ended, and the next run, which meets the same error, reads it.
+    const lastError = status.success
+      ? await rc
+          .call<{ lastError?: unknown }>("core/stats", { group: status.group })
+          .then((stats) => (typeof stats.lastError === "string" ? stats.lastError : ""))
+          .catch((error: unknown) => {
+            log("warn", "knowledge.sync_stats_failed", { name: row.name, ...errorFields(error) });
+            return "";
+          })
+      : "";
     try {
-      await this.stepDone(row, job, status, lines);
+      await this.stepDone(row, job, status, lines, lastError);
     } catch (error) {
       // Taken again next tick, from this job's result, which rclone keeps with its counts.
       if (error instanceof StepWaits) return;
@@ -996,8 +1008,8 @@ export class KnowledgeSync {
   }
 
   /** A job ended: the run's next step starts, or the run is recorded. */
-  private async stepDone(row: Row, job: SyncJob, status: RcJob, lines: LogLine[]): Promise<void> {
-    const ended = outcome(status.success, lines, status.error);
+  private async stepDone(row: Row, job: SyncJob, status: RcJob, lines: LogLine[], lastError: string): Promise<void> {
+    const ended = outcome(status.success, lines, status.error, lastError);
     const changed = changedBy(lines);
     switch (job.step) {
       case "resync": {
@@ -1037,7 +1049,7 @@ export class KnowledgeSync {
         if (job.mode === "sync" && row.interrupted && ended.result === "stopped" && ended.reason === "resync") return this.resyncItself(row, job);
         return this.finish(row, job, ended, lines, { changed });
       default:
-        return this.finish(row, job, ended, lines, { changed });
+        return this.finish(row, job, ended, lines, { changed, succeeded: status.success });
     }
   }
 
@@ -1090,7 +1102,7 @@ export class KnowledgeSync {
     job: SyncJob,
     ran: Outcome,
     lines: LogLine[],
-    extra: { changed: boolean; ties?: string[]; deletions?: SyncDeletion[]; listed?: false; interrupted?: boolean; requested?: SyncRequested | null },
+    extra: { changed: boolean; ties?: string[]; deletions?: SyncDeletion[]; listed?: false; interrupted?: boolean; requested?: SyncRequested | null; succeeded?: boolean },
   ): Promise<void> {
     const subject = { id: row.knowledgeBaseId, name: row.name };
     if (ran.result === "busy") {
@@ -1160,8 +1172,9 @@ export class KnowledgeSync {
         .returning({ id: knowledgeSync.knowledgeBaseId });
       // Disconnected meanwhile: nothing is kept.
       if (updated.length === 0) return;
-      // The owner's deletions, applied, or being applied when the run was interrupted: some may have been made.
-      if ((synced || extra.interrupted) && job.step === "force" && job.by) await recordEvent(tx, "knowledge.deletions_applied", job.by, null, null, subject);
+      // The owner's deletions, applied, or being applied when the run was interrupted: some may have been
+      // made. Applied too by a forced run that bisync reports successful but that stops at a link.
+      if ((synced || extra.interrupted || extra.succeeded) && job.step === "force" && job.by) await recordEvent(tx, "knowledge.deletions_applied", job.by, null, null, subject);
       if (synced && extra.changed) await recordEvent(tx, "knowledge.synced", yourSpace, null, null, subject);
       if (stopped) await recordEvent(tx, "knowledge.sync_stopped", yourSpace, null, null, subject);
       // A run that keeps failing, as while offline, is recorded once.

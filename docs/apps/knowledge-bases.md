@@ -46,9 +46,13 @@ folder belongs to user and group 1000, is writable by everyone, and gives new fi
 apps running as different users can all create files there. An app running as another user than
 1000 may not be able to change a file another user wrote; most self-hosted images run as user 1000.
 The sync with Google Drive runs as user 1000 too, so in a synced knowledge base it can't change the
-files, or write into the folders, of an app that runs as another user with the usual umask of 022:
-that sync fails with a permission error and is tried again a minute later. Changes it made before
-the error, which can include deleting in Drive files removed here, stay made.
+files, or write into the folders, of an app that runs as another user with the usual umask of 022.
+Such a sync stops with a permission error and waits for the owner's **Resync**. Before the error it
+may already have changed the Drive folder, deleting there files removed here; it deletes nothing
+here. A file the sync can't read fails each sync before it changes anything, and the sync is tried
+again a minute later. A resync, as the first sync after connecting is, stops on it instead, once it
+has copied the knowledge base's other files to Drive, and waits for **Resync** too. See
+[When a sync stops](../operate/google-drive.md#when-a-sync-stops).
 
 When two apps change the same file, the last one to write it wins. Your Space doesn't merge them.
 
@@ -90,9 +94,9 @@ chosen folder: shortcuts in it, and Google Docs, Sheets and Slides, stay in Driv
 Symbolic links an app makes in a synced knowledge base sync as links: Drive keeps each as a small
 `<name>.rclonelink` file holding the link's target, and a `.rclonelink` file made in Drive becomes a
 link here, with whatever target it holds. The sync never follows a link out of the knowledge base.
-If the Drive folder has a folder where the knowledge base has such a link, the sync stops and names
-the path: remove that folder in Drive, or the link here and its `.rclonelink` file in Drive, then
-choose **Resync** (see
+If the Drive folder has a folder, empty or not, where the knowledge base has such a link, the sync
+stops and names the path: remove that folder in Drive, or the link here and its `.rclonelink` file
+in Drive, then choose **Resync** (see
 [When a sync stops](../operate/google-drive.md#when-a-sync-stops)).
 
 The knowledge base's page shows:
@@ -132,7 +136,10 @@ An app that writes into knowledge bases should run as user 1000, or give the fil
 read and write, and the folders group read, write and search (`rwx`): other apps, and the sync with
 Google Drive, which runs as user 1000, can then read and change them. A umask of 002 keeps those for
 files and folders the app makes with the usual modes, but can't add them to a mode the app sets
-itself, like `0700`. Otherwise a sync can't change the app's files or write into the folders it
-made: that sync fails with a permission error and is tried again a minute later. Changes it made
-before the error, deletions included, stay made.
+itself, like `0700`. Even with them, a folder the app made while running as another user than 1000
+can't take a file from Drive or lose one deleted there, as only a folder's owner can set its
+modification time. Otherwise a
+sync can't change the app's files or write into the folders it made: it stops with a permission
+error until the owner's **Resync**, having already made its changes in Drive, deletions of files
+removed here included, but deleting nothing here.
 

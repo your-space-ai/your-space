@@ -104,6 +104,10 @@ describe("the sync's containers", () => {
     }
     expect(both.volumes["kb-notes"]).toEqual({ external: true, name: knowledgeVolume(INSTALLATION, "notes") });
     expect(both.volumes["state-notes"]).toEqual({ external: true, name: knowledgeStateVolume(INSTALLATION, "notes") });
+    // The sync state, the backups with it, is a volume of its own, never in the knowledge base's: on
+    // one mount, rclone moves a Drive file that replaced a link's .rclonelink into the backups, and
+    // the next run deletes it in Drive (rclone 1.75.2; server/tests/bisync.test.ts).
+    expect(knowledgeStateVolume(INSTALLATION, "notes")).not.toBe(knowledgeVolume(INSTALLATION, "notes"));
     // Its own name only, so another's change leaves its container as it is.
     expect(rcloneOf(both).labels).toMatchObject({ "ai.your-space.knowledge": "notes", "ai.your-space.role": "knowledge-sync" });
     expect(rcloneOf(both)).toEqual(rcloneOf(file(["notes"])));

@@ -97,7 +97,7 @@ sends it to `/check` or `/apply` (2026-11-24).
 | `GET /knowledge/{name}` | | `{ apps, syncing }`: the apps of this installation whose containers mount the knowledge base's volume, running or stopped, by their `ai.your-space.app` label, `[]` when there is no such volume; and whether it has a sync container, or is being started with one. The server asks before deleting a knowledge base, so it applies each again without it, even one it has no grant for, and takes it out of the sync first. 409 when the volume isn't Your Space's |
 | `DELETE /knowledge/{name}` | | Deletes the knowledge base's volume and its files, and its sync state volume when it has one. 409 while any container mounts it, running or stopped, the sync's included, or when either volume isn't Your Space's, before anything is deleted; a volume already gone is deleted. Removing an app (`/down`) or deleting its volumes (`DELETE /apps/{project}/volumes`) never deletes a knowledge base's, or its sync state |
 | `GET /knowledge-sync` | | `{ knowledgeBases, running, fixture }`: the knowledge bases' sync (journey 014): those that have a sync container, those whose container runs, and whether they sync with the browser tests' stand-in for Drive. See below |
-| `PUT /knowledge-sync` | `{ knowledgeBases: [name] }` | The same, once there is a sync container for exactly each of these knowledge bases and each new one's remote control answers. A knowledge base no longer named has its container stopped as Ctrl+C stops rclone, then removed; the others' containers run on, unless their configuration changed, as with a new image; stopped ones are started. Nothing waits for a container that was there before, so one that doesn't answer holds up no other. No other field is accepted: no remote, client or token. `[]` removes the containers and their proxy. 404 for a knowledge base that isn't on the engine, 409 for a sync state volume Your Space didn't make, or one of them being deleted, and while stopping |
+| `PUT /knowledge-sync` | `{ knowledgeBases: [name] }` | The same, once there is a sync container for exactly each of these knowledge bases and each new one's remote control answers. A knowledge base no longer named has its container stopped as Ctrl+C stops rclone, then removed; the others' containers run on, unless their configuration changed, as with a new image; stopped ones are started. Nothing waits for a container that was there before, so one that doesn't answer holds up no other. No other field is accepted: no remote, client or token. `[]` removes the containers and their proxy. A new sync state volume is set up for user 1000, mode 0700, by a short-lived container as `POST /knowledge` sets up a knowledge base's folder, and the change fails when that container can't be removed after. 404 for a knowledge base that isn't on the engine, 409 for a sync state volume Your Space didn't make, or one of them being deleted, and while stopping; 503 when Your Space's server doesn't run on this engine, as with `YS_ENGINE_SOCKET` set to another, since the server reaches the containers' sockets through a volume it mounts, or when Your Space's Compose files have no `ys-sync` volume |
 | `POST /knowledge-sync/{name}/restart` | | Stops that knowledge base's rclone as Ctrl+C stops it, and starts it again (a stopped one is started): for a run past its time, or an rclone that hasn't answered for a minute. 404 when it has no sync container, 409 while stopping |
 | `DELETE /knowledge/{name}/sync` | | Deletes the knowledge base's sync state volume; the knowledge base and the Drive folder keep their files. 409 while it has a sync container |
 
@@ -192,10 +192,19 @@ socket, for that knowledge base only:
   reason a run stopped. bisync's `Bisync critical error: … path escapes from parent`, when the Drive
   side has a folder at the path of a link that rclone doesn't write through, is read first, as its
   path is the app's: the run stops with reason `link`, which needs a resync the server never runs
-  itself, and keeps that line, which names the path. rclone keeps one log for its whole process
+  itself, and keeps that line, which names the path. For an empty Drive folder there, bisync makes
+  no folder, logs no error and reports success (rclone 1.75.2), so for a job that succeeded the
+  server reads `core/stats` of its group too, before deleting the counts: a `lastError` of
+  `… path escapes from parent` stops the run with reason `link` the same way, keeping that error; a
+  stats call that fails leaves the log alone to say how the job ended. Google's refusal
+  (`unauthorized`) is read only from a line that starts with rclone's own words and the request the
+  token was for, `… Get "https://…": couldn't fetch token: invalid_grant` (or `invalid_client`,
+  `unauthorized_client`, `deleted_client`), or `googleapi: Error 401: …`, never from words further
+  into a line, where an error of the local file system holds a path the app named, and keeps
+  Google's words alone. rclone keeps one log for its whole process
   while a bisync runs, so each knowledge base's rclone runs one bisync at a time; the knowledge
   bases' runs go on side by side.
-  `core/stats-delete` drops a finished job's counts. Calls about jobs, remotes and rclone itself
+  `core/stats-delete` then drops a finished job's counts. Calls about jobs, remotes and rclone itself
   wait 30 seconds; listings and copies wait five minutes.
 - `operations/list` of `:local,links:/knowledge/<name>` (filtered to `**.conflict[0-9]*`) after a
   run that changed something, and at least hourly; of `:local,links:/state/<name>/backups`'s run
