@@ -48,8 +48,9 @@ safely.
 
 A request returns the app's JSON response under `result`, unchanged: the shape its API gives, up to
 256 KiB. Your Space withholds a response that isn't JSON, is larger, or contains the app credential.
-A read's status is then `unknown`; a write the app answered with success is `succeeded`, without a
-result, since the app applied it. A kit doesn't name the fields an agent gets back, so
+A read's status is then `unknown`; a write the app answered with a 2xx status is `succeeded`,
+without a result. `succeeded` means only that the app answered with a 2xx status other than `202
+Accepted`, which is `unknown`; when it matters that the work finished, check in the app. A kit doesn't name the fields an agent gets back, so
 the app credential's scope limits what a granted route returns: bind a credential that can see only
 what you want agents to read.
 
