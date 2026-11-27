@@ -97,7 +97,10 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   service. Removing an app, and deleting its data, never deletes a knowledge base.
 - **Taking a knowledge base away.** A knowledge base taken from an app, or deleted, leaves the app
   once the apply that recreates it without the folder works. When that apply fails, the app keeps
-  the knowledge bases its containers still mount, as the runtime manager reports them.
+  the knowledge bases its containers still mount, as the runtime manager reports them. Deleting a
+  knowledge base applies again every app whose containers mount it, running or not, since Docker
+  keeps a volume that any container mounts: a stopped app is started without it. When an app can't
+  be applied without it, nothing is deleted, that app keeps it, and the refusal names the app.
 - **Finishing after a restart (2026-11-26).** When Your Space stops or restarts before that apply
   ends, it finishes the change once it is back. Each time it checks its apps, at start once the
   runtime manager answers and about every 15 seconds after, it compares the knowledge bases each
@@ -106,7 +109,8 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   mounts it. An app the owner asked to remove, whose removal didn't finish, is removed instead, as
   deleting a knowledge base does. An apply that fails is tried again later: after a minute, then
   twice as long each time, up to an hour. A stopped app is left as it is: it gets its current
-  grants when it next starts. Nothing new is saved for this: the containers' mounts are the record.
+  grants when it next starts, or when deleting the knowledge base applies it again, as above.
+  Nothing new is saved for this: the containers' mounts are the record.
 - **File ownership.** A new knowledge base's folder belongs to user and group 1000, is writable by
   everyone, and gives new files its group. A short-lived container of the runtime manager's own
   image sets it up. Creating the knowledge base fails when that container can't be removed after,
@@ -133,9 +137,12 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   bisync's own checks and stops for the owner rather than guess, with one exception: the resync Your
   Space runs by itself to finish an interrupted run (see **Interrupted runs**). The checks:
   - A marker file at both roots (`--check-access`), so an empty or replaced volume, or an unreachable
-    folder, never reads as "everything was deleted".
+    folder, never reads as "everything was deleted". bisync compares the marker files it finds on
+    the two sides at any depth, so a root marker missing on one side stops the run (checked on
+    rclone 1.75.2).
   - The default limit on deletions per run (`--max-delete 50`, half the files). A run over it stops
-    and lists the deletions it would make.
+    and lists the deletions it would make. Over 10,000 of them are more than the owner is asked to
+    confirm: none is listed, and only **Resync** is offered.
   - bisync's refusal to sync with an empty side outside the first run.
   - Only one run per knowledge base at a time, with a lock that expires if a run dies
     (`--resilient --recover --max-lock 2m`). A run that finds the lock held changes nothing and is
@@ -254,9 +261,9 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   as failed. An interrupted **Apply these deletions** is still recorded as the owner's applied
   deletions, since some may have been made. Your Space's own resync of an interrupted run is recorded
   as `knowledge.resync_requested` against Your Space. Its own apply that finishes taking a knowledge
-  base from an app after a restart is recorded as `knowledge.revoked` against Your Space, once the
-  runtime manager no longer reports the app mounting it. Runs that change nothing aren't recorded
-  one by one; the page shows when the last one finished.
+  base from an app after a restart is recorded as `knowledge.revoked` against Your Space when that
+  apply works, unless the runtime manager then still reports the app mounting it. Runs that change
+  nothing aren't recorded one by one; the page shows when the last one finished.
 
 ## Acceptance
 
@@ -266,7 +273,9 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
 - An app installed without a knowledge declaration gets no mount. A kit with an unknown `knowledge`
   field, or a `path` that is relative, `/` or contains `..`, is refused in the review.
 - Remove an app and delete its data: its knowledge bases and their files remain. Delete a knowledge
-  base: it leaves the apps that had it.
+  base: it leaves the apps that had it, or whose containers still mount it, a stopped app too, which
+  is started without it. When an app can't be applied without it, nothing is deleted, that app keeps
+  it, and the refusal names the app.
 - Take a knowledge base from a running app, and stop the runtime manager and the server before the
   apply ends: the app's container still mounts it and has no grant for it. Start them again: once
   Your Space is back, the app's container no longer mounts it. A stopped app isn't started for it.

@@ -200,7 +200,9 @@ knowledge base. [Journey 014](https://github.com/your-space-ai/your-space/blob/m
   gets its current grants when it next starts. Saving the pending change, which changes the
   schema, was the fallback for a case the check couldn't cover; it covers a restart
   during a change on the app's page and during a deletion. The apply is recorded as
-  `knowledge.revoked` against Your Space once the app no longer mounts it.
+  `knowledge.revoked` against Your Space when it works, unless the runtime manager then still
+  reports the app mounting it. Deleting a knowledge base applies again every app whose containers
+  mount it, running or not, so a stopped app is started without it.
 - **Smaller cases (2026-11-26).** Accepted by the owner: **Apply these deletions** checks its list
   with a dry run, and the forced run then lists both sides again, so a file deleted in the seconds
   between them is deleted on the other side too (v1). Kept: creating a knowledge base fails when the
