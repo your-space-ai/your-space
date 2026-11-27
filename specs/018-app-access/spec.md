@@ -106,7 +106,9 @@ ask the same way.
 or a write's default, becomes a route that asks on the same grant, with its path template's
 parameters as `*`. A route set to Allow, or a read that ran directly, becomes nothing. The owner's
 live setup has every route on Allow, so it carries over with no routes that ask. Each grant takes the
-credential its roles used.
+credential its roles used. A grant whose roles used more than one credential, such as a record role
+and a setup role, takes none: it is unavailable, and **Agents** asks the owner to pick the app key
+that agent uses, rather than Your Space guessing which one.
 
 **Considered:** starting every grant blank, as the new default. Simpler, but a write that waited for
 the owner yesterday would run directly after an upgrade.
@@ -123,8 +125,10 @@ keys the owner may have meant to retire with the app.
 ## 10. Kits That Still List Roles and Routes
 
 **Recommended:** they keep installing. Your Space ignores `roles` and `routes`, takes the API's path
-from the routes' longest common path prefix when the kit names no `api` (`/rest` for the owner's
-Twenty kit, `/` when there is none), and ignores per-route `credential` and `approval`. A kit that
+from the routes' longest common prefix of literal segments when the kit names no `api`, stopping at
+the first `{parameter}` segment (`/rest` for the owner's Twenty kit; `/items` for a kit whose one
+route is `/items/{id}`), or `/` when no literal segment is common, and ignores per-route `credential`
+and `approval`. A kit that
 names `api` is used as it says. Stored kits read the same way.
 
 **Considered:** refusing them with a message to add `api`. Clean, but every kit written for 017 would
@@ -140,9 +144,13 @@ need changing before its app could install again.
   that ask (decisions 6 and 7). Without a grant the agent can't reach the app.
 - **FR-004**: An agent's call names an installation, a method among `GET`, `POST`, `PATCH`, `PUT` and
   `DELETE`, and a path under the kit's `api`, with an optional query and an optional JSON body of at
-  most 32 KiB; a `GET` has no body. The path is up to 2048 characters of unreserved characters and
-  `/`, with no empty, `.` or `..` segment and no percent-encoding. Query names and values are text,
-  encoded by the gateway.
+  most 32 KiB; a `GET` has no body. The path is up to 2048 characters of RFC 3986 path characters
+  (unreserved, sub-delimiters, `:`, `@` and percent-encoded octets) and `/`. Percent-encoding is
+  decoded once to check and match the path: a segment that decodes to `.` or `..`, or contains an
+  encoded `/`, `\` or NUL, is refused, as is an empty segment other than a trailing one. The path is
+  sent as given, and is under the `api` and matched against routes that ask by its decoded segments,
+  so an encoding can't move a call outside the API or past a route that asks. Query names and values
+  are text, encoded by the gateway.
 - **FR-005**: The gateway sends the call with the grant's credential only. The response check, the
   outcomes and the result are journey 017's.
 - **FR-006**: A call that matches a route that asks waits for the owner, as a pending request does
@@ -153,8 +161,9 @@ need changing before its app could install again.
   stored, not deleted. Bound credentials no longer depend on a stamp of the kit they were bound under.
   Removing an app ends them (decision 9). Journey 019's in-place kit updates rely on this and change
   no trigger of their own.
-- **FR-008**: The migration gives each 017 grant the credential its roles used and turns its routes
-  that asked into routes that ask (decision 8). Bindings' enabled roles, grants' roles and route
+- **FR-008**: The migration gives each 017 grant the credential its roles used, or none when they
+  used several, which leaves it unavailable until the owner picks one, and turns its routes that
+  asked into routes that ask (decision 8). Bindings' enabled roles, grants' roles and route
   overrides stay in the database, unread.
 - **FR-009**: Activity records each call's method and path, without its query.
 - **FR-010**: The CLI has `your-space agent apps`, `your-space agent call <installation-id> <METHOD>
