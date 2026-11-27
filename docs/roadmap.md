@@ -220,12 +220,15 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
 ### Agent connections and workflows
 
-- [ ] **Agent writes** · *Later direction*
+- [ ] **Agent writes (017)** · *Later direction*. Requested again by the owner on 2026-11-26; decided the same day. [Agent writes spec](https://github.com/your-space-ai/your-space/blob/main/specs/017-agent-writes/spec.md)
 
   **Cut from the alpha (2026-11-23):** [Alpha scope](architecture/decisions.md#alpha-scope).
 
   - [ ] Let an agent create and change records through kit routes, with exact owner approval.
-  - [ ] Retry an interrupted write safely and refuse a stale edit, verified against a real app's API rather than a fixture.
+  - [ ] Verify writes against a real app's API rather than a fixture.
+  - [ ] Let a setup role change an app's data model with an admin credential that record roles never carry.
+
+  **Replaced (2026-11-26):** retrying an interrupted write safely and refusing a stale edit; the owner decided retries, duplicates and stale edits are the agent's and the app's. [Agent writes](architecture/decisions.md#agent-writes)
 
 - [ ] **Workspace MCP endpoint** · *Later direction*
 
