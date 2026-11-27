@@ -4,8 +4,8 @@
 
 **Created**: 2026-11-26
 
-**Status**: Proposed. The owner settled decisions 1 and 2 on 2026-11-26; seven are open, each with
-a recommendation. Nothing is built.
+**Status**: Proposed. The owner settled decisions 1 to 3 on 2026-11-26; six are open, each with a
+recommendation. Nothing is built.
 
 **Input**: The owner, on 2026-11-26: an agent should be able to do real work in an app through Your
 Space, never holding the app's own credential. The first case is onboarding records into a CRM:
@@ -35,14 +35,14 @@ and [gateway contract](../005-owner-agent/contracts/gateway.md), and
 
 ## Decisions
 
-Decisions 1 and 2 are settled; the rest are open. Each section below gives the options, the trade-offs and a
+Decisions 1 to 3 are settled; the rest are open. Each section below gives the options, the trade-offs and a
 recommendation, and for a settled one, what was decided.
 
 | # | Question | Recommendation or decision |
 | --- | --- | --- |
 | 1 | Are schema and admin operations, such as creating a custom object, in scope? | **Decided:** in, through setup roles of their own, apart from record roles. Each route names the app credential it is sent with, so a setup route uses an admin credential and a record route a narrower one. Owner: "should be separate roles that give separate access. could also have a role that give permission over the setup itself and control thingsl ike the data model." |
 | 2 | Can a kit declare routes that delete? | **Decided:** yes, `effect: delete`, in roles of their own. Whether a delete asks first is set like any route's: Ask by default, and the owner can set Allow. The Twenty kit declares none yet. Owner: "this should be defined in the role permissions, it shouldn't always require an approval tho"; "there are some reasonable deletions" |
-| 3 | How does a kit declare a write's body? | The top-level field names the route accepts, each value any JSON; the app validates the values |
+| 3 | How does a kit declare a write's body? | **Decided:** it doesn't. A role grants a route and its HTTP method, nothing finer; the body passes through for the app to validate, within transport limits (JSON, 32 KiB). Owner: "lets not get granular like this, the role allows an agent access to a specific route + http verb, nothing more granular." |
 | 4 | What makes a retried write safe? | An operation ID on every write, kept by Your Space: the same ID returns the first outcome and never sends the write again |
 | 5 | What happens to an edit made on a record that changed since the agent read it? | The later write wins, and only the fields it names change. Refusing a stale edit needs the app's support, which Twenty lacks |
 | 6 | When does a write ask the owner first? | Always, unless the owner sets the route to Allow; Ask for all writes comes back; a pending write waits 24 hours |
@@ -125,8 +125,8 @@ can't delete, destroy or change settings (2026-11-26):
 A create's response is the whole record under `data.create<Object>`, and an update's under
 `data.update<Object>`; Twenty records the API key's name as `createdBy`. A field the data model
 doesn't have is refused with `400`. These shape the decisions: Twenty honors a client-chosen record
-ID (decision 4), `upsert` and nested relation input make a route do more than its name says
-(decision 3), and an API key's role can already exclude deletes and the data model (decisions 1
+ID (decision 4), nested relation input lets a create route create linked records too (decision
+3), `upsert` turns a create into an update, and an API key's role can already exclude deletes and the data model (decisions 1
 and 2).
 
 ## What's Missing
@@ -137,13 +137,12 @@ For an agent to create and update records:
    told apart from the legacy `effect: write` routes stored before the cut, so an upgrade never
    widens a grant the owner made for reads. Proposed: `effect: create` and `effect: update`, new
    names a stored legacy route can't have, and the gateway keeps leaving `effect: write` out.
-2. **Request bodies.** Input gains `body`. Twenty's bodies are nested (`name`, `domainName:
-   {primaryLinkUrl}`, `amount: {amountMicros, currencyCode}`), like the responses that ended
-   `outputFields`, so flat scalar body fields don't fit (decision 3).
-3. **Body checks and limits.** A JSON object of at most 32 KiB and 16 levels deep, with only the
-   declared top-level fields. A route can't carry an agent-supplied `upsert` or any other undeclared
-   query field, and its body names only the fields the kit lists, so `company: {create: …}` is
-   refused unless the kit lists `company`.
+2. **Request bodies.** Input gains `body`, passed to the app as the agent gave it (decision 3).
+   Twenty's bodies are nested (`name`, `domainName: {primaryLinkUrl}`, `amount: {amountMicros,
+   currencyCode}`), like the responses that ended `outputFields`.
+3. **Transport limits.** A body must be JSON and at most 32 KiB; the gateway checks nothing else in
+   it. Query fields stay as they are for reads: declared and scalar, so a query option the route
+   doesn't declare, such as Twenty's `upsert`, is refused.
 4. **Retries.** An operation ID required on every write, scoped to the agent, installation and
    route and bound to a fingerprint of the request (decision 4). An outcome that isn't known is
    never resent.
@@ -157,7 +156,7 @@ For an agent to create and update records:
    default, and the per-agent Ask for all writes switch returns (decision 6).
 7. **What changed.** The owner sees each write's record and outcome, and can open what it sent
    (decision 7).
-8. **Discovery and CLI.** `actions` lists each route's effect and body fields;
+8. **Discovery and CLI.** `actions` lists each route's effect and whether it takes a body;
    `invoke --operation-id <id>` is required for a write; `request <id>` shows a write's outcome.
 9. **Roles and credentials.** A kit groups write routes into roles of their own, such as an Editor
    beside the Reader, and setup routes into a Setup role, and the owner grants each per agent and
@@ -168,8 +167,7 @@ For an agent to create and update records:
 10. **The response check** stays as it is for reads and applies to writes' responses too, refusing
     a response that contains any credential bound to the installation, not only the one used.
 11. **The Twenty kit's routes** (decision 8): create and update for companies, opportunities and
-    the custom object, with each body's fields named, `id` among a create's, and relation IDs such
-    as `companyId` for links; list and show for the custom object, so an agent can look a record up
+    the custom object; an agent links records with relation IDs such as `companyId` in the body; list and show for the custom object, so an agent can look a record up
     before creating it and after an outcome it doesn't know.
 
 `ask_all_writes`, `operation_id` and its unique index are there, and `input` and `result` are
@@ -203,7 +201,6 @@ agentAccess:
       path: /rest/metadata/fields
       effect: setup
       credential: setup
-      bodyFields: [objectMetadataId, type, name, label, description, options]
 ```
 
 - The owner binds each credential on the installation separately: for Twenty, an API key whose role
@@ -252,31 +249,38 @@ require an approval tho", and "there are some reasonable deletions".
 
 ## 3. A Write's Body
 
-**Recommended:** a route lists the top-level fields its body accepts, and each value is any JSON:
+**Decided (2026-11-26):** a kit doesn't describe a write's body. The owner: "lets not get granular
+like this, the role allows an agent access to a specific route + http verb, nothing more granular."
+A role grants a route and its HTTP method; the agent's body passes through to the app, which
+validates it and refuses a bad one with a 4xx, which the agent sees as `refused`. This matches the
+2026-11-24 decision for responses.
 
 ```yaml
 create-company:
   method: POST
   path: /rest/companies
   effect: create
-  bodyFields: [id, name, domainName, linkedinLink, address]
-  required: [id]
 ```
 
-The gateway refuses a body that isn't a JSON object, is over 32 KiB, nests deeper than 16 levels,
-or has a field the route doesn't list. It doesn't check values: the app validates them and refuses
-a bad one with a 4xx, which the agent sees as `refused`. `required` lists fields the body must have.
-This mirrors the 2026-11-24 decision for responses: describing a real API's nested shapes in the
-kit didn't work, so the kit names what may be sent and the app's own rules and the credential's role
-limit what it does. Naming top-level fields still matters: it keeps a route to what its name says,
-since Twenty's `company: {create: …}` would create another record, and a field such as
-`createdBy` or `position` can be left out.
+The gateway keeps only transport limits, which say nothing about what a role may do: the body must
+be JSON and at most 32 KiB, under the server's 64 KiB request limit. A route that isn't a write has
+no body. Path parameters and query fields are declared and checked as they are for reads today, since
+they render the route.
 
-**Considered:** typed nested body schemas (JSON Schema). Exact, but every custom field and composite
-type would need declaring, the kit would break when the app's model changes, and the gateway would
-repeat validation the app already does. **Considered:** any JSON object, with no field list. Simpler,
-but a create route could then also create linked records or set fields the owner didn't mean to
-delegate.
+Accepted for this version, as the owner decided:
+
+- **Nested creates pass.** A body can create linked records along with its own: on Twenty, an
+  opportunity created with `company: {create: {…}}` creates a company too, through a route granted
+  to create opportunities. It can also set any field the app accepts, such as `createdBy` or
+  `position`. The credential's role in the app is the limit: a Twenty key whose role can't create
+  companies can't create one this way.
+- **Query options don't pass unless declared.** An undeclared query field is refused, as for reads,
+  so `?upsert=true`, which turns a Twenty create into an update of an existing record, can't be sent
+  through a route that doesn't declare `upsert`. The Twenty kit declares none. A kit that did would
+  give every agent granted that route an upsert.
+
+**Considered:** a list of the top-level fields each route accepts, each value any JSON (the
+recommendation); typed nested body schemas (JSON Schema).
 
 ## 4. Retrying a Write
 
@@ -288,8 +292,9 @@ characters, and Your Space keeps it with the request, unique per agent, installa
 - The same operation ID with other input is a `409` conflict.
 - Your Space never sends a write again on its own, and an `unknown` outcome stays unknown.
 - A read that finds no record doesn't prove a create failed: the app may still be applying it. So a
-  create is sent again, under a new operation ID, only on a route whose `required` fields include a
-  record ID the app keeps unique, as Twenty does: the agent picks the ID once and reuses it, and a
+  create is sent again, under a new operation ID, only on a route the kit guide says accepts a
+  record ID the agent chooses and the app keeps unique, as Twenty does, and only when the agent set
+  that ID: the agent picks the ID once and reuses it, and a
   second create with it is refused by the app (Twenty answers `400`, a duplicate entry) instead of
   making a second record. On a create route without one, the agent doesn't resend after an
   `unknown` outcome; it reports the request ID for the owner to check in the app. The kit guide
@@ -366,8 +371,8 @@ and fields are.
 The kit adds an Editor role with:
 
 - `create-company`, `update-company`, `create-opportunity`, `update-opportunity`,
-  `create-<object>` and `update-<object>`, each with its body's fields, `id` required on creates,
-  and relation IDs (`companyId` and the custom object's relation fields) for links;
+  `create-<object>` and `update-<object>`. The agent sets `id` on a create, and relation IDs
+  (`companyId` and the custom object's relation fields) for links;
 - `list-<object>` and `show-<object>` for the custom object, also in the Reader role.
 
 And a Setup role, sent with the `setup` credential, with `list-objects` and `show-object` (reads),
@@ -417,8 +422,8 @@ agent writes before alpha.2, and the onboarding runs there.
 
 - **FR-001**: A version 2 kit route may declare `method: POST`, `PATCH` or `PUT` with `effect:
   create`, `effect: update` or `effect: setup`, or `method: DELETE` with `effect: delete`, or with
-  `effect: setup` for a data-model delete, a
-  `bodyFields` list of top-level field names and an optional `required` list drawn from it. `GET`
+  `effect: setup` for a data-model delete. A route declares no body fields: a role grants a route
+  and its method, and the body passes to the app. `GET`
   stays `effect: read`. `effect: write` is refused with a message saying which effects are
   supported. A stored route with `effect: write`, from before the cut, stays out of every role.
 - **FR-001a**: A kit declares either one `credential`, as today, or named `credentials`; with named
@@ -428,14 +433,14 @@ agent writes before alpha.2, and the onboarding runs there.
   route. The owner binds
   each credential separately, encrypted under the data key and moved by its rotation. A route whose
   credential isn't bound is unavailable. A request carries only its route's credential.
-- **FR-002**: Invocation input has `path`, `query` and `body`. A write's body is a JSON object of at
-  most 32 KiB and 16 levels deep, with only the route's `bodyFields` and all its `required` fields.
-  A read has no body. Query fields stay scalar and declared. The gateway sends the body as JSON.
+- **FR-002**: Invocation input has `path`, `query` and `body`. A write's body is any JSON of at most
+  32 KiB, sent to the app as JSON and checked no further. A read has no body. Path parameters and
+  query fields stay declared and scalar, and an undeclared one is refused.
 - **FR-003**: Every write carries an operation ID of 1 to 128 printable characters. The same ID for
   the same agent, installation and route returns the first request and its outcome, and sends
   nothing; with other input it is a `409` conflict. Your Space never resends a write. The agent
-  guide says a create is resent after an `unknown` outcome only on a route that requires a record
-  ID the app keeps unique, and an update only on a route that sets the values it is given, once a
+  guide says a create is resent after an `unknown` outcome only on a route that accepts a record ID
+  the agent chose and the app keeps unique, and an update only on a route that sets the values it is given, once a
   read shows they weren't applied.
 - **FR-004**: A write's outcome is `succeeded` for a 2xx other than `202`, `conflict` for a `409`
   or `412`, `refused` for another 4xx, and `unknown` for a `202`, a timeout, a 5xx or a broken
@@ -450,7 +455,7 @@ agent writes before alpha.2, and the onboarding runs there.
 - **FR-007**: Activity shows each write's action, record ID when known, and outcome. The owner can
   open the request sent for 30 days; it is stored encrypted under the data key, moved by its
   rotation, and then deleted.
-- **FR-008**: `GET /api/agent/actions` lists each route's effect, body fields and required fields.
+- **FR-008**: `GET /api/agent/actions` lists each route's effect and whether it takes a body.
   `your-space agent invoke` takes `--operation-id`, required for a write, and its input file may
   have `body`.
 - **FR-009**: The response check applies to writes as to reads: JSON, at most 256 KiB, never
@@ -459,8 +464,8 @@ agent writes before alpha.2, and the onboarding runs there.
   credential whose role can't change the data model, and an admin credential only for setup.
 - **FR-011**: The neutral fixture app gains create and update routes, and the server and browser
   tests cover writes: approval with the body shown, denial with no change, Allow, Ask for all
-  writes, operation ID replay and conflict, an unknown outcome not resent, a refused body field, a
-  refused undeclared query field, and the outcome of a 2xx whose response fails the check.
+  writes, operation ID replay and conflict, an unknown outcome not resent, a body over the limit or
+  not JSON, a refused undeclared query field, and the outcome of a 2xx whose response fails the check.
 - **FR-012**: The Twenty kit (decision 8) declares the Editor and Setup roles, their routes and
   two credentials, and passes the parser.
 - **FR-013**: [Give an external agent access to one app](../../docs/apps/agent-access.md), 005's
