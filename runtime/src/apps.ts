@@ -584,7 +584,7 @@ export async function deleteVolumes(project: string): Promise<void> {
 // Knowledge bases (journey 014): volumes that belong to Your Space, which it mounts in the apps the
 // owner gives them to. Removing an app, or deleting its data, never deletes one.
 
-/** The user and group that own a new knowledge base's folder: most self-hosted images run as 1000. */
+/** Your Space's user and group, which own a new knowledge base's folder: Your Space owns the files and apps lease them. */
 export const KNOWLEDGE_OWNER = "1000:1000";
 
 /** This installation's knowledge base volume, or undefined when there is none or it isn't Your Space's. */

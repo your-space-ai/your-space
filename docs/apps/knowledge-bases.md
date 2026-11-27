@@ -40,11 +40,12 @@ others.
 
 ## Files and users
 
-Your Space mounts a knowledge base read-write in every app given it. What an app can do with each
-file there depends on the file's permissions and the user the app runs as. A new knowledge base's
-folder belongs to user and group 1000, is writable by everyone, and gives new files its group, so
-apps running as different users can all create files there. An app running as another user than
-1000 may not be able to change a file another user wrote; most self-hosted images run as user 1000.
+A knowledge base and its files belong to Your Space, which lends them to the apps you give it: the
+apps use the files but don't own them. Your Space mounts a knowledge base read-write in every app
+given it. A new knowledge base's folder belongs to user and group 1000, Your Space's, is writable by
+everyone, and gives new files its group, so apps running as any user can create files there.
+Between apps, a file keeps the permissions the app that wrote it gave it: an app running as another
+user may not be able to change it.
 
 When two apps change the same file, the last one to write it wins. Your Space doesn't merge them.
 
