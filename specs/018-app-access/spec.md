@@ -84,8 +84,8 @@ After journey 017 (PRs #141–#143):
 
 ## 6. How a Route That Asks Is Written
 
-**Decided (2026-11-27):** as recommended; the owner: "thats fine". a method and a path. Each path segment is literal or `*`, which matches any one
-segment; the query isn't matched. `DELETE /rest/companies/*` asks before deleting any company;
+**Decided (2026-11-27):** a method and a path, as recommended; the owner: "thats fine". Each path
+segment is literal or `*`, which matches any one segment; the query isn't matched. `DELETE /rest/companies/*` asks before deleting any company;
 `POST /rest/metadata/*` asks before creating any object or field. The owner adds and removes them in
 **Agents**.
 
