@@ -1,11 +1,11 @@
 // Synced knowledge bases (journey 014, decision 2026-11-25 "Knowledge bases"): long-running
 // containers of stock rclone's remote control (`rclone rcd`), one for each synced knowledge base, sync
 // it with its Google Drive folder. The runtime manager only runs them: the official image pinned to its
-// digest, as user 1000, without capabilities, with a read-only root, no engine socket and no FUSE, on a
-// network whose only way out is a Squid of their own that lets through only Google's token and Drive
-// hosts. rclone's configuration is in memory only (`--config ""`), and its remote control listens only
-// on a Unix socket in a folder of its own of a volume that only the server mounts whole (ys-sync),
-// owned by user 1000 with mode 0700. The server creates the knowledge base's remote there, with its
+// digest, with a read-only root, no engine socket and no FUSE, on a network whose only way out is a
+// Squid of their own that lets through only Google's token and Drive hosts. rclone's configuration is
+// in memory only (`--config ""`), and its remote control listens only on a Unix socket in a folder of
+// its own of a volume that only the server mounts whole (ys-sync), owned by user 1000, the server's,
+// with mode 0700. The server creates the knowledge base's remote there, with its
 // client and token, and starts each bisync there (server/src/apps/knowledge-sync.ts): nothing secret
 // passes through the runtime manager, and none is in a container's environment, command or files.
 //
@@ -17,6 +17,15 @@
 // its socket. Connecting or disconnecting a knowledge base adds or removes its container only. Each
 // stops with SIGINT, bisync's graceful shutdown, so a run under way saves its state for the next one.
 // Once Your Space is stopping (/stop-all), nothing here starts.
+//
+// Your Space owns a knowledge base's files and apps lease them (decision 2026-11-27): nothing an app
+// sets, owner or mode, may stop the sync, and apps must be able to change what it writes. So rclone
+// runs as root in its container with only DAC_OVERRIDE and FOWNER, every other capability dropped and
+// no new privileges: it reads and writes every file and folder of its knowledge base, and sets their
+// times, whoever made them, as a folder an app made 0755 or a file it made 0600. Docker makes the
+// capabilities it adds effective only for root: as user 1000 they are in the bounding set alone
+// (Docker 28.3.3 and 29). And with a umask of 0, so what it writes is readable and writable by every
+// user (0666, 0777), whatever user an app runs as; never a file's owner or mode an app gave it.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { EGRESS_IMAGE, EGRESS_PORT, EGRESS_SERVICE, egressConfig, egressService, escapeDollars, knowledgeStateVolume, knowledgeSyncLabels, knowledgeVolume, pinnedImage } from "./adapter.ts";
@@ -63,18 +72,27 @@ export const JOB_EXPIRY = "1h";
 export const STOP_GRACE_S = 100;
 /** The most knowledge bases that sync at once: a container each. */
 export const MAX_SYNCED = 100;
+/**
+ * The only capabilities rclone's container has: reading and writing any file and folder whatever its
+ * mode (DAC_OVERRIDE), and setting the times of, or deleting in a sticky folder, those other users own
+ * (FOWNER). Effective only as root: Docker gives a container's other users none of them.
+ */
+export const SYNC_CAPABILITIES = ["DAC_OVERRIDE", "FOWNER"];
 const STOPPING = "Your Space is stopping, so nothing syncs until it starts again.";
 const SYNC_MEMORY = "1g";
 
 /**
- * rclone's remote control, and only that. A socket an earlier container left behind is removed first:
- * rclone doesn't replace one, and wouldn't start; so is anything else there, as a folder of that
- * name. `--rc-no-auth` because rclone refuses to create a
- * remote over a remote control without authentication, and the socket's file permissions are its
- * authentication. `-v`, JSON and no colour: the server reads each bisync's log from its result.
+ * rclone's remote control, and only that, with a umask of 0: the files and folders it writes in the
+ * knowledge base are for every app to change, whatever user the app runs as. A socket an earlier
+ * container left behind is removed first: rclone doesn't replace one, and wouldn't start; so is
+ * anything else there, as a folder of that name. `--rc-no-auth` because rclone refuses to create a
+ * remote over a remote control without authentication, and the socket's folder is its
+ * authentication: the socket is root's and writable by everyone, and only user 1000, the server's,
+ * opens its folder. `-v`, JSON and no colour: the server reads each bisync's log from its result.
  */
 export function rcloneCommand(): string {
   return [
+    "umask 0",
     `rm -rf ${RC_SOCKET}`,
     `exec rclone rcd --config '' --rc-addr unix://${RC_SOCKET} --rc-no-auth --rc-job-expire-duration ${JOB_EXPIRY} -v --use-json-log --color NEVER`,
   ].join(" && ");
@@ -138,10 +156,13 @@ function rcloneServiceOf(spec: SyncServiceSpec, name: string, proxy: string): Re
     image: spec.rclone,
     entrypoint: ["/bin/sh", "-c"],
     command: [rcloneCommand()],
-    user: "1000:1000",
+    // Root in its container, with only the two capabilities that let it read, write and set the times of
+    // any file of its knowledge base: an app's owner or mode never stops a sync (decision 2026-11-27).
+    user: "0:0",
     read_only: true,
     tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"],
     cap_drop: ["ALL"],
+    cap_add: SYNC_CAPABILITIES,
     security_opt: ["no-new-privileges:true"],
     // No secret: the server creates the remote over the socket.
     environment: { HOME: "/tmp", HTTPS_PROXY: proxy, HTTP_PROXY: proxy },
@@ -245,8 +266,9 @@ async function ensureImage(image: string): Promise<void> {
 
 /**
  * Whether the server runs in the engine's own user name space, as on an engine that remaps containers'
- * users, where Your Space's own containers are run so: rclone and the folders only it and the server
- * open then belong to user 1000 there too, so the socket's file permissions mean the same user to both.
+ * users, where Your Space's own containers are run so: the folders only the server and rclone open then
+ * belong to user 1000 there too, so they mean the same user to both, and rclone runs there with them,
+ * as root's capabilities reach only files of users its own name space maps.
  */
 async function serverUserns(): Promise<boolean> {
   const id = await installationContainer("server");
@@ -372,7 +394,7 @@ export function ensureSyncService(knowledgeBases: string[]): Promise<SyncService
       // others' containers run with theirs.
       for (const name of names) await ensureVolume(knowledgeStateVolume(INSTALLATION, name), knowledgeSyncLabels(INSTALLATION, name), "0700", usernsHost, !before.has(name));
       const socket = await socketVolume();
-      // Only user 1000, rclone's and the server's, reaches the sockets, each in a folder of its own.
+      // Only user 1000, the server's, and rclone's root reach the sockets, each in a folder of its own.
       await initKnowledge(socket, "0700", usernsHost, names);
       const fixture = fixtureEnabled();
       if (fixture) await ensureVolume(fixtureVolume(), { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "sync-fixture" }, "2777");

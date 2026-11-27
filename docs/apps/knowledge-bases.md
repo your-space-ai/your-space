@@ -40,19 +40,19 @@ others.
 
 ## Files and users
 
-Your Space mounts a knowledge base read-write in every app given it. What an app can do with each
-file there depends on the file's permissions and the user the app runs as. A new knowledge base's
-folder belongs to user and group 1000, is writable by everyone, and gives new files its group, so
-apps running as different users can all create files there. An app running as another user than
-1000 may not be able to change a file another user wrote; most self-hosted images run as user 1000.
-The sync with Google Drive runs as user 1000 too, so in a synced knowledge base it can't change the
-files, or write into the folders, of an app that runs as another user with the usual umask of 022.
-Such a sync stops with a permission error and waits for the owner's **Resync**. Before the error it
-may already have changed the Drive folder, deleting there files removed here; it deletes nothing
-here. A file the sync can't read fails each sync before it changes anything, and the sync is tried
-again a minute later. A resync, as the first sync after connecting is, stops on it instead, once it
-has copied the knowledge base's other files to Drive, and waits for **Resync** too. See
-[When a sync stops](../operate/google-drive.md#when-a-sync-stops).
+A knowledge base and its files belong to Your Space, which lends them to the apps you give it: the
+apps use the files but don't own them. Your Space mounts a knowledge base read-write in every app
+given it. A new knowledge base's folder belongs to user and group 1000, Your Space's, is writable by
+everyone, and gives new files its group, so apps running as any user can create files there.
+Between apps, a file keeps the permissions the app that wrote it gave it: an app running as another
+user may not be able to change it.
+
+Nothing an app sets stops the sync with Google Drive: whatever user the app runs as, and whatever
+modes it gives its files and folders, the sync reads and changes them, a folder the app made for
+itself and a file only it can read included. What the sync writes is readable and writable by
+everyone, so the app can still change it, replace it or delete it, though it can't change its mode
+or set its time to anything but now. A file that changed in Drive comes back that way too, even one
+the app had made readable only by itself.
 
 When two apps change the same file, the last one to write it wins. Your Space doesn't merge them.
 
@@ -137,14 +137,7 @@ service. The app finds them by listing `<path>`. The path must be absolute, isn'
 starting with a letter, digit or underscore. The app's own file can't mount anything at or inside it. See the
 [kit format](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
 
-An app that writes into knowledge bases should run as user 1000, or give the files it makes group
-read and write, and the folders group read, write and search (`rwx`): other apps, and the sync with
-Google Drive, which runs as user 1000, can then read and change them. A umask of 002 keeps those for
-files and folders the app makes with the usual modes, but can't add them to a mode the app sets
-itself, like `0700`. Even with them, a folder the app made while running as another user than 1000
-can't take a file from Drive or lose one deleted there, as only a folder's owner can set its
-modification time. Otherwise a
-sync can't change the app's files or write into the folders it made: it stops with a permission
-error until the owner's **Resync**, having already made its changes in Drive, deletions of files
-removed here included, but deleting nothing here.
-
+An app can run as any user, with any umask: Your Space owns the files in a knowledge base and lends
+them to the app, and the sync with Google Drive reads and changes whatever the app writes there,
+and writes files the app can change. Other apps given the same knowledge base can change the app's
+files only as their permissions allow.

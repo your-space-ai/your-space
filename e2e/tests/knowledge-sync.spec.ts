@@ -31,11 +31,23 @@ const SECRETS = [CLIENT_SECRET, "e2e-refresh-token", "e2e-access-token"];
 /** Already on the engine: the GitHub stand-in runs it. */
 const SHELL_IMAGE = "node:26-slim";
 /**
- * The tests' own containers run as user 1000 in the engine's own user name space, as rclone's does
- * when Your Space's containers run there, on an engine that remaps containers' users: the files they
- * write are then rclone's user's. On any other engine this changes nothing.
+ * The tests' own containers, which stand in for the owner's changes on either side, run as user 1000,
+ * Your Space's, in the engine's own user name space, as the server and rclone do when Your Space's
+ * containers run there, on an engine that remaps containers' users. On any other engine this changes
+ * nothing. rclone, root with two file capabilities, reads and changes whatever they write, and what it
+ * writes they can change (decision 2026-11-27).
  */
-const AS_RCLONE = ["--userns", "host", "--user", "1000:1000"];
+const AS_YOUR_SPACE = ["--userns", "host", "--user", "1000:1000"];
+/**
+ * An app's container as apps run: in the engine's default user name space, as another user than Your
+ * Space's, with the usual umask of 022 and no capabilities, the knowledge base at /knowledge/<name>.
+ */
+const APP_USER = "1234";
+async function inApp(script: string): Promise<string> {
+  const result = await docker(["run", "--rm", "--network", "none", "--user", `${APP_USER}:${APP_USER}`, "--cap-drop", "ALL", "-v", `${KB_VOLUME}:/knowledge/${KB}`, SHELL_IMAGE, "sh", "-c", `umask 022 && cd /knowledge/${KB} && ${script}`]);
+  if (result.code !== 0) throw new Error(`The app's script failed: ${result.stderr}`);
+  return result.stdout.trim();
+}
 
 let ownerCookies: Awaited<ReturnType<BrowserContext["cookies"]>> = [];
 
@@ -65,7 +77,7 @@ async function answerGoogle(page: Page): Promise<void> {
 
 /** Runs a shell script as user 1000 with a volume at /v: the knowledge base, or the stand-in for Drive. */
 async function shell(volume: string, script: string): Promise<string> {
-  const result = await docker(["run", "--rm", "--network", "none", ...AS_RCLONE, "-v", `${volume}:/v`, SHELL_IMAGE, "sh", "-c", script]);
+  const result = await docker(["run", "--rm", "--network", "none", ...AS_YOUR_SPACE, "-v", `${volume}:/v`, SHELL_IMAGE, "sh", "-c", script]);
   if (result.code !== 0) throw new Error(`The script failed: ${result.stderr}`);
   return result.stdout.trim();
 }
@@ -73,7 +85,7 @@ const here = (script: string) => shell(KB_VOLUME, `cd /v && ${script}`);
 const onDrive = (script: string) => shell(DRIVE_VOLUME, `cd /v/${FOLDER} && ${script}`);
 /** Changes both sides in one go, with no sync between them. */
 async function onBoth(local: string, drive: string): Promise<void> {
-  const result = await docker(["run", "--rm", "--network", "none", ...AS_RCLONE, "-v", `${KB_VOLUME}:/a`, "-v", `${DRIVE_VOLUME}:/r`, SHELL_IMAGE, "sh", "-c", `cd /a && ${local} && cd /r/${FOLDER} && ${drive}`]);
+  const result = await docker(["run", "--rm", "--network", "none", ...AS_YOUR_SPACE, "-v", `${KB_VOLUME}:/a`, "-v", `${DRIVE_VOLUME}:/r`, SHELL_IMAGE, "sh", "-c", `cd /a && ${local} && cd /r/${FOLDER} && ${drive}`]);
   if (result.code !== 0) throw new Error(`The script failed: ${result.stderr}`);
 }
 /** Waits for a side to answer what is expected, as a timed sync carries changes over; a script that fails, as on a file not there yet, answers its error. */
@@ -208,6 +220,37 @@ test("a knowledge base connected to a Drive folder syncs files created, changed 
   // The list shows how the sync stands.
   await page.goto("/knowledge");
   await expect(page.locator(`li[data-knowledge="${KB}"] [data-sync-line]`)).toContainText("Synced with Google Drive");
+});
+
+test("an app running as another user, with a folder and a file only it can read, never stops the sync, and can still edit what the sync writes", async ({ page }) => {
+  // Your Space owns the files, apps lease them (decision 2026-11-27): no owner or mode an app sets
+  // stops a sync, and the app can change what the sync writes.
+  await asOwner(page);
+  await page.goto(`/knowledge/${KB}`);
+  const main = page.locator('main[data-state="knowledge-base"]');
+  // The app makes a folder of its own and a file only it can read, with umask 022.
+  await inApp("mkdir own && echo 'Mine' > own/mine.md && echo 'Kept' > own/kept.md && echo 'Private' > own/private.md && chmod 600 own/private.md");
+  expect(await inApp("stat -c '%a %u' own own/private.md")).toBe(`2755 ${APP_USER}\n600 ${APP_USER}`);
+  // Both reach Drive.
+  await arrives(() => onDrive("cat own/mine.md own/private.md 2>&1"), "Mine\nPrivate");
+  // Drive adds a file into the app's folder, deletes one there, and changes the app's private file.
+  await onDrive("echo 'From Drive' > own/from-drive.md && rm own/kept.md && echo 'Changed on Drive' > own/private.md");
+  await arrives(() => inApp("ls own && cat own/private.md"), "from-drive.md\nmine.md\nprivate.md\nChanged on Drive");
+  await expect(main).toHaveAttribute("data-sync-result", "synced");
+  // What the sync wrote is the sync's, not the app's, and readable and writable by every app, whatever
+  // user it runs as.
+  expect(await inApp("stat -c '%a' own/from-drive.md own/private.md")).toBe("666\n666");
+  expect(await inApp("stat -c '%u' own/from-drive.md own/private.md")).not.toContain(APP_USER);
+  // The app edits both, and its edits reach Drive.
+  await inApp("echo 'Edited by the app' >> own/from-drive.md && echo 'Edited by the app' >> own/private.md");
+  await arrives(() => onDrive("cat own/from-drive.md own/private.md 2>&1"), "From Drive\nEdited by the app\nChanged on Drive\nEdited by the app");
+  await expect(main).toHaveAttribute("data-sync-result", "synced");
+  // The app removes its folder, in two steps under the deletion limit, and Drive follows.
+  await inApp("rm own/mine.md own/from-drive.md");
+  await arrives(() => onDrive("ls own"), "private.md");
+  await inApp("rm -r own");
+  await arrives(() => onDrive("ls"), "course\nfrom-drive.md\nfrom-here.md");
+  await expect(main).toHaveAttribute("data-sync-result", "synced");
 });
 
 test("the sync's network reaches nothing but its proxy, which refuses any host but Google's", async () => {
@@ -630,10 +673,20 @@ test("the client secret and token are in rclone's memory only: in no container's
     const config = (await docker(["inspect", id, "--format", "{{json .Config}} {{json .HostConfig.Binds}} {{json .Mounts}}"], false)).stdout;
     for (const secret of SECRETS) expect(config, id).not.toContain(secret);
   }
-  // Its rclone's container mounts no engine socket, runs as user 1000, and writes nothing else but its volumes and /tmp.
-  const rclone = JSON.parse((await docker(["inspect", RCLONE], false)).stdout)[0] as { Config: { User: string; Env: string[] }; HostConfig: { ReadonlyRootfs: boolean; CapDrop: string[] }; Mounts: { Destination: string }[] };
-  expect(rclone.Config.User).toBe("1000:1000");
-  expect(rclone.HostConfig).toMatchObject({ ReadonlyRootfs: true, CapDrop: ["ALL"] });
+  // Its rclone's container mounts no engine socket, runs as root with only the two file capabilities,
+  // which Docker makes effective, and nothing else, and writes nothing else but its volumes and /tmp.
+  const rclone = JSON.parse((await docker(["inspect", RCLONE], false)).stdout)[0] as {
+    Config: { User: string; Env: string[] };
+    HostConfig: { ReadonlyRootfs: boolean; CapDrop: string[]; CapAdd: string[] | null; Privileged: boolean; SecurityOpt: string[] };
+    Mounts: { Destination: string }[];
+  };
+  expect(rclone.Config.User).toBe("0:0");
+  expect(rclone.HostConfig).toMatchObject({ ReadonlyRootfs: true, CapDrop: ["ALL"], Privileged: false, SecurityOpt: ["no-new-privileges:true"] });
+  expect([...(rclone.HostConfig.CapAdd ?? [])].map((c) => c.replace(/^CAP_/, "")).sort()).toEqual(["DAC_OVERRIDE", "FOWNER"]);
+  // CAP_DAC_OVERRIDE (bit 1) and CAP_FOWNER (bit 3), effective and in the bounding set, and no other.
+  const caps = (await docker(["exec", RCLONE, "sh", "-c", "grep -E '^Cap(Eff|Bnd)' /proc/1/status"], false)).stdout;
+  expect(caps).toMatch(/CapEff:\s+000000000000000a/);
+  expect(caps).toMatch(/CapBnd:\s+000000000000000a/);
   expect(rclone.Mounts.map((m) => m.Destination).sort()).toEqual(["/knowledge/drive-notes", "/remote", "/run/ys-sync", "/state/drive-notes"]);
   // Every regular file is read: a match, or a file or folder the scan couldn't read, names its path,
   // never the value. grep -r can't be used, as it fails on rclone's socket.
@@ -642,8 +695,10 @@ test("the client secret and token are in rclone's memory only: in no container's
   expect(found.stdout.trim()).toBe("scanned");
   const said = await docker(["logs", RCLONE], false);
   for (const secret of SECRETS) expect(said.stdout + said.stderr).not.toContain(secret);
-  // Its socket is in a folder only user 1000, rclone's and the server's, opens.
+  // Its socket is in a folder only user 1000, the server's, and rclone's root open; the socket itself
+  // is root's, writable by everyone, as rclone runs with a umask of 0.
   expect((await docker(["exec", RCLONE, "stat", "-c", "%a %u", "/run/ys-sync"], false)).stdout.trim()).toBe("700 1000");
+  expect((await docker(["exec", RCLONE, "stat", "-c", "%a %u", "/run/ys-sync/rc.sock"], false)).stdout.trim()).toBe("777 0");
 });
 
 test("a restarted rclone syncs again once the server has made its remotes again", async ({ page }) => {

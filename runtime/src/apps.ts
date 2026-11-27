@@ -609,11 +609,11 @@ export async function knowledgeOf(name: string): Promise<{ Name: string; Labels:
  * everyone and with the setgid bit, so files any app writes there get group 1000. It runs the runtime
  * manager's own image, which is on the engine already, with no network and only the capabilities
  * changing the folder's owner and mode needs. A knowledge base's sync state, and the sync's socket,
- * get mode 0700 instead: only the sync, and the server, which run as user 1000, open them; with
- * `usernsHost`, in the engine's own user name space, as they then run (sync.ts).
+ * get mode 0700 instead: only the server, user 1000, and the sync, root with DAC_OVERRIDE, open them;
+ * with `usernsHost`, in the engine's own user name space, as they then run (sync.ts).
  */
 export function knowledgeInit(image: string, volume: string, mode: "2777" | "0700" = "2777", usernsHost = false, folders: string[] = []): Record<string, unknown> {
-  // Folders of the volume's own, each for user 1000 alone: the sync's sockets, one for each knowledge
+  // Folders of the volume's own, each for user 1000, the server, alone: the sync's sockets, one for each knowledge
   // base's rclone (sync.ts). Their names are knowledge bases' names, lowercase letters, digits and hyphens.
   const made = folders.map((f) => ` && mkdir -p /knowledge/${f} && chown ${KNOWLEDGE_OWNER} /knowledge/${f} && chmod 0700 /knowledge/${f}`).join("");
   return {
@@ -630,7 +630,7 @@ export function knowledgeInit(image: string, volume: string, mode: "2777" | "070
       ReadonlyRootfs: true,
       CapDrop: ["ALL"],
       // Root changes the folder's owner, then its mode, keeping the setgid bit, on a folder it no longer
-      // owns; and makes folders in it, which only user 1000 opens, when asked for some.
+      // owns; and makes folders in it, which only user 1000 (and the sync's root) opens, when asked for some.
       CapAdd: ["CHOWN", "FOWNER", "FSETID", ...(folders.length > 0 ? ["DAC_OVERRIDE"] : [])],
       SecurityOpt: ["no-new-privileges:true"],
       Memory: 32 * 1024 * 1024,

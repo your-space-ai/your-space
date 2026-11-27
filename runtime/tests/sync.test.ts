@@ -21,6 +21,7 @@ import {
   removeSync,
   restartSyncService,
   stopSyncs,
+  SYNC_CAPABILITIES,
   SYNC_HOSTS,
   syncNetwork,
   syncProject,
@@ -53,12 +54,18 @@ const file = (bases: string[], fixture = false) => syncServiceFile({ squid: "ubu
 const rcloneOf = (f: ComposeFile, name = "notes") => f.services[rcloneService(name)]!;
 
 describe("the sync's containers", () => {
-  it("runs stock rclone, pinned to its digest, as user 1000, without capabilities, privileges, engine socket, devices or FUSE", () => {
+  it("runs stock rclone, pinned to its digest, as root with only the two file capabilities, without privileges, engine socket, devices or FUSE", () => {
     const rclone = rcloneOf(file(["notes"]));
     expect(rclone.image).toBe(RCLONE_IMAGE);
     expect(RCLONE_IMAGE).toMatch(/^rclone\/rclone@sha256:[0-9a-f]{64}$/);
-    expect(rclone).toMatchObject({ user: "1000:1000", read_only: true, cap_drop: ["ALL"], security_opt: ["no-new-privileges:true"], restart: "unless-stopped" });
-    for (const key of ["privileged", "cap_add", "devices", "pid", "network_mode", "ipc"]) expect(rclone[key], key).toBeUndefined();
+    expect(rclone).toMatchObject({ read_only: true, cap_drop: ["ALL"], security_opt: ["no-new-privileges:true"], restart: "unless-stopped" });
+    // Your Space owns the files, apps lease them (decision 2026-11-27): root, as Docker makes the
+    // capabilities it adds effective only for root, with exactly these two, so no owner or mode an app
+    // sets stops a sync: reading and writing any file and folder, and setting their times.
+    expect(rclone.user).toBe("0:0");
+    expect(rclone.cap_add).toEqual(["DAC_OVERRIDE", "FOWNER"]);
+    expect(SYNC_CAPABILITIES).toEqual(["DAC_OVERRIDE", "FOWNER"]);
+    for (const key of ["privileged", "devices", "pid", "network_mode", "ipc", "group_add", "sysctls"]) expect(rclone[key], key).toBeUndefined();
     expect(JSON.stringify(rclone)).not.toMatch(/docker\.sock|\/dev\/fuse|SYS_ADMIN/);
     // Stopped as Ctrl+C stops rclone: bisync's graceful shutdown, which saves a run's state.
     expect(rclone).toMatchObject({ stop_signal: "SIGINT", stop_grace_period: "100s" });
@@ -69,8 +76,10 @@ describe("the sync's containers", () => {
     expect(rclone.entrypoint).toEqual(["/bin/sh", "-c"]);
     expect(rclone.command).toEqual([rcloneCommand()]);
     // Whatever an earlier container left there is removed first: rclone wouldn't start beside it.
+    // With a umask of 0, what it writes in the knowledge base is for every app to change, whatever user
+    // the app runs as, and the socket for the server to open, in a folder only the server's user opens.
     expect(rcloneCommand()).toBe(
-      `rm -rf ${RC_SOCKET} && exec rclone rcd --config '' --rc-addr unix://${RC_SOCKET} --rc-no-auth --rc-job-expire-duration 1h -v --use-json-log --color NEVER`,
+      `umask 0 && rm -rf ${RC_SOCKET} && exec rclone rcd --config '' --rc-addr unix://${RC_SOCKET} --rc-no-auth --rc-job-expire-duration 1h -v --use-json-log --color NEVER`,
     );
     expect(RC_SOCKET).toBe("/run/ys-sync/rc.sock");
     // The folder of the socket volume named after the knowledge base: the server reaches it at /run/ys-sync/notes/rc.sock.

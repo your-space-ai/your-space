@@ -112,9 +112,14 @@ the Compose project `<installation>_knowledge-sync`, stock `rclone/rclone` pinne
 (`YS_SYNC_IMAGE` in the runtime manager's environment, which `deploy/stack.yaml` sets, or 1.75.2's
 without it; only `rclone/rclone` pinned by `sha256` is accepted). It runs `rclone rcd --config ''
 --rc-addr unix:///run/ys-sync/rc.sock --rc-no-auth --rc-job-expire-duration 1h -v --use-json-log
---color NEVER`, after removing whatever an earlier container left at the socket's path, as user
-1000:1000 with a read-only root, `/tmp` in memory, `CapDrop: ALL`, `no-new-privileges`, no engine
-socket, no devices and no FUSE, and stops with `SIGINT` and 100 seconds' grace. Its environment is
+--color NEVER` with a umask of 0, after removing whatever an earlier container left at the socket's
+path, as user `0:0` with `CapDrop: ALL` and `CapAdd: [DAC_OVERRIDE, FOWNER]` only, a read-only root,
+`/tmp` in memory, `no-new-privileges`, no engine socket, no devices and no FUSE, and stops with
+`SIGINT` and 100 seconds' grace. Root, as Docker makes the capabilities it adds effective only for a
+container's root user, with exactly these two, so no owner or mode an app gives its files stops a
+sync (decision 2026-11-27): it reads and writes every file and folder of its knowledge base and
+sets their times. What it writes there is `0666` and `0777`, for apps of any user to change; it
+never changes the owner or mode of a file an app made. Its environment is
 `HOME` and the proxy's address only, and its command and labels hold no secret; its labels name its
 knowledge base only (`ai.your-space.knowledge`), so another knowledge base's change leaves its
 container as it is.
@@ -125,7 +130,9 @@ at `/state/<name>`, and the folder `<name>` of the volume `<installation>_ys-syn
 Compose file (labelled `com.docker.compose.volume=ys-sync`), as a volume subpath, at `/run/ys-sync`.
 The server alone mounts that volume whole, at `/run/ys-sync`, and reaches each knowledge base's
 remote control at `/run/ys-sync/<name>/rc.sock`; before each start the runtime manager gives the
-volume and each knowledge base's folder in it to user 1000 with mode 0700. The server gives rclone
+volume and each knowledge base's folder in it to user 1000 with mode 0700: the socket itself is
+root's and, with the umask of 0, writable by everyone, so that folder is what keeps it to the
+server, user 1000, and rclone's root, which `DAC_OVERRIDE` lets in. The server gives rclone
 the knowledge base with the local backend's `links` option (below), so a symbolic link syncs as a
 link and is never followed out of it; the container for each is defence in depth besides, as
 whatever a run does reaches nothing of another knowledge base, its listings or its socket. The
@@ -141,7 +148,7 @@ server sends selects it.
 
 ### What the server asks rclone
 
-The server (`server/src/apps/knowledge-sync.ts`) is the only client of the sockets, user 1000. It
+The server (`server/src/apps/knowledge-sync.ts`), user 1000, is the only client of the sockets. It
 asks the runtime manager for a container for every synced knowledge base, then, over each one's
 socket, for that knowledge base only:
 

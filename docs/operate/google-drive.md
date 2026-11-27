@@ -100,17 +100,13 @@ The knowledge base's page shows when it last synced, and what to do when a sync 
   stops, as [When a sync stops](#when-a-sync-stops) says, and writes nothing where the link leads. A link
   written relative to where it is, to a folder in the knowledge base itself, is followed: files of a
   Drive folder at its path are written where it leads, still in the knowledge base.
-- The sync runs as user 1000. Apps that write into a synced knowledge base should run as user
-  1000, as most self-hosted images do, or give the files they make group read and write, and the
-  folders group read, write and search. A umask of 002 keeps those for files and folders made with
-  the usual modes, but can't add them to a mode the app sets itself, like `0700`. Even then, a
-  folder an app made while running as another user than 1000 can't take a file from Drive or lose
-  one deleted in Drive, as only a folder's owner can set its modification time. Otherwise the sync can't change such an app's
-  files or write into the folders it made, and stops, as
-  [When a sync stops](#when-a-sync-stops) says. A file the sync can't read, as one only its app can,
-  fails each sync before it changes anything; the sync is tried again a minute later. A resync, as
-  the first sync after connecting and **Resync** are, stops on it instead, once it has copied the
-  knowledge base's other files to Drive, deleting nothing, and waits for **Resync**.
+- Your Space owns the knowledge base's files, and apps lease them: whatever user an app runs as,
+  and whatever modes it gives its files and folders, the sync reads and changes them, and the app
+  can change what the sync writes. A folder an app made for itself, or a file only it can read,
+  syncs both ways like any other. What the sync writes from Drive is readable and writable by
+  everyone, a file that changed in Drive included, even one the app had made readable only by
+  itself. An app can change, replace or delete such a file, but not change its mode or set its time
+  to anything but now. Between apps, a file keeps the modes the app that made it gave it.
 
 ## When a sync stops
 
@@ -136,15 +132,14 @@ side until you act.
   nothing is written where the link leads. Remove that folder in Drive, or remove the link in the
   knowledge base and its `.rclonelink` file in Drive, which otherwise brings the link back. Then
   choose **Resync**. Your Space doesn't resync by itself for this, even after an interruption.
-- **The sync needs a resync**, as when it couldn't write in the knowledge base: into a folder an app
-  made that user 1000 can't write into, or over a file it can't change. By then that sync may
-  already have changed the Drive folder: it makes its changes there first, so files deleted in the
-  knowledge base are deleted in Drive too, and files new here are copied there. In the knowledge
-  base it deletes nothing, so a file deleted in Drive is still here. Let user 1000 write there, then
-  choose **Resync**, which copies both ways and deletes nothing: a file deleted in Drive whose
-  deletion didn't reach the knowledge base goes back to Drive. While the folder stays one the sync
-  can't write into, Resync stops the same way. A Drive file that replaced a link's `.rclonelink`
-  file stops a sync this way too: the file is on both sides, and **Resync** syncs again.
+- **The sync needs a resync**, as when it couldn't write in the knowledge base, on a full disk for
+  example; an app's permissions never cause this. By then that sync may already have changed the
+  Drive folder: it makes its changes there first, so files deleted in the knowledge base are deleted
+  in Drive too, and files new here are copied there. In the knowledge base it deletes nothing, so a
+  file deleted in Drive is still here. Fix the cause, then choose **Resync**, which copies both ways
+  and deletes nothing: a file deleted in Drive whose deletion didn't reach the knowledge base goes
+  back to Drive. A Drive file that replaced a link's `.rclonelink` file stops a sync this way too:
+  the file is on both sides, and **Resync** syncs again.
 - **Google refused Your Space's access**, for example because you removed it in your
   [Google account](https://myaccount.google.com/permissions), the client's secret changed, or the
   app was left in **Testing**. **Knowledge** and the knowledge base's page show **Reconnect**, which
@@ -188,10 +183,13 @@ and the token to the new key with apps' settings, so syncs go on.
 Each synced knowledge base has a container of its own: rclone's official image, version 1.75.2,
 pinned to its digest for every processor it is published for, running rclone's own remote control
 (`rclone rcd`). Your Space adds no sync program of its own. The runtime manager runs each container
-as user 1000, without capabilities, with a read-only file system, no access to the Docker engine and
-no FUSE. It mounts only its own knowledge base, that knowledge base's sync state, and its own folder
-of a volume, `ys-sync`, that only Your Space's server mounts whole, where rclone's remote control
-listens on a Unix socket only user 1000 opens; apps never mount it. Links sync as links, as
+as root in the container with only two capabilities, `DAC_OVERRIDE` and `FOWNER`, so that no
+user or mode an app gives its files stops the sync, and with a umask of 0, so that apps running as
+any user can change what it writes. Every other capability is dropped, and it has no new privileges,
+a read-only file system, no access to the Docker engine and no FUSE. It mounts only its own
+knowledge base, that knowledge base's sync state, and its own folder of a volume, `ys-sync`, that
+only Your Space's server mounts whole, where rclone's remote control listens on a Unix socket in a
+folder only user 1000, the server's, opens; apps never mount it. Links sync as links, as
 [What a sync does](#what-a-sync-does) says, and as each container sees one knowledge base only, no
 sync can reach another besides. Their only network is one whose way out is an outbound proxy of the
 sync's own, which lets through only Google's token endpoint (`oauth2.googleapis.com`) and the Drive
