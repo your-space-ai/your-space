@@ -329,6 +329,10 @@ function PaneWorkspace({
 }
 
 function Pane({ app, onClose }: { app: AppSummary; onClose?: () => void }) {
+  // Reload remounts only this pane's frame, so the app loads again and fetches its data. The app is on
+  // its own origin, so the browser doesn't tell Your Space where in the app the frame is: it reopens
+  // at the address the pane opened it at, as switching apps and back does.
+  const [loads, setLoads] = useState(0);
   // At its link, the app is outside the gate: its own sign-in and cookies decide, and its origin is the
   // link. Its Caddy lets only Your Space frame it while the pane shows it there.
   const link = app.publish?.link ?? null;
@@ -350,6 +354,16 @@ function Pane({ app, onClose }: { app: AppSummary; onClose?: () => void }) {
         <strong>{app.title}</strong>
         {app.state !== "running" ? <span className={`state state-${app.state}`}>{STATE_LABEL[app.state]}</span> : null}
         <span className="spacer" />
+        {src ? (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setLoads((count) => count + 1)}
+            aria-label={`Reload ${app.title}`}
+          >
+            Reload
+          </button>
+        ) : null}
         <Link to="/apps/$name" params={{ name: app.name }}>
           Details
         </Link>
@@ -364,7 +378,7 @@ function Pane({ app, onClose }: { app: AppSummary; onClose?: () => void }) {
         ) : null}
       </header>
       {src ? (
-        <iframe data-testid="app-pane" title={app.title} src={src} />
+        <iframe key={loads} data-testid="app-pane" title={app.title} src={src} />
       ) : atLink ? (
         <div className="page" aria-busy="true">
           <p className="muted">{`${app.title} shows here as soon as its published port is ready to show it inside Your Space.`}</p>

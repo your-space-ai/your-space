@@ -216,3 +216,25 @@ test("a saved view changes on explicit update, and a layout link from before ope
   await page.getByRole("button", { name: "Update view" }).click();
   await expect.poll(() => views[0]!.composition.apps).toEqual(["notes"]);
 });
+
+test("reload loads one pane's app again and leaves the other panes and the page as they were", async ({ page }) => {
+  await fixture(page);
+  const loads: string[] = [];
+  page.on("request", (request) => {
+    if (request.resourceType() === "document") loads.push(new URL(request.url()).hostname);
+  });
+  await page.goto("/open/notes?with=calendar,outside");
+  await input(page, "notes").fill("before reload");
+  await input(page, "calendar").fill("kept");
+  const count = (host: string) => loads.filter((name) => name === host).length;
+  const before = { notes: count("notes.example.test"), calendar: count("calendar.example.test") };
+  // A keyboard user reaches the control by its name, which says which app it reloads.
+  await section(page, "notes").getByRole("button", { name: "Reload notes", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(input(page, "notes")).toHaveValue("");
+  expect(count("notes.example.test")).toBe(before.notes + 1);
+  expect(count("calendar.example.test")).toBe(before.calendar);
+  await expect(input(page, "calendar")).toHaveValue("kept");
+  // An app the pane can't show has nothing to reload.
+  await expect(section(page, "outside").getByRole("button", { name: /^Reload/ })).toHaveCount(0);
+});
