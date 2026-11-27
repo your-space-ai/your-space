@@ -143,6 +143,21 @@ it("sends each route with only its own credential, and never a route whose crede
   });
   expect((await invoke(t.db, key, verifier, { installationId: installation, actionId: "list" })).status).toBe("unknown");
   await t.pool.query("update agent_credential set credential=$2 where app_id=$1 and name='setup'", [installation, encrypt(key, admin)]);
+  // A write the app confirmed stays succeeded when the bound credentials can't be read again.
+  vi.mocked(dispatchAppAction).mockImplementationOnce(async () => {
+    await t.pool.query("update agent_credential set credential='unreadable' where app_id=$1 and name='setup'", [installation]);
+    return { status: 201, body: { ok: true }, usable: true };
+  });
+  const confirmed = await invoke(t.db, key, verifier, { installationId: installation, actionId: "create", input: { body: {} } });
+  expect(confirmed).toEqual({ id: confirmed.id, status: "succeeded" });
+  await t.pool.query("update agent_credential set credential=$2 where app_id=$1 and name='setup'", [installation, encrypt(key, admin)]);
+  // A refusal reads nothing again: it stays refused even if the credentials changed meanwhile.
+  vi.mocked(dispatchAppAction).mockImplementationOnce(async () => {
+    await t.pool.query("update agent_credential set credential='unreadable' where app_id=$1 and name='setup'", [installation]);
+    return { status: 404, body: null, usable: false };
+  });
+  expect((await invoke(t.db, key, verifier, { installationId: installation, actionId: "list" })).status).toBe("refused");
+  await t.pool.query("update agent_credential set credential=$2 where app_id=$1 and name='setup'", [installation, encrypt(key, admin)]);
 
   // Replacing the admin credential withdraws only the setup role from the grant.
   const third = await binding({ revision: second.revision, enabledRoles: ["editor", "setup"], credentials: { setup: admin + "-2" } });
