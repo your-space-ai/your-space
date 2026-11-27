@@ -14,6 +14,8 @@ export interface AgentRoute {
   approval?: "ask" | "allow";
   pathParams?: Fields;
   queryFields?: Fields;
+  /** With named `credentials`, the one this route is sent with. */
+  credential?: string;
 }
 /** Fields of the write routes cut on 2026-11-23: Your Space no longer checks bodies or matches retries. */
 const CUT_FIELDS = ["bodyFields", "operationId", "expectedRevision", "receipt"];
@@ -26,8 +28,14 @@ const NO_OUTPUT_FIELDS =
   "outputFields was removed: Your Space passes the app's JSON response to the agent unchanged. Remove outputFields from the route.";
 /** The largest app result, in bytes of JSON, that an agent gets; the transport stops reading past it. */
 export const AGENT_RESULT_LIMIT = 256 * 1024;
+type Inject = { location: "header"; name: string; scheme?: "Bearer" };
+/**
+ * A kit names one `credential`, as before spec 017, or several `credentials`, each route naming the
+ * one it is sent with, so a setup role can use an admin credential that no record role carries.
+ */
 export interface AgentAccess {
-  credential: { binding: string; inject: { location: "header"; name: string; scheme?: "Bearer" } };
+  credential?: { binding: string; inject: Inject };
+  credentials?: Record<string, { inject: Inject }>;
   roles: Record<string, { title: string; routes: string[] }>;
   routes: Record<string, AgentRoute>;
 }
@@ -83,7 +91,7 @@ function parseRoute(value: unknown): AgentRoute {
   const declared = mapping(value);
   check(!CUT_FIELDS.some((name) => Object.hasOwn(declared, name)), ROUTE_SHAPE);
   check(!Object.hasOwn(declared, "outputFields"), NO_OUTPUT_FIELDS);
-  const r = keys(value, ["method", "path", "effect", "approval", "pathParams", "queryFields"]);
+  const r = keys(value, ["method", "path", "effect", "approval", "pathParams", "queryFields", "credential"]);
   const { method, path, effect, approval } = r;
   check(
     (method === "GET" && effect === "read") ||
@@ -93,6 +101,10 @@ function parseRoute(value: unknown): AgentRoute {
   check(approval === undefined || approval === "allow" || approval === "ask", "Unknown approval setting.");
   check(typeof path === "string" && path.startsWith("/") && path.length <= 512, "Expected a relative route path.");
   const route = { method, path, ...(effect ? { effect } : {}), approval } as AgentRoute;
+  if (r.credential !== undefined) {
+    check(allowedName(r.credential, id), "Invalid credential name.");
+    route.credential = r.credential;
+  }
   for (const slot of ["pathParams", "queryFields"] as const) {
     if (r[slot] !== undefined) route[slot] = parseFields(r[slot]);
   }
@@ -109,14 +121,9 @@ function parseRoute(value: unknown): AgentRoute {
   check(params.size === 0, "Unused path parameter.");
   return route;
 }
-export function parseAgentAccess(value: unknown): AgentAccess {
-  const a = keys(value, ["credential", "roles", "routes"]);
-  const credential = keys(a.credential, ["binding", "inject"]);
-  const inject = keys(credential.inject, ["location", "name", "scheme"]);
-  check(
-    allowedName(credential.binding, id) && inject.location === "header" && typeof inject.name === "string",
-    "Invalid credential binding.",
-  );
+function parseInject(value: unknown): Inject {
+  const inject = keys(value, ["location", "name", "scheme"]);
+  check(inject.location === "header" && typeof inject.name === "string", "Invalid credential binding.");
   const authName = inject.name.toLowerCase();
   check(
     authName === "authorization"
@@ -124,10 +131,34 @@ export function parseAgentAccess(value: unknown): AgentAccess {
       : ["x-api-key", "api-key", "secretkey"].includes(authName) && inject.scheme === undefined,
     "Unsupported credential header or scheme.",
   );
+  return { location: "header", name: inject.name, ...(authName === "authorization" ? { scheme: "Bearer" as const } : {}) };
+}
+export function parseAgentAccess(value: unknown): AgentAccess {
+  const a = keys(value, ["credential", "credentials", "roles", "routes"]);
+  check((a.credential === undefined) !== (a.credentials === undefined), "Declare either credential or credentials.");
+  let single: AgentAccess["credential"];
+  let named: AgentAccess["credentials"];
+  if (a.credential !== undefined) {
+    const credential = keys(a.credential, ["binding", "inject"]);
+    check(allowedName(credential.binding, id), "Invalid credential binding.");
+    single = { binding: credential.binding, inject: parseInject(credential.inject) };
+  } else {
+    named = {};
+    const entries = Object.entries(mapping(a.credentials));
+    check(entries.length >= 1 && entries.length <= 8, "Declare between one and eight credentials.");
+    for (const [name, declared] of entries) {
+      check(allowedName(name, id), "Invalid credential name.");
+      named[name] = { inject: parseInject(keys(declared, ["inject"]).inject) };
+    }
+  }
   const routes: AgentAccess["routes"] = {};
   for (const [name, declaration] of Object.entries(mapping(a.routes))) {
     check(allowedName(name, id), "Invalid route ID.");
     const route = parseRoute(declaration);
+    check(
+      named ? route.credential !== undefined && Object.hasOwn(named, route.credential) : route.credential === undefined,
+      "With credentials, each route names one of them; with one credential, routes name none.",
+    );
     const segments = route.path.toLowerCase().replace(/\/$/, "").split("/");
     for (const other of Object.values(routes)) {
       if (other.method !== route.method) continue;
@@ -155,16 +186,28 @@ export function parseAgentAccess(value: unknown): AgentAccess {
       roleRoutes.every((key) => Object.hasOwn(routes, key)),
       "Role includes an unknown route.",
     );
+    // A grant carries one app credential, so granting a record role never carries a setup role's key.
+    check(new Set(roleRoutes.map((key) => routes[key]!.credential)).size <= 1, "A role's routes all use one credential.");
     roles[name] = { title: role.title, routes: roleRoutes };
   }
-  return {
-    credential: {
-      binding: credential.binding,
-      inject: { location: "header", name: inject.name, ...(authName === "authorization" ? { scheme: "Bearer" as const } : {}) },
-    },
-    roles,
-    routes,
-  };
+  return { ...(single ? { credential: single } : { credentials: named }), roles, routes };
+}
+/** The credentials a kit declares, by name in sorted order (a stored kit's keys don't keep theirs): a kit with one `credential` names it by its binding. */
+export function credentialNames(access: AgentAccess): string[] {
+  return access.credentials ? Object.keys(access.credentials).sort() : access.credential ? [access.credential.binding] : [];
+}
+/** The name and injection of the credential a route is sent with. */
+export function routeCredential(access: AgentAccess, route: AgentRoute): { name: string; inject: Inject } {
+  if (access.credentials) {
+    const name = route.credential!;
+    return { name, inject: access.credentials[name]!.inject };
+  }
+  return { name: access.credential!.binding, inject: access.credential!.inject };
+}
+/** The credential a role's routes use, or none for a role with no routes. */
+export function roleCredential(access: AgentAccess, role: string): string | undefined {
+  const first = access.roles[role]?.routes[0];
+  return first && access.routes[first] ? routeCredential(access, access.routes[first]).name : undefined;
 }
 function validateInput(fields: Fields, values: unknown): Record<string, string | boolean | number> {
   const result: Record<string, string | boolean | number> = {};
@@ -213,9 +256,9 @@ export function renderAgentRequest(
   if (search.size) path += "?" + search.toString();
   return { method: route.method, path, headers: {}, ...(body === undefined ? {} : { body }) };
 }
-export function agentCredentialHeader(access: AgentAccess, secret: string): Record<string, string> {
+export function agentCredentialHeader(inject: Inject, secret: string): Record<string, string> {
   check(typeof secret === "string" && /^[\x21-\x7e]{1,8192}$/.test(secret), "Invalid app credential.");
-  const { name, scheme } = access.credential.inject;
+  const { name, scheme } = inject;
   return { [name]: scheme ? scheme + " " + secret : secret };
 }
 const JSON_ESCAPE = /\\(?:u([\da-fA-F]{4})|(["\\/bfnrt]))/g;

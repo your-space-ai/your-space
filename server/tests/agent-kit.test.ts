@@ -106,7 +106,7 @@ describe("a pinned agent-access kit", () => {
   it("renders only kit-declared input and sorted query parameters", () => {
     expect(renderAgentRequest(list, { query: { search: "blue & green" } }).path).toBe("/items?search=blue+%26+green");
     expect(renderAgentRequest(show, { path: { id: 7 } })).toEqual({ method: "GET", path: "/items/7", headers: {} });
-    expect(agentCredentialHeader(access, "synthetic-key")).toEqual({ Authorization: "Bearer synthetic-key" });
+    expect(agentCredentialHeader(access.credential!.inject, "synthetic-key")).toEqual({ Authorization: "Bearer synthetic-key" });
   });
 
   it("rejects unknown fields, a body and unsafe parameter segments", () => {

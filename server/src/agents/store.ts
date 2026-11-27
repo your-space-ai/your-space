@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import type pg from "pg";
 import type { Db } from "../db/client.ts";
-import type { AgentAccess } from "../apps/agent-kit.ts";
+import { credentialNames, roleCredential, type AgentAccess } from "../apps/agent-kit.ts";
 import { decrypt } from "../apps/settings.ts";
 
 export class AgencyError extends Error {
@@ -74,7 +74,8 @@ export async function transaction<T>(db: Db, work: (client: pg.PoolClient) => Pr
 export async function catalog(client: pg.PoolClient, id: string) {
   const row = (
     await client.query(
-      `select a.id,a.name,a.title,a.kit,a.kit_source,a.commit,a.interface,a.state,a.desired,b.credential,b.enabled_roles,b.revision,b.kit_digest,b.credential_revision
+      `select a.id,a.name,a.title,a.kit,a.kit_source,a.commit,a.interface,a.state,a.desired,b.enabled_roles,b.revision,b.kit_digest,b.credential_revision,
+    (select json_object_agg(c.name,c.credential) from agent_credential c where c.app_id=a.id) as credentials
     from app a left join agent_binding b on b.app_id=a.id where a.id=$1 and a.desired<>'removed' for share of a`,
       [id],
     )
@@ -83,7 +84,10 @@ export async function catalog(client: pg.PoolClient, id: string) {
   if (!row || !declared || !row.interface) forbidden();
   const access = withoutCutWrites(declared);
   const digest = hash(JSON.stringify([row.kit, row.kit_source, row.commit]));
-  return { row, access, digest, current: row.kit_digest === digest };
+  const current = row.kit_digest === digest;
+  // The encrypted credentials bound under the present kit, by name.
+  const bound: Record<string, string> = current ? (row.credentials ?? {}) : {};
+  return { row, access, digest, current, bound };
 }
 /**
  * A kit stored before writes were cut (2026-11-23, Alpha scope) may still declare write routes with
@@ -149,7 +153,7 @@ export async function dashboard(client: pg.PoolClient, owner: string, dataKey: s
   ).rows;
   const installations = [];
   for (const { id } of apps) {
-    const { row, access, current } = await catalog(client, id);
+    const { row, access, current, bound } = await catalog(client, id);
     installations.push({
       id,
       name: row.name,
@@ -157,7 +161,10 @@ export async function dashboard(client: pg.PoolClient, owner: string, dataKey: s
       source: row.kit_source,
       roles: access.roles,
       routes: access.routes,
-      bound: current && !!row.credential,
+      bound: Object.keys(bound).length > 0,
+      named: !!access.credentials,
+      credentials: credentialNames(access).map((name) => ({ name, bound: Object.hasOwn(bound, name) })),
+      roleCredentials: Object.fromEntries(Object.keys(access.roles).map((role) => [role, roleCredential(access, role)])),
       enabledRoles: current ? row.enabled_roles : [],
       revision: row.revision ?? 0,
     });

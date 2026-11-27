@@ -23,6 +23,31 @@ routes:
 Put writes in roles of their own, and deletes in roles apart from creates and edits, so you grant
 each on purpose.
 
+### A setup role with its own credential
+
+A kit can name several app credentials, and each route names the one it is sent with. That lets a
+setup role, such as one that changes the app's data model, use an admin credential that no record
+role carries:
+
+```yaml
+agentAccess:
+  credentials:
+    records: {inject: {location: header, name: Authorization, scheme: Bearer}}
+    setup: {inject: {location: header, name: Authorization, scheme: Bearer}}
+  roles:
+    editor: {title: Editor, routes: [create-item]}
+    setup: {title: Setup, routes: [create-field]}
+  routes:
+    create-item: {method: POST, path: /items, credential: records}
+    create-field: {method: POST, path: /meta/fields, credential: setup}
+```
+
+A role's routes all name one credential, and **Agents** shows which one beside each role. Bind each
+credential separately, each with the narrowest role in the app its routes need. A route whose
+credential isn't bound is unavailable, a request carries only its route's credential, and Your Space
+refuses a response that contains any credential bound to the app. Replacing a credential withdraws
+the roles that use it from existing grants.
+
 Create a named agent. Grant it roles for this installation and choose when each route asks you
 first. A route set to Ask or Allow here overrides the kit's recommendation; otherwise the kit's
 recommendation applies. A write without one asks you first, and a read without one runs directly.

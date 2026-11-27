@@ -2,7 +2,7 @@
 
 The gateway contract defines owner controls, agent access and the results returned to each caller.
 
-**Writes (2026-11-26, [journey 017](../../017-agent-writes/spec.md)).** The input gains `body`, a write's JSON of at most 32 KiB, sent to the app as it is. The gateway keeps no operation ID or expected revision and doesn't match retries; a write's 2xx response that can't be passed on is `succeeded` without a result. Before that, **alpha scope (2026-11-23):** agents only read: every route is a GET with `effect: read`, so invocations carry no body, operation ID or expected revision, and nothing reconciles an uncertain write. Approvals, grants, keys and request outcomes stay. The rows below describe reads; see the [alpha scope](../../../docs/architecture/decisions.md#alpha-scope).
+**Writes (2026-11-26, [journey 017](../../017-agent-writes/spec.md)).** The input gains `body`, a write's JSON of at most 32 KiB, sent to the app as it is. The gateway keeps no operation ID or expected revision and doesn't match retries; a write's 2xx response other than `202 Accepted` that can't be passed on is `succeeded` without a result, and a `202` is `unknown`, as it is for a read. Before that, **alpha scope (2026-11-23):** agents only read: every route is a GET with `effect: read`, so invocations carry no body, operation ID or expected revision, and nothing reconciles an uncertain write. Approvals, grants, keys and request outcomes stay. The rows below describe reads; see the [alpha scope](../../../docs/architecture/decisions.md#alpha-scope).
 
 | Caller | Operation | Contract |
 | --- | --- | --- |

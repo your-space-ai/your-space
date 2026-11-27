@@ -1,5 +1,5 @@
 kit: 2
-source: {repo: ys-fixtures/records, path: compose.yaml, commit: b1f4251b4e5dfa7acd9f1cce1968fe5e6272d819}
+source: {repo: ys-fixtures/records, path: compose.yaml, commit: e35d317876d749aaeece94b1a33dbb291f91feb3}
 name: records
 interface: {service: app, port: 8080}
 agentAccess:

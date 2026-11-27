@@ -2,7 +2,7 @@ import type pg from "pg";
 import { sampleDenial } from "./denials.ts";
 import type { Db } from "../db/client.ts";
 import { decrypt, encrypt } from "../apps/settings.ts";
-import { agentCredentialHeader, isWrite, passAgentResult, renderAgentRequest } from "../apps/agent-kit.ts";
+import { agentCredentialHeader, isWrite, passAgentResult, renderAgentRequest, routeCredential } from "../apps/agent-kit.ts";
 import { dispatchAppAction } from "./transport.ts";
 import {
   AgencyError,
@@ -36,10 +36,14 @@ async function permissions(client: pg.PoolClient, who: Who, id: string) {
   const grant = (await client.query("select * from agent_grant where agent_id=$1 and app_id=$2", [who.agent, id]))
     .rows[0];
   const allowed = new Set<string>();
-  if (install.current && install.row.credential && grant) {
+  if (install.current && grant) {
     for (const role of grant.roles) {
       if (install.row.enabled_roles.includes(role) && Object.hasOwn(install.access.roles, role)) {
-        for (const action of install.access.roles[role]!.routes) allowed.add(action);
+        for (const action of install.access.roles[role]!.routes) {
+          // A route whose credential isn't bound is unavailable; nothing falls back to another one.
+          const route = install.access.routes[action];
+          if (route && Object.hasOwn(install.bound, routeCredential(install.access, route).name)) allowed.add(action);
+        }
       }
     }
   }
@@ -163,7 +167,10 @@ async function admit(
   }
   const outcome = { id, status };
   if (status === "pending") return { outcome };
-  const secret = decrypt(dataKey, row.credential);
+  // The request carries only its route's credential; a response may echo none of the installation's.
+  const { inject, name } = routeCredential(access, route);
+  const secrets = Object.fromEntries(Object.entries(install.bound).map(([key, value]) => [key, decrypt(dataKey, value)]));
+  const secret = secrets[name]!;
   const args = {
     installation: {
       id: row.id,
@@ -173,9 +180,9 @@ async function admit(
       interfacePort: row.interface.port,
     },
     ...request,
-    headers: { ...request.headers, ...agentCredentialHeader(access, secret) },
+    headers: { ...request.headers, ...agentCredentialHeader(inject, secret) },
   };
-  return { outcome, dispatch: { args, redact: [secret], write: isWrite(route) } };
+  return { outcome, dispatch: { args, redact: Object.values(secrets), write: isWrite(route) } };
 }
 async function run(db: Db, dataKey: string, admission: Admission): Promise<Outcome> {
   const { outcome, dispatch } = admission;
@@ -184,6 +191,14 @@ async function run(db: Db, dataKey: string, admission: Admission): Promise<Outco
   let result: unknown;
   try {
     const response = await dispatchAppAction(dispatch.args);
+    // A credential bound or replaced while the app answered is redacted too, along with those bound at
+    // admission. Read only for a response to pass on, so a failure here can't hide a refusal.
+    const redact = async () => {
+      const bound = await db.$client.query("select credential from agent_credential where app_id=$1", [
+        dispatch.args.installation.id,
+      ]);
+      return [...dispatch.redact, ...bound.rows.map((row) => decrypt(dataKey, row.credential))];
+    };
     if (response.status >= 200 && response.status < 300 && response.status !== 202) {
       // The app's JSON response, unchanged, unless it echoes the app credential, is too large or isn't
       // JSON. A read that can't be passed on stays unknown; a write was applied, so it succeeded, and the
@@ -192,13 +207,13 @@ async function run(db: Db, dataKey: string, admission: Admission): Promise<Outco
         status = "succeeded";
         if (response.usable) {
           try {
-            result = passAgentResult(response.body, dispatch.redact);
+            result = passAgentResult(response.body, await redact());
           } catch {
             // Withheld.
           }
         }
       } else if (response.usable) {
-        result = passAgentResult(response.body, dispatch.redact);
+        result = passAgentResult(response.body, await redact());
         status = "succeeded";
       }
     } else if (response.status >= 400 && response.status < 500 && response.status !== 408) status = "refused";

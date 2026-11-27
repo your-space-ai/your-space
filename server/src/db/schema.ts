@@ -285,6 +285,7 @@ export const agentBinding = pgTable("agent_binding", {
   appId: uuid("app_id")
     .primaryKey()
     .references(() => app.id, { onDelete: "cascade" }),
+  /** Unset since spec 017: the credentials are in agent_credential. */
   credential: text("credential"),
   enabledRoles: text("enabled_roles").array().notNull(),
   kitDigest: text("kit_digest").notNull(),
@@ -292,6 +293,22 @@ export const agentBinding = pgTable("agent_binding", {
   credentialRevision: integer("credential_revision").notNull().default(1),
   revision: integer("revision").notNull(),
 });
+/**
+ * The app credentials bound to an installation, one per name its kit declares (spec 017): a kit with
+ * one `credential` has one, named by its binding. Encrypted under the data key and moved by its rotation.
+ */
+export const agentCredential = pgTable(
+  "agent_credential",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    appId: uuid("app_id")
+      .notNull()
+      .references(() => agentBinding.appId, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    credential: text("credential").notNull(),
+  },
+  (t) => [unique("agent_credential_name").on(t.appId, t.name)],
+);
 export const agentGrant = pgTable(
   "agent_grant",
   {

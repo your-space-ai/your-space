@@ -67,6 +67,7 @@ export async function moveSettingsToDataKey(db: Db, keys: Keys): Promise<Moved> 
     if (keys.previousDataKey) {
       for (const [table, pk, column] of [
         ["agent_binding", "app_id", "credential"],
+        ["agent_credential", "id", "credential"],
         ["agent_request", "id", "input"],
         ["agent_request", "id", "result"],
         ["source_credential", "id", "token"],

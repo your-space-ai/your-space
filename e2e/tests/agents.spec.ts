@@ -244,3 +244,56 @@ test("an agent creates, edits and deletes records through the routes its roles g
   const listed = await invoke("list", {});
   expect(listed.result.data.items.map((item: { id: string }) => item.id)).not.toContain(id);
 });
+
+test("a setup role is sent with its own admin credential, which no record role carries", async ({ page, baseURL }) => {
+  await resetStack();
+  const owner = await createOwner();
+  await setPassword(page, owner.url);
+  await signIn(page, "sam");
+  const installed = await serverCommand("install-app", [
+    "https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/records-setup.yaml",
+  ]);
+  expect(installed.json?.ok, installed.json?.error).toBe(true);
+  await page.getByRole("link", { name: "Agents", exact: true }).click();
+  await page.getByLabel("New agent name").fill("Setup agent");
+  await page.getByRole("button", { name: "Create agent" }).click();
+  await page.getByRole("button", { name: "Issue key" }).click();
+  const key = await page.getByLabel("New agent key", { exact: true }).inputValue();
+  await page.getByRole("button", { name: "Dismiss key" }).click();
+
+  // Each named credential is bound on its own, and each role shows the one it uses.
+  const app = page.getByRole("region", { name: "App connections" });
+  await app.locator("summary").click();
+  await expect(app.getByText("Uses the setup credential")).toBeVisible();
+  await app.getByLabel("App credential: records", { exact: true }).fill("local-fixture-key");
+  await app.getByRole("checkbox", { name: /Editor/ }).check();
+  await app.getByRole("checkbox", { name: /Setup/ }).check();
+  await app.getByRole("button", { name: "Save connection" }).click();
+  await expect(app.getByRole("alert")).toContainText("Supply the setup credential before enabling a role that uses it.");
+  await app.getByLabel("App credential: setup", { exact: true }).fill("local-fixture-admin-key");
+  await app.getByRole("button", { name: "Save connection" }).click();
+  await expect(app.locator("summary")).toContainText("Credential saved");
+
+  const settings = page.getByRole("region", { name: "Manage agents" });
+  const access = settings.locator("details").filter({ has: page.locator("summary", { hasText: /records/i }) });
+  await access.locator("summary").click();
+  await access.getByRole("checkbox", { name: /Editor/ }).check();
+  await access.getByRole("checkbox", { name: /Setup/ }).check();
+  await access.getByRole("button", { name: "Save agent access" }).click();
+  await expect(access.locator("summary")).toContainText("Setup");
+
+  const cli = cliIn(process.cwd(), { YOUR_SPACE_URL: baseURL!, YOUR_SPACE_AGENT_KEY: key });
+  const run = async (args: string[], input?: unknown) => {
+    const outcome = await cli.run(["--json", "agent", ...args], { input: JSON.stringify(input) });
+    expect(outcome.code, JSON.stringify(outcome.json)).toBe(0);
+    return outcome.json;
+  };
+  const installationId = (await run(["actions"])).actions[0].installationId;
+  // The app answers its data model only to the admin key, and its records only to the record key.
+  const fields = await run(["invoke", installationId, "fields", "--input-stdin"], {});
+  expect(fields).toMatchObject({ status: "succeeded", result: { data: { fields: ["title", "assignee"] } } });
+  const listed = await run(["invoke", installationId, "list", "--input-stdin"], {});
+  expect(listed.status).toBe("succeeded");
+  const created = await run(["invoke", installationId, "create", "--input-stdin"], { body: { title: "Set up" } });
+  expect(created).toMatchObject({ status: "succeeded", result: { data: { createItem: { title: "Set up" } } } });
+});
