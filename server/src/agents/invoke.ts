@@ -2,7 +2,7 @@ import type pg from "pg";
 import { sampleDenial } from "./denials.ts";
 import type { Db } from "../db/client.ts";
 import { decrypt, encrypt } from "../apps/settings.ts";
-import { agentCredentialHeader, isWrite, passAgentResult, renderAgentRequest } from "../apps/agent-kit.ts";
+import { agentCredentialHeader, isWrite, passAgentResult, renderAgentRequest, routeCredential } from "../apps/agent-kit.ts";
 import { dispatchAppAction } from "./transport.ts";
 import {
   AgencyError,
@@ -36,10 +36,14 @@ async function permissions(client: pg.PoolClient, who: Who, id: string) {
   const grant = (await client.query("select * from agent_grant where agent_id=$1 and app_id=$2", [who.agent, id]))
     .rows[0];
   const allowed = new Set<string>();
-  if (install.current && install.row.credential && grant) {
+  if (install.current && grant) {
     for (const role of grant.roles) {
       if (install.row.enabled_roles.includes(role) && Object.hasOwn(install.access.roles, role)) {
-        for (const action of install.access.roles[role]!.routes) allowed.add(action);
+        for (const action of install.access.roles[role]!.routes) {
+          // A route whose credential isn't bound is unavailable; nothing falls back to another one.
+          const route = install.access.routes[action];
+          if (route && Object.hasOwn(install.bound, routeCredential(install.access, route).name)) allowed.add(action);
+        }
       }
     }
   }
@@ -163,7 +167,10 @@ async function admit(
   }
   const outcome = { id, status };
   if (status === "pending") return { outcome };
-  const secret = decrypt(dataKey, row.credential);
+  // The request carries only its route's credential; a response may echo none of the installation's.
+  const { inject, name } = routeCredential(access, route);
+  const secrets = Object.fromEntries(Object.entries(install.bound).map(([key, value]) => [key, decrypt(dataKey, value)]));
+  const secret = secrets[name]!;
   const args = {
     installation: {
       id: row.id,
@@ -173,9 +180,9 @@ async function admit(
       interfacePort: row.interface.port,
     },
     ...request,
-    headers: { ...request.headers, ...agentCredentialHeader(access, secret) },
+    headers: { ...request.headers, ...agentCredentialHeader(inject, secret) },
   };
-  return { outcome, dispatch: { args, redact: [secret], write: isWrite(route) } };
+  return { outcome, dispatch: { args, redact: Object.values(secrets), write: isWrite(route) } };
 }
 async function run(db: Db, dataKey: string, admission: Admission): Promise<Outcome> {
   const { outcome, dispatch } = admission;

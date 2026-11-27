@@ -21,6 +21,11 @@ services:
             res.writeHead(status, {"content-type":"application/json"});
             res.end(JSON.stringify(data));
           };
+          // Its data model answers only the admin key, and its records only the record key (spec 017).
+          if (req.url === "/meta/fields") {
+            if (req.headers["x-api-key"] !== "local-fixture-admin-key") return send(401, {});
+            return send(200, { data: { fields: ["title", "assignee"] } });
+          }
           if (req.headers["x-api-key"] !== "local-fixture-key") return send(401, {});
           let text = "";
           req.on("data", (chunk) => (text += chunk));

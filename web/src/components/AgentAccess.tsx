@@ -49,6 +49,7 @@ function RoleChoices({
               }
             />{" "}
             {role.title || id}
+            {app.named && app.roleCredentials[id] && <small>Uses the {app.roleCredentials[id]} credential</small>}
             <small>
               {role.routes.map((routeId) => {
                 const route = app.routes[routeId];
@@ -70,7 +71,10 @@ function RoleChoices({
 export function AppConnection({ app }: { app: AgentInstallation }) {
   const action = useAgentAction();
   const [credential, setCredential] = useState("");
+  // A kit that names its credentials takes a value for each, bound separately (spec 017).
+  const [named, setNamed] = useState<Record<string, string>>({});
   const [roles, setRoles] = useState(app.enabledRoles);
+  const filled = Object.fromEntries(Object.entries(named).filter(([, value]) => value));
   const path = agentPath + "/installations/" + encodeURIComponent(app.id);
   return (
     <details className="agent-details">
@@ -87,24 +91,51 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
             await api("PUT", path, {
               enabledRoles: roles,
               revision: app.revision,
-              ...(credential ? { credential } : {}),
+              ...(app.named
+                ? Object.keys(filled).length
+                  ? { credentials: filled }
+                  : {}
+                : credential
+                  ? { credential }
+                  : {}),
             });
             setCredential("");
+            setNamed({});
           }, "Connection saved.");
         }}
       >
-        <label>
-          {app.bound ? "Replacement app credential (optional)" : "App credential"}
-          <input
-            type="password"
-            autoComplete="new-password"
-            value={credential}
-            required={!app.bound}
-            maxLength={4096}
-            onChange={(e) => setCredential(e.target.value)}
-          />
-        </label>
-        {app.bound && credential && (
+        {app.named ? (
+          app.credentials.map(({ name, bound }) => (
+            <label key={name}>
+              {bound ? `Replacement ${name} credential (optional)` : `App credential: ${name}`}
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={named[name] ?? ""}
+                maxLength={4096}
+                onChange={(e) => setNamed({ ...named, [name]: e.target.value })}
+              />
+            </label>
+          ))
+        ) : (
+          <label>
+            {app.bound ? "Replacement app credential (optional)" : "App credential"}
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={credential}
+              required={!app.bound}
+              maxLength={4096}
+              onChange={(e) => setCredential(e.target.value)}
+            />
+          </label>
+        )}
+        {app.named && app.credentials.some(({ name, bound }) => bound && filled[name]) && (
+          <p className="notice warning">
+            Replacing a credential withdraws the roles that use it from existing agent grants. Grant them again after saving.
+          </p>
+        )}
+        {!app.named && app.bound && credential && (
           <p className="notice warning">
             Replacing this credential clears existing agent grants. Review and grant access again after saving.
           </p>
@@ -123,8 +154,15 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
               onClick={() => {
                 if (window.confirm("Disconnect this app credential for all agents?"))
                   void action.run(async () => {
-                    await api("PUT", path, { enabledRoles: [], credential: null, revision: app.revision });
+                    await api("PUT", path, {
+                      enabledRoles: [],
+                      revision: app.revision,
+                      ...(app.named
+                        ? { credentials: Object.fromEntries(app.credentials.map(({ name }) => [name, null])) }
+                        : { credential: null }),
+                    });
                     setCredential("");
+                    setNamed({});
                   }, "Credential disconnected.");
               }}
             >

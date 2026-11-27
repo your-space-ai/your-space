@@ -8,7 +8,8 @@ export type Approval = "ask" | "allow";
 export interface AgentRoute {
   method: string;
   path: string;
-  effect: "read";
+  /** Only a read declares it (spec 017). */
+  effect?: "read";
   approval?: Approval;
 }
 
@@ -20,6 +21,10 @@ export interface AgentInstallation {
   roles: Record<string, { title: string; routes: string[] }>;
   routes: Record<string, AgentRoute>;
   bound: boolean;
+  /** The kit names its credentials, each role using one (spec 017). */
+  named: boolean;
+  credentials: { name: string; bound: boolean }[];
+  roleCredentials: Record<string, string | undefined>;
   enabledRoles: string[];
   revision: number;
 }

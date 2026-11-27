@@ -127,6 +127,13 @@
       "when": 1795646349630,
       "tag": "0017_registry_credential",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795741618336,
+      "tag": "0018_agent_credentials",
+      "breakpoints": true
     }
   ]
 }
