@@ -28,6 +28,12 @@ them at any time: saving restarts the app's interface service with the new folde
 kept. If that restart fails, the app keeps the knowledge bases whose folders it still has, and its
 page lists those; save again once the app starts.
 
+If Your Space stops or restarts before the app has restarted without a knowledge base you took
+away, it finishes that once it is back: while the app runs with a folder you didn't give it, Your
+Space restarts its interface service with only the knowledge bases it has, and tries again later,
+waiting longer each time, if that fails. An app that isn't running gets the knowledge bases it has
+when it next starts.
+
 Each knowledge base is its own folder under the app's knowledge path, `/knowledge` unless the kit
 names another, even when the app has only one. An app given one knowledge base doesn't see the
 others.
@@ -54,7 +60,8 @@ restarted. This can't be undone.
 
 If an app can't restart without the knowledge base, Your Space keeps the knowledge base and its
 files, the app keeps it too, and the message names the app. Fix the app, then delete the knowledge
-base again.
+base again. If Your Space stops during a deletion, the knowledge base and its files stay, and the
+apps it was taken from restart without its folder once Your Space is back; delete it again.
 
 Knowledge bases are Docker volumes named `ys-knowledge.<installation>.<name>`, labelled
 `ai.your-space.role=knowledge`. `docker compose down -v` of Your Space doesn't delete them, as it

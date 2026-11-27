@@ -1,10 +1,11 @@
 // Journey 014, slice 1: local knowledge bases. The owner creates them, gives them to apps whose kits
 // ask for knowledge, and the apps share their files. Removing an app and deleting its data keeps
-// them; deleting one asks first and takes it from its apps. Two fixture apps from one Compose file
-// (e2e/github/fixtures/ys-fixtures/notes), one running as user 1000 and one as 1234.
+// them; deleting one asks first and takes it from its apps. A knowledge base taken from an app leaves
+// it once Your Space is back, even when Your Space stopped during the change. Two fixture apps from
+// one Compose file (e2e/github/fixtures/ys-fixtures/notes), one running as user 1000 and one as 1234.
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { evidence } from "./helpers/evidence.ts";
-import { createOwner, docker, PROJECT, resetStack } from "./helpers/stack.ts";
+import { createOwner, docker, PROJECT, resetStack, sql, up } from "./helpers/stack.ts";
 import { setPassword, signIn } from "./helpers/ui.ts";
 
 test.describe.configure({ mode: "serial" });
@@ -210,6 +211,51 @@ test("the app's page changes its knowledge bases, which recreates its interface 
   const detail = (await (await page.request.get("/api/apps/notes-one")).json()) as { knowledge: { bases: { name: string }[] } };
   expect(detail.knowledge.bases.map((base) => base.name)).toEqual(["course-notes", "late"]);
   expect((await page.request.delete("/api/knowledge/late", { headers: { origin } })).status()).toBe(204);
+});
+
+test("a knowledge base taken from an app leaves it once Your Space is back, though Your Space stopped during the change", async ({ page }) => {
+  test.setTimeout(300_000);
+  await asOwner(page);
+  await page.goto("/apps/notes-one");
+  const origin = new URL(page.url()).origin;
+  const notes = await knowledgeVolume("course-notes");
+  const mounts = async () => (await docker(["inspect", ONE, "--format", "{{range .Mounts}}{{.Name}} {{end}}"], false)).stdout;
+  expect(await mounts()).toContain(notes);
+  const before = await containerId(ONE);
+  // The runtime manager stops answering, so the apply that would take it from the app never ends,
+  // and then Your Space's server and runtime manager stop without finishing it.
+  const runtime = `${PROJECT}-runtime-1`;
+  await docker(["pause", runtime], false);
+  try {
+    const taken = await page.request.put("/api/apps/notes-one/knowledge", { data: { bases: [] }, headers: { origin } });
+    expect(taken.status()).toBe(202);
+    await docker(["kill", `${PROJECT}-server-1`], false);
+  } finally {
+    await docker(["kill", runtime], false);
+  }
+  // Meanwhile its grant is gone, and its container, unchanged, still mounts it.
+  expect(await sql("select count(*) from app_knowledge_base g join app a on a.id = g.app_id where a.name = 'notes-one'")).toEqual(["0"]);
+  expect(await containerId(ONE)).toBe(before);
+  expect(await mounts()).toContain(notes);
+
+  // Once Your Space is back, it applies the app again without it, and records that against itself.
+  // Asked without failing, as the container is briefly gone while Compose recreates it.
+  await up();
+  const recreated = async () => {
+    const answer = (await docker(["inspect", ONE, "--format", "{{.State.Running}} {{range .Mounts}}{{.Name}} {{end}}"])).stdout.trim();
+    return /^true\b/.test(answer) && !answer.includes(notes);
+  };
+  await expect.poll(recreated, { timeout: 120_000 }).toBe(true);
+  expect(await containerId(ONE)).not.toBe(before);
+  expect(await inApp(ONE, "[ -e /knowledge/course-notes ] && echo there || echo gone")).toBe("gone");
+  expect(
+    await sql(
+      "select a.kind from event e join actor a on a.id = e.actor_id join event_knowledge_base k on k.event_id = e.id join app p on p.id = e.subject_app_id where e.type = 'knowledge.revoked' and p.name = 'notes-one' and k.name = 'course-notes' order by e.created_at desc limit 1",
+    ),
+  ).toEqual(["operator"]);
+  await page.goto("/apps/notes-one");
+  const knowledge = page.getByRole("region", { name: "Knowledge", exact: true });
+  await expect(knowledge.getByLabel("Course notes")).not.toBeChecked();
 });
 
 test("removing an app and deleting its data keeps its knowledge bases' files", async ({ page }) => {

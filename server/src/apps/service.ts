@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
-import { recordEvent } from "../actors.ts";
+import { operatorActorId, recordEvent } from "../actors.ts";
 import type { Db } from "../db/client.ts";
 import {
   app,
@@ -165,6 +165,18 @@ interface Preview {
 
 /** The most knowledge bases an app can be given: the runtime manager's limit too. */
 const MAX_KNOWLEDGE_BASES = 100;
+/**
+ * How long an app that still mounts a knowledge base it isn't given waits to be applied again after
+ * an apply that didn't take it away: a minute, then twice as long each time, up to an hour.
+ */
+const UNMOUNT_RETRY_MS = 60_000;
+const UNMOUNT_RETRY_MAX_MS = 60 * 60_000;
+
+/** Whether the runtime manager reports any of an app's own services running. */
+function runningIn(reports: { app: string; services: ServiceState[] }[], name: string): boolean {
+  const services = reports.find((r) => r.app === name)?.services ?? [];
+  return services.some((s) => s.role === "app" && (s.state === "running" || s.state === "restarting"));
+}
 
 export type AppRow = typeof app.$inferSelect;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -388,6 +400,11 @@ export class AppsService {
   private readonly knowledgeNames = new Set<string>();
   /** Apps whose outdated Caddy this server process has renewed, or tried to: once each. */
   private readonly renewed = new Set<string>();
+  /**
+   * Apps applied again because they mounted a knowledge base they aren't given, whose apply didn't
+   * take it away yet: when the next may start, and how long it waits after that one.
+   */
+  private readonly unmounting = new Map<string, { at: number; wait: number }>();
 
   constructor(db: Db, runtime: Runtime, config: AppsConfig) {
     this.db = db;
@@ -1155,15 +1172,20 @@ export class AppsService {
       return;
     }
     const rows = await this.db.select().from(app).where(ne(app.state, "removed"));
+    const leftover = await this.leftoverKnowledge(rows, reports);
     for (const row of rows) {
       if (this.busy.has(row.id)) continue;
       const services = reports.find((r) => r.app === row.name)?.services ?? [];
-      const running = services.some((s) => s.role === "app" && (s.state === "running" || s.state === "restarting"));
+      const running = runningIn(reports, row.name);
       if (row.desired === "running" && !running && row.state !== "failed" && row.state !== "installing") {
         log("info", "apps.starting", { app: row.name });
         await this.startJob(row.id, "apply").catch(() => undefined);
         continue;
       }
+      // Its containers mount a knowledge base it isn't given, as after a restart of Your Space during
+      // the apply that took it away: applied again, with its grants (journey 014, 2026-11-26).
+      const bases = leftover.get(row.id);
+      if (bases && (await this.unmount(row, bases))) continue;
       // A published app's Caddy follows Your Space's own after an update, and replaces the port
       // forwarder an earlier Your Space ran. Only it is recreated; the app's services keep running.
       // Once per app while this server runs, so a start that fails isn't repeated.
@@ -1194,6 +1216,83 @@ export class AppsService {
         await this.db.update(app).set({ state, stateReason: reason, updatedAt: new Date() }).where(eq(app.id, row.id));
       }
       if (running) await this.collectDenials(row.id, row.name);
+    }
+  }
+
+  /**
+   * The knowledge bases each app that should run, and does, still mounts without a grant, by app:
+   * the runtime manager names the apps whose containers mount each knowledge base. A stopped app's
+   * containers are left as they are, as it gets its grants when it next starts, and so is a busy
+   * app's, whose job is changing them. Without the runtime manager's answer, none this time.
+   */
+  private async leftoverKnowledge(rows: AppRow[], reports: { app: string; services: ServiceState[] }[]): Promise<Map<string, { id: string; name: string }[]>> {
+    const leftover = new Map<string, { id: string; name: string }[]>();
+    const running = rows.filter((row) => row.desired === "running" && !this.busy.has(row.id) && runningIn(reports, row.name));
+    const bases = running.length ? await this.db.select({ id: knowledgeBase.id, name: knowledgeBase.name }).from(knowledgeBase) : [];
+    if (bases.length) {
+      const granted = await this.db.select().from(appKnowledgeBase).where(inArray(appKnowledgeBase.appId, running.map((row) => row.id)));
+      for (const base of bases) {
+        let users: string[];
+        try {
+          users = (await this.runtime.knowledgeUsers(base.name)).apps;
+        } catch (error) {
+          log("warn", "apps.knowledge_check_failed", { knowledgeBase: base.name, ...errorFields(error) });
+          return new Map();
+        }
+        for (const row of running) {
+          if (!users.includes(row.name) || granted.some((g) => g.appId === row.id && g.knowledgeBaseId === base.id)) continue;
+          leftover.set(row.id, [...(leftover.get(row.id) ?? []), base]);
+        }
+      }
+    }
+    // An app that no longer mounts one waits from the start again if it ever does.
+    for (const id of this.unmounting.keys()) if (!leftover.has(id) && !this.busy.has(id)) this.unmounting.delete(id);
+    return leftover;
+  }
+
+  /**
+   * Applies again an app whose containers mount knowledge bases it isn't given, so they leave it, and
+   * says whether it did. Decided again once the app is held, so a change of the owner's that ended
+   * meanwhile isn't taken for one: it applies the app as it is then. After an apply that didn't take
+   * them away, the next waits (UNMOUNT_RETRY_MS). Recorded against Your Space once it worked.
+   */
+  private async unmount(row: AppRow, bases: { id: string; name: string }[]): Promise<boolean> {
+    const retry = this.unmounting.get(row.id);
+    if (retry && Date.now() < retry.at) return false;
+    let release: () => void;
+    try {
+      release = this.hold([row.id]);
+    } catch {
+      return false;
+    }
+    try {
+      const granted = await this.grants(row.id);
+      const left: { id: string; name: string }[] = [];
+      for (const base of bases) {
+        if (granted.some((g) => g.id === base.id)) continue;
+        if ((await this.runtime.knowledgeUsers(base.name)).apps.includes(row.name)) left.push(base);
+      }
+      if (left.length === 0) {
+        release();
+        return false;
+      }
+      const wait = retry ? Math.min(retry.wait * 2, UNMOUNT_RETRY_MAX_MS) : UNMOUNT_RETRY_MS;
+      this.unmounting.set(row.id, { at: Date.now() + wait, wait });
+      log("warn", "apps.knowledge_unmounting", { app: row.name, knowledgeBases: left.map((base) => base.name).join(",") });
+      const yourSpace = await operatorActorId(this.db);
+      const ended: JobEnded = {
+        worked: async (tx) => {
+          for (const base of left) await recordEvent(tx, "knowledge.revoked", yourSpace, null, row.id, base);
+        },
+        failed: async () => {},
+      };
+      const { done } = await this.startJob(row.id, "apply", { held: true, ended });
+      void done.finally(release);
+      return true;
+    } catch (error) {
+      release();
+      log("warn", "apps.knowledge_unmount_failed", { app: row.name, ...errorFields(error) });
+      return false;
     }
   }
 
