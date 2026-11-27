@@ -77,8 +77,10 @@ repository is private (015). It's an update when the kit file's content differs 
 kit's. A commit that changes other files in the repository isn't one: the kit pins its Compose file
 by commit, so only a change to the kit changes what runs.
 
-- A link at a tag or a full commit is fixed: a check says it has no newer version. The owner
-  updates it by giving another link ("Update from a link"), which then becomes the app's link.
+- A link at a tag or a full commit is fixed: a check of it says it has no newer version.
+- **Update from a link:** the owner gives another link, at any branch, tag or commit, in the
+  dashboard or with `--link`. It is reviewed against the installed kit like any update, whether or
+  not it is fixed, and applying the update makes it the app's link.
 - An app installed before this spec has no stored link. Its check asks for one, once; the
   dashboard fills the field with the kit's repository and path at its default branch.
 - The new kit must name the same app (`name`) as the installed one, or none.
@@ -101,9 +103,10 @@ app's stored values, and the dashboard and CLI show only what differs from what 
 - internet hosts the kit adds, approved by applying the update, and hosts it no longer lists;
 - limits for added or removed services, and a changed interface.
 
-A review whose file Your Space refuses can't be applied, as at install. Applying an update the
-owner reviewed checks that the app still runs the kit the review was made against; if it changed
-meanwhile, the owner checks again.
+A review whose file Your Space refuses can't be applied, as at install. A review is made of one
+candidate: the new kit at an exact commit, and the Compose file it pins. Applying it applies that
+candidate, never the branch's latest commit at the time of applying, and is refused when the app no
+longer runs the kit the review was made against; the owner then checks again.
 
 **Considered:** a raw text diff of the two kit files (exact, but it shows nothing about images or
 the Compose file it points at); applying without a review (the agent case can confirm with `--yes`
@@ -165,9 +168,13 @@ your-space app check-update <app> [--link <kit-link>] [--json]
 your-space app update <app> [--link <kit-link>] [--yes] [--json]
 ```
 
-`check-update` prints the review of section 2, or that the app is up to date. `update` prints it
-and asks before applying, or applies with `--yes`, waits for the job and reports the result or the
-rollback. With `--json`, both print the review as data, so an agent driving the CLI reads it and
+`check-update` prints the review of section 2, with the candidate's pinned kit link, or that the
+app is up to date. `update` makes the review, prints it and asks before applying that candidate, or
+applies it with `--yes`; it waits for the job and reports the result or the rollback. `--link` is
+Update from a link (section 1) for both commands. An agent that read `check-update` and wants the
+candidate it read, not a newer one the branch has since, passes that candidate's pinned kit link as
+`--link`; the update then also makes the pinned link the app's link, so the owner gives the branch
+link again later to follow the branch. With `--json`, both print the review as data, so an agent driving the CLI reads it and
 decides. An agent's Your Space key can't update apps: updating changes what code runs, which is the
 owner's or the operator's to do.
 
@@ -205,9 +212,11 @@ spec's migration follows it.
 
 - **FR-001**: Installing from a link stores the link as given and the branch it named. An app
   installed before has none until the owner gives one.
-- **FR-002**: A check reads the kit at the latest commit of the link's branch, through the GitHub
-  connection when the repository is private, and reports an update when the kit's content differs
-  from the installed kit. A link at a tag or commit reports none. A check runs only on request.
+- **FR-002**: A check reads the kit at the latest commit of the app's link's branch, through the
+  GitHub connection when the repository is private, and reports an update when the kit's content
+  differs from the installed kit; an app whose link is at a tag or commit has none. A check with a
+  link the owner gives (Update from a link) reviews the kit at that link against the installed kit,
+  whatever the link names. A check runs only on request.
 - **FR-003**: An update's review lists, against the installed app: kit and Compose commits with
   links, changed images, settings added and removed, hosts added and removed, changed limits and
   interface. A refused file can't be applied.
@@ -215,9 +224,9 @@ spec's migration follows it.
   kept settings, publish settings, owner-approved hosts, owner-set limits, agent grants and bound
   credentials; it deletes removed settings and kit hosts the kit dropped and adds the new ones.
 - **FR-005**: An update's job signs in to GHCR for the app's private images, as an install does.
-- **FR-006**: Applying checks that the app still runs the kit the review was made against
-  (`kit_source`), and that no other job is running for it; otherwise it is refused and the owner
-  checks again.
+- **FR-006**: Applying applies the exact candidate the review was made of (its kit at a commit and
+  the Compose file it pins). It is refused, and the owner checks again, when the app no longer runs
+  the kit the review was made against (`kit_source`) or another job is running for it.
 - **FR-007**: An update whose job fails, or whose app isn't running when it ends, is rolled back
   once to what it replaced, and the rollback is recorded and shown with its reason.
 - **FR-008**: Events record each check that found an update, each update and each rollback, with
