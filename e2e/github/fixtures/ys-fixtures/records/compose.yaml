@@ -1,6 +1,7 @@
-# Synthetic app used to verify credential injection, approvals and results through the edge.
-# Agents only read (decision 2026-11-23, Alpha scope), so it serves two fixed records. Like many
-# REST APIs it wraps its list and nests fields, and the agent gets its response unchanged.
+# Synthetic app used to verify credential injection, approvals, writes and results through the edge.
+# It keeps its records in memory, starting from two fixed ones. Like many REST APIs it wraps its list
+# and nests fields, lets a create choose its record ID and refuses a second create of it, and the agent
+# gets its response unchanged.
 services:
   app:
     image: node:26-slim
@@ -21,10 +22,34 @@ services:
             res.end(JSON.stringify(data));
           };
           if (req.headers["x-api-key"] !== "local-fixture-key") return send(401, {});
-          if (req.method !== "GET") return send(405, {});
-          if (req.url === "/items") return send(200, { data: { items: records }, totalCount: records.length });
-          const row = records.find((record) => req.url === "/items/" + record.id);
-          return row ? send(200, row) : send(404, {});
+          let text = "";
+          req.on("data", (chunk) => (text += chunk));
+          req.on("end", () => {
+            let body = {};
+            try { if (text) body = JSON.parse(text); } catch { return send(400, {}); }
+            if (!body || typeof body !== "object" || Array.isArray(body)) return send(400, {});
+            const index = records.findIndex((record) => req.url === "/items/" + record.id);
+            if (req.url === "/items" && req.method === "GET") return send(200, { data: { items: records }, totalCount: records.length });
+            if (req.url === "/items" && req.method === "POST") {
+              const id = body.id ?? require("node:crypto").randomUUID();
+              if (records.some((record) => record.id === id)) return send(400, { error: "duplicate id" });
+              const row = { ...body, id, revision: 1 };
+              records.push(row);
+              return send(201, { data: { createItem: row } });
+            }
+            if (index < 0) return send(404, {});
+            if (req.method === "GET") return send(200, records[index]);
+            if (req.method === "PATCH") {
+              records[index] = { ...records[index], ...body, id: records[index].id, revision: records[index].revision + 1 };
+              return send(200, { data: { updateItem: records[index] } });
+            }
+            if (req.method === "DELETE") {
+              records.splice(index, 1);
+              res.writeHead(204);
+              return res.end();
+            }
+            return send(405, {});
+          });
         }).listen(8080);
 volumes:
   records-data: {}

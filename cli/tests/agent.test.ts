@@ -40,7 +40,9 @@ it("uses agent credentials without an installation folder and passes exact input
     expect((await cli(url, ["invoke", "install", "show", "--input-stdin"], '{"path":{"id":"7"}}')).json.status).toBe("pending");
     expect(authorization).toBe("Bearer " + credential);
     expect(sent).toEqual({ installationId: "install", actionId: "show", input: { path: { id: "7" } } });
-    // Agents only read, so a write's operation ID and expected revision are gone.
+    // A write's body goes in the input as it is; Your Space keeps no operation ID (spec 017).
+    expect((await cli(url, ["invoke", "install", "create", "--input-stdin"], '{"body":{"title":"New","tags":[1]}}')).json.status).toBe("pending");
+    expect(sent).toEqual({ installationId: "install", actionId: "create", input: { body: { title: "New", tags: [1] } } });
     expect((await cli(url, ["invoke", "install", "show", "--input-stdin", "--operation-id", "op"], "{}")).json.error).toBe("usage");
   } finally { server.close(); }
 });

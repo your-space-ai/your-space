@@ -7,7 +7,10 @@
 **Status**: Decided. The owner settled every decision on 2026-11-26, with one rule throughout: a
 role grants an agent a route at an HTTP method, with approvals, and Your Space adds nothing past that
 without a reason. Two decisions were dropped under that rule, and a third, which release carries
-it, as out of scope for a feature. Nothing is built.
+it, as out of scope for a feature. Writes on one app credential per installation are built in
+[PR #142](https://github.com/your-space-ai/your-space/pull/142); a credential per role (decision 1)
+follows in [PR #143](https://github.com/your-space-ai/your-space/pull/143), and the live run against
+a real app (FR-010) after them.
 
 **Input**: The owner, on 2026-11-26: an agent should be able to do real work in an app through Your
 Space, never holding the app's own credential. The first case is onboarding records into a CRM:
@@ -140,8 +143,9 @@ For an agent to write through a route at a method:
    under the data key and moved by its rotation; the existing value becomes the row of the kit's only
    credential.
 5. **The response check** applies to writes, and refuses a response that contains any credential
-   bound to the installation, not only the one used. A 2xx whose response fails the check reports
-   `succeeded` without a result, since the app applied the write; a read's stays `unknown`.
+   bound to the installation, not only the one used. A 2xx other than `202 Accepted` whose response
+   fails the check reports `succeeded` without a result, since the app applied the write; a read's
+   stays `unknown`. A `202` stays `unknown`, for a write as for a read.
 6. **Approval default.** A write route nobody set asks first (decision 6).
 7. **Discovery and CLI.** `actions` already lists each route's method; `invoke`'s input file may
    have `body`.
@@ -158,8 +162,12 @@ thingsl ike the data model." A kit declares setup routes, such as Twenty's metad
 objects and fields, in a setup role apart from its record roles, and the owner grants each role to
 an agent separately.
 
-A record grant must never carry an admin credential, so a kit names each credential it uses, and
-each route names the one it is sent with:
+So that a record grant needn't carry an admin credential, a kit names each credential it uses, and
+each route names the one it is sent with. The separation holds when the kit sends record routes
+with a credential meant for records and the owner binds that credential to a key without admin
+rights: Your Space enforces one credential per role and sends each route with its own, but it can't
+tell an admin key from another, so it doesn't refuse a record role that names the setup credential
+or one key bound to both.
 
 ```yaml
 agentAccess:
@@ -321,8 +329,8 @@ or the official kits repository.
   KiB, sent to the app as JSON and checked no further. A read has no body. Path parameters and query
   fields stay declared and scalar, and an undeclared one is refused.
 - **FR-004**: The gateway sends each write once and returns the app's response. A write's outcome
-  maps as a read's does, except that a 2xx whose response fails the response check is `succeeded`
-  without a result.
+  maps as a read's does, except that a 2xx other than `202 Accepted` whose response fails the
+  response check is `succeeded` without a result. A `202` is `unknown`.
 - **FR-005**: The response check refuses a response that contains any credential bound to the
   installation.
 - **FR-006**: Approvals work for writes as for reads: the owner's setting, then the kit's

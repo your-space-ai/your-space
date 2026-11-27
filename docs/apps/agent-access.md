@@ -8,13 +8,24 @@ To add agent routes to an app that is already installed, remove it from **Apps**
 
 ## Grant access to an agent
 
-Agents only read. A kit declares GET routes with `effect: read`, and Your Space refuses a kit that
-declares a route that creates or changes records. Your Space checks the declaration, not the app's
-handler, so map a read route only to an app route that doesn't change records.
+A role grants an agent routes, each at its HTTP method. A read is a `GET` with `effect: read`; a
+write is a `POST`, `PATCH`, `PUT` or `DELETE` and declares no effect. Your Space checks the route and
+its method, not what a write sends: the app checks the body, so bind a credential whose role in the
+app can do only what you want agents to do. A body can do anything the app accepts on that route,
+such as creating a linked record along with its own.
+
+```yaml
+routes:
+  create-item: {method: POST, path: /items}
+  edit-item: {method: PATCH, path: "/items/{id}", pathParams: {id: uuid}}
+```
+
+Put writes in roles of their own, and deletes in roles apart from creates and edits, so you grant
+each on purpose.
 
 Create a named agent. Grant it roles for this installation and choose when each route asks you
 first. A route set to Ask or Allow here overrides the kit's recommendation; otherwise the kit's
-recommendation applies, and a route without one runs directly.
+recommendation applies. A write without one asks you first, and a read without one runs directly.
 
 Issue a key and store it in the external agent’s secret environment as `YOUR_SPACE_AGENT_KEY`. Set `YOUR_SPACE_URL` to the workspace HTTPS origin (or HTTP on localhost for a local test). Run these commands on the agent machine:
 
@@ -24,13 +35,22 @@ your-space agent invoke <installation-id> <action-id> --input-stdin --json < inp
 your-space agent request <request-id> --json
 ```
 
-Use the fields declared by the action under `path` and `query` in the input file. A read that asks
-you first returns a pending request ID; check it with `your-space agent request` once you have
+Use the fields declared by the action under `path` and `query` in the input file, and put a write's
+body under `body`, as JSON of at most 32 KiB; Your Space sends it to the app as it is. A request that
+asks you first returns a pending request ID; check it with `your-space agent request` once you have
 decided.
 
-A read returns the app's JSON response under `result`, unchanged: the shape its API gives, up to
-256 KiB. Your Space refuses a response that isn't JSON, is larger, or contains the app credential,
-and the request's status is then `unknown`. A kit doesn't name the fields an agent gets back, so
+Your Space sends each write once and doesn't match a retry to an earlier write. When a write's
+outcome is `unknown`, the app may or may not have applied it: check in the app before sending it
+again. An app that lets a create choose its record ID, applies a create as a whole or not at all, and
+refuses a second create of the same ID before changing anything, lets an agent retry a create
+safely.
+
+A request returns the app's JSON response under `result`, unchanged: the shape its API gives, up to
+256 KiB. Your Space withholds a response that isn't JSON, is larger, or contains the app credential.
+A read's status is then `unknown`; a write the app answered with a 2xx status is `succeeded`,
+without a result. `succeeded` means only that the app answered with a 2xx status other than `202
+Accepted`, which is `unknown`; when it matters that the work finished, check in the app. A kit doesn't name the fields an agent gets back, so
 the app credential's scope limits what a granted route returns: bind a credential that can see only
 what you want agents to read.
 

@@ -8,11 +8,18 @@ interface DispatchRequest {
   method: string;
   path: string;
   headers: Record<string, string>;
-  body?: unknown;
+  /** A write's body, as the JSON text the agent sent. */
+  body?: string;
 }
 
 /** Only the platform server and edge mount this socket. App containers cannot choose an upstream. */
-export async function dispatchAppAction(call: DispatchRequest): Promise<{ status: number; body: unknown }> {
+/**
+ * The app's status and its JSON body. `usable` is false for a 2xx whose body is larger than the
+ * result limit or isn't JSON: a write it answers was still applied.
+ */
+export async function dispatchAppAction(
+  call: DispatchRequest,
+): Promise<{ status: number; body: unknown; usable: boolean }> {
   const { name, interfacePort } = call.installation;
   if (
     !/^[a-z][a-z0-9-]{0,29}$/.test(name) ||
@@ -32,8 +39,7 @@ export async function dispatchAppAction(call: DispatchRequest): Promise<{ status
     interfacePort,
   );
   if (!isIPv4(address)) throw new Error("Invalid installed interface");
-  const payload =
-    call.body === undefined ? undefined : typeof call.body === "string" ? call.body : JSON.stringify(call.body);
+  const payload = call.body;
   return new Promise((resolve, reject) => {
     const signal = AbortSignal.timeout(15_000);
     const req = request(
@@ -53,7 +59,7 @@ export async function dispatchAppAction(call: DispatchRequest): Promise<{ status
         // Never expose provider errors or redirect locations. Redirects are never followed.
         if (status < 200 || status >= 300) {
           res.destroy();
-          resolve({ status, body: null });
+          resolve({ status, body: null, usable: false });
           return;
         }
         const chunks: Buffer[] = [];
@@ -63,16 +69,16 @@ export async function dispatchAppAction(call: DispatchRequest): Promise<{ status
           size += chunk.length;
           if (size > AGENT_RESULT_LIMIT) {
             res.destroy();
-            reject(new Error("App result exceeds limit"));
+            resolve({ status, body: null, usable: false });
             return;
           }
           chunks.push(chunk);
         });
         res.on("end", () => {
           try {
-            resolve({ status, body: size ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : null });
+            resolve({ status, body: size ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : null, usable: true });
           } catch {
-            reject(new Error("App returned an invalid result"));
+            resolve({ status, body: null, usable: false });
           }
         });
       },

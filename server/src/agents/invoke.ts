@@ -2,7 +2,7 @@ import type pg from "pg";
 import { sampleDenial } from "./denials.ts";
 import type { Db } from "../db/client.ts";
 import { decrypt, encrypt } from "../apps/settings.ts";
-import { agentCredentialHeader, passAgentResult, renderAgentRequest } from "../apps/agent-kit.ts";
+import { agentCredentialHeader, isWrite, passAgentResult, renderAgentRequest } from "../apps/agent-kit.ts";
 import { dispatchAppAction } from "./transport.ts";
 import {
   AgencyError,
@@ -18,8 +18,8 @@ import {
 } from "./store.ts";
 
 type Who = Awaited<ReturnType<typeof identity>>;
-// Agents only read (decision 2026-11-23, Alpha scope), so an invocation carries no operation ID or
-// expected revision.
+// A role grants a route at its HTTP method and nothing finer (spec 017). An invocation names the route
+// and its input; Your Space keeps no operation ID and doesn't match a retry to an earlier write.
 interface Invocation {
   installationId: string;
   actionId: string;
@@ -98,7 +98,7 @@ export async function requestOutcome(db: Db, verifier: string, id: string, dataK
 }
 interface Admission {
   outcome: Outcome;
-  dispatch?: { args: Parameters<typeof dispatchAppAction>[0]; redact: string[] };
+  dispatch?: { args: Parameters<typeof dispatchAppAction>[0]; redact: string[]; write: boolean };
 }
 async function admit(
   client: pg.PoolClient,
@@ -121,10 +121,18 @@ async function admit(
   if (row.state !== "running") throw new AgencyError(503, "app_unavailable", "The app is unavailable.");
   const route = access.routes[v.actionId]!;
   const request = renderAgentRequest(route, v.input);
-  // A pending decision binds the exact request to the authority it was admitted under. The null
-  // stands where a write's body was, so a read admitted before agents became read-only still matches.
+  // A pending decision binds the exact request, its body included, to the authority it was admitted
+  // under. A read has no body and keeps the null there, so a read pending across an upgrade still matches.
   const fingerprint = hash(
-    JSON.stringify([request.method, request.path, request.headers, null, who.key, row.revision, grant.revision]),
+    JSON.stringify([
+      request.method,
+      request.path,
+      request.headers,
+      request.body ?? null,
+      who.key,
+      row.revision,
+      grant.revision,
+    ]),
   );
   if (
     pending &&
@@ -134,7 +142,8 @@ async function admit(
       pending.key_id !== who.key)
   )
     conflict();
-  const ask = (grant.overrides[v.actionId] ?? route.approval ?? "allow") === "ask";
+  // The owner's setting, then the kit's; a write nobody set asks first (spec 017 decision 6).
+  const ask = (grant.overrides[v.actionId] ?? route.approval ?? (isWrite(route) ? "ask" : "allow")) === "ask";
   const status = ask && !pending ? "pending" : "dispatching";
   let id: string;
   if (pending) {
@@ -166,7 +175,7 @@ async function admit(
     ...request,
     headers: { ...request.headers, ...agentCredentialHeader(access, secret) },
   };
-  return { outcome, dispatch: { args, redact: [secret] } };
+  return { outcome, dispatch: { args, redact: [secret], write: isWrite(route) } };
 }
 async function run(db: Db, dataKey: string, admission: Admission): Promise<Outcome> {
   const { outcome, dispatch } = admission;
@@ -176,9 +185,22 @@ async function run(db: Db, dataKey: string, admission: Admission): Promise<Outco
   try {
     const response = await dispatchAppAction(dispatch.args);
     if (response.status >= 200 && response.status < 300 && response.status !== 202) {
-      // The app's JSON response, unchanged, unless it echoes the app credential or is too large.
-      result = passAgentResult(response.body, dispatch.redact);
-      status = "succeeded";
+      // The app's JSON response, unchanged, unless it echoes the app credential, is too large or isn't
+      // JSON. A read that can't be passed on stays unknown; a write was applied, so it succeeded, and the
+      // agent gets no result rather than a reason to send it again.
+      if (dispatch.write) {
+        status = "succeeded";
+        if (response.usable) {
+          try {
+            result = passAgentResult(response.body, dispatch.redact);
+          } catch {
+            // Withheld.
+          }
+        }
+      } else if (response.usable) {
+        result = passAgentResult(response.body, dispatch.redact);
+        status = "succeeded";
+      }
     } else if (response.status >= 400 && response.status < 500 && response.status !== 408) status = "refused";
   } catch {
     // The app didn't answer in time, or answered with something unusable.

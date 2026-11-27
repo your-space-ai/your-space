@@ -1,5 +1,5 @@
 kit: 2
-source: {repo: ys-fixtures/records, path: compose.yaml, commit: f876adc96d8ce410c6896a1fc26b822714481c90}
+source: {repo: ys-fixtures/records, path: compose.yaml, commit: b1f4251b4e5dfa7acd9f1cce1968fe5e6272d819}
 name: records
 interface: {service: app, port: 8080}
 agentAccess:
@@ -9,6 +9,8 @@ agentAccess:
   roles:
     reader: {title: Reader, routes: [list]}
     inspector: {title: Inspector, routes: [list, show]}
+    editor: {title: Editor, routes: [list, show, create, edit]}
+    remover: {title: Remover, routes: [remove]}
   routes:
     list:
       method: GET
@@ -19,4 +21,15 @@ agentAccess:
       path: /items/{id}
       effect: read
       approval: ask
+      pathParams: {id: uuid}
+    create:
+      method: POST
+      path: /items
+    edit:
+      method: PATCH
+      path: /items/{id}
+      pathParams: {id: uuid}
+    remove:
+      method: DELETE
+      path: /items/{id}
       pathParams: {id: uuid}

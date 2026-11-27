@@ -111,7 +111,7 @@ export async function grant(
   if (Object.entries(overrides).some(([k, v]) => !Object.hasOwn(access.routes, k) || (v !== "ask" && v !== "allow")))
     invalid();
   const revision = (prior?.revision ?? 0) + 1;
-  // Agents only read, so nothing reads ask_all_writes any more; new grants store false.
+  // Ask for all writes is gone (spec 017): nothing reads ask_all_writes, and new grants store false.
   await client.query(
     `insert into agent_grant(app_id,agent_id,roles,ask_all_writes,overrides,revision) values($1,$2,$3,false,$4,$5)
     on conflict(app_id,agent_id) do update set roles=excluded.roles,ask_all_writes=false,overrides=excluded.overrides,revision=excluded.revision`,
