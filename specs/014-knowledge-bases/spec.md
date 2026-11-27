@@ -224,16 +224,19 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
 - **The sync containers.** One container for each synced knowledge base, run by the runtime
   manager for Your Space: the stock rclone image running `rclone rcd`, as root in the container
   with only `DAC_OVERRIDE` and `FOWNER` (see **Files the sync reads and writes**), every other
-  capability dropped, no new privileges, a read-only root, no engine access and no FUSE. It mounts
-  only that knowledge base's volume, its own sync state (bisync's listings and the backups) and
-  its own socket's folder. Links aren't followed out of the knowledge base (see **Links**); the
-  container is defence in depth besides, as it limits what any run can reach to that knowledge
-  base, its state and its socket. Its remote control listens only on a Unix socket in that folder,
-  in a volume only the server mounts whole, protected by file permissions, as the runtime
-  manager's socket is. Connecting or disconnecting a knowledge base adds or removes its container
-  only; the others keep running. The server and the sync containers share the sockets' volume, so
-  knowledge bases sync only when apps run on the engine Your Space's server runs on: with
-  `YS_ENGINE_SOCKET` set to another engine, connecting one is refused with `503`.
+  capability dropped, no new privileges, a read-only root, no engine access and no FUSE. Each runs
+  in Your Space's server's user name space, since root's capabilities reach only files of users its
+  own name space maps: its root is the engine's own root, with only those two capabilities, unless
+  the engine remaps containers' users and the server's are remapped too, when the sync's root is
+  remapped like the apps'. It mounts only that knowledge base's volume, its own sync state
+  (bisync's listings and the backups) and its own socket's folder. Links aren't followed out of the
+  knowledge base (see **Links**); the container is defence in depth besides, as it limits what any
+  run can reach to that knowledge base, its state and its socket. Its remote control listens only on
+  a Unix socket in that folder, in a volume only the server mounts whole, protected by file
+  permissions, as the runtime manager's socket is. Connecting or disconnecting a knowledge base adds
+  or removes its container only; the others keep running. The server and the sync containers share
+  the sockets' volume, so knowledge bases sync only when apps run on the engine Your Space's server
+  runs on: with `YS_ENGINE_SOCKET` set to another engine, connecting one is refused with `503`.
 - **When it syncs.** About once a minute for each synced knowledge base, on its own timer, and at
   once on **Sync now**: the server starts each run through that knowledge base's remote control
   (`sync/bisync`, run in the background), with the options listed under sync safety. Runs of one

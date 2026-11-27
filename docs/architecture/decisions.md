@@ -190,17 +190,20 @@ knowledge base. [Journey 014](https://github.com/your-space-ai/your-space/blob/m
   socket, then writable by everyone too, is kept to the server by its folder, which only the
   server's user opens. Docker makes capabilities it adds effective only for a container's root user:
   as user 1000 they stay in the bounding set and nothing more (checked on Docker 28.3.3 and 29).
-  This supersedes **Files apps write** (2026-11-26), which asked apps writing into a knowledge base
-  to run as user 1000 or with a umask of 002, and under which a folder an app made as another user,
-  or a file only it could read, failed runs, some stopping for the owner's Resync after Drive had
-  changed. Not chosen: giving every file to Your Space's user before each run, which rewrites apps'
-  owners and modes every minute, needs `CHOWN` too, and still fails a run on a file an app makes
-  between that pass and the run; and idmapped mounts, which Docker doesn't offer and which map users
-  one to one, not every app's to one. The lease's limit: an app can't change the mode of a file the
-  sync wrote, or set its time to anything but now, and a file that changed in Drive is replaced by
-  a copy every app can change, even where the app had made it private. Between apps nothing changes:
-  a file keeps the owner and mode the app that made it gave it (every mount is read-write in v1,
-  below). Checked on rclone 1.75.2, both ways, in normal runs and resyncs.
+  The sync containers run in the server's user name space, as root's capabilities reach only files
+  of users its name space maps: their root is the engine's own, with only these two capabilities,
+  unless the engine remaps containers' users and the server runs remapped, when theirs is remapped
+  like the apps'. This supersedes **Files apps write** (2026-11-26), which asked apps writing into a
+  knowledge base to run as user 1000 or with a umask of 002, and under which a folder an app made as
+  another user, or a file only it could read, failed runs, some stopping for the owner's Resync
+  after Drive had changed. Not chosen: giving every file to Your Space's user before each run, which
+  rewrites apps' owners and modes every minute, needs `CHOWN` too, and still fails a run on a file
+  an app makes between that pass and the run; and idmapped mounts, which Docker doesn't offer and
+  which map users one to one, not every app's to one. The lease's limit: an app can't change the
+  mode of a file the sync wrote, or set its time to anything but now, and a file that changed in
+  Drive is replaced by a copy every app can change, even where the app had made it private. Between
+  apps nothing changes: a file keeps the owner and mode the app that made it gave it (every mount is
+  read-write in v1, below). Checked on rclone 1.75.2, both ways, in normal runs and resyncs.
 - **Taking a knowledge base away finishes after a restart (owner decision, 2026-11-26).** The owner
   required that taking a knowledge base from an app, or deleting it, finishes when Your Space comes
   back from a restart in the middle of it, preferably with no schema change. Each time Your Space
