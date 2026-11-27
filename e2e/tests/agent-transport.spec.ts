@@ -33,7 +33,7 @@ test("the private transport reaches only the registered interface of the selecte
       installation: { id, name: "probe", interfaceService: "web", interfacePort: 8080 },
       method: "GET", path: "/record.json", headers: {}
     });
-    assert.deepEqual(await call(process.argv[1]), {status: 200, body: {id: "fixture"}});
+    assert.deepEqual(await call(process.argv[1]), {status: 200, body: {id: "fixture"}, usable: true});
     await assert.rejects(call(randomUUID()), error => error instanceof RuntimeError && error.status === 503);
   `;
   await compose(["exec", "-T", "server", "node", "--input-type=module", "-e", verify, id!]);
