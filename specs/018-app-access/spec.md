@@ -4,8 +4,8 @@
 
 **Created**: 2026-11-27
 
-**Status**: Proposed. The owner set the model on 2026-11-27 (decisions 1 to 5); five details are
-open, each with a recommendation. Nothing is built.
+**Status**: Proposed. The owner set the model on 2026-11-27 (decisions 1 to 5) and settled
+decision 6; four details are open, each with a recommendation. Nothing is built.
 
 **Input**: The owner, on 2026-11-27, after the first live run of journey 017: 017's per-route model
 is too granular to start with. Start broad and add granularity only when it's needed. "access is per
@@ -38,7 +38,7 @@ applies the actual api key, agent never sees the api key."
 | 3 | What stays from 017? | **Decided:** the agent's own Your Space key, Your Space attaching the app's key, the response check, per-agent revocation, and Activity |
 | 4 | When does a call ask the owner first? | **Decided:** never, unless the owner adds a route that asks. Owner: "start with a blank list by default, allow all routes and api key determines access. and if usr wants they can define specific route that triggers approval request." |
 | 5 | What does a kit change do to app keys and grants? | **Decided:** keeps them. A grant is to the app, so a new kit, source, commit or Compose file leaves it and the bound keys in place |
-| 6 | How is a route that asks written? | Open. Recommended: a method and a path, where `*` stands for one path segment, such as `DELETE /rest/companies/*` |
+| 6 | How is a route that asks written? | **Decided:** a method and a path, where `*` stands for one path segment, such as `DELETE /rest/people/*`. Owner: "thats fine" |
 | 7 | Whose list is it? | Open. Recommended: each agent's, per app, beside the key it uses |
 | 8 | What happens to 017's grants and Ask settings? | Open. Recommended: each grant keeps its key and its routes that asked, and waits for the owner to confirm it before it works, since a 018 grant reaches the whole API on that key |
 | 9 | Does removing an app keep its agent access? | Open. Recommended: no. Removing an app, even keeping its data, ends its grants and app keys, as today; only a kit change keeps them |
@@ -84,7 +84,7 @@ After journey 017 (PRs #141–#143):
 
 ## 6. How a Route That Asks Is Written
 
-**Recommended:** a method and a path. Each path segment is literal or `*`, which matches any one
+**Decided (2026-11-27):** as recommended; the owner: "thats fine". a method and a path. Each path segment is literal or `*`, which matches any one
 segment; the query isn't matched. `DELETE /rest/companies/*` asks before deleting any company;
 `POST /rest/metadata/*` asks before creating any object or field. The owner adds and removes them in
 **Agents**.
