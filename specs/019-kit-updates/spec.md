@@ -176,11 +176,13 @@ workspace, not over one app's API).
 
 ## Agent Access Across an Update
 
-Spec 018 makes grants and app keys survive kit changes; this spec assumes it. An update keeps the
-app's grants and bound credentials. It drops only a grant of a role the new kit no longer declares
-and a credential it no longer names, and marks pending requests stale, since they were approved
-under the previous kit. Removing an app still retires all of its agent access. The change to
-`retire_agent_binding` and to the `kit_digest` check is made once, with spec 018.
+Spec 018 makes grants and app keys survive kit changes; this spec assumes it and changes nothing
+in agent access. In 018 a grant is per app, so an update keeps every grant and every bound
+credential. A credential the new kit no longer names stays stored, and a grant that uses it is
+unavailable until the owner picks another; a later kit may name it again. Pending requests go stale,
+since they were approved under the previous kit. Removing an app still retires all of its agent
+access. 018's migration rewrites `retire_agent_binding` and drops the `kit_digest` check; this
+spec's migration follows it.
 
 ## User Scenarios
 
