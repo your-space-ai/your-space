@@ -140,12 +140,12 @@ knowledge base. [Journey 014](https://github.com/your-space-ai/your-space/blob/m
 
 - **Local and synced.** A local knowledge base is only the volume. A synced one adds a two-way sync
   with a remote folder: `rclone bisync` against the local volume, about once a minute for each
-  knowledge base, run by a long-running container of stock `rclone rcd` of its own, unprivileged,
-  with no FUSE, no volume plugin and no engine access. Its configuration is in memory only, and its
-  remote control listens only on a private socket the server uses to create the remote and start
-  runs, so the remote's tokens are never in a file or a container's environment. Your Space adds no
-  sync daemon of its own. A new container for each scheduled run was built first and replaced at the
-  owner's decision. Apps never mount the remote and Your Space never serves an app's files from the
+  knowledge base, run by a long-running container of stock `rclone rcd` of its own, with only two
+  file capabilities, no FUSE, no volume plugin and no engine access. Its configuration is in memory
+  only, and its remote control listens only on a private socket the server uses to create the
+  remote and start runs, so the remote's tokens are never in a file or a container's environment.
+  Your Space adds no sync daemon of its own. A new container for each scheduled run was built
+  first and replaced at the owner's decision. Apps never mount the remote and Your Space never serves an app's files from the
   Google API: the owner: "YS server should manage rclone on behalf of the user and serve from rclone,
   not serve directly from the google api".
   A live mount was rejected because it needs FUSE and extra privileges in a container, and leaves
@@ -178,17 +178,29 @@ knowledge base. [Journey 014](https://github.com/your-space-ai/your-space/blob/m
   for each interruption; if its own resync fails, the next run that still needs one stops for the
   owner. This replaces stopping for the owner in that case. Every other run that bisync's checks
   stop still waits for the owner. A run that finds bisync's lock held is tried again a minute later.
-- **Files apps write (owner decision, 2026-11-26).** Sync runs as user 1000, so an app that writes
-  into a knowledge base should run as user 1000 or with a umask of 002. Otherwise sync may be unable
-  to write into folders the app made. **Corrected (2026-11-26, checked on rclone 1.75.2):** this
-  said such a run fails and the next one tries again, deleting nothing. bisync changes the
-  Drive folder first, so by the time it fails on the knowledge base's side it may already have
-  deleted in Drive files deleted in the knowledge base; it deletes nothing in the knowledge base. It
-  then asks for a resync, so the knowledge base stops for the owner, whose Resync copies both ways
-  and deletes nothing. A folder another user made fails such a run even with a umask of 002, when a
-  Drive file is added to it or deleted from it, as only a folder's owner can set its modification
-  time. A file the sync can't read is different: it fails a run before anything changes, and the
-  next run tries again.
+- **Your Space owns the files, apps lease them (owner decision, 2026-11-27).** The owner: "all the
+  files should be owned and managed by your space, they are essentially leased to the apps, but the
+  apps dont own the files and shouldn't prevent sync". No owner or permission an app sets stops the
+  sync, and apps can still read and edit what it writes. Each sync container runs as root in its
+  container with only `DAC_OVERRIDE` and `FOWNER`, so it reads and writes every file and folder of
+  its knowledge base, and sets their times, whoever made them and whatever their mode. Every other
+  capability is dropped, with no new privileges, a read-only root, no engine access, only its own
+  mounts and Google reached only through its proxy, as before. It writes with a umask of 0, so what
+  it makes is readable and writable by everyone and an app running as any user can change it; its
+  socket, then writable by everyone too, is kept to the server by its folder, which only the
+  server's user opens. Docker makes capabilities it adds effective only for a container's root user:
+  as user 1000 they stay in the bounding set and nothing more (checked on Docker 28.3.3 and 29).
+  This supersedes **Files apps write** (2026-11-26), which asked apps writing into a knowledge base
+  to run as user 1000 or with a umask of 002, and under which a folder an app made as another user,
+  or a file only it could read, failed runs, some stopping for the owner's Resync after Drive had
+  changed. Not chosen: giving every file to Your Space's user before each run, which rewrites apps'
+  owners and modes every minute, needs `CHOWN` too, and still fails a run on a file an app makes
+  between that pass and the run; and idmapped mounts, which Docker doesn't offer and which map users
+  one to one, not every app's to one. The lease's limit: an app can't change the mode of a file the
+  sync wrote, or set its time to anything but now, and a file that changed in Drive is replaced by
+  a copy every app can change, even where the app had made it private. Between apps nothing changes:
+  a file keeps the owner and mode the app that made it gave it (every mount is read-write in v1,
+  below). Checked on rclone 1.75.2, both ways, in normal runs and resyncs.
 - **Taking a knowledge base away finishes after a restart (owner decision, 2026-11-26).** The owner
   required that taking a knowledge base from an app, or deleting it, finishes when Your Space comes
   back from a restart in the middle of it, preferably with no schema change. Each time Your Space

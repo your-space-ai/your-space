@@ -6,8 +6,8 @@ picks, mounted as folders in its file system, and reads and writes them as ordin
 knowledge base can also be kept in two-way sync with a folder in Google Drive, so the same files are
 on Drive, in every app that mounts them, and on the owner's other devices.
 
-**Status: draft, 2026-11-26.** This rewrite replaces the 2026-11-24 draft of views over Drive read
-through an SDK. Decisions below were made with the owner on 2026-11-25 and 2026-11-26. Open
+**Status: draft, 2026-11-27.** This rewrite replaces the 2026-11-24 draft of views over Drive read
+through an SDK. Decisions below were made with the owner from 2026-11-25 to 2026-11-27. Open
 questions are listed at the end.
 
 **Motivating use case (later, out of scope here).** A flashcard app links each card to the source
@@ -45,7 +45,7 @@ interface service, always one folder per knowledge base, even when there is only
 them by listing `<path>`. The kit names no volume, token or address. An app like Obsidian opens
 `/knowledge` as its vault, and each knowledge base is a top-level folder in it.
 
-## Decisions (2026-11-25, 2026-11-26)
+## Decisions (2026-11-25 to 2026-11-27)
 
 - **A knowledge base is a volume Your Space owns.** It is a named volume that belongs to Your Space,
   not to any app, and it is the one kind of shared volume an app may mount. Apps' Compose files still
@@ -54,9 +54,9 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   volume kept in sync with a remote folder. A local knowledge base can be connected to a remote
   later. Apps can't tell the two apart.
 - **Sync is rclone two-way sync, not a live mount.** Your Space runs `rclone bisync` between the
-  volume and the remote folder: unprivileged, with no FUSE, no volume plugin and no engine access.
-  Apps read the local volume, so they work offline and at local speed. Your Space serves the files
-  from rclone's copy, never by calling the Google API for an app.
+  volume and the remote folder: with only two file capabilities, no FUSE, no volume plugin and no
+  engine access. Apps read the local volume, so they work offline and at local speed. Your Space
+  serves the files from rclone's copy, never by calling the Google API for an app.
 - **One rclone for each synced knowledge base, always on, and nothing else.** Each synced knowledge
   base has a long-running container of its own that runs stock rclone's remote-control server
   (`rclone rcd`), with its configuration in memory only, listening on a private socket only the
@@ -83,6 +83,14 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   running app's containers mount, as the runtime manager reports them, with the app's grants, and
   applies again any app that mounts one it isn't given (see **Finishing after a restart**). No
   pending change is saved and the schema doesn't change, as the owner preferred.
+- **Your Space owns the files, apps lease them (2026-11-27).** The owner: "all the files should be
+  owned and managed by your space, they are essentially leased to the apps, but the apps dont own
+  the files and shouldn't prevent sync". No owner or permission an app sets ever stops Your Space's
+  sync, and apps can still read and edit what the sync writes: each sync container reads and writes
+  any file of its knowledge base, and writes files every app can change (see **Files the sync reads
+  and writes**). This replaces the 2026-11-26 rule that apps writing into a knowledge base run as
+  user 1000 or with a umask of 002, and that a run failing on their permissions stops for the
+  owner's Resync.
 - **No permissioning in v1.** Every mount is read-write, for every app given the knowledge base. There
   is no writer role, read-only mount or folder ownership yet. The owner: "i dont want to build a
   solution before we've run into a problem here".
@@ -111,28 +119,33 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   twice as long each time, up to an hour. A stopped app is left as it is: it gets its current
   grants when it next starts, or when deleting the knowledge base applies it again, as above.
   Nothing new is saved for this: the containers' mounts are the record.
-- **File ownership.** A new knowledge base's folder belongs to user and group 1000, is writable by
-  everyone, and gives new files its group. A short-lived container of the runtime manager's own
-  image sets it up. Creating the knowledge base fails when that container can't be removed after,
-  since it still mounts the volume; deleting the knowledge base removes such a container first.
-- **Files apps write.** Sync runs as user 1000. An app that writes into a knowledge base should run
-  as user 1000, as most self-hosted images do, or with a umask of 002, so the files and folders it
-  makes stay writable by their group (2026-11-26). Otherwise sync may not be able to change the
-  app's files or write into folders it made. Even with a umask of 002, a folder another user made
-  fails a run that adds a Drive file to it or deletes one from it, as only a folder's owner can set
-  its modification time (checked on rclone 1.75.2). Likewise an app that runs as another user can
-  create files but may not be able to change files another user wrote.
-- **A run that fails on a permission error.** When it can't write in the knowledge base, into a
-  folder an app made or over a file it can't change, it may already have made its changes in
-  Drive: bisync changes the Drive folder first, so files deleted here are deleted in Drive too.
-  Here it deletes nothing: a file deleted in Drive is still here. bisync then asks for a resync, so
-  the knowledge base stops (`resync`) until the owner chooses **Resync**, which copies both ways and
-  deletes nothing: a file whose deletion here didn't happen goes back to Drive. While the app's
-  folder stays one sync can't write into, the resync fails the same way. A file it can't read fails
-  a run earlier, while bisync lists both sides, before anything changes, and the next run tries
-  again a minute later. A resync, as the first run after connecting is, stops on such a file
-  instead (`resync`), once it has copied the knowledge base's other files to Drive (checked on
-  rclone 1.75.2).
+- **File ownership.** A knowledge base and its files belong to Your Space; apps lease them
+  (2026-11-27, see **Your Space owns the files**). A new knowledge base's folder belongs to user and
+  group 1000, Your Space's, is writable by everyone, and gives new files its group. A short-lived
+  container of the runtime manager's own image sets it up. Creating the knowledge base fails when
+  that container can't be removed after, since it still mounts the volume; deleting the knowledge
+  base removes such a container first.
+- **Files the sync reads and writes (2026-11-27).** Apps may run as any user, with any umask, and
+  make files and folders with any mode: nothing they set stops a sync. Each sync container runs as
+  root in its container with only two capabilities, `DAC_OVERRIDE` and `FOWNER`, so it reads and
+  writes every file and folder of its knowledge base, and sets their times, whoever made them and
+  whatever their mode, such as a folder an app made `0755` or a file it made `0600`. Docker makes
+  capabilities it adds effective only for a container's root user, never for user 1000 (checked
+  on Docker 28.3.3 and 29). The sync writes with a umask of 0, so the files and folders it makes
+  are readable and writable by everyone (`0666`, `0777`) and owned by the sync's user: an app
+  running as any user can read them, change them, replace them and delete them. That is the
+  lease's limit: an app can't change the mode of a file the sync wrote, or set its time to anything
+  but now. A file that changed in Drive is replaced by such a copy, even where the app had made it
+  readable only by itself. The sync never changes the owner or mode of a file an app made. Between
+  apps nothing changes (see **No permissioning in v1**): a file keeps the owner and mode the app
+  that made it gave it, so another app running as another user may not be able to change it.
+  Checked on rclone 1.75.2.
+- **A run that fails on a local write.** Permissions an app sets no longer cause one (2026-11-27).
+  When a run still can't write in the knowledge base, as on a full disk, it may already have made
+  its changes in Drive: bisync changes the Drive folder first, so files deleted here are deleted in
+  Drive too. Here it deletes nothing: a file deleted in Drive is still here. bisync then asks for a
+  resync, so the knowledge base stops (`resync`) until the owner chooses **Resync**, which copies
+  both ways and deletes nothing: a file whose deletion here didn't happen goes back to Drive.
 - **Sync safety.** Deleting the owner's files on Drive is the worst failure here, so every run uses
   bisync's own checks and stops for the owner rather than guess, with one exception: the resync Your
   Space runs by itself to finish an interrupted run (see **Interrupted runs**). The checks:
@@ -208,17 +221,19 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
     knowledge base itself (default picked 2026-11-26). A Drive folder at its path is written into
     the folder it leads to, still inside the knowledge base, and later runs move those files to that
     folder in Drive too. No link is ever followed out of the knowledge base.
-- **The sync containers.** One container for each synced knowledge base, run by the runtime manager
-  for Your Space: the stock rclone image running `rclone rcd`, unprivileged, with no engine access
-  and no FUSE. It mounts only that knowledge base's volume, its own sync state (bisync's listings and
-  the backups) and its own socket's folder. Links aren't followed out of the knowledge base (see
-  **Links**); the container is defence in depth besides, as it limits what any run can reach to that
-  knowledge base, its state and its socket. Its remote control listens only on a Unix socket
-  in that folder, in a volume only the server mounts whole, protected by file permissions, as the
-  runtime manager's socket is. Connecting or disconnecting a knowledge base adds or removes its
-  container only; the others keep running. The server and the sync containers share the sockets'
-  volume, so knowledge bases sync only when apps run on the engine Your Space's server runs on:
-  with `YS_ENGINE_SOCKET` set to another engine, connecting one is refused with `503`.
+- **The sync containers.** One container for each synced knowledge base, run by the runtime
+  manager for Your Space: the stock rclone image running `rclone rcd`, as root in the container
+  with only `DAC_OVERRIDE` and `FOWNER` (see **Files the sync reads and writes**), every other
+  capability dropped, no new privileges, a read-only root, no engine access and no FUSE. It mounts
+  only that knowledge base's volume, its own sync state (bisync's listings and the backups) and
+  its own socket's folder. Links aren't followed out of the knowledge base (see **Links**); the
+  container is defence in depth besides, as it limits what any run can reach to that knowledge
+  base, its state and its socket. Its remote control listens only on a Unix socket in that folder,
+  in a volume only the server mounts whole, protected by file permissions, as the runtime
+  manager's socket is. Connecting or disconnecting a knowledge base adds or removes its container
+  only; the others keep running. The server and the sync containers share the sockets' volume, so
+  knowledge bases sync only when apps run on the engine Your Space's server runs on: with
+  `YS_ENGINE_SOCKET` set to another engine, connecting one is refused with `503`.
 - **When it syncs.** About once a minute for each synced knowledge base, on its own timer, and at
   once on **Sync now**: the server starts each run through that knowledge base's remote control
   (`sync/bisync`, run in the background), with the options listed under sync safety. Runs of one
@@ -282,6 +297,11 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
 - Sync, run in tests against a fixture remote that production can't select: a file created, changed
   or deleted on either side reaches the other; a file changed on both sides leaves a conflict copy
   that the page lists.
+- An app running as another user than the sync's, with a umask of 022 (user 1234 in the tests),
+  makes a folder and a file only it can read (`0600`) in a synced knowledge base: both reach the
+  fixture remote. A file the remote adds to that folder, and one it deletes there, reach the
+  knowledge base on the next runs, which don't stop, and the app can still edit a file the sync
+  wrote.
 - Sync refuses to delete: empty the volume, or remove the marker, or delete over half the files, and
   the run stops with a message and the remote is unchanged.
 - After a run stopped by deleting over half the files: **Resync** brings the deleted files back from
