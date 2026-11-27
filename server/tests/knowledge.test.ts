@@ -463,6 +463,27 @@ describe("deleting a knowledge base when its apps and their grants disagree", ()
     expect(runtime.knowledge.has("inbox")).toBe(false);
   });
 
+  it("starts a stopped app that mounts it without it, as the engine keeps a volume a stopped container mounts", async () => {
+    expect((await send("/api/knowledge", { name: "shelf" })).status).toBe(201);
+    const given = await send("/api/apps/vault/knowledge", { bases: ["shelf"] }, "PUT");
+    expect((await waitForJob(((await given.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+    // Its containers stopped, and still mount it.
+    runtime.running.set("ys-vault", [
+      { name: "web", role: "app", state: "exited", exitCode: 1 },
+      { name: "ys-egress", role: "egress", state: "exited", exitCode: 0 },
+    ]);
+    await t.db.update(app).set({ state: "failed", stateReason: "web stopped (exit code 1)." }).where(eq(app.name, "vault"));
+
+    const calls = runtime.calls.length;
+    expect((await api("/api/knowledge/shelf", { method: "DELETE" })).status).toBe(204);
+    const after = runtime.calls.slice(calls);
+    expect(after.map((c) => c.method)).toEqual(["knowledgeUsers", "apply", "deleteKnowledge"]);
+    expect(lastApply("vault").knowledge).toEqual({ path: "/vault", bases: [] });
+    expect(runtime.running.get("ys-vault")!.every((s) => s.state === "running")).toBe(true);
+    expect((await t.db.select({ state: app.state }).from(app).where(eq(app.name, "vault")))[0]!.state).toBe("running");
+    expect(runtime.knowledge.has("shelf")).toBe(false);
+  });
+
   it("saves only the change whose job starts, when two arrive for an app at once", async () => {
     expect((await send("/api/knowledge", { name: "soon" })).status).toBe(201);
     expect((await send("/api/knowledge", { name: "later" })).status).toBe(201);

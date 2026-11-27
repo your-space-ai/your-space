@@ -55,14 +55,16 @@ apps, and for the app if you install it again and give it the knowledge base.
 
 To delete a knowledge base, choose **Delete** on the Knowledge page. Your Space asks first and names
 the apps that use it. Deleting it takes it from those apps, which restart without its folder, then
-deletes its files. An app you asked to remove, whose removal didn't finish, is removed instead of
-restarted. This can't be undone.
+deletes its files. A stopped app that has it, or whose containers still mount it, is started
+without it, as Docker keeps a knowledge base any container mounts. An app you asked to remove,
+whose removal didn't finish, is removed instead of restarted. This can't be undone.
 
 If an app can't restart without the knowledge base, Your Space keeps the knowledge base and its
 files, the app keeps it too, and the message names the app. Fix the app, then delete the knowledge
 base again. If Your Space stops during a deletion, the knowledge base and its files stay, and the
-apps it was taken from restart without its folder once Your Space is back, or are removed if you
-asked to remove them; delete it again.
+running apps it was taken from restart without its folder once Your Space is back, or are removed if
+you asked to remove them; delete it again. A stopped app keeps the folder until it next starts, or
+until you delete the knowledge base again, which starts it without the folder.
 
 Knowledge bases are Docker volumes named `ys-knowledge.<installation>.<name>`, labelled
 `ai.your-space.role=knowledge`. `docker compose down -v` of Your Space doesn't delete them, as it

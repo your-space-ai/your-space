@@ -261,6 +261,13 @@ test("a knowledge base taken from an app leaves it once Your Space is back, thou
 test("removing an app and deleting its data keeps its knowledge bases' files", async ({ page }) => {
   await asOwner(page);
   await page.goto("/apps/notes-one");
+  // Given back the knowledge base the test before took from it, so the app removed mounts it.
+  const origin = new URL(page.url()).origin;
+  const given = await page.request.put("/api/apps/notes-one/knowledge", { data: { bases: ["course-notes"] }, headers: { origin } });
+  expect(given.status()).toBe(202);
+  await jobDone(page, ((await given.json()) as { jobId: string }).jobId);
+  expect(await inApp(ONE, "cat /knowledge/course-notes/week-1.md")).toBe("Week 1: cells");
+  await page.reload();
   await page.getByRole("button", { name: "Remove app", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Remove app", exact: true }).click();
   await waitForJob(page);

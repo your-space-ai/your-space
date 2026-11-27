@@ -1214,7 +1214,8 @@ export class AppsService {
       const { state, reason } = row.desired === "stopped" && !running ? { state: "stopped" as const, reason: null } : stateFromServices(services);
       if (row.state === "failed" && !running) continue;
       if (state !== row.state || reason !== row.stateReason) {
-        await this.db.update(app).set({ state, stateReason: reason, updatedAt: new Date() }).where(eq(app.id, row.id));
+        // Never over a removal that ended since the rows were read: the app stays removed.
+        await this.db.update(app).set({ state, stateReason: reason, updatedAt: new Date() }).where(and(eq(app.id, row.id), ne(app.state, "removed")));
       }
       if (running) await this.collectDenials(row.id, row.name);
     }
@@ -1225,11 +1226,12 @@ export class AppsService {
    * names the apps whose containers mount each knowledge base. That is an app that should run, or
    * one the owner asked to remove whose removal didn't finish, as a deletion of a knowledge base
    * removes. A stopped app's containers are left as they are, as it gets its grants when it next
-   * starts, and so is a busy app's, whose job is changing them. Without the runtime manager's
-   * answer, none this time.
+   * starts, and so is a busy app's, whose job is changing them. A knowledge base the runtime
+   * manager doesn't answer for gives none this time, and the others still do.
    */
   private async leftoverKnowledge(rows: AppRow[], reports: { app: string; services: ServiceState[] }[]): Promise<Map<string, { id: string; name: string }[]>> {
     const leftover = new Map<string, { id: string; name: string }[]>();
+    let unknown = false;
     const running = rows.filter((row) => (row.desired === "running" || row.desired === "removed") && !this.busy.has(row.id) && runningIn(reports, row.name));
     const bases = running.length ? await this.db.select({ id: knowledgeBase.id, name: knowledgeBase.name }).from(knowledgeBase) : [];
     if (bases.length) {
@@ -1239,8 +1241,10 @@ export class AppsService {
         try {
           users = (await this.runtime.knowledgeUsers(base.name)).apps;
         } catch (error) {
+          // As for a volume of its name that Your Space didn't make: the other knowledge bases are still checked.
           log("warn", "apps.knowledge_check_failed", { knowledgeBase: base.name, ...errorFields(error) });
-          return new Map();
+          unknown = true;
+          continue;
         }
         for (const row of running) {
           if (!users.includes(row.name) || granted.some((g) => g.appId === row.id && g.knowledgeBaseId === base.id)) continue;
@@ -1248,8 +1252,9 @@ export class AppsService {
         }
       }
     }
-    // An app that no longer mounts one waits from the start again if it ever does.
-    for (const id of this.unmounting.keys()) if (!leftover.has(id) && !this.busy.has(id)) this.unmounting.delete(id);
+    // An app that no longer mounts one waits from the start again if it ever does; while a knowledge
+    // base's mounts are unknown, no app's wait is forgotten.
+    if (!unknown) for (const id of this.unmounting.keys()) if (!leftover.has(id) && !this.busy.has(id)) this.unmounting.delete(id);
     return leftover;
   }
 
@@ -1258,8 +1263,8 @@ export class AppsService {
    * says whether it did; one the owner asked to remove is removed, as deleting a knowledge base does.
    * Decided again once the app is held, so a change of the owner's that ended meanwhile isn't taken
    * for one: it applies the app as it is then. After an apply that didn't take them away, the next
-   * waits (UNMOUNT_RETRY_MS). Recorded against Your Space once it worked, for each knowledge base
-   * the runtime manager no longer reports the app mounting.
+   * waits (UNMOUNT_RETRY_MS) from the end of that one. Recorded against Your Space once it worked,
+   * for each knowledge base the runtime manager doesn't report the app still mounting.
    */
   private async unmount(row: AppRow, bases: { id: string; name: string }[]): Promise<boolean> {
     const retry = this.unmounting.get(row.id);
@@ -1287,7 +1292,8 @@ export class AppsService {
         return false;
       }
       const wait = retry ? Math.min(retry.wait * 2, UNMOUNT_RETRY_MAX_MS) : UNMOUNT_RETRY_MS;
-      this.unmounting.set(row.id, { at: Date.now() + wait, wait });
+      const waitFromNow = () => this.unmounting.set(row.id, { at: Date.now() + wait, wait });
+      waitFromNow();
       log("warn", "apps.knowledge_unmounting", { app: row.name, knowledgeBases: left.map((base) => base.name).join(",") });
       const yourSpace = await operatorActorId(this.db);
       const ended: JobEnded = {
@@ -1303,7 +1309,14 @@ export class AppsService {
         failed: async () => {},
       };
       const { done } = await this.startJob(row.id, now.desired === "removed" ? "remove" : "apply", { held: true, ended });
-      void done.finally(release);
+      // The wait starts again once the apply ends, before the app is let go, so one that took longer
+      // than the wait is still followed by it. A job that couldn't record its end is logged.
+      void done
+        .catch((error: unknown) => log("warn", "apps.knowledge_unmount_failed", { app: row.name, ...errorFields(error) }))
+        .finally(() => {
+          waitFromNow();
+          release();
+        });
       return true;
     } catch (error) {
       release();

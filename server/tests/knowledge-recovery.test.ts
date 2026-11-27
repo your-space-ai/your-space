@@ -16,10 +16,25 @@ import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts"
 
 const COMPOSE = "services:\n  web:\n    image: traefik/whoami:latest\n";
 
-/** A runtime manager whose applies and removals can be cut off, as when Your Space stops while one runs: it never answers. */
+/**
+ * A runtime manager whose applies and removals can be cut off, as when Your Space stops while one
+ * runs: it never answers. An apply can also wait for `gate`, as a slow one does; `gated` counts the
+ * applies that reached it, and `gateFails` fails one that waited before it reports anything.
+ */
 class StoppingRuntime extends FakeRuntime {
   cutOff = false;
+  gate: Promise<void> | undefined;
+  gated = 0;
+  gateFails: string | undefined;
   override async apply(spec: AppSpec, onEvent: (event: ApplyEvent) => void) {
+    if (this.gate) {
+      this.gated++;
+      await this.gate;
+      if (this.gateFails) {
+        this.calls.push({ method: "apply", spec });
+        throw new Error(this.gateFails);
+      }
+    }
     if (!this.cutOff) return super.apply(spec, onEvent);
     this.calls.push({ method: "apply", spec });
     return new Promise<void>(() => {});
@@ -38,11 +53,13 @@ const fetch = fakeGithub({
   "ys-fixtures/vault/compose.yaml": COMPOSE,
   "ys-fixtures/relay/compose.yaml": COMPOSE,
   "ys-fixtures/ledger/compose.yaml": COMPOSE,
+  "ys-fixtures/scribe/compose.yaml": COMPOSE,
   ...plainKit("notes", "knowledge: {}\n"),
   ...plainKit("atlas", "knowledge: {}\n"),
   ...plainKit("vault", "knowledge: {}\n"),
   ...plainKit("relay", "knowledge: {}\n"),
   ...plainKit("ledger", "knowledge: {}\n"),
+  ...plainKit("scribe", "knowledge: {}\n"),
 });
 let t: TestDatabase;
 let server: TestServer;
@@ -63,6 +80,8 @@ beforeAll(async () => {
 afterEach(() => {
   runtime.cutOff = false;
   runtime.failApply = undefined;
+  runtime.gate = undefined;
+  runtime.gateFails = undefined;
   vi.useRealTimers();
 });
 
@@ -327,5 +346,111 @@ describe("taking a knowledge base away when Your Space restarts during it", () =
     } finally {
       runtime.knowledgeUsers = original;
     }
+  });
+
+  it("still takes one away when the runtime manager can't answer for another knowledge base", async () => {
+    for (const name of ["sketches", "foreign"]) expect((await send("/api/knowledge", { name })).status).toBe(201);
+    await install("scribe", ["sketches"]);
+    // As after a restart in the middle of taking it away.
+    await t.db.delete(appKnowledgeBase).where(eq(appKnowledgeBase.appId, await appId("scribe")));
+    const original = runtime.knowledgeUsers.bind(runtime);
+    // As for a volume of that name Your Space didn't make, which the runtime manager refuses each time.
+    runtime.knowledgeUsers = async (name: string) => {
+      if (name === "foreign") throw new Error("A volume named ys-knowledge.test.foreign exists on the engine, but Your Space didn't make it, so it can't be a knowledge base.");
+      return original(name);
+    };
+    try {
+      const apps = await restart();
+      const before = applies("scribe").length;
+      await apps.reconcile();
+      await settled(apps, "scribe");
+      expect(applies("scribe").length).toBe(before + 1);
+      expect(runtime.lastApply("ys-scribe")!.knowledge).toEqual({ path: "/knowledge", bases: [] });
+      expect(await revoked("scribe")).toEqual([{ actorId: yourSpace, knowledgeBase: "sketches" }]);
+    } finally {
+      runtime.knowledgeUsers = original;
+    }
+  });
+
+  it("waits the whole time after an apply that took longer than the wait", async () => {
+    expect((await send("/api/knowledge", { name: "inks" })).status).toBe(201);
+    const given = await send("/api/apps/scribe/knowledge", { bases: ["inks"] }, "PUT");
+    expect((await waitForJob(((await given.json()) as { jobId: string }).jobId)).state).toBe("succeeded");
+    const scribe = await appId("scribe");
+    await t.db.delete(appKnowledgeBase).where(eq(appKnowledgeBase.appId, scribe));
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    const apps = await restart();
+    runtime.failApply = "The engine stopped.";
+    let open = () => {};
+    runtime.gate = new Promise((resolve) => (open = resolve));
+    const before = applies("scribe").length;
+    const gated = runtime.gated;
+    await apps.reconcile();
+    for (let i = 0; i < 200 && runtime.gated === gated; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(runtime.gated).toBe(gated + 1);
+    // It takes five minutes, longer than the minute's wait, and fails.
+    vi.setSystemTime(start + 5 * 60_000);
+    open();
+    await settled(apps, "scribe");
+    runtime.gate = undefined;
+    expect(applies("scribe").length).toBe(before + 1);
+    await apps.reconcile();
+    await settled(apps, "scribe");
+    expect(applies("scribe").length).toBe(before + 1);
+    // A minute after it ended, it is tried again.
+    vi.setSystemTime(start + 6 * 60_000 + 1);
+    await apps.reconcile();
+    await settled(apps, "scribe");
+    expect(applies("scribe").length).toBe(before + 2);
+  });
+
+  it("lets go of an app whose apply couldn't record its end, and the server goes on", async () => {
+    const scribe = await appId("scribe");
+    const apps = await restart();
+    runtime.gateFails = "The engine stopped.";
+    let open = () => {};
+    runtime.gate = new Promise((resolve) => (open = resolve));
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const gated = runtime.gated;
+      await apps.reconcile();
+      for (let i = 0; i < 200 && runtime.gated === gated; i++) await new Promise((r) => setTimeout(r, 10));
+      expect(runtime.gated).toBe(gated + 1);
+      // The database stops while the apply runs, so the failed job can't be recorded.
+      await t.stop();
+      open();
+      for (let i = 0; i < 200 && apps.isBusy(scribe); i++) await new Promise((r) => setTimeout(r, 10));
+      await new Promise((r) => setTimeout(r, 50));
+      expect(unhandled).toEqual([]);
+      expect(apps.isBusy(scribe)).toBe(false);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+      await t.restore();
+    }
+  });
+
+  it("leaves an app removed while the check of the apps read the mounts as removed", async () => {
+    const scribe = await appId("scribe");
+    // Its apply ends, and it is read as starting, so the check would record it as running.
+    runtime.failApply = undefined;
+    const { jobId } = await (await restart()).start("scribe");
+    expect((await waitForJob(jobId)).state).toBe("succeeded");
+    await t.db.update(app).set({ state: "starting" }).where(eq(app.id, scribe));
+    const apps = await restart();
+    const original = runtime.knowledgeUsers.bind(runtime);
+    // Its removal ends while the check reads the mounts.
+    runtime.knowledgeUsers = async (name: string) => {
+      await t.db.update(app).set({ state: "removed", desired: "removed" }).where(eq(app.id, scribe));
+      return original(name);
+    };
+    try {
+      await apps.reconcile();
+    } finally {
+      runtime.knowledgeUsers = original;
+    }
+    expect((await t.db.select({ state: app.state }).from(app).where(eq(app.id, scribe)))[0]!.state).toBe("removed");
   });
 });
