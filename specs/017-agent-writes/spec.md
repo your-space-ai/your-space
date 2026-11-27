@@ -211,6 +211,9 @@ agentAccess:
   credential isn't bound isn't available; nothing falls back to another credential.
 - Each role's routes use one credential, so the dashboard shows which credential a role needs, and
   the parser refuses a role that mixes them.
+- A credential that any setup route names is a setup credential: only setup roles, those with a
+  setup route, may name it, and the parser refuses a kit where a record role's route names it. A
+  setup role's reads of the data model use it too.
 - A kit with one credential keeps today's `credential` entry, and its routes need no `credential`
   field. Stored kits keep working.
 - The response check refuses a response that contains any credential bound to the installation.
@@ -239,8 +242,9 @@ require an approval tho", and "there are some reasonable deletions".
 - A delete asks the owner by default. The kit may recommend Ask or Allow for it, and the owner can
   set Ask or Allow for it per agent and installation, as for any write (decision 6). Ask for all
   writes covers deletes.
-- Deleting objects or fields is a setup route with `method: DELETE`, in the Setup role, and follows
-  the same rule: Ask by default, Allow if the owner sets it.
+- Deleting objects or fields is a setup route (`effect: setup`) with `method: DELETE`. It goes in a role of its own
+  too, such as a Setup remover beside Setup, so granting Setup never grants a delete; it is sent with
+  the setup credential and follows the same rule: Ask by default, Allow if the owner sets it.
 - The Twenty kit declares no deletes yet: onboarding doesn't need them, and its record key's role
   can't delete.
 
@@ -412,12 +416,16 @@ agent writes before alpha.2, and the onboarding runs there.
 ## Requirements
 
 - **FR-001**: A version 2 kit route may declare `method: POST`, `PATCH` or `PUT` with `effect:
-  create`, `effect: update` or `effect: setup`, or `method: DELETE` with `effect: delete`, a
+  create`, `effect: update` or `effect: setup`, or `method: DELETE` with `effect: delete`, or with
+  `effect: setup` for a data-model delete, a
   `bodyFields` list of top-level field names and an optional `required` list drawn from it. `GET`
   stays `effect: read`. `effect: write` is refused with a message saying which effects are
   supported. A stored route with `effect: write`, from before the cut, stays out of every role.
 - **FR-001a**: A kit declares either one `credential`, as today, or named `credentials`; with named
-  credentials each route names one, and each role's routes all name the same one. The owner binds
+  credentials each route names one, and each role's routes all name the same one. A credential named
+  by any setup route is named only by routes in roles that contain a setup route; the parser refuses
+  a kit that breaks this. A `DELETE` route, record or setup, is in a role with no other write
+  route. The owner binds
   each credential separately, encrypted under the data key and moved by its rotation. A route whose
   credential isn't bound is unavailable. A request carries only its route's credential.
 - **FR-002**: Invocation input has `path`, `query` and `body`. A write's body is a JSON object of at
