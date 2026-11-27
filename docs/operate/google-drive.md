@@ -186,11 +186,14 @@ pinned to its digest for every processor it is published for, running rclone's o
 as root in the container with only two capabilities, `DAC_OVERRIDE` and `FOWNER`, so that no
 user or mode an app gives its files stops the sync, and with a umask of 0, so that apps running as
 any user can change what it writes. Every other capability is dropped, and it has no new privileges,
-a read-only file system, no access to the Docker engine and no FUSE. It mounts only its own
+a read-only file system, no access to the Docker engine and no FUSE. It runs in the same user name
+space as Your Space's server, so its root is the Docker engine's own root with those two
+capabilities, unless the engine remaps containers' users and the server runs remapped, when
+rclone's root is remapped like the apps'. It mounts only its own
 knowledge base, that knowledge base's sync state, and its own folder of a volume, `ys-sync`, that
 only Your Space's server mounts whole, where rclone's remote control listens on a Unix socket in a
-folder only user 1000, the server's, opens; apps never mount it. Links sync as links, as
-[What a sync does](#what-a-sync-does) says, and as each container sees one knowledge base only, no
+folder only the server, user 1000, and that rclone open; apps never mount it. Links sync as links,
+as [What a sync does](#what-a-sync-does) says, and as each container sees one knowledge base only, no
 sync can reach another besides. Their only network is one whose way out is an outbound proxy of the
 sync's own, which lets through only Google's token endpoint (`oauth2.googleapis.com`) and the Drive
 API (`www.googleapis.com`).

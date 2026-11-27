@@ -265,8 +265,8 @@ async function ensureImage(image: string): Promise<void> {
 }
 
 /**
- * Whether the server runs in the engine's own user name space, as on an engine that remaps containers'
- * users, where Your Space's own containers are run so: the folders only the server and rclone open then
+ * Whether the server runs in the engine's own user name space, as it may on an engine that remaps
+ * containers' users: the folders only the server and rclone open then
  * belong to user 1000 there too, so they mean the same user to both, and rclone runs there with them,
  * as root's capabilities reach only files of users its own name space maps.
  */

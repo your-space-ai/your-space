@@ -119,7 +119,12 @@ path, as user `0:0` with `CapDrop: ALL` and `CapAdd: [DAC_OVERRIDE, FOWNER]` onl
 container's root user, with exactly these two, so no owner or mode an app gives its files stops a
 sync (decision 2026-11-27): it reads and writes every file and folder of its knowledge base and
 sets their times. What it writes there is `0666` and `0777`, for apps of any user to change; it
-never changes the owner or mode of a file an app made. Its environment is
+never changes the owner or mode of a file an app made, though a file changed in Drive is replaced by
+its own copy. Each rclone runs in the server's user name space, as root's capabilities reach only
+files of users its own name space maps: with `userns_mode: host` when the server runs in the
+engine's own on an engine that remaps containers' users, and remapped like the apps when the
+server is. Its root is the engine's own, with only these two capabilities, unless the server runs
+remapped. Its environment is
 `HOME` and the proxy's address only, and its command and labels hold no secret; its labels name its
 knowledge base only (`ai.your-space.knowledge`), so another knowledge base's change leaves its
 container as it is.
