@@ -104,9 +104,10 @@ app's stored values, and the dashboard and CLI show only what differs from what 
 - limits for added or removed services, and a changed interface.
 
 A review whose file Your Space refuses can't be applied, as at install. A review is made of one
-candidate: the new kit at an exact commit, and the Compose file it pins. Applying it applies that
-candidate, never the branch's latest commit at the time of applying, and is refused when the app no
-longer runs the kit the review was made against; the owner then checks again.
+candidate: the new kit at an exact commit, the Compose file it pins, and the image digests the
+review showed, which become the app's pins as at install. Applying it applies that candidate, never
+the branch's latest commit or an image resolved again at the time of applying, and is refused when
+the app no longer runs the kit the review was made against; the owner then checks again.
 
 **Considered:** a raw text diff of the two kit files (exact, but it shows nothing about images or
 the Compose file it points at); applying without a review (the agent case can confirm with `--yes`
@@ -165,17 +166,20 @@ as `your-space owner reset-link` does:
 
 ```sh
 your-space app check-update <app> [--link <kit-link>] [--json]
-your-space app update <app> [--link <kit-link>] [--yes] [--json]
+your-space app update <app> [--link <kit-link>] [--from <kit-link>] [--to <kit-link>] [--yes] [--json]
 ```
 
 `check-update` prints the review of section 2, with the candidate's pinned kit link, or that the
 app is up to date. `update` makes the review, prints it and asks before applying that candidate, or
 applies it with `--yes`; it waits for the job and reports the result or the rollback. `--link` is
-Update from a link (section 1) for both commands. An agent that read `check-update` and wants the
-candidate it read, not a newer one the branch has since, passes that candidate's pinned kit link as
-`--link`; the update then also makes the pinned link the app's link, so the owner gives the branch
-link again later to follow the branch. With `--json`, both print the review as data, so an agent driving the CLI reads it and
-decides. An agent's Your Space key can't update apps: updating changes what code runs, which is the
+Update from a link (section 1) for both commands.
+
+`check-update` prints the installed kit's pinned link and the candidate's. An agent that applies
+what it read later passes both: `--from` the installed kit it reviewed against, and `--to` the
+candidate it reviewed. `update` then applies that candidate and is refused, so the agent checks
+again, when the app no longer runs the `--from` kit or the candidate isn't the `--to` kit, as when
+another update was applied or the branch moved in between. The app's link stays as it was. With
+`--json`, both commands print the review as data, so an agent driving the CLI reads it and decides. An agent's Your Space key can't update apps: updating changes what code runs, which is the
 owner's or the operator's to do.
 
 **Considered:** an agent role that may update apps through the gateway (new authority over the
@@ -206,7 +210,9 @@ spec's migration follows it.
 5. **A bad update.** The new image exits on start. The update is rolled back and the app runs the
    previous kit; the owner sees why.
 6. **An agent updates.** An agent with a shell on the server runs `your-space app check-update
-   twenty --json`, reads the changes, and runs `your-space app update twenty --yes`.
+   twenty --json`, reads the changes, and runs `your-space app update twenty --from <installed>
+   --to <candidate> --yes` with the two links it printed. Had the branch moved in between, the
+   update would be refused and the agent would check again.
 
 ## Requirements
 
@@ -224,15 +230,17 @@ spec's migration follows it.
   kept settings, publish settings, owner-approved hosts, owner-set limits, agent grants and bound
   credentials; it deletes removed settings and kit hosts the kit dropped and adds the new ones.
 - **FR-005**: An update's job signs in to GHCR for the app's private images, as an install does.
-- **FR-006**: Applying applies the exact candidate the review was made of (its kit at a commit and
-  the Compose file it pins). It is refused, and the owner checks again, when the app no longer runs
-  the kit the review was made against (`kit_source`) or another job is running for it.
+- **FR-006**: Applying applies the exact candidate the review was made of: its kit at a commit, the
+  Compose file it pins and the image digests the review showed. It is refused, and the owner checks
+  again, when the app no longer runs the kit the review was made against (`kit_source`) or another
+  job is running for it. From the CLI, `--from` and `--to` bind an apply to an earlier
+  `check-update`'s installed kit and candidate.
 - **FR-007**: An update whose job fails, or whose app isn't running when it ends, is rolled back
   once to what it replaced, and the rollback is recorded and shown with its reason.
 - **FR-008**: Events record each check that found an update, each update and each rollback, with
   the actor.
 - **FR-009**: The dashboard's app page has **Check for update**, the review, and apply. The CLI has
-  `your-space app check-update` and `your-space app update`, with `--link`, `--yes` and `--json`,
+  `your-space app check-update` and `your-space app update`, with `--link`, `--from`, `--to`, `--yes` and `--json`,
   over server commands.
 - **FR-010**: Agent access across an update follows [Agent Access Across an Update](#agent-access-across-an-update).
 - **FR-011**: Tests cover an update that changes the image, adds and removes a setting, adds a
