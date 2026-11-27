@@ -16,12 +16,17 @@ import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts"
 
 const COMPOSE = "services:\n  web:\n    image: traefik/whoami:latest\n";
 
-/** A runtime manager whose applies can be cut off, as when Your Space stops while one runs: it never answers. */
+/** A runtime manager whose applies and removals can be cut off, as when Your Space stops while one runs: it never answers. */
 class StoppingRuntime extends FakeRuntime {
   cutOff = false;
   override async apply(spec: AppSpec, onEvent: (event: ApplyEvent) => void) {
     if (!this.cutOff) return super.apply(spec, onEvent);
     this.calls.push({ method: "apply", spec });
+    return new Promise<void>(() => {});
+  }
+  override async down(project: string) {
+    if (!this.cutOff) return super.down(project);
+    this.calls.push({ method: "down", project });
     return new Promise<void>(() => {});
   }
 }
@@ -31,9 +36,13 @@ const fetch = fakeGithub({
   "ys-fixtures/notes/compose.yaml": COMPOSE,
   "ys-fixtures/atlas/compose.yaml": COMPOSE,
   "ys-fixtures/vault/compose.yaml": COMPOSE,
+  "ys-fixtures/relay/compose.yaml": COMPOSE,
+  "ys-fixtures/ledger/compose.yaml": COMPOSE,
   ...plainKit("notes", "knowledge: {}\n"),
   ...plainKit("atlas", "knowledge: {}\n"),
   ...plainKit("vault", "knowledge: {}\n"),
+  ...plainKit("relay", "knowledge: {}\n"),
+  ...plainKit("ledger", "knowledge: {}\n"),
 });
 let t: TestDatabase;
 let server: TestServer;
@@ -66,6 +75,7 @@ const api = (path: string, init: RequestInit = {}) => server.request(path, { ...
 const send = (path: string, body: unknown, method = "POST") => api(path, { method, body: JSON.stringify(body) });
 const appId = async (name: string) => (await t.db.select({ id: app.id }).from(app).where(eq(app.name, name)))[0]!.id;
 const applies = (name: string) => runtime.calls.filter((c) => c.method === "apply" && c.spec?.project === `ys-${name}`);
+const downs = (name: string) => runtime.calls.filter((c) => c.method === "down" && c.project === `ys-${name}`);
 const grantsOf = async (name: string) =>
   (await t.db.select({ name: knowledgeBase.name }).from(appKnowledgeBase).innerJoin(knowledgeBase, eq(appKnowledgeBase.knowledgeBaseId, knowledgeBase.id)).where(eq(appKnowledgeBase.appId, await appId(name)))).map((g) => g.name);
 
@@ -258,6 +268,62 @@ describe("taking a knowledge base away when Your Space restarts during it", () =
       const before = applies("notes").length;
       await apps.reconcile();
       expect(applies("notes").length).toBe(before);
+    } finally {
+      runtime.knowledgeUsers = original;
+    }
+  });
+  it("removes, once Your Space is back, an app the owner asked to remove whose removal a deletion couldn't finish", async () => {
+    expect((await send("/api/knowledge", { name: "letters" })).status).toBe(201);
+    await install("relay", ["letters"]);
+    // An earlier removal didn't finish: the owner asked for it, and its containers still run.
+    await t.db.update(app).set({ desired: "removed", state: "failed", stateReason: "Removing it failed." }).where(eq(app.name, "relay"));
+    runtime.cutOff = true;
+    const before = downs("relay").length;
+    // The deletion removes it instead of starting it again, and Your Space stops before that ends.
+    const deleting = new KnowledgeBases(server.apps!).delete("letters", owner);
+    deleting.catch(() => undefined);
+    for (let i = 0; i < 200 && downs("relay").length === before; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(downs("relay").length).toBe(before + 1);
+    runtime.cutOff = false;
+    expect(await grantsOf("relay")).toEqual([]);
+    expect((await runtime.knowledgeUsers("letters")).apps).toEqual(["relay"]);
+
+    const apps = await restart();
+    await apps.reconcile();
+    await settled(apps, "relay");
+    expect(downs("relay").length).toBe(before + 2);
+    expect(applies("relay").length).toBe(1);
+    expect((await runtime.knowledgeUsers("letters")).apps).toEqual([]);
+    expect((await t.db.select({ state: app.state }).from(app).where(eq(app.name, "relay")))[0]!.state).toBe("removed");
+    expect(await revoked("relay")).toEqual([{ actorId: yourSpace, knowledgeBase: "letters" }]);
+  });
+
+  it("records nothing for an apply that worked but left a container that mounts it, and applies it again after the wait", async () => {
+    expect((await send("/api/knowledge", { name: "invoices" })).status).toBe(201);
+    await install("ledger", ["invoices"]);
+    // As after a restart in the middle of taking it away, with a container of the app's, which the
+    // apply doesn't replace, still mounting it.
+    await t.db.delete(appKnowledgeBase).where(eq(appKnowledgeBase.appId, await appId("ledger")));
+    const original = runtime.knowledgeUsers.bind(runtime);
+    runtime.knowledgeUsers = async (name: string) => (name === "invoices" ? { apps: ["ledger"] } : original(name));
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    try {
+      const apps = await restart();
+      const before = applies("ledger").length;
+      await apps.reconcile();
+      await settled(apps, "ledger");
+      expect(applies("ledger").length).toBe(before + 1);
+      expect(runtime.lastApply("ys-ledger")!.knowledge).toEqual({ path: "/knowledge", bases: [] });
+      expect(await revoked("ledger")).toEqual([]);
+      vi.setSystemTime(start + 30_000);
+      await apps.reconcile();
+      expect(applies("ledger").length).toBe(before + 1);
+      vi.setSystemTime(start + 61_000);
+      await apps.reconcile();
+      await settled(apps, "ledger");
+      expect(applies("ledger").length).toBe(before + 2);
+      expect(await revoked("ledger")).toEqual([]);
     } finally {
       runtime.knowledgeUsers = original;
     }

@@ -61,7 +61,8 @@ restarted. This can't be undone.
 If an app can't restart without the knowledge base, Your Space keeps the knowledge base and its
 files, the app keeps it too, and the message names the app. Fix the app, then delete the knowledge
 base again. If Your Space stops during a deletion, the knowledge base and its files stay, and the
-apps it was taken from restart without its folder once Your Space is back; delete it again.
+apps it was taken from restart without its folder once Your Space is back, or are removed if you
+asked to remove them; delete it again.
 
 Knowledge bases are Docker volumes named `ys-knowledge.<installation>.<name>`, labelled
 `ai.your-space.role=knowledge`. `docker compose down -v` of Your Space doesn't delete them, as it
