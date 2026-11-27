@@ -4,10 +4,10 @@
 
 **Created**: 2026-11-26
 
-**Status**: Proposed. The owner settled decisions 1 to 4, 6 and 8 on 2026-11-26 and set the rule
-for the rest: a role grants an agent a route at an HTTP method, with approvals, and Your Space adds
-nothing past that without a reason. Two decisions were dropped under that rule; decision 9 is open,
-with a recommendation. Nothing is built.
+**Status**: Decided. The owner settled every decision on 2026-11-26, with one rule throughout: a
+role grants an agent a route at an HTTP method, with approvals, and Your Space adds nothing past that
+without a reason. Two decisions were dropped under that rule, and a third, which release carries
+it, as out of scope for a feature. Nothing is built.
 
 **Input**: The owner, on 2026-11-26: an agent should be able to do real work in an app through Your
 Space, never holding the app's own credential. The first case is onboarding records into a CRM:
@@ -47,7 +47,7 @@ and [gateway contract](../005-owner-agent/contracts/gateway.md), and
 | 6 | Does a write route ask the owner first when neither the kit nor the owner has set it? | **Decided:** yes, it asks; a read nobody set defaults to Allow. Owner: "default to ask." |
 | 7 | What does the owner see of what a write changed? | **Dropped:** Activity stays as it is, and the app keeps its own history of its records |
 | 8 | Where does the Twenty kit with write routes live? | **Decided:** in a private kits repository in the project's GitHub organization, installed through the GitHub connection (015). Owner: "twenty kit, put it in a private kit repo on the your space ai org" |
-| 9 | Which release carries it? | Open. Recommended: Canary as each pull request merges, and alpha.2 |
+| 9 | Which release carries it? | **Dropped:** not a feature's decision. Owner: "has nothing to do with individual features, out of scope, but the way it works is canary is whats on main, and alpha is what is on main when we choose to cut the release." |
 
 ## What Exists Today
 
@@ -290,17 +290,6 @@ agent again: a kit change retires agent access, as today.
 **Considered:** the owner's own private kits repository (the recommendation); installing the kit
 file from the server with `install-app --kit -`, with no repository; a Twenty kit in this repository
 or the official kits repository.
-
-## 9. Which Release Carries It
-
-**Recommended:** each pull request merges to `main` and reaches Canary as it merges; alpha.2 carries
-all of it. The owner's workspace moves to Canary with `your-space upgrade --channel canary` and runs
-the onboarding there.
-
-Why it can't be left to the app or the agent: the owner's workspace has to run a build with writes,
-and only the owner chooses its channel.
-
-**Considered:** waiting for alpha.2.
 
 ## User Scenarios
 
