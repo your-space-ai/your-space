@@ -187,18 +187,20 @@ knowledge base. [Journey 014](https://github.com/your-space-ai/your-space/blob/m
   then asks for a resync, so the knowledge base stops for the owner, whose Resync copies both ways
   and deletes nothing. A folder another user made fails such a run even with a umask of 002, when a
   Drive file is added to it or deleted from it, as only a folder's owner can set its modification
-  time.
+  time. A file the sync can't read is different: it fails a run before anything changes, and the
+  next run tries again.
 - **Taking a knowledge base away finishes after a restart (owner decision, 2026-11-26).** The owner
   required that taking a knowledge base from an app, or deleting it, finishes when Your Space comes
   back from a restart in the middle of it, preferably with no schema change. Each time Your Space
   checks its apps, at start once the runtime manager answers and about every 15 seconds after, it
   compares the knowledge bases each running app's containers mount, as the runtime manager reports
   them, with the app's grants, and applies again any app that mounts one it isn't given, until it
-  doesn't. A failed apply is tried again after a minute, then twice as long each time, up to an
-  hour. A stopped app gets its current grants when it next starts. Saving the pending change, which
-  changes the schema, was the fallback for a case the check couldn't cover; it covers a restart
+  doesn't; one the owner asked to remove, whose removal didn't finish, is removed instead. A failed
+  apply is tried again after a minute, then twice as long each time, up to an hour. A stopped app
+  gets its current grants when it next starts. Saving the pending change, which changes the
+  schema, was the fallback for a case the check couldn't cover; it covers a restart
   during a change on the app's page and during a deletion. The apply is recorded as
-  `knowledge.revoked` against Your Space.
+  `knowledge.revoked` against Your Space once the app no longer mounts it.
 - **Smaller cases (2026-11-26).** Accepted by the owner: **Apply these deletions** checks its list
   with a dry run, and the forced run then lists both sides again, so a file deleted in the seconds
   between them is deleted on the other side too (v1). Kept: creating a knowledge base fails when the

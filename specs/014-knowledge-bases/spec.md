@@ -103,9 +103,10 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   runtime manager answers and about every 15 seconds after, it compares the knowledge bases each
   running app's containers mount, as the runtime manager reports them, with the app's grants. An
   app that mounts one it isn't given is applied again, with only its grants, until it no longer
-  mounts it. An apply that fails is tried again later: after a minute, then twice as long each
-  time, up to an hour. A stopped app is left as it is: it gets its current grants when it next
-  starts. Nothing new is saved for this: the containers' mounts are the record.
+  mounts it. An app the owner asked to remove, whose removal didn't finish, is removed instead, as
+  deleting a knowledge base does. An apply that fails is tried again later: after a minute, then
+  twice as long each time, up to an hour. A stopped app is left as it is: it gets its current
+  grants when it next starts. Nothing new is saved for this: the containers' mounts are the record.
 - **File ownership.** A new knowledge base's folder belongs to user and group 1000, is writable by
   everyone, and gives new files its group. A short-lived container of the runtime manager's own
   image sets it up. Creating the knowledge base fails when that container can't be removed after,
@@ -117,12 +118,17 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   fails a run that adds a Drive file to it or deletes one from it, as only a folder's owner can set
   its modification time (checked on rclone 1.75.2). Likewise an app that runs as another user can
   create files but may not be able to change files another user wrote.
-- **A run that fails on a permission error.** By then it may already have made its changes in
+- **A run that fails on a permission error.** When it can't write in the knowledge base, into a
+  folder an app made or over a file it can't change, it may already have made its changes in
   Drive: bisync changes the Drive folder first, so files deleted here are deleted in Drive too.
   Here it deletes nothing: a file deleted in Drive is still here. bisync then asks for a resync, so
   the knowledge base stops (`resync`) until the owner chooses **Resync**, which copies both ways and
   deletes nothing: a file whose deletion here didn't happen goes back to Drive. While the app's
-  folder stays one sync can't write into, the resync fails the same way.
+  folder stays one sync can't write into, the resync fails the same way. A file it can't read fails
+  a run earlier, while bisync lists both sides, before anything changes, and the next run tries
+  again a minute later. A resync, as the first run after connecting is, stops on such a file
+  instead (`resync`), once it has copied the knowledge base's other files to Drive (checked on
+  rclone 1.75.2).
 - **Sync safety.** Deleting the owner's files on Drive is the worst failure here, so every run uses
   bisync's own checks and stops for the owner rather than guess, with one exception: the resync Your
   Space runs by itself to finish an interrupted run (see **Interrupted runs**). The checks:
@@ -177,10 +183,10 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   - A Drive folder at such a link's path, or under it, stops the knowledge base with its own reason
     (`link`), naming the path. Nothing is written where the link leads, such as the knowledge base's
     own sync state. bisync then needs a resync, and Your Space doesn't run one by itself for it.
-  - An empty Drive folder there stops it the same way. rclone reports that run as successful, so
-    the server reads the finished run's lines too: one that says the path escapes from its parent
-    stops the knowledge base with `link`, naming the path, whatever bisync reported (default picked
-    2026-11-26).
+  - An empty Drive folder there stops it the same way. rclone reports that run as successful and
+    logs no error, keeping it only in the job's stats, so for a run that succeeded the server reads
+    those too: when rclone's last error says the path escapes from its parent, the knowledge base
+    stops with `link`, naming the path, whatever bisync reported (default picked 2026-11-26).
   - It stays stopped until the owner removes the Drive folder, or removes the link here and its
     `.rclonelink` file in Drive, which would otherwise bring the link back, then chooses
     **Resync**. A resync while the folder and the link are both there stops the same way.
@@ -248,8 +254,9 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   as failed. An interrupted **Apply these deletions** is still recorded as the owner's applied
   deletions, since some may have been made. Your Space's own resync of an interrupted run is recorded
   as `knowledge.resync_requested` against Your Space. Its own apply that finishes taking a knowledge
-  base from an app after a restart is recorded as `knowledge.revoked` against Your Space. Runs that
-  change nothing aren't recorded one by one; the page shows when the last one finished.
+  base from an app after a restart is recorded as `knowledge.revoked` against Your Space, once the
+  runtime manager no longer reports the app mounting it. Runs that change nothing aren't recorded
+  one by one; the page shows when the last one finished.
 
 ## Acceptance
 
