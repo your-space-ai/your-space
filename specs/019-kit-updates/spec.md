@@ -34,7 +34,7 @@ driving the process."
 | 1 | What counts as a new version? | **Decided:** a newer commit that changes the installed kit file, on the branch the owner's link names. No version field, no tags. A link at a commit or a tag follows the repository's default branch for the same file. Owner: "i install from kit file at particular commit, if that commit on that file changes, its an update"; asked whether a link pinned to a commit follows main too: "Yes, follow main" |
 | 2 | How does the owner review an update? | **Decided:** on the app's details page. An available update shows there, and **Preview changes** opens a plain-language summary of what changes, with the diff behind it. Applying approves new hosts, as at install. Owner: "it should show up in the app details page, and maybe a preview changes button that render a diff or some nice interpretation of it that clearly showsthe user what this changes." |
 | 3 | What happens when an update doesn't start? | **Decided:** it is rolled back on its own, once: the kit, Compose file, image pins, settings and hosts it replaced are put back and the app is started again. The app's own data isn't restored. Owner: "recommended is fine" |
-| 4 | Are checks run in the background or on demand? | **Decided:** when the owner uses the app in Your Space, now and then, and on demand. Opening the app's details page checks it when its last check is over 12 hours old (the interval is recommended); **Check for update** and the CLI check at once. Nothing runs on a timer. Owner: "periodic check can be triggered occasionally when the user interacts with the app." |
+| 4 | Are checks run in the background or on demand? | **Decided:** when the owner uses the app in Your Space, now and then, and on demand. Opening the app's details page checks it when its last check is over 12 hours old; **Check for update**, there at any time, and the CLI check at once. Nothing runs on a timer. Owner: "periodic check can be triggered occasionally when the user interacts with the app."; on the interval: "at most 12 hours automatically, i should be able to trigger a manual check somewhere in the ui at any point tho" |
 | 5 | What happens to settings the new kit adds or removes? | **Decided:** an added setting is filled as at install (generated, derived, the kit's value, or asked in the review); a removed one is deleted when the update applies, and put back by a rollback. Values of kept settings stay, except that a value the kit sets, which the owner never changed, follows the new kit. Owner: "this is fine" |
 | 6 | Who can update from the CLI? | **Recommended:** the operator, on the machine that runs Your Space: `your-space app check-update <app>` and `your-space app update <app>`, which an agent with a shell there can drive. An agent's Your Space key can't update apps. |
 | 7 | Can an update move an app to a kit or Compose file in another repository? | **Recommended:** yes, through Update from a link, with the move shown first in the review and confirmed by applying it; the app keeps its name, ID and data. |
@@ -147,9 +147,11 @@ show); no rollback (the owner re-pastes the old pinned link).
 "periodic check can be triggered occasionally when the user interacts with the app."
 
 - **When the owner opens the app.** Opening an app's details page checks it when its last check is
-  more than 12 hours old (recommended). The check runs in the background of that page; the page
+  more than 12 hours old. The owner: "at most 12 hours automatically, i should be able to trigger a
+  manual check somewhere in the ui at any point tho". The check runs in the background of that page; the page
   doesn't wait for it, and shows an update once it is found.
-- **On demand.** **Check for update** on that page, and `your-space app check-update`, check at once.
+- **On demand.** **Check for update** on that page, which is there at any time, and `your-space app
+  check-update` check at once, whenever the last check was.
 - **Nothing else.** No timer, and no check while nobody uses Your Space. Opening the Apps list
   doesn't check every app; it shows what the last checks found.
 
