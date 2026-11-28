@@ -34,7 +34,7 @@ driving the process."
 | 1 | What counts as a new version? | **Decided:** a newer commit that changes the installed kit file, on the branch the owner's link names. No version field, no tags. A link at a commit or a tag follows the repository's default branch for the same file. Owner: "i install from kit file at particular commit, if that commit on that file changes, its an update"; asked whether a link pinned to a commit follows main too: "Yes, follow main" |
 | 2 | How does the owner review an update? | **Decided:** on the app's details page. An available update shows there, and **Preview changes** opens a plain-language summary of what changes, with the diff behind it. Applying approves new hosts, as at install. Owner: "it should show up in the app details page, and maybe a preview changes button that render a diff or some nice interpretation of it that clearly showsthe user what this changes." |
 | 3 | What happens when an update doesn't start? | **Decided:** it is rolled back on its own, once: the kit, Compose file, image pins, settings and hosts it replaced are put back and the app is started again. The app's own data isn't restored. Owner: "recommended is fine" |
-| 4 | Are checks run in the background or on demand? | **Recommended:** on demand, when the owner asks, from the app's page or the CLI. Nothing polls GitHub (015 R7, the no-telemetry rule). |
+| 4 | Are checks run in the background or on demand? | **Decided:** when the owner uses the app in Your Space, now and then, and on demand. Opening the app's details page checks it when its last check is over 12 hours old (the interval is recommended); **Check for update** and the CLI check at once. Nothing runs on a timer. Owner: "periodic check can be triggered occasionally when the user interacts with the app." |
 | 5 | What happens to settings the new kit adds or removes? | **Recommended:** an added setting is filled as at install (generated, derived, the kit's value, or asked in the review); a removed one is deleted when the update applies, and put back by a rollback. Values of kept settings stay, except that a value the kit sets, which the owner never changed, follows the new kit. |
 | 6 | Who can update from the CLI? | **Recommended:** the operator, on the machine that runs Your Space: `your-space app check-update <app>` and `your-space app update <app>`, which an agent with a shell there can drive. An agent's Your Space key can't update apps. |
 | 7 | Can an update move an app to a kit or Compose file in another repository? | **Recommended:** yes, through Update from a link, with the move shown first in the review and confirmed by applying it; the app keeps its name, ID and data. |
@@ -143,15 +143,27 @@ show); no rollback (the owner re-pastes the old pinned link).
 
 ## 4. When Checks Run
 
-**Recommended:** on demand.
+**Decided (2026-11-27):** when the owner uses the app, now and then, and on demand. The owner:
+"periodic check can be triggered occasionally when the user interacts with the app."
 
-A check runs when the owner clicks **Check for update** on the app or runs `your-space app
-check-update`. Nothing checks in the background, so no GitHub request leaves the server without
-the owner asking, and the GitHub connection's token is used only on request (015 R7).
+- **When the owner opens the app.** Opening an app's details page checks it when its last check is
+  more than 12 hours old (recommended). The check runs in the background of that page; the page
+  doesn't wait for it, and shows an update once it is found.
+- **On demand.** **Check for update** on that page, and `your-space app check-update`, check at once.
+- **Nothing else.** No timer, and no check while nobody uses Your Space. Opening the Apps list
+  doesn't check every app; it shows what the last checks found.
 
-**Considered:** a daily background check with an "Update available" badge (the no-telemetry rule
-allows "GitHub update checks", but 015 R7 limits the connection's token to requests the owner makes,
-so a private kit couldn't be checked unattended without changing it).
+The server keeps, per app, when it last checked and the update it found, if any, so the Apps list
+and the details page can show "Update available" without checking again. A check that fails, such
+as with GitHub unreachable, counts as a check, so the page doesn't try again on each visit.
+
+These checks are owner-started, so the no-telemetry rule holds: no GitHub request leaves the server
+unless the owner is using it. 015's R7 says the GitHub connection is used "only while the owner
+reviews or installs"; this spec adds update checks to that list. Opening an app's page is the
+owner's request.
+
+**Considered:** on demand only (the recommendation); a daily background check with an "Update
+available" badge.
 
 ## 5. Settings the New Kit Adds or Removes
 
@@ -261,7 +273,9 @@ spec's migration follows it.
   differs from the installed kit; a link at a commit or a tag, or none, follows the repository's
   default branch for the same file. A check with a
   link the owner gives (Update from a link) reviews the kit at that link against the installed kit,
-  whatever the link names. A check runs only on request.
+  whatever the link names. A check runs when the owner opens the app's details page and its last
+  check is over 12 hours old, or when the owner asks for one; never on a timer. The last check's time
+  and result are kept per app.
 - **FR-003**: An update's review lists, against the installed app: kit and Compose commits with
   links, changed images, settings added and removed, hosts added and removed, changed limits and
   interface. A refused file can't be applied.
