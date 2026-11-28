@@ -155,6 +155,13 @@
       "when": 1795829613837,
       "tag": "0021_update_rollback",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795830517923,
+      "tag": "0022_update_check",
+      "breakpoints": true
     }
   ]
 }

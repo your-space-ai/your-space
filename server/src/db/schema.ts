@@ -163,6 +163,8 @@ export const app = pgTable(
     /** The kit's link as the owner gave it, at its branch, tag or commit (journey 019); null for a kit file
      * given on this machine and for an app installed before. An update check reads the kit there again. */
     kitLink: text("kit_link"),
+    /** The app's last update check (journey 019, decision 4): when, whether it found an update, or why it failed. */
+    updateCheck: jsonb("update_check").$type<{ at: string; available: boolean; error?: string }>(),
     /** Null for an app installed before journey 015. */
     provenance: jsonb("provenance").$type<Provenance>(),
     /** Each image's pinned digest; `private` marks one pulled with the registry credential (journey 015, R9). */

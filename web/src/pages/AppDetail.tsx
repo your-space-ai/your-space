@@ -6,6 +6,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { api, appQuery, errorMessage, ownTabLink, STATE_LABEL, type AppDetail as Detail } from "../apps-api.ts";
 import { JobProgress } from "../components/JobProgress.tsx";
+import { KitUpdatePanel, UpdateLabel, useKitUpdate } from "../components/KitUpdate.tsx";
 import { PUBLISH_NOTE, publishBody, PublishFields, type PublishForm } from "../components/PublishFields.tsx";
 
 const MIB = 1024 * 1024;
@@ -41,7 +42,7 @@ export function AppDetail({ name }: { name: string }) {
         <Link to="/apps">Apps</Link>
       </p>
       <h1>{d.title}</h1>
-      <Status detail={d} onStarted={started(`Starting ${d.title}`)} />
+      <Status detail={d} onStarted={started(`Starting ${d.title}`)} onUpdating={started(`Updating ${d.title}`)} />
       {job ? <JobProgress key={job.id} jobId={job.id} title={job.title} /> : null}
       {removed ? (
         <section className="card">
@@ -61,8 +62,9 @@ export function AppDetail({ name }: { name: string }) {
   );
 }
 
-function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { jobId: string }) => void }) {
+function Status({ detail: d, onStarted, onUpdating }: { detail: Detail; onStarted: (r: { jobId: string }) => void; onUpdating: (r: { jobId: string }) => void }) {
   const queryClient = useQueryClient();
+  const update = useKitUpdate(d);
   const start = useMutation({
     mutationFn: () => api<{ jobId: string }>("POST", `/api/apps/${d.name}/start`),
     onSuccess: (r) => {
@@ -115,9 +117,12 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
             <dt>Installation kit</dt>
             <dd>
               {d.kitSource.startsWith("https://") ? (
-                <a href={d.kitSource} target="_blank" rel="noreferrer">
-                  {d.kitSource.replace(/^https:\/\/github\.com\//, "")}
-                </a>
+                <>
+                  <a href={d.kitSource} target="_blank" rel="noreferrer">
+                    {d.kitSource.replace(/^https:\/\/github\.com\//, "")}
+                  </a>{" "}
+                  <UpdateLabel available={update.available} />
+                </>
               ) : (
                 // A kit file given on this machine is recorded by its digest.
                 <>
@@ -158,6 +163,7 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
           {errorMessage(start.error)}
         </p>
       ) : null}
+      <KitUpdatePanel detail={d} state={update} onStarted={onUpdating} />
     </section>
   );
 }

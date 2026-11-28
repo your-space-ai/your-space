@@ -104,6 +104,8 @@ export interface AppSummary {
   pane: boolean;
   hasInterface: boolean;
   pendingRequests: number;
+  /** Whether the last update check found an update (journey 019). */
+  updateAvailable?: boolean;
   publish: Publish | null;
   /**
    * While the pane shows the app at its link: the short ID of the app's Caddy once it lets Your Space
@@ -212,6 +214,8 @@ export interface AppDetail {
   publish: Publish | null;
   source: { link: string; repo: string; path: string; ref: string; commit: string };
   kitSource: string | null;
+  /** The app's last update check (journey 019): when, whether it found an update, or why it failed. */
+  update: { at: string; available: boolean; error?: string } | null;
   /** Whether agents can reach the app through Your Space (spec 018); null when its kit offers no agent access. */
   agentAccess: { api: string | null; problem: "old_format" | "no_interface" | null } | null;
   images: Record<string, { digest: string }>;
@@ -224,6 +228,36 @@ export interface AppDetail {
   job: Job | null;
   installedAt: string;
   removedAt: string | null;
+}
+
+/** What an update changes, against what the app runs (journey 019). */
+export interface UpdateChanges {
+  kit: { from: string | null; to: string };
+  compose: { from: { repo: string; path: string; commit: string }; to: { repo: string; path: string; commit: string } } | null;
+  images: { ref: string; from: string | null; to: string | null; private: boolean }[];
+  /** `changed`: values the kit sets, which the owner never changed, that take the new kit's value. */
+  settings: { added: string[]; removed: string[]; changed: string[] };
+  outbound: { added: string[]; removed: string[] };
+  services: { added: string[]; removed: string[] };
+  interface: { from: { service: string; port: number } | null; to: { service: string; port: number } | null } | null;
+  /** The kit's other fields that change, such as `agentAccess`. */
+  kitFields: string[];
+}
+
+/** The review of an update of an installed app's kit (journey 019). */
+export interface UpdateReview {
+  previewId: string;
+  name: string;
+  upToDate: boolean;
+  digest: string;
+  link: string;
+  kit: { source: string; repo?: string; path?: string; commit?: string };
+  source: { repo: string; path: string; commit: string; pinnedLink: string };
+  changes: UpdateChanges;
+  ok: boolean;
+  refusals: { service: string; setting: string; reason: string }[];
+  /** The settings the update adds, to fill in as at install. */
+  settings: PublicSetting[];
 }
 
 export interface EngineReport {

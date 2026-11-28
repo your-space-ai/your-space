@@ -88,7 +88,13 @@ An app updates from the kit you installed it from, at the same place on GitHub. 
 changes on its branch, or on the repository's default branch for a kit linked at a commit or a tag,
 the app has an update. Changes elsewhere in the repository don't count.
 
-On the machine that runs Your Space:
+In **Apps**, open the app. Opening its page checks its kit for an update when the last check was
+more than 12 hours ago, and **Check for update** checks at once. An update shows as **Update
+available** on the kit's row, and in the Apps list. **Preview changes** says what it changes: its
+Compose file, images, settings and the internet hosts it may reach, with the kit's changes on GitHub
+under **What changed in the kit**. Fill in any new setting it asks for, then choose **Update**.
+
+On the machine that runs Your Space, the same from the command line:
 
 ```bash
 your-space app check-update <app>
@@ -97,12 +103,13 @@ your-space app update <app>
 
 `check-update` says whether the app is up to date, and if not, what the update changes: its
 Compose file, images, settings and the internet hosts it may reach. `update` shows the same, asks,
-and applies it in place. The app keeps its data, settings, publishing and agent access. The update
+and applies it in place. Either way, the app keeps its data, settings, publishing and agent access. The update
 waits up to 5 minutes for the app to run, and then for 10 seconds of running without a break. If it
 doesn't start, or stops within that time, the update is rolled back and the app starts again on the
 kit it ran before. After that, the update stays: an app that stops later isn't rolled back. What the
 new version did to the app's own data, such as a database migration, isn't undone. An update that
-adds a setting you must give isn't applied from the command line.
+adds a setting you must give isn't applied from the command line: apply it from the app's page,
+where you give it.
 
 For a script or an agent, `check-update --json` prints the changes and a `digest`. Then
 `your-space app update <app> --review <digest> --yes --json` applies exactly that update, and is

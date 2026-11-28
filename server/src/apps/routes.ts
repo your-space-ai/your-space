@@ -103,7 +103,15 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
   // Journey 019: check an installed app's kit for an update, then apply the reviewed one in place.
   router.post(
     "/apps/:name/update/check",
-    owner(async (req, res) => void res.json(await apps.previewUpdate(name(req)))),
+    owner(async (req, res) => {
+      // Opening the app's page sends `auto`: checked at most every 12 hours (decision 4).
+      if (body(req).auto === true) {
+        const review = await apps.autoCheckUpdate(name(req));
+        res.json(review ?? { skipped: true });
+        return;
+      }
+      res.json(await apps.previewUpdate(name(req)));
+    }),
   );
   router.post(
     "/apps/:name/update",
