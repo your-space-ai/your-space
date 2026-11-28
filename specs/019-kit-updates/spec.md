@@ -200,11 +200,14 @@ app is up to date. `update` makes the review, prints it and asks before applying
 applies it with `--yes`; it waits for the job and reports the result or the rollback. `--link` is
 Update from a link (section 1) for both commands.
 
-Each review has a digest of everything it shows: the installed kit it was made against, the
-candidate's kit and Compose commits, and its image digests. `check-update` prints it. An agent that
+Each review has a digest of everything it shows: the installed kit it was made against, the link
+the app will be checked at from then on, the candidate's kit and Compose commits, and its image
+digests. `check-update` prints it. An agent that
 applies what it read later passes it as `--review`; `update` makes the review again and is refused,
 so the agent checks again, when its digest differs, as when another update was applied, the branch
-moved or an image tag now names another digest. The app's link stays as it was. With `--json`,
+moved or an image tag now names another digest. The review shows the link the update stores as the
+app's link: the app's own link, the default branch's for one at a commit or a tag (decision 1), or the
+one given with `--link`; a different link gives a different digest. With `--json`,
 both commands print the review as data, so an agent driving the CLI reads it and decides. An agent's Your Space key can't update apps: updating changes what code runs, which is the
 owner's or the operator's to do.
 
