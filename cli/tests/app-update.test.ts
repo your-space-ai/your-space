@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { describeChanges } from "../src/commands/app.ts";
 
-const none = { compose: null, images: [], settings: { added: [], removed: [], changed: [] }, outbound: { added: [], removed: [] }, services: { added: [], removed: [] }, interface: null };
+const none = { compose: null, images: [], settings: { added: [], removed: [], changed: [] }, outbound: { added: [], removed: [] }, services: { added: [], removed: [] }, interface: null, kitFields: [] };
 
 describe("what an update changes", () => {
   it("says each change in plain words", () => {
@@ -17,6 +17,7 @@ describe("what an update changes", () => {
         outbound: { added: ["api.mail.example"], removed: ["old.example"] },
         services: { added: ["worker"], removed: [] },
         interface: null,
+        kitFields: ["agentAccess"],
       }),
     ).toEqual([
       `Its Compose file moves to commit ${"b".repeat(12)}.`,
@@ -28,6 +29,7 @@ describe("what an update changes", () => {
       "It may reach api.mail.example.",
       "It no longer reaches old.example.",
       "A new service, worker.",
+      "The kit changes how agents reach the app.",
     ]);
   });
 

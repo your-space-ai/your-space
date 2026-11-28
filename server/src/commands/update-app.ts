@@ -32,6 +32,7 @@ function changeLines(changes: UpdateChanges): string[] {
   for (const host of changes.outbound.removed) lines.push(`No longer reaches ${host}`);
   for (const service of changes.services.added) lines.push(`New service ${service}`);
   for (const service of changes.services.removed) lines.push(`Service ${service} is removed`);
+  for (const field of changes.kitFields) lines.push(`The kit's ${field} changes`);
   if (changes.interface) lines.push(`Its interface moves to ${changes.interface.to ? `${changes.interface.to.service}:${changes.interface.to.port}` : "none"}`);
   return lines;
 }

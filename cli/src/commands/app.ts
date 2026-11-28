@@ -15,7 +15,18 @@ export interface Changes {
   outbound: { added: string[]; removed: string[] };
   services: { added: string[]; removed: string[] };
   interface: { from: { service: string; port: number } | null; to: { service: string; port: number } | null } | null;
+  /** The kit's other fields that change, such as `agentAccess`. */
+  kitFields: string[];
 }
+
+/** What each of the kit's other fields is, in plain words. */
+const KIT_FIELDS: Record<string, string> = {
+  agentAccess: "how agents reach the app",
+  title: "the app's title",
+  pane: "whether Your Space shows the app in its pane",
+  limits: "the app's memory and processor limits",
+  kit: "its kit format",
+};
 
 /** What an update changes, in plain words, one line each. */
 export function describeChanges(changes: Changes): string[] {
@@ -46,6 +57,7 @@ export function describeChanges(changes: Changes): string[] {
     const to = changes.interface.to;
     lines.push(to ? `Your Space opens it at ${to.service}, port ${to.port}.` : "It no longer has an interface to open.");
   }
+  for (const field of changes.kitFields) lines.push(`The kit changes ${KIT_FIELDS[field] ?? field}.`);
   return lines;
 }
 
