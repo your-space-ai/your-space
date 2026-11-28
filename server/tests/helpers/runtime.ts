@@ -12,6 +12,10 @@ export class FakeRuntime implements Runtime {
     { name: "API_TOKEN", required: false, default: "published-default-token" },
   ];
   failApply: string | undefined;
+  /** An apply that fails for some specs only, such as an update's (journey 019). */
+  failApplyWhen: (spec: AppSpec) => string | undefined = () => undefined;
+  /** The services an apply leaves, for some specs, in place of running ones, such as one that exited. */
+  servicesAfterApply: (spec: AppSpec) => ServiceState[] | undefined = () => undefined;
   /** Per port of this machine: what uses it, as the port check names it, or undefined for a program. */
   portsInUse = new Map<number, string | undefined>();
   /** A port check that can't run, for example without Your Space's Caddy. */
@@ -56,10 +60,18 @@ export class FakeRuntime implements Runtime {
     this.calls.push({ method: "apply", spec });
     onEvent({ step: "check" });
     if (this.failApply) throw new Error(this.failApply);
+    const fails = this.failApplyWhen(spec);
+    if (fails) throw new RuntimeError(fails, 502, "engine_error");
     // An apply never gives a required setting a placeholder.
     const missing = this.variables.find((v) => v.required && !spec.env[v.name]);
     if (missing) throw new Error(`The file isn't a Compose file Your Space can read: required variable ${missing.name} is missing a value`);
     onEvent({ step: "start" });
+    const after = this.servicesAfterApply(spec);
+    if (after) {
+      this.running.set(spec.project, after);
+      onEvent({ step: "started" });
+      return;
+    }
     this.running.set(spec.project, [
       { name: "web", role: "app", state: "running" },
       { name: "ys-egress", role: "egress", state: "running" },

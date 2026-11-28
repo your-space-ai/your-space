@@ -28,6 +28,8 @@ export interface AppsOptions {
   runtime: Runtime;
   /** Stands in for GitHub. */
   fetch: typeof fetch;
+  /** How long an update waits for the app to keep running; none unless a test says (journey 019). */
+  updateSettle?: { waitMs: number; steadyMs: number; pollMs: number };
 }
 
 /** A fetch for tests that don't stand in for GitHub: nothing reaches the real one. */
@@ -58,6 +60,7 @@ export async function startServer(
         github: { api: "https://api.github.test", raw: "https://raw.github.test" },
         credentials: github,
         registries: github,
+        updateSettle: options.apps.updateSettle ?? { waitMs: 0, steadyMs: 0, pollMs: 0 },
       })
     : undefined;
   server.on("request", createApp({ auth, db, dataKey: TEST_DATA_KEY, apps: apps ? { service: apps, handoffs } : undefined, github }));

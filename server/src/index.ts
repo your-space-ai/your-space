@@ -11,6 +11,7 @@ import { NewerSchemaError, runMigrations } from "./migrate.ts";
 import { createGate, Handoffs } from "./apps/gate.ts";
 import { socketRuntime } from "./apps/runtime-client.ts";
 import { moveSettingsToDataKey } from "./apps/keys.ts";
+import { restoreInterruptedUpdates } from "./apps/rollback.ts";
 import { AppsService } from "./apps/service.ts";
 import { GithubConnection } from "./github-connection.ts";
 
@@ -75,6 +76,15 @@ for (let attempt = 1; ; attempt++) {
     }
     await sleep(2_000);
   }
+}
+
+// An update a restart interrupted is put back first (journey 019, decision 3), so the settings it
+// restores move onto the data key with the others.
+try {
+  const restored = await restoreInterruptedUpdates(db);
+  if (restored) log("info", "apps.updates_rolled_back", { restored });
+} catch (error) {
+  log("error", "apps.updates_rollback_failed", errorFields(error));
 }
 
 // Apps' settings move onto the data key before anything is served (spec 009): values from before it
