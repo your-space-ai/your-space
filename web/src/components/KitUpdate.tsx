@@ -7,6 +7,15 @@ import { useState, type ReactNode } from "react";
 import { api, errorMessage, type AppDetail, type UpdateChanges, type UpdateReview } from "../apps-api.ts";
 
 type Mark = "add" | "del" | "chg";
+
+/** What each of the kit's other fields is, in plain words. */
+const KIT_FIELDS: Record<string, string> = {
+  agentAccess: "how agents reach the app",
+  title: "the app's title",
+  pane: "whether Your Space shows the app in its pane",
+  limits: "the app's memory and processor limits",
+  kit: "its kit format",
+};
 const SIGN: Record<Mark, string> = { add: "+", del: "−", chg: "↻" };
 
 /** What an update changes, one plain sentence each, marked as added, removed or changed. */
@@ -43,6 +52,7 @@ export function describeChanges(changes: UpdateChanges): { mark: Mark; text: Rea
     const to = changes.interface.to;
     line("chg", to ? <>Your Space opens it at <code>{`${to.service}:${to.port}`}</code>.</> : <>It no longer has an interface to open.</>);
   }
+  for (const field of changes.kitFields) line("chg", <>The kit changes {KIT_FIELDS[field] ?? field}.</>);
   return lines;
 }
 

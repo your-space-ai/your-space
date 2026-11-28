@@ -47,7 +47,7 @@ test("an app shows an update to its kit, previews what it changes, and updates i
 
   await page.reload();
   await expect(page.getByRole("region", { name: "Status" }).locator("[data-field=update-available]")).toHaveCount(0);
-  await expect(page.locator("[data-field=state]")).toHaveText("Running");
+  await expect(page.getByRole("region", { name: "Status" }).locator("[data-field=state]")).toHaveText("Running");
   const detail = await (await page.request.get("/api/apps/updating")).json();
   expect(detail.outbound.map((o: { host: string }) => o.host).sort()).toEqual(["example.com", "example.org"]);
   expect(detail.settings.find((s: { name: string }) => s.name === "MOTTO")).toMatchObject({ set: true, value: "ship it" });

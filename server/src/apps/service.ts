@@ -871,7 +871,8 @@ export class AppsService {
 
   /** Reviews an update, and records the check's time and result for the app (decision 4). */
   async previewUpdate(name: string): Promise<ReturnType<AppsService["updateReviewOf"]>> {
-    const row = await this.rowByName(name);
+    // An app that is busy or removed isn't checked, and nothing is recorded.
+    const row = await this.liveRow(name);
     try {
       const review = await this.reviewUpdate(name);
       await this.recordCheck(row, { at: new Date().toISOString(), available: !review.upToDate });

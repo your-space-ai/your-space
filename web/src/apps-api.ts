@@ -240,6 +240,8 @@ export interface UpdateChanges {
   outbound: { added: string[]; removed: string[] };
   services: { added: string[]; removed: string[] };
   interface: { from: { service: string; port: number } | null; to: { service: string; port: number } | null } | null;
+  /** The kit's other fields that change, such as `agentAccess`. */
+  kitFields: string[];
 }
 
 /** The review of an update of an installed app's kit (journey 019). */
