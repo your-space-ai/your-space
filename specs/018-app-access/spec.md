@@ -109,6 +109,8 @@ only its roles' routes while a 018 grant reaches the whole API on its key, so a 
 key that can also write would gain those writes, and answered: "thats fine". The key's role in the
 app is the limit, as decision 2 has it.
 
+- A grant keeps only the roles the owner had enabled on the app's binding; a grant that reached no
+  route through them is dropped, so no access is reactivated or created.
 - A grant takes the credential its roles used. A grant whose roles used more than one credential,
   such as a record role and a setup role, takes none: it is unavailable until the owner picks the app
   key that agent uses, since Your Space can't choose one for them.
@@ -117,7 +119,9 @@ app is the limit, as decision 2 has it.
   route set to Allow, or a read that ran directly, becomes nothing.
 
 The owner's live setup has one grant, with every route on Allow: it becomes Twenty access with the
-`records` key and no routes that ask, working at once.
+`records` key and no routes that ask. It works once the app runs a kit that names `api`: the owner's
+Twenty keeps its 017 kit through the upgrade, so its agent access is unavailable until then
+(decision 11).
 
 **Considered:** each migrated grant waiting for the owner to confirm it, so its reach couldn't grow
 unseen (the recommendation); starting every grant blank, which would drop the routes that asked.
@@ -166,7 +170,9 @@ its agents, so replacing it is the owner's deliberate choice; the old key stops 
 
 - Your Space keeps no copy of the old key and reads a call's key when it admits the call. Just before
   sending, it checks the key is still the one bound; a call whose key was replaced or removed in
-  between is not sent and goes stale. A call already sent finishes.
+  between is not sent and goes stale. A replacement in the instant after that check, while the call
+  is being sent, counts as a call already sent: it finishes, as a call in flight does. Every later
+  call uses the new key.
 - Pending approvals go stale, so none resumes with the old key. Your Space retries nothing.
 - Your Space can't revoke a key inside the app, so **Agents** tells the owner, when they replace or
   disconnect a key, to revoke the old one in the app too.
@@ -193,7 +199,7 @@ grants again after every rotation.
   which some apps read as starting path parameters they strip before routing, is refused, so the
   gateway and the app see the same path. Percent-encoding is
   decoded once to check and match the path: a segment that decodes to `.` or `..`, or contains an
-  encoded `/`, `\` or NUL, is refused, as is an empty segment other than a trailing one. The path is
+  encoded `/`, `\`, `;` or NUL, is refused, as is an empty segment other than a trailing one. The path is
   sent as given, and is under the `api` and matched against routes that ask by its decoded segments,
   so an encoding can't move a call outside the API or past a route that asks; the API's path matches
   whole segments, so `/rest` doesn't admit `/restricted`. A segment that still
@@ -213,7 +219,9 @@ grants again after every rotation.
   Removing an app ends them (decision 9). Journey 019's in-place kit updates rely on this and change
   no trigger of their own.
 - **FR-008**: The migration gives each 017 grant the credential its roles used, and turns its routes
-  that asked into routes that ask; the grant works at once (decision 8). A grant whose roles used
+  that asked into routes that ask (decision 8). It keeps only the roles the owner had enabled on the
+  binding, and a grant that reached nothing through them is dropped. A migrated grant works once its
+  app runs a kit that names `api` (decision 11). A grant whose roles used
   several credentials takes none and is unavailable until the owner picks one. Bindings' enabled roles, grants' roles and route
   overrides stay in the database, unread.
 - **FR-009**: Activity records each call's method and path, without its query.
@@ -226,7 +234,8 @@ grants again after every rotation.
 - **FR-012**: The agent access guide, 005's contracts, the decision record, the roadmap, the fixture
   kits and the owner's Twenty kit describe the new model.
 - **FR-013**: Acceptance repeats journey 017's live run on the owner's installation through `agent
-  call`, after the upgrade carried its grant over.
+  call`, after the upgrade carried its grant over and the app moved to its rewritten kit, through
+  journey 019's in-place update (or, before 019, a reinstall, binding and granting again).
 
 ## Sources
 
