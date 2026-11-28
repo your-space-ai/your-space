@@ -37,6 +37,8 @@ driving the process."
 | 4 | Are checks run in the background or on demand? | **Recommended:** on demand, when the owner asks, from the app's page or the CLI. Nothing polls GitHub (015 R7, the no-telemetry rule). |
 | 5 | What happens to settings the new kit adds or removes? | **Recommended:** an added setting is filled as at install (generated, derived, the kit's value, or asked in the review); a removed one is deleted when the update applies, and put back by a rollback. Values of kept settings stay. |
 | 6 | Who can update from the CLI? | **Recommended:** the operator, on the machine that runs Your Space: `your-space app check-update <app>` and `your-space app update <app>`, which an agent with a shell there can drive. An agent's Your Space key can't update apps. |
+| 7 | Can an update move an app to a kit or Compose file in another repository? | **Recommended:** yes, through Update from a link, with the move shown first in the review and confirmed by applying it; the app keeps its name, ID and data. |
+| 8 | Is a CLI to remove an app part of this? | **Recommended:** no. Updating in place removes the need to remove and reinstall; removing from the CLI is a follow-up of its own. |
 
 ## What Exists Today
 
@@ -185,6 +187,27 @@ owner's or the operator's to do.
 **Considered:** an agent role that may update apps through the gateway (new authority over the
 workspace, not over one app's API).
 
+## 7. Moving to Another Repository
+
+**Recommended:** allowed, confirmed by the owner. Update from a link may give a kit in another
+repository, and a kit may pin a Compose file in another repository than before. The review shows
+the move first, old repository to new, with how each file was read (public, or through the GitHub
+connection), and applying the update confirms it. The app keeps its name, ID, volumes and settings,
+as for any update; the app's link becomes the new one. Today the only way to move an app is to
+remove it and install the new kit, and that refuses to reuse kept data from another repository
+(`name_taken`), so the data is lost.
+
+**Considered:** refusing a move, so that an app's repository never changes after install (a move
+changes whose code runs, which the review already shows for any update).
+
+## 8. Removing an App From the CLI
+
+**Recommended:** not part of this spec. Updating in place, including a move (section 7), covers
+what remove and reinstall were used for. A `your-space app remove` command, keeping data by default
+as Remove in the dashboard does, is a follow-up of its own.
+
+**Considered:** adding `your-space app remove` here, beside `check-update` and `update`.
+
 ## Agent Access Across an Update
 
 Spec 018 makes grants and app keys survive kit changes; this spec assumes it and changes nothing
@@ -247,6 +270,8 @@ spec's migration follows it.
   host, keeps an owner-approved host and publish settings, keeps an agent grant and key, a private
   kit, a check with nothing new, a stale review, and a failed start rolled back. The install guide
   replaces "Installed apps don't update" with how to update.
+- **FR-012**: An update may change the kit's or the Compose file's repository; the review shows the
+  move before anything else, and the app keeps its name, ID, volumes and settings.
 
 ## Sources
 
