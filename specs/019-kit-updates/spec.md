@@ -31,11 +31,11 @@ driving the process."
 
 | # | Question | Decision or recommendation |
 | --- | --- | --- |
-| 1 | What counts as a new version? | **Decided:** a newer commit that changes the installed kit file, on the branch the owner's link names. No version field, no tags. Owner: "i install from kit file at particular commit, if that commit on that file changes, its an update" |
+| 1 | What counts as a new version? | **Decided:** a newer commit that changes the installed kit file, on the branch the owner's link names. No version field, no tags. A link at a commit or a tag follows the repository's default branch for the same file. Owner: "i install from kit file at particular commit, if that commit on that file changes, its an update"; asked whether a link pinned to a commit follows main too: "Yes, follow main" |
 | 2 | How does the owner review an update? | **Decided:** on the app's details page. An available update shows there, and **Preview changes** opens a plain-language summary of what changes, with the diff behind it. Applying approves new hosts, as at install. Owner: "it should show up in the app details page, and maybe a preview changes button that render a diff or some nice interpretation of it that clearly showsthe user what this changes." |
 | 3 | What happens when an update doesn't start? | **Decided:** it is rolled back on its own, once: the kit, Compose file, image pins, settings and hosts it replaced are put back and the app is started again. The app's own data isn't restored. Owner: "recommended is fine" |
 | 4 | Are checks run in the background or on demand? | **Recommended:** on demand, when the owner asks, from the app's page or the CLI. Nothing polls GitHub (015 R7, the no-telemetry rule). |
-| 5 | What happens to settings the new kit adds or removes? | **Recommended:** an added setting is filled as at install (generated, derived, the kit's value, or asked in the review); a removed one is deleted when the update applies, and put back by a rollback. Values of kept settings stay. |
+| 5 | What happens to settings the new kit adds or removes? | **Recommended:** an added setting is filled as at install (generated, derived, the kit's value, or asked in the review); a removed one is deleted when the update applies, and put back by a rollback. Values of kept settings stay, except that a value the kit sets, which the owner never changed, follows the new kit. |
 | 6 | Who can update from the CLI? | **Recommended:** the operator, on the machine that runs Your Space: `your-space app check-update <app>` and `your-space app update <app>`, which an agent with a shell there can drive. An agent's Your Space key can't update apps. |
 | 7 | Can an update move an app to a kit or Compose file in another repository? | **Recommended:** yes, through Update from a link, with the move shown first in the review and confirmed by applying it; the app keeps its name, ID and data. |
 | 8 | Is a CLI to remove an app part of this? | **Recommended:** no. Updating in place removes the need to remove and reinstall; removing from the CLI is a follow-up of its own. |
@@ -80,12 +80,15 @@ repository is private (015). It's an update when the kit file's content differs 
 kit's. A commit that changes other files in the repository isn't one: the kit pins its Compose file
 by commit, so only a change to the kit changes what runs.
 
-- A link at a tag or a full commit is fixed: a check of it says it has no newer version.
+- A link at a commit or a tag follows the repository's default branch for the same file. The owner,
+  asked whether an app installed from a link pinned to a commit shows updates when that kit file
+  changes on the repository's main branch: "Yes, follow main".
 - **Update from a link:** the owner gives another link, at any branch, tag or commit, in the
   dashboard or with `--link`. It is reviewed against the installed kit like any update, whether or
   not it is fixed, and applying the update makes it the app's link.
-- An app installed before this spec has no stored link. Its check asks for one, once; the
-  dashboard fills the field with the kit's repository and path at its default branch.
+- An app installed before this spec has no stored link; its check follows the default branch for
+  the file its pinned kit link names. Only an app installed from a kit file given on this machine
+  has nothing to check, until the owner gives a link.
 - The new kit must name the same app (`name`) as the installed one, or none.
 
 **Considered:** tags, newest semver tag wins (needs a release discipline kit authors don't have
@@ -158,7 +161,9 @@ so a private kit couldn't be checked unattended without changing it).
   An update with a required value missing can't be applied until the owner gives it. From the CLI,
   an update that needs an asked value says so and points to the dashboard, as `install-app` does.
 - **Kept:** the stored value stays, including one the owner changed and generated secrets. A
-  setting whose kit entry changes kind, such as from a value to `generate`, keeps its stored value.
+  value the kit sets, that the owner left as the installed kit set it, follows the new kit, so a
+  kit author's change reaches the app; one the owner changed stays. A setting whose kit entry
+  changes kind, such as from a value to `generate`, keeps its stored value.
 - **Removed:** shown in the review, and deleted when the update applies. A rollback restores it.
 
 Approved hosts follow the same rule: a host the kit adds is approved with the update, a host the
@@ -249,11 +254,12 @@ spec's migration follows it.
 
 ## Requirements
 
-- **FR-001**: Installing from a link stores the link as given and the branch it named. An app
-  installed before has none until the owner gives one.
+- **FR-001**: Installing from a link stores the link as given. An app installed before has none,
+  and is checked at its pinned kit link's file.
 - **FR-002**: A check reads the kit at the latest commit of the app's link's branch, through the
   GitHub connection when the repository is private, and reports an update when the kit's content
-  differs from the installed kit; an app whose link is at a tag or commit has none. A check with a
+  differs from the installed kit; a link at a commit or a tag, or none, follows the repository's
+  default branch for the same file. A check with a
   link the owner gives (Update from a link) reviews the kit at that link against the installed kit,
   whatever the link names. A check runs only on request.
 - **FR-003**: An update's review lists, against the installed app: kit and Compose commits with
