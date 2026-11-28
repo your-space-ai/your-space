@@ -176,7 +176,7 @@ export class KnowledgeBases {
           const current = await this.current(target.id);
           if (!current || current.state === "removed") continue;
           kind = current.desired === "removed" ? "remove" : "apply";
-          const { jobId, done } = await this.apps.startJob(target.id, kind, { held: true });
+          const { jobId, done } = await this.apps.startJob(target.id, kind, { held: true, by: actorId });
           await done;
           const job = await this.apps.job(jobId);
           if (job.state !== "succeeded") {

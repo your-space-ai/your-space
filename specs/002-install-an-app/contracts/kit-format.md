@@ -112,7 +112,10 @@ folders deep, and each folder is 1 to 64 letters, digits, dots, dashes and under
 with a letter, digit or underscore, so `/a/b/c/d/e/f/g/h/i` and `/-vault` are refused. Your Space keeps it normalised, so
 `/data/vault/` is `/data/vault`. `knowledge: {}` asks for the default path. A kit with `knowledge` needs an
 `interface`, any other field in `knowledge` is refused, and so is a Compose file whose interface
-service mounts anything of its own at or inside the path. A kit without `knowledge` gets no mounts
+service mounts anything of its own at or inside the path. The path itself holds only the knowledge
+bases' folders and isn't storage: what an app writes there beside them is in the container's own
+files, lost when it is recreated, so a kit whose app keeps files at that folder's root puts the path
+inside one of the app's volumes. A kit without `knowledge` gets no mounts
 and can't be given knowledge bases. Older Your Space versions refuse `knowledge` as an unknown field,
 so the change needs no new format version; `kit: 1` and `kit: 2` both take it.
 

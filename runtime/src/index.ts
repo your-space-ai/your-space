@@ -82,7 +82,7 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (method === "POST" && pathname === "/stop-all") return send(res, 200, { stopped: await stopAll() });
   if (method === "POST" && pathname === "/knowledge") {
     const { name } = ((await readBody(req)) ?? {}) as { name?: unknown };
-    const created = await createKnowledge(validateKnowledgeName(String(name ?? "")));
+    const created = await createKnowledge(validateKnowledgeName(name));
     log("info", "knowledge.created", { name, created: created.created });
     return send(res, 200, created);
   }

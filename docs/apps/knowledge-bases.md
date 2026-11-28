@@ -28,11 +28,11 @@ them at any time: saving restarts the app's interface service with the new folde
 kept. If that restart fails, the app keeps the knowledge bases whose folders it still has, and its
 page lists those; save again once the app starts.
 
-If Your Space stops or restarts before the app has restarted without a knowledge base you took
-away, it finishes that once it is back: while the app runs with a folder you didn't give it, Your
-Space restarts its interface service with only the knowledge bases it has, and tries again later,
-waiting longer each time, if that fails. An app that isn't running gets the knowledge bases it has
-when it next starts.
+If Your Space stops or restarts before the app has restarted with the knowledge bases you saved, it
+finishes that once it is back: while the app runs with a folder you didn't give it, or without one
+you gave it, Your Space restarts its interface service with the knowledge bases it has, and tries
+again later, waiting longer each time, if that fails. An app that isn't running gets the knowledge
+bases it has when it next starts.
 
 Each knowledge base is its own folder under the app's knowledge path, `/knowledge` unless the kit
 names another, even when the app has only one. An app given one knowledge base doesn't see the
@@ -85,6 +85,13 @@ service. The app finds them by listing `<path>`. The path must be absolute, isn'
 `..`. It is at most 8 folders deep, each 1 to 64 letters, digits, dots, dashes and underscores,
 starting with a letter, digit or underscore. The app's own file can't mount anything at or inside it. See the
 [kit format](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
+
+`<path>` itself only holds the knowledge bases' folders: it isn't storage. Unless the image has that
+folder, Docker makes it in the container, owned by root with mode `0755`, so an app that doesn't run
+as root can't write there, and anything an app writes there beside the folders is lost whenever the
+container is recreated, as when the owner changes its knowledge bases. An app that keeps files at the
+root of the folder it opens, as Obsidian keeps a vault's `.obsidian` settings, needs a path inside one
+of its own volumes, such as `knowledge: { path: /config/vault }` with a volume at `/config`.
 
 Keeping a knowledge base in sync with a Google Drive folder is
 [planned](../roadmap.md#knowledge-bases).

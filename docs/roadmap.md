@@ -193,7 +193,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
   **Agreed (2026-11-25):** [Knowledge bases](architecture/decisions.md#knowledge-bases). Not scheduled for a release yet. [Knowledge base journey](https://github.com/your-space-ai/your-space/blob/main/specs/014-knowledge-bases/spec.md)
 
-  - [ ] Create local knowledge bases, and give them to installed apps whose kits declare `knowledge`, mounted read-write at `<path>/<name>`. ([PR #127](https://github.com/your-space-ai/your-space/pull/127), in review)
+  - [x] Create local knowledge bases, and give them to installed apps whose kits declare `knowledge`, mounted read-write at `<path>/<name>`. Verified in Chromium with fixture apps. (2026-11-27, [PR #127](https://github.com/your-space-ai/your-space/pull/127))
   - [ ] Keep a knowledge base in two-way sync with a Google Drive folder through rclone, with the operator's own OAuth client, conflict copies and sync safety checks.
   - [ ] Verify sync against real Google Drive with an operator-registered client, the only check of what CI can't reach: a real `drive` remote, renewing its token and moving files through the sync's proxy, and a revoked grant.
 

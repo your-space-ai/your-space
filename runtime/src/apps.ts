@@ -115,8 +115,9 @@ function validateKnowledge(knowledge: unknown): void {
 }
 
 /** A knowledge base's name, as a request gives it. */
-export function validateKnowledgeName(name: string): string {
-  if (!KNOWLEDGE_NAME.test(name)) throw new SpecError("A knowledge base's name is lower-case letters, digits and dashes.");
+/** A knowledge base's name, as the server sends it: only a string, never a value that reads as one. */
+export function validateKnowledgeName(name: unknown): string {
+  if (typeof name !== "string" || !KNOWLEDGE_NAME.test(name)) throw new SpecError("A knowledge base's name is lower-case letters, digits and dashes.");
   return name;
 }
 
@@ -340,7 +341,7 @@ export async function apply(spec: AppSpec, emit: Emit): Promise<void> {
   }
   // Compose mounts a knowledge base by its volume's name, so each must be this installation's own.
   for (const name of spec.knowledge?.bases ?? []) {
-    if (!(await knowledgeOf(name))) throw new EngineError(`The knowledge base ${name} isn't on this machine's engine, so ${spec.app} can't mount it. Take it away from the app, or create it again.`, 409);
+    if (!(await knowledgeOf(name))) throw new EngineError(`The knowledge base ${name} isn't on this machine's engine, so ${spec.app} can't mount it: its files are gone. Take it away from the app, or delete it on the Knowledge page, create it again and give it to the app again.`, 409);
   }
   const services = adapted.services as Record<string, { image: string; restart?: string }>;
   const images = [...new Set(Object.values(services).map((s) => s.image))];
@@ -658,10 +659,14 @@ async function initKnowledge(volume: string): Promise<void> {
   }
 }
 
-/** Removes this installation's knowledge-base setup containers left on the volume, as when the engine couldn't remove one. */
+/**
+ * Removes this installation's knowledge-base setup containers left on the volume, as when the engine
+ * couldn't remove one. Never an app's container, which keeps the labels its own file gives it, the
+ * role's too: only a setup container has no app.
+ */
 async function removeLeftInits(volume: string): Promise<void> {
   for (const left of await mountedBy(volume)) {
-    if (left.Labels["ai.your-space.installation"] !== INSTALLATION || left.Labels["ai.your-space.role"] !== "knowledge-init") continue;
+    if (left.Labels["ai.your-space.installation"] !== INSTALLATION || left.Labels["ai.your-space.role"] !== "knowledge-init" || "ai.your-space.app" in left.Labels) continue;
     const answer = await engine("DELETE", `/containers/${left.Id}?force=1`);
     if (answer.status >= 400 && answer.status !== 404) throw new EngineError(`Removing the knowledge base's setup container failed: ${answer.body.trim().slice(0, 300)}`);
   }

@@ -16,6 +16,7 @@ import {
   knowledgeInit,
   knowledgeUsers,
   SpecError,
+  validateKnowledgeName,
   validateSpec,
 } from "../src/apps.ts";
 import * as engineModule from "../src/engine.ts";
@@ -155,6 +156,13 @@ describe("the app spec's knowledge", () => {
     for (const path of paths) expect(() => validateSpec({ ...base, knowledge: { path, bases: [] } }), path).toThrow(SpecError);
     const names = [["Notes"], ["-notes"], ["notes-"], ["a/b"], [".."], ["a".repeat(41)], ["notes", "notes"], [1]];
     for (const bases of names) expect(() => validateSpec({ ...base, knowledge: { path: "/knowledge", bases } }), JSON.stringify(bases)).toThrow(SpecError);
+  });
+});
+
+describe("a knowledge base's name, as the server sends it", () => {
+  it("is only a string, never a value that reads as one", () => {
+    expect(validateKnowledgeName("course-notes")).toBe("course-notes");
+    for (const bad of [["notes"], 7, { toString: () => "notes" }, null, undefined, "Notes"]) expect(() => validateKnowledgeName(bad), String(JSON.stringify(bad))).toThrow(SpecError);
   });
 });
 
@@ -342,6 +350,16 @@ describe("a knowledge base's volume", () => {
     expect(volumes.has(NOTES)).toBe(false);
   });
 
+  it("never takes an app's container for a setup container left on it, even one its file labels as one", async () => {
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    // An app's file can give its service Your Space's role label, and an app's container always has the installation's.
+    const labels = { "ai.your-space.installation": INSTALLATION, "ai.your-space.app": "notes", "ai.your-space.role": "knowledge-init" };
+    containers.push({ Id: "app-id", Names: ["/ys-notes-web-1"], State: "running", Status: "Up", Labels: labels, volumes: [NOTES] });
+    await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("still mounted by notes") });
+    expect(calls).not.toContain("DELETE /containers/app-id");
+    expect(volumes.has(NOTES)).toBe(true);
+  });
+
   it("is deleted only when it is Your Space's own", async () => {
     volumes.set(NOTES, { "ai.your-space.installation": INSTALLATION });
     await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409 });
@@ -428,7 +446,8 @@ describe("applying an app given knowledge bases", () => {
   }
 
   it("stops before Compose when a knowledge base's volume is missing", async () => {
-    await refused(given, /The knowledge base notes isn't on this machine's engine, so notes can't mount it/);
+    // The server refuses to create a knowledge base whose record is kept, so the way back is to delete it first.
+    await refused(given, /^The knowledge base notes isn't on this machine's engine, so notes can't mount it: its files are gone\. Take it away from the app, or delete it on the Knowledge page, create it again and give it to the app again\.$/);
     // Each knowledge base is checked, not only the first.
     volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
     await refused({ ...given, knowledge: { path: "/knowledge", bases: ["notes", "recipes"] } }, /The knowledge base recipes isn't on this machine's engine/);

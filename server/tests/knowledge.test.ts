@@ -365,10 +365,16 @@ describe("giving knowledge bases to apps", () => {
 
 describe("removing an app and deleting its data", () => {
   it("never deletes a knowledge base", async () => {
+    const notes = await appId("notes");
+    expect(await grantsOf("notes")).toEqual(["recipes"]);
+    const fromNotes = async () => (await events("knowledge.revoked")).filter((e) => e.subjectAppId === notes && e.knowledgeBase === "recipes");
+    expect(await fromNotes()).toEqual([]);
     const removed = await send("/api/apps/notes/remove", {});
     await waitForJob(((await removed.json()) as { jobId: string }).jobId);
     // A removed app uses no knowledge base, and installing it again starts with the owner's picks.
-    expect(await t.db.select().from(appKnowledgeBase).where(eq(appKnowledgeBase.appId, await appId("notes")))).toEqual([]);
+    expect(await t.db.select().from(appKnowledgeBase).where(eq(appKnowledgeBase.appId, notes))).toEqual([]);
+    // Each it had is recorded as taken away, against the owner who removed it, so its grant ends in the knowledge base's history.
+    expect(await fromNotes()).toEqual([{ actorId: owner, subjectAppId: notes, knowledgeBase: "recipes" }]);
     expect((await api("/api/apps/notes/data", { method: "DELETE", body: JSON.stringify({ confirm: "notes" }) })).status).toBe(204);
     expect(runtime.calls.some((c) => c.method === "deleteKnowledge")).toBe(false);
     expect([...runtime.knowledge].sort()).toEqual(["course-notes", "recipes"]);
@@ -397,7 +403,8 @@ describe("deleting a knowledge base", () => {
       .from(eventKnowledgeBase)
       .innerJoin(event, eq(event.id, eventKnowledgeBase.eventId))
       .where(eq(eventKnowledgeBase.name, "recipes"));
-    expect(history.map((e) => e.type).sort()).toEqual(["knowledge.created", "knowledge.deleted", "knowledge.granted", "knowledge.granted", "knowledge.retitled", "knowledge.revoked"]);
+    // Given to two apps, and taken from each: from notes when it was removed, and from vault now.
+    expect(history.map((e) => e.type).sort()).toEqual(["knowledge.created", "knowledge.deleted", "knowledge.granted", "knowledge.granted", "knowledge.retitled", "knowledge.revoked", "knowledge.revoked"]);
     for (const e of history) expect(e).toMatchObject({ actorId: owner, knowledgeBaseId: null });
   });
 

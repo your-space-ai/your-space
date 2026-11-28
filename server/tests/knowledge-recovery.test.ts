@@ -54,12 +54,14 @@ const fetch = fakeGithub({
   "ys-fixtures/relay/compose.yaml": COMPOSE,
   "ys-fixtures/ledger/compose.yaml": COMPOSE,
   "ys-fixtures/scribe/compose.yaml": COMPOSE,
+  "ys-fixtures/gallery/compose.yaml": COMPOSE,
   ...plainKit("notes", "knowledge: {}\n"),
   ...plainKit("atlas", "knowledge: {}\n"),
   ...plainKit("vault", "knowledge: {}\n"),
   ...plainKit("relay", "knowledge: {}\n"),
   ...plainKit("ledger", "knowledge: {}\n"),
   ...plainKit("scribe", "knowledge: {}\n"),
+  ...plainKit("gallery", "knowledge: {}\n"),
 });
 let t: TestDatabase;
 let server: TestServer;
@@ -135,15 +137,17 @@ async function settled(apps: AppsService, name: string): Promise<void> {
   expect(apps.isBusy(id)).toBe(false);
 }
 
-/** Who each `knowledge.revoked` event of the app is recorded against, by knowledge base. */
-async function revoked(name: string) {
+/** Who each event of the type about the app is recorded against, by knowledge base. */
+async function recorded(type: "knowledge.revoked" | "knowledge.granted", name: string) {
   return t.db
     .select({ actorId: event.actorId, knowledgeBase: eventKnowledgeBase.name })
     .from(event)
     .innerJoin(eventKnowledgeBase, eq(eventKnowledgeBase.eventId, event.id))
-    .where(and(eq(event.type, "knowledge.revoked"), eq(event.subjectAppId, await appId(name))))
+    .where(and(eq(event.type, type), eq(event.subjectAppId, await appId(name))))
     .orderBy(asc(eventKnowledgeBase.name));
 }
+const revoked = (name: string) => recorded("knowledge.revoked", name);
+const granted = (name: string) => recorded("knowledge.granted", name);
 
 describe("taking a knowledge base away when Your Space restarts during it", () => {
   it("applies again, once Your Space is back, a running app that still mounts one taken from it on its page", async () => {
@@ -452,5 +456,83 @@ describe("taking a knowledge base away when Your Space restarts during it", () =
       runtime.knowledgeUsers = original;
     }
     expect((await t.db.select({ state: app.state }).from(app).where(eq(app.id, scribe)))[0]!.state).toBe("removed");
+  });
+});
+
+describe("giving a knowledge base when Your Space restarts during it", () => {
+  it("applies again, once Your Space is back, a running app that doesn't mount one given it on its page", async () => {
+    for (const name of ["photos", "captions"]) expect((await send("/api/knowledge", { name })).status).toBe(201);
+    await install("gallery", ["photos"]);
+    // The owner gives it another, and Your Space stops before the apply that mounts it ends.
+    runtime.cutOff = true;
+    const before = applies("gallery").length;
+    const given = await send("/api/apps/gallery/knowledge", { bases: ["captions", "photos"] }, "PUT");
+    expect(given.status).toBe(202);
+    await untilCutOff("gallery", before);
+    runtime.cutOff = false;
+    // Saved with the job, which never ended: the app's page lists it, its folder isn't there, and nothing records it as given.
+    expect((await grantsOf("gallery")).sort()).toEqual(["captions", "photos"]);
+    expect((await runtime.knowledgeUsers("captions")).apps).toEqual([]);
+    expect(await granted("gallery")).toEqual([{ actorId: owner, knowledgeBase: "photos" }]);
+
+    const apps = await restart();
+    await apps.reconcile();
+    await settled(apps, "gallery");
+    expect(applies("gallery").length).toBe(before + 2);
+    expect(runtime.lastApply("ys-gallery")!.knowledge).toEqual({ path: "/knowledge", bases: ["captions", "photos"] });
+    expect((await runtime.knowledgeUsers("captions")).apps).toEqual(["gallery"]);
+    // Recorded against the owner, who gave it.
+    expect(await granted("gallery")).toEqual([
+      { actorId: owner, knowledgeBase: "captions" },
+      { actorId: owner, knowledgeBase: "photos" },
+    ]);
+
+    // Done once: the next checks find nothing to do.
+    await apps.reconcile();
+    await apps.reconcile();
+    expect(applies("gallery").length).toBe(before + 2);
+  });
+
+  it("tries an apply that didn't mount it again later, waiting longer each time, and records its giving only once", async () => {
+    expect((await send("/api/knowledge", { name: "albums" })).status).toBe(201);
+    const apps = await restart();
+    // The apply that gives it fails, and the runtime manager doesn't say what the app mounts: the
+    // grant stays, recorded as given, without its folder.
+    const original = runtime.knowledgeUsers.bind(runtime);
+    runtime.failApply = "The engine stopped.";
+    runtime.knowledgeUsers = async () => {
+      throw new Error("The runtime manager didn't answer.");
+    };
+    try {
+      const { jobId } = await apps.updateKnowledge("gallery", ["albums", "captions", "photos"], owner);
+      expect((await waitForJob(jobId)).state).toBe("failed");
+      await settled(apps, "gallery");
+    } finally {
+      runtime.knowledgeUsers = original;
+    }
+    expect((await grantsOf("gallery")).sort()).toEqual(["albums", "captions", "photos"]);
+    expect((await runtime.knowledgeUsers("albums")).apps).toEqual([]);
+    expect((await granted("gallery")).map((g) => g.knowledgeBase)).toEqual(["albums", "captions", "photos"]);
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    const tries: number[] = [];
+    for (const minutes of [0, 0.5, 1, 2, 2.5, 3]) {
+      vi.setSystemTime(start + minutes * 60_000 + 1);
+      const count = applies("gallery").length;
+      await apps.reconcile();
+      await settled(apps, "gallery");
+      if (applies("gallery").length > count) tries.push(minutes);
+    }
+    // At once, then a minute later, then two minutes after that.
+    expect(tries).toEqual([0, 1, 3]);
+
+    runtime.failApply = undefined;
+    vi.setSystemTime(start + 8 * 60_000);
+    await apps.reconcile();
+    await settled(apps, "gallery");
+    expect(runtime.lastApply("ys-gallery")!.knowledge).toEqual({ path: "/knowledge", bases: ["albums", "captions", "photos"] });
+    expect((await runtime.knowledgeUsers("albums")).apps).toEqual(["gallery"]);
+    expect((await granted("gallery")).map((g) => g.knowledgeBase)).toEqual(["albums", "captions", "photos"]);
   });
 });
