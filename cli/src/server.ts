@@ -3,7 +3,7 @@
 import { CliError, EXIT, ServerFailure, type ErrorCode } from "./errors.ts";
 import type { Compose } from "./compose.ts";
 
-export type ServerCommand = "create-owner" | "reset-link" | "show-secrets" | "show-owner" | "list-apps";
+export type ServerCommand = "create-owner" | "reset-link" | "show-secrets" | "show-owner" | "list-apps" | "update-app";
 
 export interface ServerResult {
   status: number;

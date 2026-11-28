@@ -76,6 +76,7 @@ docker compose exec -T server install-app <github-link-to-kit> [--reuse-data] [-
 docker compose exec -T server install-app --kit <file | -> [--reuse-data] [--publish [--port <n>] [--bind <address>] [--link <url>]] [--json]
 docker compose exec server publish-app <name> [--port <n>] [--bind <address>] [--link <url>] [--off] [--json]
 docker compose exec server list-apps [--json]
+docker compose exec server update-app <name> [--check] [--review <digest>] [--json]
 docker compose exec runtime stop-apps
 ```
 
@@ -97,9 +98,16 @@ the owner no longer gives the command a Compose file on this machine, and `--fil
 journey 011's creator features. An app installed from one
 before is recorded as `sha256:<digest>` and keeps starting from its stored text; `list-apps --json`
 gives each app's `source`: the link to its Compose file, or that digest, and its `commit` is the
-exact commit read. Data kept under a name can be reused with `--reuse-data`. An installed app
-follows no branch: a newer kit, or the newer Compose commit it pins, reaches it only when the owner
-chooses to install it. Offering a newer kit as an update is left to journey 006.
+exact commit read. Data kept under a name can be reused with `--reuse-data`. A newer kit reaches
+an installed app only when the owner applies it as an update ([journey 019](../../019-kit-updates/spec.md)).
+
+`update-app` checks an installed app's kit, at its own location, for an update. With `--check` it
+prints the review, as `POST /api/apps/{name}/update/check` gives it, with the review's own `ok` as
+`runnable`; without, it applies the update as the operator and waits until the app runs it or the
+update is rolled back, exit status 0 or 2 (`update_failed`, with the job's error). `--review` applies
+only an update whose review has that digest, and is refused with `update_changed` otherwise, even
+when the app is now up to date. An update that needs a setting's value isn't applied by the command
+(`settings_required`). `your-space app check-update` and `your-space app update` run it from the host.
 
 `publish-app` publishes an installed app, changes how (an option left out keeps its value),
 or stops publishing it with `--off`, and waits until the change is applied: it restarts the app's

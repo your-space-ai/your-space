@@ -82,6 +82,32 @@ the first time. A browser that blocks an app's cookies inside Your Space, as Web
 can on this machine's plain-HTTP setup, can't keep you signed in to the app in a pane; the pane then
 offers a link to open the app in its own tab.
 
+## Update an App
+
+An app updates from the kit you installed it from, at the same place on GitHub. When that kit file
+changes on its branch, or on the repository's default branch for a kit linked at a commit or a tag,
+the app has an update. Changes elsewhere in the repository don't count.
+
+On the machine that runs Your Space:
+
+```bash
+your-space app check-update <app>
+your-space app update <app>
+```
+
+`check-update` says whether the app is up to date, and if not, what the update changes: its
+Compose file, images, settings and the internet hosts it may reach. `update` shows the same, asks,
+and applies it in place. The app keeps its data, settings, publishing and agent access. The update
+waits up to 5 minutes for the app to run, and then for 10 seconds of running without a break. If it
+doesn't start, or stops within that time, the update is rolled back and the app starts again on the
+kit it ran before. After that, the update stays: an app that stops later isn't rolled back. What the
+new version did to the app's own data, such as a database migration, isn't undone. An update that
+adds a setting you must give isn't applied from the command line.
+
+For a script or an agent, `check-update --json` prints the changes and a `digest`. Then
+`your-space app update <app> --review <digest> --yes --json` applies exactly that update, and is
+refused if the app, its kit or an image has changed since.
+
 ## Private Kits
 
 Your Space can keep a GitHub connection: a token that can only read the repositories you choose,

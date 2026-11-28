@@ -6,6 +6,7 @@ import { registerAgentCommands } from "./commands/agent.ts";
 import { configure } from "./commands/configure.ts";
 import { init } from "./commands/init.ts";
 import { logs } from "./commands/logs.ts";
+import { appCheckUpdate, appUpdate } from "./commands/app.ts";
 import { ownerCreate, ownerResetLink } from "./commands/owner.ts";
 import { secretsReplace, secretsShow } from "./commands/secrets.ts";
 import { start } from "./commands/start.ts";
@@ -182,6 +183,24 @@ owner
   .command("reset-link")
   .description("print a new set-password link for the owner")
   .action(action(async (ui, g) => ownerResetLink(ui, g.workdir)));
+
+const apps = program.command("app").description("installed apps (journey 019)");
+apps
+  .command("check-update")
+  .description("check an installed app's kit for an update, and show what it changes")
+  .argument("<app>", "the app's name")
+  .action(action(async (ui, g, app: string) => appCheckUpdate(ui, g.workdir, app)));
+apps
+  .command("update")
+  .description("update an installed app in place from its kit, after showing what changes")
+  .argument("<app>", "the app's name")
+  .option("--review <digest>", "apply only the update an earlier check-update showed with this digest")
+  .action(
+    action(async (ui, g, app: string) => {
+      const o = apps.commands.find((c) => c.name() === "update")!.opts();
+      await appUpdate(ui, g.workdir, app, { review: o.review });
+    }),
+  );
 
 const secrets = program.command("secrets").description("the auth secret and the database password");
 secrets
