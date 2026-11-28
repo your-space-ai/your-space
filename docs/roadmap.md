@@ -224,9 +224,10 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
   **Cut from the alpha (2026-11-23):** [Alpha scope](architecture/decisions.md#alpha-scope).
 
-  - [ ] Let an agent create and change records through kit routes, with exact owner approval.
+  - [ ] Let an agent create and change records through kit routes, with exact owner approval. **Replaced (2026-11-27):** access per app (018) below, without kit routes.
   - [ ] Verify writes against a real app's API rather than a fixture.
-  - [ ] Let a setup role change an app's data model with an admin credential that record roles never carry.
+  - [ ] Let a setup role change an app's data model with an admin credential that record roles never carry. **Replaced (2026-11-27):** in 018 the owner picks the app key each agent uses; a setup agent gets the admin key.
+  - [ ] **Access per app (018)** · *Later direction*. A grant gives an agent an app's API with the app key the owner picks; nothing asks first unless the owner adds a route that does; kit changes keep keys and grants. Decided 2026-11-27, replacing 017's roles and routes. [Agent access per app spec](https://github.com/your-space-ai/your-space/blob/main/specs/018-app-access/spec.md)
 
   **Replaced (2026-11-26):** retrying an interrupted write safely and refusing a stale edit; the owner decided retries, duplicates and stale edits are the agent's and the app's. [Agent writes](architecture/decisions.md#agent-writes)
 
