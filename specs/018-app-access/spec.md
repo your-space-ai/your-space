@@ -44,7 +44,7 @@ applies the actual api key, agent never sees the api key."
 | 9 | Does removing an app keep its agent access? | **Decided:** no. Removing an app, even keeping its data, ends its grants and app keys; only a kit change keeps them. Owner: "removing an app should remove the agent access yeah" |
 | 10 | What about kits that still list roles and routes? | **Decided:** they are refused, with a message to name `api`; Your Space infers nothing from routes. Owner: "we'll rewrite them, they shouldn't work any more" |
 | 11 | What happens to an installed app whose stored kit lists roles and routes? | **Decided:** nothing is rewritten. Its agent access is unavailable until it runs a rewritten kit, and **Agents** and **Apps** say why and what fixes it. Owner: "Leave them broken" |
-| 12 | What happens to the agents using a bound app key when the owner replaces it? | **Decided:** their grants stay, and they use the new key from then on; pending approvals go stale. Owner: "Grants stay" |
+| 12 | What happens to the agents using a bound app key when the owner replaces it? | **Decided:** their grants stay, on the new key only; Your Space never uses the old one again, and tells the owner to revoke it in the app. Owner: "Grants stay"; "old key doesn't continue working tho" |
 
 ## What Exists Today
 
@@ -160,9 +160,16 @@ routes (the recommendation), so the owner's onboarding agent kept working throug
 
 ## 12. Replacing a Bound Key
 
-**Decided (2026-11-27):** the agents using it keep their grants and use the new key from then on;
-pending approvals go stale. The owner: "Grants stay". Each key's role in the app is what limits its
-agents, so replacing it is the owner's deliberate choice.
+**Decided (2026-11-27):** the agents using it keep their grants, on the new key only. The owner:
+"Grants stay", and "old key doesn't continue working tho". Each key's role in the app is what limits
+its agents, so replacing it is the owner's deliberate choice; the old key stops at once:
+
+- Your Space keeps no copy of the old key and reads a call's key when it admits the call. Just before
+  sending, it checks the key is still the one bound; a call whose key was replaced or removed in
+  between is not sent and goes stale. A call already sent finishes.
+- Pending approvals go stale, so none resumes with the old key. Your Space retries nothing.
+- Your Space can't revoke a key inside the app, so **Agents** tells the owner, when they replace or
+  disconnect a key, to revoke the old one in the app too.
 
 **Considered:** withdrawing the grants that use a replaced key, as journey 017 did, so the owner
 grants again after every rotation.
@@ -174,8 +181,9 @@ grants again after every rotation.
   or `routes`, or names no `api`, is refused with a message saying so (decision 10). A kit already
   stored that lists them leaves its app without agent access, saying why (decision 11).
 - **FR-002**: The owner binds each credential separately, as today; a binding enables no roles.
-  Replacing a bound credential keeps the grants that use it, on the new value, and stales pending
-  approvals (decision 12).
+  Replacing a bound credential keeps the grants that use it, on the new value only: a call whose
+  credential was replaced or removed after it was admitted isn't sent, pending approvals go stale,
+  and **Agents** says to revoke the old key in the app (decision 12).
 - **FR-003**: A grant for an agent and installation names one bound credential, and holds its routes
   that ask (decisions 6 and 7). Without a grant the agent can't reach the app.
 - **FR-004**: An agent's call names an installation, a method among `GET`, `POST`, `PATCH`, `PUT` and
