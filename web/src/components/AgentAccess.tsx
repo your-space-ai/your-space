@@ -23,7 +23,13 @@ export function ActionFeedback({ action }: { action: ReturnType<typeof useAgentA
 }
 
 /** Why agents can't reach the app, and what brings access back (spec 018 decision 11). */
-export function AgentAccessProblem({ app }: { app: Pick<AgentInstallation, "problem"> }) {
+export function AgentAccessProblem({ app }: { app: { problem: AgentInstallation["problem"] | "no_interface" } }) {
+  if (app.problem === "no_interface")
+    return (
+      <p className="notice warning">
+        Agent access is unavailable: this app's kit names no interface for Your Space to reach its API through.
+      </p>
+    );
   if (app.problem !== "old_format") return null;
   return (
     <p className="notice warning">

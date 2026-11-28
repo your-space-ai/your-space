@@ -213,7 +213,7 @@ export interface AppDetail {
   source: { link: string; repo: string; path: string; ref: string; commit: string };
   kitSource: string | null;
   /** Whether agents can reach the app through Your Space (spec 018); null when its kit offers no agent access. */
-  agentAccess: { api: string | null; problem: "old_format" | null } | null;
+  agentAccess: { api: string | null; problem: "old_format" | "no_interface" | null } | null;
   images: Record<string, { digest: string }>;
   adaptations: Adaptation[];
   services: ServiceState[];

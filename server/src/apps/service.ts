@@ -65,10 +65,15 @@ export const DEFAULT_BIND = "127.0.0.1";
 
 
 /** The agent access an app's stored kit gives: its API's path, or why it gives none. */
-function agentAccessOf(kit: unknown): { api: string | null; problem: "old_format" | null } | null {
+function agentAccessOf(
+  kit: unknown,
+  appInterface: unknown,
+): { api: string | null; problem: "old_format" | "no_interface" | null } | null {
   const stored = storedAgentAccess(kit);
   if (!stored) return null;
-  return "access" in stored ? { api: stored.access.api, problem: null } : { api: null, problem: stored.problem };
+  if (!("access" in stored)) return { api: null, problem: stored.problem };
+  // The gateway reaches an app only through the interface its kit names.
+  return appInterface ? { api: stored.access.api, problem: null } : { api: null, problem: "no_interface" };
 }
 
 export class AppError extends Error {
@@ -1131,7 +1136,7 @@ export class AppsService {
       source: { link: row.sourceUrl, repo: row.repo, path: row.path, ref: row.ref, commit: row.commit },
       kitSource: row.kitSource,
       // Whether agents can reach the app through Your Space, and why not (spec 018 decision 11).
-      agentAccess: agentAccessOf(row.kit),
+      agentAccess: agentAccessOf(row.kit, row.interface),
       provenance: row.provenance,
       images: row.images,
       adaptations: row.adaptations,

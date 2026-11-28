@@ -130,7 +130,8 @@ test("an agent granted an app reads and writes its API with the owner's key, ask
   await expect(pending.getByText("No requests awaiting approval.")).toBeVisible();
   expect((await run(["request", denied.id])).status).toBe("rejected");
   const after = await callApp("GET", "/items");
-  expect(after.result.data.items.map((item: { id: string }) => item.id)).toEqual([walk.id, expect.any(String)]);
+  // Only the approved delete happened: both original records remain, and the created one is gone.
+  expect(after.result.data.items.map((item: { id: string }) => item.id)).toEqual([walk.id, "9c4e7b2a-1d3f-4a6e-b8c5-2f7a9d1e3b64"]);
 
   // Outside the API is refused before anything reaches the app.
   const outside = await cli.run(["--json", "agent", "call", installationId, "GET", "/meta/fields"]);

@@ -331,7 +331,10 @@ it("serializes removing a grant with an approval and refuses later calls", async
   expect(removal.status).toBe("fulfilled");
   const state = (await t.pool.query("select status from agent_request where id=$1", [pending.id])).rows[0].status;
   if (approval.status === "fulfilled") expect(state).toBe("succeeded");
-  else expect(state).toBe("revoked");
+  else {
+    expect(approval.reason).toMatchObject({ status: 409 });
+    expect(state).toBe("revoked");
+  }
   expect((await invoke(t.db, key, verifier, call("GET", "/rest/items"))).status).toBe("denied");
   expect(dispatchAppAction).toHaveBeenCalledTimes(approval.status === "fulfilled" ? 1 : 0);
 });
