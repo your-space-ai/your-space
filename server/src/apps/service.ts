@@ -5,7 +5,7 @@ import { storedAgentAccess } from "./agent-kit.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import { isDeepStrictEqual } from "node:util";
-import { and, desc, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, notInArray, sql } from "drizzle-orm";
 import { recordEvent } from "../actors.ts";
 import type { Db } from "../db/client.ts";
 import {
@@ -874,18 +874,20 @@ export class AppsService {
     const row = await this.rowByName(name);
     try {
       const review = await this.reviewUpdate(name);
-      await this.recordCheck(row.id, { at: new Date().toISOString(), available: !review.upToDate });
+      await this.recordCheck(row, { at: new Date().toISOString(), available: !review.upToDate });
       return review;
     } catch (error) {
       // A failed check counts as one, so the page doesn't try again on each visit.
       const message = error instanceof AppError ? error.message : "Something went wrong on the server.";
-      await this.recordCheck(row.id, { at: new Date().toISOString(), available: row.updateCheck?.available ?? false, error: message });
+      await this.recordCheck(row, { at: new Date().toISOString(), available: row.updateCheck?.available ?? false, error: message });
       throw error;
     }
   }
 
-  private async recordCheck(appId: string, check: { at: string; available: boolean; error?: string }): Promise<void> {
-    await this.db.update(app).set({ updateCheck: check }).where(eq(app.id, appId));
+  /** Kept only while the app still runs the kit the check was made against. */
+  private async recordCheck(row: AppRow, check: { at: string; available: boolean; error?: string }): Promise<void> {
+    const sameKit = row.kitSource === null ? isNull(app.kitSource) : eq(app.kitSource, row.kitSource);
+    await this.db.update(app).set({ updateCheck: check }).where(and(eq(app.id, row.id), sameKit));
   }
 
   private async reviewUpdate(name: string): Promise<ReturnType<AppsService["updateReviewOf"]>> {
