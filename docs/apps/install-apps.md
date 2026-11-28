@@ -97,10 +97,12 @@ your-space app update <app>
 
 `check-update` says whether the app is up to date, and if not, what the update changes: its
 Compose file, images, settings and the internet hosts it may reach. `update` shows the same, asks,
-and applies it in place. The app keeps its data, settings, publishing and agent access. If the
-updated app doesn't start, or doesn't keep running, the update is rolled back and the app starts
-again on the kit it ran before; what the new version did to the app's own data, such as a database
-migration, isn't undone. An update that adds a setting you must give is applied from the app's page.
+and applies it in place. The app keeps its data, settings, publishing and agent access. The update
+waits up to 5 minutes for the app to run, and then for 10 seconds of running without a break. If it
+doesn't start, or stops within that time, the update is rolled back and the app starts again on the
+kit it ran before. After that, the update stays: an app that stops later isn't rolled back. What the
+new version did to the app's own data, such as a database migration, isn't undone. An update that
+adds a setting you must give isn't applied from the command line.
 
 For a script or an agent, `check-update --json` prints the changes and a `digest`. Then
 `your-space app update <app> --review <digest> --yes --json` applies exactly that update, and is

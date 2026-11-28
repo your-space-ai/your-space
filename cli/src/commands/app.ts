@@ -11,7 +11,7 @@ import type { Ui } from "../ui.ts";
 export interface Changes {
   compose: { from: { repo: string; path: string; commit: string }; to: { repo: string; path: string; commit: string } } | null;
   images: { ref: string; from: string | null; to: string | null; private: boolean }[];
-  settings: { added: string[]; removed: string[] };
+  settings: { added: string[]; removed: string[]; changed: string[] };
   outbound: { added: string[]; removed: string[] };
   services: { added: string[]; removed: string[] };
   interface: { from: { service: string; port: number } | null; to: { service: string; port: number } | null } | null;
@@ -37,6 +37,7 @@ export function describeChanges(changes: Changes): string[] {
   }
   for (const name of changes.settings.added) lines.push(`A new setting, ${name}.`);
   for (const name of changes.settings.removed) lines.push(`The setting ${name} is no longer used, and is removed.`);
+  for (const name of changes.settings.changed) lines.push(`The setting ${name} takes the kit's new value.`);
   for (const host of changes.outbound.added) lines.push(`It may reach ${host}.`);
   for (const host of changes.outbound.removed) lines.push(`It no longer reaches ${host}.`);
   for (const service of changes.services.added) lines.push(`A new service, ${service}.`);
@@ -88,5 +89,5 @@ export async function appUpdate(ui: Ui, workdir: string, app: string, flags: { r
     digest = String(review.digest);
   }
   const { ok: _ok, ...done } = expectOk(await serverCommand(compose, "update-app", [app, "--review", digest]));
-  ui.result(done, () => ui.success(`${app} is updated and ${String(done.state)}.`));
+  ui.result(done, () => ui.success(done.upToDate ? `${app} is up to date with its kit.` : `${app} is updated and ${String(done.state)}.`));
 }

@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { describeChanges } from "../src/commands/app.ts";
 
-const none = { compose: null, images: [], settings: { added: [], removed: [] }, outbound: { added: [], removed: [] }, services: { added: [], removed: [] }, interface: null };
+const none = { compose: null, images: [], settings: { added: [], removed: [], changed: [] }, outbound: { added: [], removed: [] }, services: { added: [], removed: [] }, interface: null };
 
 describe("what an update changes", () => {
   it("says each change in plain words", () => {
@@ -13,7 +13,7 @@ describe("what an update changes", () => {
           { ref: "ghcr.io/acme/notes:latest", from: "sha256:1", to: "sha256:2", private: true },
           { ref: "redis:7", from: null, to: "sha256:3", private: false },
         ],
-        settings: { added: ["SMTP_HOST"], removed: ["LEGACY_MODE"] },
+        settings: { added: ["SMTP_HOST"], removed: ["LEGACY_MODE"], changed: ["MODE"] },
         outbound: { added: ["api.mail.example"], removed: ["old.example"] },
         services: { added: ["worker"], removed: [] },
         interface: null,
@@ -24,6 +24,7 @@ describe("what an update changes", () => {
       "It uses the image redis:7.",
       "A new setting, SMTP_HOST.",
       "The setting LEGACY_MODE is no longer used, and is removed.",
+      "The setting MODE takes the kit's new value.",
       "It may reach api.mail.example.",
       "It no longer reaches old.example.",
       "A new service, worker.",

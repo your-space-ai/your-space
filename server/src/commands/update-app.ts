@@ -27,6 +27,7 @@ function changeLines(changes: UpdateChanges): string[] {
   for (const image of changes.images) lines.push(image.from === null ? `New image ${image.ref}` : image.to === null ? `Image ${image.ref} is no longer used` : `Image ${image.ref} moves to a new version`);
   for (const name of changes.settings.added) lines.push(`New setting ${name}`);
   for (const name of changes.settings.removed) lines.push(`Setting ${name} is removed`);
+  for (const name of changes.settings.changed) lines.push(`Setting ${name} takes the kit's new value`);
   for (const host of changes.outbound.added) lines.push(`May reach ${host}`);
   for (const host of changes.outbound.removed) lines.push(`No longer reaches ${host}`);
   for (const service of changes.services.added) lines.push(`New service ${service}`);
@@ -87,6 +88,13 @@ async function main(argv: string[]): Promise<number> {
       );
       return EXIT.ok;
     }
+    // An apply bound to an earlier review applies that review or nothing, even when there is now
+    // nothing to apply.
+    if (values.review !== undefined && values.review !== review.digest) {
+      const message = "The update isn't the one you reviewed: the app, its kit's branch or an image changed since. Check for the update again.";
+      out.failure({ ok: false, error: "update_changed", message }, message);
+      return EXIT.notApplicable;
+    }
     if (review.upToDate) {
       out.success({ ok: true, name, upToDate: true }, [`${name} is up to date with its kit.`]);
       return EXIT.ok;
@@ -98,7 +106,7 @@ async function main(argv: string[]): Promise<number> {
     }
     const asked = review.settings.filter((s) => s.required && !s.set).map((s) => s.name);
     if (asked.length) {
-      const message = `This update needs a value for ${asked.join(", ")}. Apply it from the app's page in Your Space, where you give it.`;
+      const message = `This update needs a value for ${asked.join(", ")}, which the command line doesn't give, so it isn't applied.`;
       out.failure({ ok: false, error: "settings_required", message, settings: asked }, message);
       return EXIT.notApplicable;
     }

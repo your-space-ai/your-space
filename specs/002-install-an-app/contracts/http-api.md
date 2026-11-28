@@ -105,9 +105,9 @@ an installed app only when the owner applies it as an update ([journey 019](../.
 prints the review, as `POST /api/apps/{name}/update/check` gives it, with the review's own `ok` as
 `runnable`; without, it applies the update as the operator and waits until the app runs it or the
 update is rolled back, exit status 0 or 2 (`update_failed`, with the job's error). `--review` applies
-only an update whose review has that digest (`update_changed` otherwise). An update that needs a
-setting's value isn't applied by the command (`settings_required`): the owner gives it on the app's
-page. `your-space app check-update` and `your-space app update` run it from the host.
+only an update whose review has that digest, and is refused with `update_changed` otherwise, even
+when the app is now up to date. An update that needs a setting's value isn't applied by the command
+(`settings_required`). `your-space app check-update` and `your-space app update` run it from the host.
 
 `publish-app` publishes an installed app, changes how (an option left out keeps its value),
 or stops publishing it with `--off`, and waits until the change is applied: it restarts the app's
