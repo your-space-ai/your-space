@@ -44,7 +44,7 @@ applies the actual api key, agent never sees the api key."
 | 9 | Does removing an app keep its agent access? | **Decided:** no. Removing an app, even keeping its data, ends its grants and app keys; only a kit change keeps them. Owner: "removing an app should remove the agent access yeah" |
 | 10 | What about kits that still list roles and routes? | **Decided:** they are refused, with a message to name `api`; Your Space infers nothing from routes. Owner: "we'll rewrite them, they shouldn't work any more" |
 | 11 | What happens to an installed app whose stored kit lists roles and routes? | **Decided:** nothing is rewritten. Its agent access is unavailable until it runs a rewritten kit, and **Agents** and **Apps** say why and what fixes it. Owner: "Leave them broken" |
-| 12 | What happens to the agents using a bound app key when the owner replaces it? | **Decided:** their grants stay, on the new key only; Your Space never uses the old one again, and tells the owner to revoke it in the app. Owner: "Grants stay"; "old key doesn't continue working tho" |
+| 12 | What happens to the agents using a bound app key when the owner replaces it? | **Decided:** their grants stay, on the new key only; Your Space never uses the old one again, and tells the owner to revoke it in the app. Owner: "Grants stay"; "old key doesn't continue working tho"; "new ket has the same grants" |
 
 ## What Exists Today
 
@@ -161,7 +161,7 @@ routes (the recommendation), so the owner's onboarding agent kept working throug
 ## 12. Replacing a Bound Key
 
 **Decided (2026-11-27):** the agents using it keep their grants, on the new key only. The owner:
-"Grants stay", and "old key doesn't continue working tho". Each key's role in the app is what limits
+"Grants stay", "old key doesn't continue working tho", and "new ket has the same grants" (key). Each key's role in the app is what limits
 its agents, so replacing it is the owner's deliberate choice; the old key stops at once:
 
 - Your Space keeps no copy of the old key and reads a call's key when it admits the call. Just before
