@@ -263,7 +263,7 @@ export interface UpdateSnapshot {
     "title" | "sourceUrl" | "repo" | "path" | "ref" | "commit" | "compose" | "kit" | "kitSource" | "kitLink" | "provenance" | "images" | "adaptations" | "interface" | "pane" | "limits" | "desired"
   >;
   settings: { name: string; value: string | null; secret: boolean; generated: boolean; publishedDefault: string | null }[];
-  outbound: { host: string; approvedBy: string }[];
+  outbound: { host: string; approvedBy: string; createdAt?: string }[];
 }
 
 export const installJob = pgTable("install_job", {

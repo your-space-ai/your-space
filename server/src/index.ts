@@ -79,12 +79,15 @@ for (let attempt = 1; ; attempt++) {
 }
 
 // An update a restart interrupted is put back first (journey 019, decision 3), so the settings it
-// restores move onto the data key with the others.
+// restores move onto the data key with the others. Like the move, a failure stops the start.
+let restored: string[] = [];
 try {
-  const restored = await restoreInterruptedUpdates(db);
-  if (restored) log("info", "apps.updates_rolled_back", { restored });
+  restored = await restoreInterruptedUpdates(db);
+  if (restored.length) log("info", "apps.updates_rolled_back", { restored: restored.length });
 } catch (error) {
   log("error", "apps.updates_rollback_failed", errorFields(error));
+  console.error("An app's interrupted update couldn't be rolled back, so the server did not start. Nothing was changed.");
+  process.exit(1);
 }
 
 // Apps' settings move onto the data key before anything is served (spec 009): values from before it
@@ -109,7 +112,7 @@ const gateServer: Server = gate.listen(GATE_PORT, "0.0.0.0");
 
 // Apps that should run are started, and recorded states corrected, at start and then regularly
 // (FR-007, FR-008). Each pass waits for the one before.
-await apps.recoverJobs().catch((error) => log("warn", "apps.recover_failed", errorFields(error)));
+await apps.recoverJobs(restored).catch((error) => log("warn", "apps.recover_failed", errorFields(error)));
 let reconciling = false;
 async function reconcile(): Promise<void> {
   if (reconciling) return;

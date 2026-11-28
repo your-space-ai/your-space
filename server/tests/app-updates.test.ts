@@ -384,6 +384,41 @@ describe("updating an installed app in place", () => {
       const { row, job } = await expectRolledBack(id, jobId);
       expect(row.state).toBe("failed");
       expect(job.error).toContain("Starting it again with the kit it ran before failed too: the engine is gone");
+      // No service of the update keeps running.
+      expect(runtime.calls.at(-1)).toMatchObject({ method: "down", project: "ys-notes" });
+    });
+
+    it("stops the app when the kit it ran before doesn't keep running either", async () => {
+      const id = await install();
+      runtime.servicesAfterApply = () => [{ name: "web", role: "app", state: "exited", exitCode: 1 }];
+      publish(NEXT, failing());
+      const { jobId } = await update();
+      const { row, job } = await expectRolledBack(id, jobId);
+      expect(row.state).toBe("failed");
+      expect(job.error).not.toContain("Rolled back: the app runs");
+      expect(job.steps.map((step) => step.message)).not.toContain("Rolled back: the app runs the kit it ran before.");
+      expect(runtime.calls.at(-1)).toMatchObject({ method: "down" });
+    });
+
+    it("rolls back an update whose app service exits cleanly, or is still starting when the wait ends", async () => {
+      const id = await install();
+      runtime.servicesAfterApply = (spec) => (spec.env.ADDED ? [{ name: "web", role: "app", state: "exited", exitCode: 0 }] : undefined);
+      publish(NEXT, failing());
+      const clean = await expectRolledBack(id, (await update()).jobId);
+      expect(clean.job.error).toContain("web stopped.");
+      runtime.servicesAfterApply = (spec) => (spec.env.ADDED ? [{ name: "web", role: "app", state: "running", health: "starting" }] : undefined);
+      const slow = await expectRolledBack(id, (await update()).jobId);
+      expect(slow.job.error).toContain("still starting");
+    });
+
+    it("keeps the date each kit host was approved through a rollback", async () => {
+      const id = await install();
+      const approved = new Date("2026-01-02T03:04:05Z");
+      await t.db.update(appOutbound).set({ createdAt: approved }).where(eq(appOutbound.appId, id));
+      runtime.failApplyWhen = (spec) => (spec.env.ADDED ? "web exited with code 1" : undefined);
+      publish(NEXT, failing());
+      await update();
+      expect((await t.db.select({ createdAt: appOutbound.createdAt }).from(appOutbound).where(eq(appOutbound.appId, id)))[0]!.createdAt).toEqual(approved);
     });
 
     it("puts back an update a restart interrupted", async () => {
@@ -393,11 +428,27 @@ describe("updating an installed app in place", () => {
       await t.db.update(app).set({ commit: NEXT, state: "starting" }).where(eq(app.id, id));
       await t.db.delete(appSetting).where(eq(appSetting.appId, id));
       const [job] = await t.db.insert(installJob).values({ appId: id, kind: "update", rollback: snapshot }).returning();
-      expect(await restoreInterruptedUpdates(t.db)).toBe(1);
+      const restored = await restoreInterruptedUpdates(t.db);
+      expect(restored).toEqual([id]);
       const [row] = await t.db.select().from(app).where(eq(app.id, id));
-      expect(row).toMatchObject({ commit: COMMIT, state: "failed" });
+      expect(row).toMatchObject({ commit: COMMIT, state: "starting" });
       expect(await settings(id)).toEqual({ GREETING: "hello", OLD: "kept" });
       expect((await t.db.select().from(installJob).where(eq(installJob.id, job!.id)))[0]).toMatchObject({ state: "failed", rollback: null });
+      // The server's start then applies the kit it put back, replacing the update's containers.
+      await server.apps!.recoverJobs(restored);
+      await settle();
+      expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.env).toMatchObject({ GREETING: "hello", OLD: "kept" });
+      expect((await t.db.select({ state: app.state }).from(app).where(eq(app.id, id)))[0]!.state).toBe("running");
+    });
+
+    it("puts back, at the next start, an update whose rollback couldn't finish", async () => {
+      const id = await install();
+      const before = (await t.db.select().from(app).where(eq(app.id, id)))[0]!;
+      const snapshot = await t.db.transaction((tx) => snapshotOf(tx, before, before.installedBy));
+      await t.db.update(app).set({ commit: NEXT, state: "failed" }).where(eq(app.id, id));
+      await t.db.insert(installJob).values({ appId: id, kind: "update", state: "failed", rollback: snapshot });
+      expect(await restoreInterruptedUpdates(t.db)).toEqual([id]);
+      expect((await t.db.select({ commit: app.commit }).from(app).where(eq(app.id, id)))[0]!.commit).toBe(COMMIT);
     });
 
     it("keeps an update that runs, and clears what it kept to roll back", async () => {
