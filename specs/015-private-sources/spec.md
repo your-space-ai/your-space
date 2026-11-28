@@ -132,7 +132,9 @@ wrapper over the same actions.
 - **R7. Only on request.** The connection is used only while the owner reviews or installs, and for
   the account check in R2 when the owner connects or checks its state. Nothing
   polls GitHub in the background, consistent with the no-telemetry rule
-  ([spec map](../README.md#rules-every-spec-follows)).
+  ([spec map](../README.md#rules-every-spec-follows)). (2026-11-27: also for an installed app's update
+  check, which the owner starts by opening the app or asking for one; see
+  [journey 019](../019-kit-updates/spec.md#4-when-checks-run).)
 - **R8. Docs.** The install guide gets a "Private kits" section with the connect steps in the
   dashboard and with the server command, what each token can read, the classic token's limits, and
   how to delete the tokens at GitHub. The architecture overview's install path names the private
