@@ -3,9 +3,10 @@
 // hosts and agent credentials; removed settings and the kit hosts the kit dropped go. An update applies
 // only the candidate it reviewed, while the app still runs the kit the review was made against.
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decrypt } from "../src/apps/settings.ts";
 import { app, appOutbound, appSetting, event, installJob } from "../src/db/schema.ts";
+import { GithubConnection } from "../src/github-connection.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY as DATA_KEY } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
@@ -38,7 +39,12 @@ describe("updating an installed app in place", () => {
     // `main` is at `head`, which a test moves to publish a new commit of the kits repository.
     const github: typeof fetch = (input, init) =>
       fakeGithub(files, {
-        answer: (url) => (url.pathname === "/repos/ys-fixtures/catalog/commits/main" ? new Response(head) : undefined),
+        answer: (url) => {
+          const at = url.pathname.replace("/repos/ys-fixtures/catalog/", "");
+          if (at === "commits/main" || at === "commits/HEAD") return new Response(head);
+          if (at === "branches/main") return Response.json({ name: "main" });
+          return undefined;
+        },
       })(input, init);
     runtime = new FakeRuntime();
     runtime.variables = [];
@@ -48,6 +54,7 @@ describe("updating an installed app in place", () => {
     cookie = cookieHeader(login);
   });
   afterEach(async () => {
+    vi.restoreAllMocks();
     await server?.close();
     await t?.destroy();
   });
@@ -65,8 +72,8 @@ describe("updating an installed app in place", () => {
     }
     throw new Error("The job didn't finish.");
   }
-  async function install(): Promise<string> {
-    const review = await api("/api/kits/preview", { kitUrl: LINK });
+  async function install(link = LINK): Promise<string> {
+    const review = await api("/api/kits/preview", { kitUrl: link });
     expect(review.status, review.text).toBe(200);
     expect((await api("/api/apps", { previewId: review.json.previewId })).status).toBe(202);
     await settle();
@@ -167,16 +174,42 @@ describe("updating an installed app in place", () => {
     expect((await api("/api/apps/notes/update", { previewId: first.json.previewId })).json.error).toBe("update_changed");
   });
 
-  it("asks for the kit's link for an app installed before links were kept, and uses the one given", async () => {
-    const id = await install();
-    await t.db.update(app).set({ kitLink: null }).where(eq(app.id, id));
-    expect((await api("/api/apps/notes/update/check", {})).json.error).toBe("link_required");
+  it("follows the default branch for a kit installed from a commit, or before links were kept", async () => {
+    const id = await install(`https://github.com/ys-fixtures/catalog/blob/${COMMIT}/apps/notes.yaml`);
     publish(NEXT, kit(NEXT, "env:\n  GREETING: hello\n"));
-    const check = await api("/api/apps/notes/update/check", { link: LINK });
-    expect(check.json.upToDate).toBe(false);
+    const check = await api("/api/apps/notes/update/check", {});
+    expect(check.json, check.text).toMatchObject({ upToDate: false, link: "https://github.com/ys-fixtures/catalog/blob/HEAD/apps/notes.yaml" });
     expect((await api("/api/apps/notes/update", { previewId: check.json.previewId })).status).toBe(202);
     await settle();
-    expect((await t.db.select({ kitLink: app.kitLink }).from(app))[0]!.kitLink).toBe(LINK);
+    expect((await t.db.select({ kitLink: app.kitLink }).from(app))[0]!.kitLink).toBe("https://github.com/ys-fixtures/catalog/blob/HEAD/apps/notes.yaml");
+
+    // An app installed before links were kept is checked at its pinned kit's file on the default branch.
+    await t.db.update(app).set({ kitLink: null }).where(eq(app.id, id));
+    publish(LATER, kit(NEXT, "env:\n  GREETING: later\n"));
+    expect((await api("/api/apps/notes/update/check", {})).json.upToDate).toBe(false);
+    // One installed from a kit file on this machine has nothing to check until the owner gives a link.
+    await t.db.update(app).set({ kitSource: `sha256:${"0".repeat(64)}` }).where(eq(app.id, id));
+    expect((await api("/api/apps/notes/update/check", {})).json.error).toBe("link_required");
+    expect((await api("/api/apps/notes/update/check", { link: LINK })).json.upToDate).toBe(false);
+  });
+
+  it("doesn't count an image tag that names another digest now as an update", async () => {
+    await install();
+    runtime.images = () => [{ ref: "traefik/whoami:latest", registry: "docker.io", digest: "sha256:ccc", runsHere: true, platforms: ["linux/amd64"] }];
+    expect((await api("/api/apps/notes/update/check", {})).json.upToDate).toBe(true);
+  });
+
+  it("signs in for the app's private images while the update pulls them (FR-005)", async () => {
+    await install();
+    const credential = { registry: "ghcr.io", username: "ys-fixture-owner", secret: "ghp_ys_fixture_image_0001" };
+    vi.spyOn(GithubConnection.prototype, "signingIn").mockResolvedValue({ state: "ready", credential, worked: async () => {}, refused: async () => {} } as never);
+    runtime.images = () => [{ ref: "ghcr.io/ys-fixtures/notes:latest", registry: "ghcr.io", digest: "sha256:ddd", runsHere: true, platforms: ["linux/amd64"], private: true }];
+    publish(NEXT, kit(NEXT, "env:\n  GREETING: hello\n"));
+    const check = await api("/api/apps/notes/update/check", {});
+    expect(check.json.changes.images).toContainEqual({ ref: "ghcr.io/ys-fixtures/notes:latest", from: null, to: "sha256:ddd", private: true });
+    expect((await api("/api/apps/notes/update", { previewId: check.json.previewId })).status).toBe(202);
+    await settle();
+    expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.registryCredentials).toEqual([{ ...credential, images: ["ghcr.io/ys-fixtures/notes:latest"] }]);
   });
 
   it("refuses a kit for another app", async () => {

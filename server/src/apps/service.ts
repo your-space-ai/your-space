@@ -24,8 +24,10 @@ import { errorFields, log } from "../log.ts";
 import {
   fetchPinnedFile,
   fetchPinnedFileWith,
+  defaultBranchLink,
   fetchSourceWith,
   githubEndpoints,
+  isBranch,
   githubRegistry,
   SourceError,
   TokenRefusedError,
@@ -840,9 +842,12 @@ export class AppsService {
   async previewUpdate(name: string, link?: string): Promise<ReturnType<AppsService["updateReviewOf"]>> {
     for (const [id, p] of this.updates) if (p.expiresAt < Date.now()) this.updates.delete(id);
     const row = await this.liveRow(name);
-    const given = link?.trim() || row.kitLink;
+    // The app's own link, or, for an app installed before links were kept, its pinned kit link.
+    const pinned = kitIdentity(row.kitSource ?? "");
+    const own = row.kitLink ?? (pinned.repo && pinned.path ? defaultBranchLink(pinned.repo, pinned.path) : null);
+    const given = link?.trim() || own;
     if (!given) {
-      throw new AppError(409, "link_required", `Your Space doesn't know which link ${row.title}'s kit came from. Give the link to its kit to check it for an update.`);
+      throw new AppError(409, "link_required", `${row.title} was installed from a kit file on this machine, so Your Space has no link to check. Give the link to its kit on GitHub.`);
     }
     const github = this.config.github ?? githubEndpoints();
     const fetcher = this.config.fetch ?? fetch;
@@ -850,6 +855,10 @@ export class AppsService {
     let source: SourceFile;
     try {
       found = await this.kitAt(given, github, fetcher);
+      // The app's own link at a commit or a tag follows the default branch for the same file (decision 1).
+      if (!link?.trim() && !(await this.onBranch(found.file, github, fetcher))) {
+        found = await this.kitAt(defaultBranchLink(found.file.repo, found.file.path), github, fetcher);
+      }
       source = await this.composeAt(found.kit, github, fetcher);
     } catch (error) {
       if (error instanceof NotAKitError) throw new AppError(400, "kit_required", error.message);
@@ -908,9 +917,10 @@ export class AppsService {
       services: { added: services.filter((n) => !Object.hasOwn(row.limits, n)), removed: Object.keys(row.limits).filter((n) => !services.includes(n)).sort() },
       interface: sameInterface ? null : { from: row.interface ?? null, to: kit.interface ?? null },
     };
-    const upToDate = isDeepStrictEqual(row.kit, kit) && changes.compose === null && changes.images.length === 0;
+    // An update is a changed kit (decision 1); an image tag that names another digest now isn't one.
+    const upToDate = isDeepStrictEqual(row.kit, kit) && changes.compose === null;
     const digest = createHash("sha256")
-      .update(JSON.stringify([row.kitSource, found.source, source.repo, source.path, source.commit, refs.map((ref) => [ref, images.get(ref)?.digest ?? null])]))
+      .update(JSON.stringify([row.kitSource, found.file.link, found.source, source.repo, source.path, source.commit, refs.map((ref) => [ref, images.get(ref)?.digest ?? null])]))
       .digest("hex");
     const preview: UpdatePreview = {
       id: randomUUID(),
@@ -931,6 +941,14 @@ export class AppsService {
     };
     this.updates.set(preview.id, preview);
     return this.updateReviewOf(preview);
+  }
+
+  /** Whether a kit was read at a branch, asked with the credential it was read with. */
+  private async onBranch(file: SourceFile, github: GithubEndpoints, fetcher: typeof fetch): Promise<boolean> {
+    if (file.ref === "HEAD") return true;
+    if (file.read?.read !== "connection") return isBranch(file.repo, file.ref, github, fetcher);
+    const reading = (await this.config.credentials?.reading()) ?? { state: "none" as const };
+    return reading.state === "ready" ? isBranch(file.repo, file.ref, github, fetcher, reading.credential) : false;
   }
 
   private updateReviewOf(p: UpdatePreview) {
