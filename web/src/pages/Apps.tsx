@@ -44,6 +44,12 @@ function AppTable({ list }: { list: AppList }) {
                       {app.pendingRequests} access request{app.pendingRequests === 1 ? "" : "s"}
                     </span>
                   ) : null}
+                  {app.updateAvailable ? (
+                    <>
+                      {" "}
+                      <span className="update-pill">Update available</span>
+                    </>
+                  ) : null}
                   {app.stateReason ? <div className="muted small">{app.stateReason}</div> : null}
                 </div>
                 <div className="actions">

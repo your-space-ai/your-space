@@ -364,6 +364,7 @@ describe("updating an installed app in place", () => {
       const { row } = await expectRolledBack(id, jobId);
       expect(row.state).toBe("running");
       expect(row.stateReason).toContain("web exited with code 1");
+      expect(row.updateCheck).toMatchObject({ available: true });
       expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.env.ADDED).toBeUndefined();
     });
 
@@ -458,6 +459,37 @@ describe("updating an installed app in place", () => {
       const { jobId } = await update();
       expect((await t.db.select().from(installJob).where(eq(installJob.id, jobId)))[0]).toMatchObject({ state: "succeeded", rollback: null });
     });
+  });
+
+  it("checks on its own at most every 12 hours, keeps what each check found, and clears it once updated", async () => {
+    const id = await install();
+    publish(NEXT, kit(NEXT, "env:\n  GREETING: hello\n  OLD: kept\n"));
+    const first = await api("/api/apps/notes/update/check", { auto: true });
+    expect(first.json.upToDate).toBe(false);
+    const detail = async () => (await server.request("/api/apps/notes", { headers: { cookie } }).then((r) => r.json())) as any;
+    expect((await detail()).update).toMatchObject({ available: true });
+    const list = (await server.request("/api/apps", { headers: { cookie } }).then((r) => r.json())) as any;
+    expect(list.apps.find((a: { name: string }) => a.name === "notes").updateAvailable).toBe(true);
+    // Within 12 hours, opening the page again doesn't check; Check for update always does.
+    expect((await api("/api/apps/notes/update/check", { auto: true })).json).toEqual({ skipped: true });
+    const manual = await api("/api/apps/notes/update/check", {});
+    expect(manual.json.upToDate).toBe(false);
+    // An old check is checked again.
+    await t.db.update(app).set({ updateCheck: { at: new Date(Date.now() - 13 * 3600_000).toISOString(), available: true } }).where(eq(app.id, id));
+    expect((await api("/api/apps/notes/update/check", { auto: true })).json.skipped).toBeUndefined();
+    const again = await api("/api/apps/notes/update/check", {});
+    expect((await api("/api/apps/notes/update", { previewId: again.json.previewId })).status).toBe(202);
+    await settle();
+    expect((await detail()).update).toMatchObject({ available: false });
+  });
+
+  it("keeps a failed check's reason, and counts it as a check", async () => {
+    const id = await install();
+    delete files[`ys-fixtures/catalog@${COMMIT}/apps/notes.yaml`];
+    expect((await api("/api/apps/notes/update/check", { auto: true })).status).toBe(404);
+    const [row] = await t.db.select({ updateCheck: app.updateCheck }).from(app).where(eq(app.id, id));
+    expect(row!.updateCheck).toMatchObject({ available: false, error: expect.any(String) });
+    expect((await api("/api/apps/notes/update/check", { auto: true })).json).toEqual({ skipped: true });
   });
 
   it("refuses a kit for another app", async () => {

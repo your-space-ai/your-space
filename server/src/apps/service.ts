@@ -151,6 +151,8 @@ export interface AppsConfig {
   updateSettle?: { waitMs: number; steadyMs: number; pollMs: number };
 }
 
+/** Opening an app's page checks it for an update at most this often (decision 4). */
+const AUTO_CHECK_INTERVAL_MS = 12 * 60 * 60_000;
 /** An update is kept once the app has run for 10 seconds, waiting at most five minutes for it to start. */
 const UPDATE_SETTLE = { waitMs: 300_000, steadyMs: 10_000, pollMs: 2_000 };
 
@@ -856,7 +858,37 @@ export class AppsService {
    * the Compose file the kit pins, checked with the app's stored settings. The review says what changes against what the app runs, and whether anything
    * does (FR-002, FR-003). Nothing changes until the owner applies it.
    */
+  /**
+   * The check that opening an app's page runs (decision 4): a review, as `previewUpdate` gives it, or
+   * null when the app's last check is under 12 hours old.
+   */
+  async autoCheckUpdate(name: string): Promise<ReturnType<AppsService["updateReviewOf"]> | null> {
+    const row = await this.rowByName(name);
+    const at = row.updateCheck ? Date.parse(row.updateCheck.at) : Number.NaN;
+    if (Number.isFinite(at) && Date.now() - at < AUTO_CHECK_INTERVAL_MS) return null;
+    return this.previewUpdate(name);
+  }
+
+  /** Reviews an update, and records the check's time and result for the app (decision 4). */
   async previewUpdate(name: string): Promise<ReturnType<AppsService["updateReviewOf"]>> {
+    const row = await this.rowByName(name);
+    try {
+      const review = await this.reviewUpdate(name);
+      await this.recordCheck(row.id, { at: new Date().toISOString(), available: !review.upToDate });
+      return review;
+    } catch (error) {
+      // A failed check counts as one, so the page doesn't try again on each visit.
+      const message = error instanceof AppError ? error.message : "Something went wrong on the server.";
+      await this.recordCheck(row.id, { at: new Date().toISOString(), available: row.updateCheck?.available ?? false, error: message });
+      throw error;
+    }
+  }
+
+  private async recordCheck(appId: string, check: { at: string; available: boolean; error?: string }): Promise<void> {
+    await this.db.update(app).set({ updateCheck: check }).where(eq(app.id, appId));
+  }
+
+  private async reviewUpdate(name: string): Promise<ReturnType<AppsService["updateReviewOf"]>> {
     for (const [id, p] of this.updates) if (p.expiresAt < Date.now()) this.updates.delete(id);
     const row = await this.liveRow(name);
     // The app's own link, or, for an app installed before links were kept, its pinned kit link.
@@ -1122,6 +1154,7 @@ export class AppsService {
             limits,
             // An update starts the app, as Start does.
             desired: "running",
+            updateCheck: { at: new Date().toISOString(), available: false },
             updatedAt: new Date(),
           })
           .where(eq(app.id, row.id));
@@ -1194,6 +1227,8 @@ export class AppsService {
     await this.step(jobId, `The update didn't start: ${reason} Rolling it back.`);
     await this.db.transaction(async (tx) => {
       await restore(tx, appId, snapshot);
+      // The update it rolled back is still there to apply.
+      await tx.update(app).set({ updateCheck: { at: new Date().toISOString(), available: true } }).where(eq(app.id, appId));
       await tx.update(installJob).set({ rollback: null }).where(eq(installJob.id, jobId));
       await recordEvent(tx, "app.update_rolled_back", snapshot.actorId, null, appId);
     });
@@ -1557,6 +1592,7 @@ export class AppsService {
           publish: publishOf(this.config.publicUrl, r),
           framing: framing.get(r.name) ?? null,
           pendingRequests: counts.get(r.id) ?? 0,
+          updateAvailable: r.updateCheck?.available === true,
         })),
       retained: rows.filter((r) => r.state === "removed").map((r) => ({ name: r.name, title: r.title, repo: r.repo, removedAt: r.removedAt })),
     };
@@ -1609,6 +1645,8 @@ export class AppsService {
       publish: publishOf(this.config.publicUrl, row),
       source: { link: row.sourceUrl, repo: row.repo, path: row.path, ref: row.ref, commit: row.commit },
       kitSource: row.kitSource,
+      // The last update check (journey 019, decision 4).
+      update: row.updateCheck ?? null,
       // Whether agents can reach the app through Your Space, and why not (spec 018 decision 11).
       agentAccess: agentAccessOf(row.kit, row.interface),
       provenance: row.provenance,

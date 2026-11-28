@@ -1,0 +1,18 @@
+# Journey 019: a kit whose `main` the browser tests move on to updates-next's, as a new commit would.
+kit: 1
+source:
+  repo: ys-fixtures/whoami
+  path: compose.yaml
+  commit: 1c6792eb96b6dc6c330052b210eb4d1f8cbb87e6
+name: updating
+title: Updating
+interface:
+  service: web
+  port: 80
+env:
+  API_TOKEN: { generate: { bytes: 24 } }
+  GREETING: hello
+outbound:
+  - example.com
+limits:
+  web: { memory: 64M, cpus: 0.5 }
