@@ -172,6 +172,8 @@ export interface UpdateChanges {
   outbound: { added: string[]; removed: string[] };
   services: { added: string[]; removed: string[] };
   interface: { from: { service: string; port: number } | null; to: { service: string; port: number } | null } | null;
+  /** The kit's other fields that change: `agentAccess`, `title`, `pane`, `limits`, `kit` or `name`. */
+  kitFields: string[];
 }
 
 /** A reviewed update: one candidate, the new kit at a commit, its Compose file and image digests (FR-006). */
@@ -870,7 +872,8 @@ export class AppsService {
       if (error instanceof SourceError || error instanceof KitError) throw new AppError(400, "source", error.message);
       throw error;
     }
-    const kit = found.kit;
+    // As the database stores it, so comparing it with the installed kit finds only real changes.
+    const kit = JSON.parse(JSON.stringify(found.kit)) as Kit;
     if (kit.name !== undefined && kit.name !== row.name) {
       throw new AppError(400, "other_app", `That kit is for an app called ${kit.name}, not ${row.name}.`);
     }
@@ -929,7 +932,16 @@ export class AppsService {
       outbound: { added: outbound.filter((h) => !kitHosts.includes(h)), removed: kitHosts.filter((h) => !outbound.includes(h)).sort() },
       services: { added: services.filter((n) => !Object.hasOwn(row.limits, n)), removed: Object.keys(row.limits).filter((n) => !services.includes(n)).sort() },
       interface: sameInterface ? null : { from: row.interface ?? null, to: kit.interface ?? null },
+      kitFields: [],
     };
+    // The kit's other fields that change, such as its agent access, title or limits, so a review of
+    // a kit whose only change is one of them still says what changes.
+    const shown = new Set(["source", "env", "outbound", "interface"]);
+    const installed = (row.kit ?? {}) as unknown as Record<string, unknown>;
+    const candidate = kit as unknown as Record<string, unknown>;
+    changes.kitFields = [...new Set([...Object.keys(installed), ...Object.keys(candidate)])]
+      .filter((field) => !shown.has(field) && !isDeepStrictEqual(installed[field], candidate[field]))
+      .sort();
     // An update is a changed kit (decision 1); an image tag that names another digest now isn't one.
     const upToDate = isDeepStrictEqual(row.kit, kit) && changes.compose === null;
     const digest = createHash("sha256")

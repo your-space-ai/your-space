@@ -10,10 +10,12 @@ import { GithubConnection } from "../src/github-connection.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY as DATA_KEY } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
-import { COMMIT, fakeGithub, FakeRuntime } from "./helpers/runtime.ts";
+import { COMMIT, fakeGithub, fakeGithubAccounts, FakeRuntime } from "./helpers/runtime.ts";
 import { cookieHeader, startServer, type TestServer } from "./helpers/server.ts";
 
 const NEXT = "a".repeat(40);
+// A synthetic token with GitHub's prefix, far too short to be a real one.
+const TOKEN = "github_pat_ys_fixture_contents_0001";
 const LATER = "b".repeat(40);
 const LINK = "https://github.com/ys-fixtures/catalog/blob/main/apps/notes.yaml";
 const COMPOSE = `services:\n  web:\n    image: traefik/whoami:latest\n`;
@@ -28,26 +30,37 @@ describe("updating an installed app in place", () => {
   let head: string;
   let files: Record<string, string>;
   let answerExtra: (at: string) => Response | undefined;
+  /** Repositories GitHub shows only to the connection's token. */
+  let hidden: Record<string, string[]>;
+  let calls: { url: string; authorization: string | null }[];
 
   beforeEach(async () => {
     t = await createTestDatabase();
     head = COMMIT;
     answerExtra = () => undefined;
+    hidden = {};
+    calls = [];
     files = {
       [`ys-fixtures/notes@${COMMIT}/compose.yaml`]: COMPOSE,
       [`ys-fixtures/notes@${NEXT}/compose.yaml`]: COMPOSE,
       [`ys-fixtures/catalog@${COMMIT}/apps/notes.yaml`]: kit(COMMIT, "env:\n  GREETING: hello\n  OLD: kept\noutbound: [api.one.test]\n"),
     };
     // `main` is at `head`, which a test moves to publish a new commit of the kits repository.
-    const github: typeof fetch = (input, init) =>
-      fakeGithub(files, {
-        answer: (url) => {
+    const accounts = fakeGithubAccounts(new Map([[TOKEN, "ys-fixture-owner"]]));
+    const github: typeof fetch = async (input, init) => {
+      if (String(input).endsWith("/user")) return accounts.fetch(input, init);
+      return fakeGithub(files, {
+        private: hidden,
+        calls: calls as never,
+        answer: (url, token) => {
+          if (hidden["ys-fixtures/catalog"] && token !== TOKEN && url.pathname.startsWith("/repos/ys-fixtures/catalog/")) return undefined;
           const at = url.pathname.replace("/repos/ys-fixtures/catalog/", "");
           if (at === "commits/main" || at === "commits/HEAD") return new Response(head);
           if (at === "branches/main") return Response.json({ name: "main" });
           return answerExtra(at);
         },
       })(input, init);
+    };
     runtime = new FakeRuntime();
     runtime.variables = [];
     server = await startServer(t.db, { apps: { runtime, fetch: github } });
@@ -278,6 +291,45 @@ describe("updating an installed app in place", () => {
     publish(NEXT, kit(NEXT, "env:\n  GREETING: hello\n  HOST: { derive: app_host }\n"));
     expect((await api("/api/apps/notes/update/check", {})).status).toBe(200);
     expect(runtime.calls.filter((c) => c.method === "check").at(-1)!.spec!.env.HOST).toBe("notes.example.test");
+  });
+
+  it("finds nothing new in an unchanged kit with agent access, limits and a title, and says when only those change", async () => {
+    const rich = (commit: string, api: string) =>
+      `kit: 2\nsource: { repo: ys-fixtures/notes, path: compose.yaml, commit: ${commit} }\nname: notes\ntitle: Notes\ninterface: { service: web, port: 80 }\n` +
+      `env:\n  GREETING: hello\n  OLD: kept\noutbound: [api.one.test]\nlimits:\n  web: { memory: 512M, cpus: 0.5 }\n` +
+      `agentAccess:\n  api: ${api}\n  credential: { binding: service, inject: { location: header, name: Authorization, scheme: Bearer } }\n`;
+    files[`ys-fixtures/catalog@${COMMIT}/apps/notes.yaml`] = rich(COMMIT, "/rest");
+    await install();
+    publish(LATER, rich(COMMIT, "/rest"));
+    expect((await api("/api/apps/notes/update/check", {})).json.upToDate).toBe(true);
+    publish(NEXT, rich(COMMIT, "/api"));
+    const check = await api("/api/apps/notes/update/check", {});
+    expect(check.json).toMatchObject({ upToDate: false, changes: { compose: null, images: [], kitFields: ["agentAccess"] } });
+  });
+
+  it("updates a kit in a private repository through the GitHub connection", async () => {
+    hidden = { "ys-fixtures/catalog": [TOKEN] };
+    expect((await api("/api/github", { token: TOKEN }, "PUT")).status).toBe(200);
+    const id = await install();
+    expect((await t.db.select({ provenance: app.provenance }).from(app).where(eq(app.id, id)))[0]!.provenance).toMatchObject({ kit: { read: "connection" } });
+    publish(NEXT, kit(NEXT, "env:\n  GREETING: hello\n  OLD: kept\n"));
+    calls.length = 0;
+    const check = await api("/api/apps/notes/update/check", {});
+    expect(check.json, check.text).toMatchObject({ upToDate: false, kit: { read: { read: "connection", login: "ys-fixture-owner" } } });
+    // Whether its ref is a branch is asked with the connection's token too.
+    expect(calls.find((c) => c.url.endsWith("/repos/ys-fixtures/catalog/branches/main"))?.authorization).toBe(`Bearer ${TOKEN}`);
+    expect((await api("/api/apps/notes/update", { previewId: check.json.previewId })).status).toBe(202);
+    await settle();
+    expect((await t.db.select({ commit: app.commit }).from(app).where(eq(app.id, id)))[0]!.commit).toBe(NEXT);
+  });
+
+  it("lets only the signed-in owner check for and apply an update, never an agent's key", async () => {
+    await install();
+    for (const path of ["/api/apps/notes/update/check", "/api/apps/notes/update"]) {
+      expect((await server.request(path, { method: "POST", body: "{}" })).status).toBe(401);
+      expect((await server.request(path, { method: "POST", body: "{}", headers: { authorization: "Bearer ys_agent_fixture_key" } })).status).toBe(401);
+      expect((await server.request(path, { method: "POST", body: "{}", headers: { cookie, origin: "https://other.example" } })).status).toBe(403);
+    }
   });
 
   it("refuses a kit for another app", async () => {
