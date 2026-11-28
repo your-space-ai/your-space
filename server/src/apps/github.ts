@@ -216,6 +216,26 @@ async function resolveRef(fetcher: Fetch, endpoints: GithubEndpoints, link: File
 }
 
 /**
+ * Whether a ref is one of the repository's branches, rather than a tag or a commit (journey 019): a
+ * kit installed from a commit or a tag follows the default branch for an update. Read anonymously, or
+ * with the credential the kit was read with.
+ */
+export async function isBranch(repo: string, ref: string, endpoints: GithubEndpoints = githubEndpoints(), fetcher: Fetch = fetch, credential?: SourceCredential): Promise<boolean> {
+  if (/^[0-9a-f]{40}$/.test(ref)) return false;
+  const res = await get(fetcher, `${endpoints.api}/repos/${repo}/branches/${encodeURIComponent(ref)}`, "application/vnd.github+json", credential);
+  if (res.ok) return true;
+  if (res.status === 404) return false;
+  if (credential) throw refusal(res, repo, credential);
+  if (rateLimited(res)) throw new SourceError("GitHub is limiting requests from this machine. Try again in a few minutes.");
+  throw new SourceError(`GitHub answered ${res.status}. Try again later.`);
+}
+
+/** The link to a file on a repository's default branch, which GitHub's API names `HEAD`. */
+export function defaultBranchLink(repo: string, path: string): string {
+  return `https://github.com/${repo}/blob/HEAD/${encodePath(path)}`;
+}
+
+/**
  * The file at a link, read anonymously from public GitHub. A repository GitHub doesn't show without a
  * token, as a private one, fails with the miss `not_found`; only then may the connection be used (R1).
  */

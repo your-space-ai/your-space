@@ -2,9 +2,10 @@
 // settings and approvals; the runtime manager runs it. Secret values leave the server only in the
 // app spec sent to the runtime manager.
 import { storedAgentAccess } from "./agent-kit.ts";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { isIP } from "node:net";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { isDeepStrictEqual } from "node:util";
+import { and, desc, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { recordEvent } from "../actors.ts";
 import type { Db } from "../db/client.ts";
 import {
@@ -23,8 +24,10 @@ import { errorFields, log } from "../log.ts";
 import {
   fetchPinnedFile,
   fetchPinnedFileWith,
+  defaultBranchLink,
   fetchSourceWith,
   githubEndpoints,
+  isBranch,
   githubRegistry,
   SourceError,
   TokenRefusedError,
@@ -152,6 +155,52 @@ const RECONNECT = "Create a new token and connect GitHub again, then try again."
 /** Where the owner adds the image token: the GitHub page, or the server command. */
 const ADD_IMAGE_TOKEN = "on Your Space's GitHub page, or with docker compose exec server github image-token";
 
+type JobKind = "install" | "apply" | "update" | "remove";
+
+/** A digest of an app's stored settings rows, as stored (ciphertext). */
+function digestOf(rows: { name: string; value: string | null }[]): string {
+  return createHash("sha256").update(JSON.stringify([...rows].sort((a, b) => a.name.localeCompare(b.name)).map((r) => [r.name, r.value]))).digest("hex");
+}
+
+/** What an update changes, against what the app runs (journey 019, section 2). */
+export interface UpdateChanges {
+  kit: { from: string | null; to: string };
+  compose: { from: { repo: string; path: string; commit: string }; to: { repo: string; path: string; commit: string } } | null;
+  images: { ref: string; from: string | null; to: string | null; private: boolean }[];
+  /** `changed`: values the kit sets, which the owner never changed, that take the new kit's value. */
+  settings: { added: string[]; removed: string[]; changed: string[] };
+  outbound: { added: string[]; removed: string[] };
+  services: { added: string[]; removed: string[] };
+  interface: { from: { service: string; port: number } | null; to: { service: string; port: number } | null } | null;
+  /** The kit's other fields that change: `agentAccess`, `title`, `pane`, `limits`, `kit` or `name`. */
+  kitFields: string[];
+}
+
+/** A reviewed update: one candidate, the new kit at a commit, its Compose file and image digests (FR-006). */
+interface UpdatePreview {
+  id: string;
+  expiresAt: number;
+  appId: string;
+  name: string;
+  /** The kit the app ran when the review was made; applying is refused once it runs another. */
+  expected: string | null;
+  source: SourceFile;
+  kit: Kit;
+  kitSource: string;
+  kitRead: FileRead | null;
+  kitLink: string;
+  check: CheckAnswer;
+  settings: Setting[];
+  changes: UpdateChanges;
+  upToDate: boolean;
+  /** A digest of everything the review shows, which `update --review` binds an apply to. */
+  digest: string;
+  /** The app's stored settings when the review was made; applying is refused once they changed. */
+  settingsDigest: string;
+  /** How the app was published when the review was made, which its address settings follow. */
+  publish: Publish | null;
+}
+
 interface Preview {
   id: string;
   expiresAt: number;
@@ -160,6 +209,8 @@ interface Preview {
   kitSource: string;
   /** How the kit was read from GitHub; null for a kit file given on this machine. */
   kitRead: FileRead | null;
+  /** The kit's link as given, at its branch, tag or commit; null for a kit file given on this machine. */
+  kitLink: string | null;
   name: string;
   title: string;
   check: CheckAnswer;
@@ -378,6 +429,7 @@ export class AppsService {
   readonly runtime: Runtime;
   readonly config: AppsConfig;
   private readonly previews = new Map<string, Preview>();
+  private readonly updates = new Map<string, UpdatePreview>();
   private readonly busy = new Set<string>();
   /** Apps whose outdated Caddy this server process has renewed, or tried to: once each. */
   private readonly renewed = new Set<string>();
@@ -595,6 +647,7 @@ export class AppsService {
       kit,
       kitSource: found.source,
       kitRead: found.file?.read ?? null,
+      kitLink: found.file?.link ?? null,
       name,
       title: kit.title ?? (source.repo ? source.repo.split("/")[1]! : name),
       check,
@@ -735,6 +788,7 @@ export class AppsService {
         compose: p.source.text,
         kit: p.kit,
         kitSource: p.kitSource,
+        kitLink: p.kitLink,
         provenance: { kit: p.kitRead, compose: p.source.read ?? null },
         images,
         adaptations: check.adaptations,
@@ -786,6 +840,308 @@ export class AppsService {
     });
     const { jobId, done } = await this.startJob(appId, "install");
     log("info", "app.install_started", { app: p.name });
+    return { name: p.name, jobId, done };
+  }
+
+  // ----- Updates in place (journey 019) -----
+
+  /**
+   * Reviews an update of an installed app: its kit read again at its own location (decision 7), with
+   * the Compose file the kit pins, checked with the app's stored settings. The review says what changes against what the app runs, and whether anything
+   * does (FR-002, FR-003). Nothing changes until the owner applies it.
+   */
+  async previewUpdate(name: string): Promise<ReturnType<AppsService["updateReviewOf"]>> {
+    for (const [id, p] of this.updates) if (p.expiresAt < Date.now()) this.updates.delete(id);
+    const row = await this.liveRow(name);
+    // The app's own link, or, for an app installed before links were kept, its pinned kit link.
+    const pinned = kitIdentity(row.kitSource ?? "");
+    const own = row.kitLink ?? (pinned.repo && pinned.path ? defaultBranchLink(pinned.repo, pinned.path) : null);
+    if (!own) {
+      throw new AppError(409, "no_kit_link", `${row.title} was installed from a kit file on this machine, so it has no kit on GitHub to check for an update.`);
+    }
+    const github = this.config.github ?? githubEndpoints();
+    const fetcher = this.config.fetch ?? fetch;
+    let found: FoundKit & { file: SourceFile };
+    let source: SourceFile;
+    try {
+      found = await this.kitAt(await this.followed(row, own, github, fetcher), github, fetcher);
+      source = await this.composeAt(found.kit, github, fetcher);
+    } catch (error) {
+      if (error instanceof NotAKitError) throw new AppError(400, "kit_required", error.message);
+      if (error instanceof SourceError && error.miss) throw new AppError(404, MISS_CODE[error.miss], error.message);
+      if (error instanceof SourceError || error instanceof KitError) throw new AppError(400, "source", error.message);
+      throw error;
+    }
+    // As the database stores it, so comparing it with the installed kit finds only real changes.
+    const kit = JSON.parse(JSON.stringify(found.kit)) as Kit;
+    if (kit.name !== undefined && kit.name !== row.name) {
+      throw new AppError(400, "other_app", `That kit is for an app called ${kit.name}, not ${row.name}.`);
+    }
+
+    // Kept settings keep their values (section 5); a value the kit sets, that the owner left as the
+    // installed kit set it, follows the new kit.
+    // The stored settings are read once, so the digest describes exactly the values the review keeps.
+    const stored = await this.db.select({ name: appSetting.name, value: appSetting.value }).from(appSetting).where(eq(appSetting.appId, row.id));
+    const settingsDigest = digestOf(stored);
+    const previous = new Map(stored.map((r) => [r.name, r.value === null ? null : this.read(r.value)]));
+    const before = kitEnv(row.kit);
+    // Values the kit sets, which follow the new kit's (decision 5), listed in the review.
+    const followed: string[] = [];
+    for (const [variable, entry] of Object.entries(kitEnv(kit))) {
+      const old = before[variable];
+      if (typeof entry === "string" && typeof old === "string" && previous.get(variable) === old) {
+        previous.delete(variable);
+        if (entry !== old) followed.push(variable);
+      }
+    }
+    const settings = buildSettings(kit, this.address(row.name), previous);
+    let check = await this.checkSigningIn({ project: `ys-${row.name}`, app: row.name, compose: source.text, env: this.runEnv(kit, settings, row), interface: kit.interface ?? null, placeholders: true });
+    withFileDefaults(settings, check.variables);
+    const refusals = undefinedVariables(check.variables, kitEnv(kit)).map((variable) => ({
+      service: "",
+      setting: "env",
+      reason: `The kit doesn't define ${variable}, which the Compose file needs. Add it to the kit's env.`,
+    }));
+    if (row.publish && !kit.interface) {
+      refusals.push({ service: "", setting: "interface", reason: `The new kit gives ${row.title} no interface, and it is published. Stop publishing it first.` });
+    }
+    if (refusals.length) check = { ...check, ok: false, refusals: [...check.refusals, ...refusals] };
+
+    const kitHosts = (
+      await this.db.select({ host: appOutbound.host }).from(appOutbound).where(and(eq(appOutbound.appId, row.id), eq(appOutbound.source, "kit")))
+    ).map((o) => o.host);
+    const outbound = kit.outbound ?? [];
+    const images = new Map(check.images.filter((i) => i.digest).map((i) => [i.ref, { digest: i.digest!, private: i.private === true }]));
+    const refs = [...new Set([...Object.keys(row.images), ...images.keys()])].sort();
+    const services = check.services.map((s) => s.name);
+    const sameInterface = isDeepStrictEqual(row.interface ?? null, kit.interface ?? null);
+    const changes: UpdateChanges = {
+      kit: { from: row.kitSource, to: found.source },
+      compose:
+        row.repo === source.repo && row.path === source.path && row.commit === source.commit
+          ? null
+          : { from: { repo: row.repo, path: row.path, commit: row.commit }, to: { repo: source.repo, path: source.path, commit: source.commit } },
+      images: refs
+        .filter((ref) => row.images[ref]?.digest !== images.get(ref)?.digest)
+        .map((ref) => ({ ref, from: row.images[ref]?.digest ?? null, to: images.get(ref)?.digest ?? null, private: images.get(ref)?.private ?? false })),
+      settings: {
+        added: settings.filter((s) => !previous.has(s.name) && !Object.hasOwn(before, s.name)).map((s) => s.name),
+        removed: Object.keys(before).filter((variable) => !settings.some((s) => s.name === variable)).sort(),
+        changed: followed.sort(),
+      },
+      outbound: { added: outbound.filter((h) => !kitHosts.includes(h)), removed: kitHosts.filter((h) => !outbound.includes(h)).sort() },
+      services: { added: services.filter((n) => !Object.hasOwn(row.limits, n)), removed: Object.keys(row.limits).filter((n) => !services.includes(n)).sort() },
+      interface: sameInterface ? null : { from: row.interface ?? null, to: kit.interface ?? null },
+      kitFields: [],
+    };
+    // The kit's other fields that change, such as its agent access, title or limits, so a review of
+    // a kit whose only change is one of them still says what changes.
+    const shown = new Set(["source", "env", "outbound", "interface"]);
+    const installed = (row.kit ?? {}) as unknown as Record<string, unknown>;
+    const candidate = kit as unknown as Record<string, unknown>;
+    changes.kitFields = [...new Set([...Object.keys(installed), ...Object.keys(candidate)])]
+      .filter((field) => !shown.has(field) && !isDeepStrictEqual(installed[field], candidate[field]))
+      .sort();
+    // An update is a changed kit (decision 1); an image tag that names another digest now isn't one.
+    const upToDate = isDeepStrictEqual(row.kit, kit) && changes.compose === null;
+    const digest = createHash("sha256")
+      .update(JSON.stringify([row.kitSource, found.file.link, found.source, source.repo, source.path, source.commit, refs.map((ref) => [ref, images.get(ref)?.digest ?? null])]))
+      .digest("hex");
+    const preview: UpdatePreview = {
+      id: randomUUID(),
+      expiresAt: Date.now() + PREVIEW_LIFETIME_MS,
+      appId: row.id,
+      name: row.name,
+      expected: row.kitSource,
+      source,
+      kit,
+      kitSource: found.source,
+      kitRead: found.file.read ?? null,
+      kitLink: found.file.link,
+      check,
+      settings,
+      changes,
+      upToDate,
+      digest,
+      settingsDigest,
+      publish: row.publish ?? null,
+    };
+    this.updates.set(preview.id, preview);
+    return this.updateReviewOf(preview);
+  }
+
+  /**
+   * The environment the app runs with, as `specFor` gives it: behind the owner's published link, its
+   * address settings follow the link, and templates that use them too, so a review checks the images
+   * the update's job pulls.
+   */
+  private runEnv(kit: Kit, settings: Setting[], row: Pick<AppRow, "publish">): Record<string, string> {
+    const values = new Map(settings.map((s) => [s.name, s.value]));
+    for (const [name, value] of this.linkValues({ kit, publish: row.publish })) if (values.has(name)) values.set(name, value);
+    return this.envOf([...resolveTemplates(kitEnv(kit), values)].map(([name, value]) => ({ name, value })));
+  }
+
+  /** The app's stored settings, as a digest: a review made before the owner changed one is refused. */
+  private async settingsDigest(db: Pick<Db, "select">, appId: string): Promise<string> {
+    return digestOf(await db.select({ name: appSetting.name, value: appSetting.value }).from(appSetting).where(eq(appSetting.appId, appId)));
+  }
+
+  /**
+   * Where an app's update is read (decision 1): its own link at a branch, or the same file on the
+   * repository's default branch for a link at a commit or a tag. Only whether the ref is a branch is
+   * asked, so a tag deleted since doesn't stop the check.
+   */
+  private async followed(row: AppRow, own: string, github: GithubEndpoints, fetcher: typeof fetch): Promise<string> {
+    const pinned = kitIdentity(row.kitSource ?? "");
+    if (!pinned.repo || !pinned.path) return own;
+    const head = defaultBranchLink(pinned.repo, pinned.path);
+    const prefix = `https://github.com/${pinned.repo}/blob/`;
+    const suffix = head.slice(prefix.length + "HEAD".length);
+    if (!own.startsWith(prefix) || !own.endsWith(suffix)) return own;
+    const ref = decodeURIComponent(own.slice(prefix.length, own.length - suffix.length));
+    if (ref === "HEAD") return own;
+    let credential: SourceCredential | undefined;
+    if (row.provenance?.kit?.read === "connection") {
+      const reading = (await this.config.credentials?.reading()) ?? { state: "none" as const };
+      if (reading.state === "ready") credential = reading.credential;
+    }
+    return (await isBranch(pinned.repo, ref, github, fetcher, credential)) ? own : head;
+  }
+
+  private updateReviewOf(p: UpdatePreview) {
+    return {
+      previewId: p.id,
+      name: p.name,
+      upToDate: p.upToDate,
+      digest: p.digest,
+      link: p.kitLink,
+      kit: { ...kitIdentity(p.kitSource), read: p.kitRead },
+      source: { repo: p.source.repo, path: p.source.path, commit: p.source.commit, pinnedLink: p.source.pinnedLink, read: p.source.read ?? null },
+      changes: p.changes,
+      ok: p.check.ok,
+      refusals: p.check.refusals,
+      settings: p.settings.filter((s) => p.changes.settings.added.includes(s.name)).map(publicSetting),
+    };
+  }
+
+  /**
+   * Applies a reviewed update in place (FR-004, FR-006): the candidate the review was made of, never
+   * the branch's latest commit, and only while the app still runs the kit the review was made
+   * against. The app keeps its ID, volumes, kept settings, publish settings, owner-approved hosts and
+   * limits, and agent access (spec 018); removed settings and the kit hosts it dropped are deleted.
+   * With `digest`, the review must also be the one an earlier check printed (`update --review`).
+   */
+  async applyUpdate(name: string, previewId: string, values: Record<string, string>, actorId: string, digest?: string): Promise<{ name: string; jobId: string; done: Promise<void> }> {
+    const p = this.updates.get(previewId);
+    if (!p || p.expiresAt < Date.now() || p.name !== name) throw new AppError(404, "preview_expired", "This review has expired. Check for the update again.");
+    if (digest !== undefined && digest !== p.digest) {
+      throw new AppError(409, "update_changed", "The update isn't the one you reviewed: the app, its kit's branch or an image changed since. Check for the update again.");
+    }
+    if (p.upToDate) throw new AppError(409, "up_to_date", `${p.name} already runs this kit.`);
+    if (!p.check.ok) throw new AppError(400, "refused", "Your Space can't run this update as it is.", p.check.refusals);
+    const settings = p.settings.map((s) => ({ ...s }));
+    for (const [name, value] of Object.entries(values ?? {})) {
+      const setting = settings.find((s) => s.name === name);
+      if (!setting || setting.derived) throw new AppError(400, "unknown_setting", `${name} isn't a setting of this app.`);
+      setting.value = value === "" ? null : value;
+      setting.generated = false;
+    }
+    const filled = resolveTemplates(kitEnv(p.kit), new Map(settings.map((s) => [s.name, s.value])));
+    for (const setting of settings) setting.value = filled.get(setting.name) ?? null;
+    const missing = settings.filter((s) => s.required && !s.value).map((s) => s.name);
+    if (missing.length) throw new AppError(400, "settings_required", `These settings need a value: ${missing.join(", ")}.`);
+    // The file is checked again with the values given, so its changes are the real ones. Its images
+    // stay those the review showed: a tag that names another digest now is refused (FR-006).
+    let check = p.check;
+    if (Object.keys(values ?? {}).length) {
+      const current = (await this.db.select({ publish: app.publish }).from(app).where(eq(app.id, p.appId)))[0];
+      check = await this.checkSigningIn({ project: `ys-${p.name}`, app: p.name, compose: p.source.text, env: this.runEnv(p.kit, settings, { publish: current?.publish ?? null }), interface: p.kit.interface ?? null });
+      if (!check.ok) {
+        const reasons = check.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`).join(" ");
+        throw new AppError(400, "refused", `Your Space can't run this update with these settings: ${reasons}`, check.refusals);
+      }
+      // An image the review resolved must name the same version; one whose reference a setting given
+      // now completes, which the review held as a placeholder, is checked here for the first time.
+      const reviewed = new Map(p.check.images.filter((i) => i.digest).map((i) => [i.ref, i.digest]));
+      if (check.images.some((i) => reviewed.has(i.ref) && reviewed.get(i.ref) !== i.digest)) {
+        throw new AppError(409, "update_changed", "An image the update uses names another version than the one you reviewed. Check for the update again.");
+      }
+    }
+    const images = Object.fromEntries(check.images.filter((i) => i.digest).map((i) => [i.ref, { digest: i.digest!, ...(i.private ? { private: true as const } : {}) }]));
+
+    // The app is claimed before anything is written, and its job is recorded in the same transaction
+    // as the change, so no other change, here or in a server command's process, runs in between.
+    if (this.busy.has(p.appId)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
+    this.busy.add(p.appId);
+    this.updates.delete(previewId);
+    let jobId: string;
+    try {
+      jobId = await this.db.transaction(async (tx) => {
+        const [row] = await tx.select().from(app).where(eq(app.id, p.appId)).for("update");
+        if (
+          !row ||
+          row.state === "removed" ||
+          row.kitSource !== p.expected ||
+          !isDeepStrictEqual(row.publish ?? null, p.publish) ||
+          (await this.settingsDigest(tx, row.id)) !== p.settingsDigest
+        ) {
+          throw new AppError(409, "update_changed", "The app changed while you were reviewing the update. Check for the update again.");
+        }
+        const [running] = await tx.select({ id: installJob.id }).from(installJob).where(and(eq(installJob.appId, row.id), eq(installJob.state, "running"))).limit(1);
+        if (running) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
+        const limits: Record<string, { memory: number; cpus: number }> = {};
+        for (const service of check.services) {
+          const fromKit = p.kit.limits?.[service.name];
+          limits[service.name] = row.limits[service.name] ?? { memory: fromKit?.memory ?? DEFAULT_MEMORY, cpus: fromKit?.cpus ?? DEFAULT_CPUS };
+        }
+        await tx
+          .update(app)
+          .set({
+            title: p.kit.title ?? row.title,
+            sourceUrl: p.source.link,
+            repo: p.source.repo,
+            path: p.source.path,
+            ref: p.source.ref,
+            commit: p.source.commit,
+            compose: p.source.text,
+            kit: p.kit,
+            kitSource: p.kitSource,
+            kitLink: p.kitLink,
+            provenance: { kit: p.kitRead, compose: p.source.read ?? null },
+            images,
+            adaptations: check.adaptations,
+            interface: p.kit.interface ?? null,
+            pane: p.kit.pane ?? true,
+            limits,
+            updatedAt: new Date(),
+          })
+          .where(eq(app.id, row.id));
+        const names = settings.map((s) => s.name);
+        await tx.delete(appSetting).where(and(eq(appSetting.appId, row.id), names.length ? notInArray(appSetting.name, names) : undefined));
+        for (const s of settings) {
+          const value = s.value === null ? null : encrypt(this.config.dataKey, s.value);
+          await tx
+            .insert(appSetting)
+            .values({ appId: row.id, name: s.name, value, secret: s.secret, generated: s.generated, publishedDefault: s.publishedDefault })
+            .onConflictDoUpdate({ target: [appSetting.appId, appSetting.name], set: { value, secret: s.secret, generated: s.generated, publishedDefault: s.publishedDefault } });
+        }
+        const outbound = p.kit.outbound ?? [];
+        await tx
+          .delete(appOutbound)
+          .where(and(eq(appOutbound.appId, row.id), eq(appOutbound.source, "kit"), outbound.length ? notInArray(appOutbound.host, outbound) : undefined));
+        if (outbound.length) {
+          await tx.insert(appOutbound).values(outbound.map((host) => ({ appId: row.id, host, source: "kit" as const, approvedBy: actorId }))).onConflictDoNothing();
+        }
+        await recordEvent(tx, "app.updated", actorId, null, row.id);
+        const [job] = await tx.insert(installJob).values({ appId: row.id, kind: "update" }).returning({ id: installJob.id });
+        return job!.id;
+      });
+    } catch (error) {
+      this.busy.delete(p.appId);
+      throw error;
+    }
+    const done = this.runJob(jobId, p.appId, "update").finally(() => this.busy.delete(p.appId));
+    log("info", "app.update_started", { app: p.name });
     return { name: p.name, jobId, done };
   }
 
@@ -852,13 +1208,13 @@ export class AppsService {
   }
 
   /** A job for a request, which answers with the job's ID and doesn't wait for it. */
-  private async queue(appId: string, kind: "apply" | "remove"): Promise<{ jobId: string }> {
+  private async queue(appId: string, kind: "apply" | "update" | "remove"): Promise<{ jobId: string }> {
     const { jobId } = await this.startJob(appId, kind);
     return { jobId };
   }
 
   /** Starts a job that applies the app; one job per app at a time. */
-  async startJob(appId: string, kind: "install" | "apply" | "remove"): Promise<{ jobId: string; done: Promise<void> }> {
+  async startJob(appId: string, kind: JobKind): Promise<{ jobId: string; done: Promise<void> }> {
     if (this.busy.has(appId)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
     this.busy.add(appId);
     try {
@@ -871,7 +1227,7 @@ export class AppsService {
     }
   }
 
-  private async runJob(jobId: string, appId: string, kind: "install" | "apply" | "remove"): Promise<void> {
+  private async runJob(jobId: string, appId: string, kind: JobKind): Promise<void> {
     try {
       const row = (await this.db.select().from(app).where(eq(app.id, appId)))[0];
       if (!row) throw new AppError(404, "not_found", "The app is gone.");
@@ -883,8 +1239,9 @@ export class AppsService {
         await this.db.update(app).set({ state: kind === "install" ? "installing" : "starting", stateReason: null, updatedAt: new Date() }).where(eq(app.id, appId));
         const spec = await this.specFor(row);
         // The install pulls the app's private images signed in with the image token, for those
-        // images alone (R9). Nothing else uses it: Your Space doesn't sign in in the background (R7).
-        if (kind === "install") spec.registryCredentials = await this.signInToPull(row);
+        // images alone (R9), and so does an update the owner applies (journey 019, FR-005). Nothing
+        // else uses it: Your Space doesn't sign in in the background (R7).
+        if (kind === "install" || kind === "update") spec.registryCredentials = await this.signInToPull(row);
         let lastImage = "";
         let lastPercent = -1;
         const pending: Promise<void>[] = [];
@@ -914,6 +1271,8 @@ export class AppsService {
         message +=
           kind === "install"
             ? ` Check your image token ${ADD_IMAGE_TOKEN}, then remove the app and install it again.`
+            : kind === "update"
+              ? ` Check your image token ${ADD_IMAGE_TOKEN}, then check for the update again.`
             : " Your Space signs in to download a private image only while installing the app: remove it, then install it again, reusing its data, with your image token in place.";
       }
       await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));
@@ -1306,7 +1665,12 @@ export class AppsService {
     if (!HOST.test(clean)) {
       throw new AppError(400, "bad_host", "That isn't a host name, like api.example.com.");
     }
-    await this.db.insert(appOutbound).values({ appId: row.id, host: clean, source: "owner", approvedBy: actorId }).onConflictDoNothing();
+    // An owner's approval of a host the kit lists too makes it the owner's, so an update that drops it
+    // from the kit keeps it (journey 019).
+    await this.db
+      .insert(appOutbound)
+      .values({ appId: row.id, host: clean, source: "owner", approvedBy: actorId })
+      .onConflictDoUpdate({ target: [appOutbound.appId, appOutbound.host], set: { source: "owner", approvedBy: actorId } });
     await this.db.delete(appAccessRequest).where(and(eq(appAccessRequest.appId, row.id), eq(appAccessRequest.host, clean)));
     await this.event("app.outbound_approved", actorId, row.id);
     return this.queue(row.id, "apply");

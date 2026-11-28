@@ -165,8 +165,8 @@ it("upgrades a populated 0005 workspace in place without granting agent access",
   expect(await records(t.db)).toEqual(before);
   // The app is as it was; an app installed before journey 015 has no record of how its files were read.
   const { rows: appsAfter } = await t.pool.query("select * from app");
-  expect(appsAfter.map(({ provenance, ...row }) => row)).toEqual(appsBefore);
-  expect(appsAfter.map((row) => row.provenance)).toEqual([null]);
+  expect(appsAfter.map(({ provenance, kit_link, ...row }) => row)).toEqual(appsBefore);
+  expect(appsAfter.map((row) => [row.provenance, row.kit_link])).toEqual([[null, null]]);
   expect(await t.db.select({ name: app.name }).from(app)).toEqual([{ name: "legacy" }]);
   const authority = await t.pool.query(`select
     (select count(*)::int from external_agent) as agents,

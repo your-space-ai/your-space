@@ -100,6 +100,28 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
     owner(async (req, res) => void res.json({ lines: await apps.logs(name(req), String(req.query.service ?? "")) })),
   );
   router.post("/apps/:name/start", owner(async (req, res) => void res.status(202).json(await apps.start(name(req)))));
+  // Journey 019: check an installed app's kit for an update, then apply the reviewed one in place.
+  router.post(
+    "/apps/:name/update/check",
+    owner(async (req, res) => void res.json(await apps.previewUpdate(name(req)))),
+  );
+  router.post(
+    "/apps/:name/update",
+    owner(async (req, res, who) => {
+      const { previewId, settings, digest } = body(req);
+      if (typeof previewId !== "string") throw new AppError(400, "preview_required", "Check for the update before applying it.");
+      if (digest !== undefined && typeof digest !== "string") throw new AppError(400, "invalid_digest", "The review's digest must be text.");
+      if (settings !== undefined && (typeof settings !== "object" || settings === null || Array.isArray(settings))) {
+        throw new AppError(400, "invalid_setting", "Settings must be names with text values.");
+      }
+      const values = (settings ?? {}) as Record<string, unknown>;
+      for (const [key, value] of Object.entries(values)) {
+        if (typeof value !== "string") throw new AppError(400, "invalid_setting", `${key} must be text.`);
+      }
+      const { jobId } = await apps.applyUpdate(name(req), previewId, values as Record<string, string>, who.actorId, digest);
+      res.status(202).json({ name: name(req), jobId });
+    }),
+  );
   router.put(
     "/apps/:name/settings",
     owner(async (req, res, who) => {

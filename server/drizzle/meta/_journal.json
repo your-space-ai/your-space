@@ -141,6 +141,13 @@
       "when": 1795827733373,
       "tag": "0019_agent_access_per_app",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795828706616,
+      "tag": "0020_kit_link",
+      "breakpoints": true
     }
   ]
 }

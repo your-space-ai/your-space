@@ -61,6 +61,7 @@ export type EventType =
   | "recovery.link_issued"
   | "recovery.password_reset"
   | "app.installed"
+  | "app.updated"
   | "app.agent_kit_upgraded"
   | "app.settings_changed"
   | "app.limits_changed"
@@ -158,6 +159,9 @@ export const app = pgTable(
     compose: text("compose").notNull(),
     kit: jsonb("kit").$type<StoredKit>(),
     kitSource: text("kit_source"),
+    /** The kit's link as the owner gave it, at its branch, tag or commit (journey 019); null for a kit file
+     * given on this machine and for an app installed before. An update check reads the kit there again. */
+    kitLink: text("kit_link"),
     /** Null for an app installed before journey 015. */
     provenance: jsonb("provenance").$type<Provenance>(),
     /** Each image's pinned digest; `private` marks one pulled with the registry credential (journey 015, R9). */
@@ -251,7 +255,7 @@ export const installJob = pgTable("install_job", {
   appId: uuid("app_id")
     .notNull()
     .references(() => app.id, { onDelete: "cascade" }),
-  kind: text("kind", { enum: ["install", "apply", "remove"] }).notNull(),
+  kind: text("kind", { enum: ["install", "apply", "update", "remove"] }).notNull(),
   state: text("state", { enum: ["running", "succeeded", "failed"] }).notNull().default("running"),
   steps: jsonb("steps").$type<JobStep[]>().notNull().default([]),
   error: text("error"),
