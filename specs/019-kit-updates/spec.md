@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-27
 
-**Status**: Draft. Each decision below carries a recommendation and goes to the owner one at a time.
+**Status**: Decided. The owner settled every decision on 2026-11-27. Built in a stack of pull requests on spec 018's: the server's in-place update first, then its rollback, the CLI and the app's details page.
 
 **Input**: The owner, on 2026-11-27: "id like a better updating system for the kits. we shouldnt have
 to "reinstall" a new kit. kit points to a github repo, we should be able to pull the repo and see if
@@ -38,7 +38,7 @@ driving the process."
 | 5 | What happens to settings the new kit adds or removes? | **Decided:** an added setting is filled as at install (generated, derived, the kit's value, or asked in the review); a removed one is deleted when the update applies, and put back by a rollback. Values of kept settings stay, except that a value the kit sets, which the owner never changed, follows the new kit. Owner: "this is fine" |
 | 6 | Who can update from the CLI? | **Decided:** the operator, on the machine that runs Your Space: `your-space app check-update <app>` and `your-space app update <app>`, which an agent with a shell there can drive. An agent's Your Space key can't update apps. Owner: "yes" |
 | 7 | Can an update move an app to a kit or Compose file in another repository? | **Decided:** an update never moves an app to another kit or kit location; it follows the installed kit at its own location. A change of the Compose file the kit pins, in its repository or path too, shows in the update's review like any change. Owner: "update wouldn't move to a different kit or kit location tho, it tracks the installed kit at its location as its updated. compose file changes would show up in the diff" |
-| 8 | Is a CLI to remove an app part of this? | **Recommended:** no. Updating in place removes the need to remove and reinstall; removing from the CLI is a follow-up of its own. |
+| 8 | Is a CLI to remove an app part of this? | **Decided:** no, a later follow-up. Owner: "Later follow-up" |
 
 ## What Exists Today
 
@@ -231,7 +231,7 @@ in another repository too (the recommendation).
 
 ## 8. Removing an App From the CLI
 
-**Recommended:** not part of this spec. Updating in place covers what remove and reinstall were used
+**Decided (2026-11-27):** a later follow-up. The owner: "Later follow-up". Not part of this spec. Updating in place covers what remove and reinstall were used
 for, except moving to another kit (section 7). A `your-space app remove` command, keeping data by default
 as Remove in the dashboard does, is a follow-up of its own.
 
