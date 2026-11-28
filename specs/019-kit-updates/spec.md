@@ -31,8 +31,8 @@ driving the process."
 
 | # | Question | Decision or recommendation |
 | --- | --- | --- |
-| 1 | What counts as a new version? | **Recommended:** the kit file at the latest commit of the branch the owner's link names differs from the installed kit. No version field, no tags. A link at a tag or a commit has no newer version; the owner updates it by giving a new link. |
-| 2 | How does the owner review an update? | **Recommended:** the install review, showing only what changes: the kit and Compose commits, each image, settings added and removed, internet hosts added and removed, limits and the interface. A new host is approved by applying the update, as at install. |
+| 1 | What counts as a new version? | **Decided:** a newer commit that changes the installed kit file, on the branch the owner's link names. No version field, no tags. Owner: "i install from kit file at particular commit, if that commit on that file changes, its an update" |
+| 2 | How does the owner review an update? | **Decided:** on the app's details page. An available update shows there, and **Preview changes** opens a plain-language summary of what changes, with the diff behind it. Applying approves new hosts, as at install. Owner: "it should show up in the app details page, and maybe a preview changes button that render a diff or some nice interpretation of it that clearly showsthe user what this changes." |
 | 3 | What happens when an update doesn't start? | **Recommended:** it is rolled back on its own: the kit, Compose file, image pins and settings it replaced are put back and the app is started again. The app's own data isn't restored. |
 | 4 | Are checks run in the background or on demand? | **Recommended:** on demand, when the owner asks, from the app's page or the CLI. Nothing polls GitHub (015 R7, the no-telemetry rule). |
 | 5 | What happens to settings the new kit adds or removes? | **Recommended:** an added setting is filled as at install (generated, derived, the kit's value, or asked in the review); a removed one is deleted when the update applies, and put back by a rollback. Values of kept settings stay. |
@@ -71,7 +71,8 @@ driving the process."
 
 ## 1. What Counts as a New Version
 
-**Recommended:** a newer kit file on the link's branch.
+**Decided (2026-11-27):** a newer kit file on the link's branch. The owner: "i install from kit file
+at particular commit, if that commit on that file changes, its an update".
 
 Your Space stores the link the owner gave (`kit_link`) and the branch it named. A check resolves
 the branch's latest commit and reads the kit there, through the GitHub connection when the
@@ -93,10 +94,16 @@ bumping it would never update).
 
 ## 2. Reviewing an Update
 
-**Recommended:** the install review, as a list of changes.
+**Decided (2026-11-27):** on the app's details page, as a summary of the changes with the diff
+behind it. The owner: "it should show up in the app details page, and maybe a preview changes button
+that render a diff or some nice interpretation of it that clearly showsthe user what this changes."
 
-The check builds the same review as an install, from the new kit and its Compose file, with the
-app's stored values, and the dashboard and CLI show only what differs from what runs:
+The app's details page has **Check for update**. An update it finds shows on that page, with
+**Preview changes**, which opens a plain-language summary of what the update changes; the diff of
+the kit file, and links to the commits on GitHub, are behind it. The page stays calm by default, and
+the detail is there on demand. The summary is built from the same review as an install, made from
+the new kit and its Compose file with the app's stored values, and shows only what differs from what
+runs. The CLI prints the same summary:
 
 - the kit's commit, and the Compose file's repository, path and commit, old to new, each linked to
   GitHub so the owner can open the diff there;
