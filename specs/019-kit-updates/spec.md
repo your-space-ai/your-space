@@ -168,7 +168,7 @@ as `your-space owner reset-link` does:
 
 ```sh
 your-space app check-update <app> [--link <kit-link>] [--json]
-your-space app update <app> [--link <kit-link>] [--from <kit-link>] [--to <kit-link>] [--yes] [--json]
+your-space app update <app> [--link <kit-link>] [--review <digest>] [--yes] [--json]
 ```
 
 `check-update` prints the review of section 2, with the candidate's pinned kit link, or that the
@@ -176,12 +176,12 @@ app is up to date. `update` makes the review, prints it and asks before applying
 applies it with `--yes`; it waits for the job and reports the result or the rollback. `--link` is
 Update from a link (section 1) for both commands.
 
-`check-update` prints the installed kit's pinned link and the candidate's. An agent that applies
-what it read later passes both: `--from` the installed kit it reviewed against, and `--to` the
-candidate it reviewed. `update` then applies that candidate and is refused, so the agent checks
-again, when the app no longer runs the `--from` kit or the candidate isn't the `--to` kit, as when
-another update was applied or the branch moved in between. The app's link stays as it was. With
-`--json`, both commands print the review as data, so an agent driving the CLI reads it and decides. An agent's Your Space key can't update apps: updating changes what code runs, which is the
+Each review has a digest of everything it shows: the installed kit it was made against, the
+candidate's kit and Compose commits, and its image digests. `check-update` prints it. An agent that
+applies what it read later passes it as `--review`; `update` makes the review again and is refused,
+so the agent checks again, when its digest differs, as when another update was applied, the branch
+moved or an image tag now names another digest. The app's link stays as it was. With `--json`,
+both commands print the review as data, so an agent driving the CLI reads it and decides. An agent's Your Space key can't update apps: updating changes what code runs, which is the
 owner's or the operator's to do.
 
 **Considered:** an agent role that may update apps through the gateway (new authority over the
@@ -194,8 +194,9 @@ repository, and a kit may pin a Compose file in another repository than before. 
 the move first, old repository to new, with how each file was read (public, or through the GitHub
 connection), and applying the update confirms it. The app keeps its name, ID, volumes and settings,
 as for any update; the app's link becomes the new one. Today the only way to move an app is to
-remove it and install the new kit, and that refuses to reuse kept data from another repository
-(`name_taken`), so the data is lost.
+remove it and install the new kit, and that refuses to reuse data kept from another repository
+(`name_taken`). The kept data isn't deleted: the owner can install the app again from its original
+repository and reuse it, or delete it, which can't be undone; but it can't move with the app.
 
 **Considered:** refusing a move, so that an app's repository never changes after install (a move
 changes whose code runs, which the review already shows for any update).
@@ -213,7 +214,9 @@ as Remove in the dashboard does, is a follow-up of its own.
 Spec 018 makes grants and app keys survive kit changes; this spec assumes it and changes nothing
 in agent access. In 018 a grant is per app, so an update keeps every grant and every bound
 credential. A credential the new kit no longer names stays stored, and a grant that uses it is
-unavailable until the owner picks another; a later kit may name it again. Pending requests go stale,
+unavailable until the owner picks another; a later kit may name it again. An app whose stored kit
+018 no longer reads for agent access, a 017-format kit, gets it back when an update installs a kit
+in 018's format, with its grants and keys as they were. Pending requests go stale,
 since they were approved under the previous kit. Removing an app still retires all of its agent
 access. 018's migration rewrites `retire_agent_binding` and drops the `kit_digest` check; this
 spec's migration follows it.
@@ -233,9 +236,9 @@ spec's migration follows it.
 5. **A bad update.** The new image exits on start. The update is rolled back and the app runs the
    previous kit; the owner sees why.
 6. **An agent updates.** An agent with a shell on the server runs `your-space app check-update
-   twenty --json`, reads the changes, and runs `your-space app update twenty --from <installed>
-   --to <candidate> --yes` with the two links it printed. Had the branch moved in between, the
-   update would be refused and the agent would check again.
+   twenty --json`, reads the changes, and runs `your-space app update twenty --review <digest>
+   --yes` with the digest it printed. Had the branch or an image moved in between, the update would
+   be refused and the agent would check again.
 
 ## Requirements
 
@@ -256,14 +259,14 @@ spec's migration follows it.
 - **FR-006**: Applying applies the exact candidate the review was made of: its kit at a commit, the
   Compose file it pins and the image digests the review showed. It is refused, and the owner checks
   again, when the app no longer runs the kit the review was made against (`kit_source`) or another
-  job is running for it. From the CLI, `--from` and `--to` bind an apply to an earlier
-  `check-update`'s installed kit and candidate.
+  job is running for it. From the CLI, `--review` binds an apply to an earlier `check-update`'s
+  review digest, and the apply is refused when the review it makes has another.
 - **FR-007**: An update whose job fails, or whose app isn't running when it ends, is rolled back
   once to what it replaced, and the rollback is recorded and shown with its reason.
 - **FR-008**: Events record each check that found an update, each update and each rollback, with
   the actor.
 - **FR-009**: The dashboard's app page has **Check for update**, the review, and apply. The CLI has
-  `your-space app check-update` and `your-space app update`, with `--link`, `--from`, `--to`, `--yes` and `--json`,
+  `your-space app check-update` and `your-space app update`, with `--link`, `--review`, `--yes` and `--json`,
   over server commands.
 - **FR-010**: Agent access across an update follows [Agent Access Across an Update](#agent-access-across-an-update).
 - **FR-011**: Tests cover an update that changes the image, adds and removes a setting, adds a
