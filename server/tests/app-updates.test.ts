@@ -187,10 +187,9 @@ describe("updating an installed app in place", () => {
     await t.db.update(app).set({ kitLink: null }).where(eq(app.id, id));
     publish(LATER, kit(NEXT, "env:\n  GREETING: later\n"));
     expect((await api("/api/apps/notes/update/check", {})).json.upToDate).toBe(false);
-    // One installed from a kit file on this machine has nothing to check until the owner gives a link.
+    // One installed from a kit file on this machine has no kit on GitHub to check.
     await t.db.update(app).set({ kitSource: `sha256:${"0".repeat(64)}` }).where(eq(app.id, id));
-    expect((await api("/api/apps/notes/update/check", {})).json.error).toBe("link_required");
-    expect((await api("/api/apps/notes/update/check", { link: LINK })).json.upToDate).toBe(false);
+    expect((await api("/api/apps/notes/update/check", {})).json.error).toBe("no_kit_link");
   });
 
   it("doesn't count an image tag that names another digest now as an update", async () => {
@@ -210,6 +209,32 @@ describe("updating an installed app in place", () => {
     expect((await api("/api/apps/notes/update", { previewId: check.json.previewId })).status).toBe(202);
     await settle();
     expect(runtime.calls.filter((c) => c.method === "apply").at(-1)!.spec!.registryCredentials).toEqual([{ ...credential, images: ["ghcr.io/ys-fixtures/notes:latest"] }]);
+  });
+
+  it("refuses a review made before the owner changed a setting, and a second apply while one runs", async () => {
+    await install();
+    publish(NEXT, kit(NEXT, "env:\n  GREETING: hello\n  OLD: kept\n"));
+    const stale = await api("/api/apps/notes/update/check", {});
+    expect((await api("/api/apps/notes/settings", { values: { GREETING: "changed after the review" } }, "PUT")).status).toBe(202);
+    await settle();
+    expect((await api("/api/apps/notes/update", { previewId: stale.json.previewId })).json.error).toBe("update_changed");
+
+    const first = await api("/api/apps/notes/update/check", {});
+    const second = await api("/api/apps/notes/update/check", {});
+    const [a, b] = await Promise.all([
+      api("/api/apps/notes/update", { previewId: first.json.previewId }),
+      api("/api/apps/notes/update", { previewId: second.json.previewId }),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([202, 409]);
+    await settle();
+  });
+
+  it("checks the update with the published link's address, as the app runs with it", async () => {
+    const id = await install();
+    await t.db.update(app).set({ publish: { port: 8123, bind: "127.0.0.1", link: "https://notes.example.test" } }).where(eq(app.id, id));
+    publish(NEXT, kit(NEXT, "env:\n  GREETING: hello\n  HOST: { derive: app_host }\n"));
+    expect((await api("/api/apps/notes/update/check", {})).status).toBe(200);
+    expect(runtime.calls.filter((c) => c.method === "check").at(-1)!.spec!.env.HOST).toBe("notes.example.test");
   });
 
   it("refuses a kit for another app", async () => {

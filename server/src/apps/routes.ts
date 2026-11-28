@@ -103,11 +103,7 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
   // Journey 019: check an installed app's kit for an update, then apply the reviewed one in place.
   router.post(
     "/apps/:name/update/check",
-    owner(async (req, res) => {
-      const { link } = body(req);
-      if (link !== undefined && typeof link !== "string") throw new AppError(400, "invalid_link", "The kit's link must be text.");
-      res.json(await apps.previewUpdate(name(req), link));
-    }),
+    owner(async (req, res) => void res.json(await apps.previewUpdate(name(req)))),
   );
   router.post(
     "/apps/:name/update",

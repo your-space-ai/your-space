@@ -187,6 +187,8 @@ interface UpdatePreview {
   upToDate: boolean;
   /** A digest of everything the review shows, which `update --review` binds an apply to. */
   digest: string;
+  /** The app's stored settings when the review was made; applying is refused once they changed. */
+  settingsDigest: string;
 }
 
 interface Preview {
@@ -834,29 +836,27 @@ export class AppsService {
   // ----- Updates in place (journey 019) -----
 
   /**
-   * Reviews an update of an installed app: its kit read again at the app's link, or at a link the
-   * owner gives (Update from a link), with the Compose file the kit pins, checked with the app's
-   * stored settings. The review says what changes against what the app runs, and whether anything
+   * Reviews an update of an installed app: its kit read again at its own location (decision 7), with
+   * the Compose file the kit pins, checked with the app's stored settings. The review says what changes against what the app runs, and whether anything
    * does (FR-002, FR-003). Nothing changes until the owner applies it.
    */
-  async previewUpdate(name: string, link?: string): Promise<ReturnType<AppsService["updateReviewOf"]>> {
+  async previewUpdate(name: string): Promise<ReturnType<AppsService["updateReviewOf"]>> {
     for (const [id, p] of this.updates) if (p.expiresAt < Date.now()) this.updates.delete(id);
     const row = await this.liveRow(name);
     // The app's own link, or, for an app installed before links were kept, its pinned kit link.
     const pinned = kitIdentity(row.kitSource ?? "");
     const own = row.kitLink ?? (pinned.repo && pinned.path ? defaultBranchLink(pinned.repo, pinned.path) : null);
-    const given = link?.trim() || own;
-    if (!given) {
-      throw new AppError(409, "link_required", `${row.title} was installed from a kit file on this machine, so Your Space has no link to check. Give the link to its kit on GitHub.`);
+    if (!own) {
+      throw new AppError(409, "no_kit_link", `${row.title} was installed from a kit file on this machine, so it has no kit on GitHub to check for an update.`);
     }
     const github = this.config.github ?? githubEndpoints();
     const fetcher = this.config.fetch ?? fetch;
     let found: FoundKit & { file: SourceFile };
     let source: SourceFile;
     try {
-      found = await this.kitAt(given, github, fetcher);
-      // The app's own link at a commit or a tag follows the default branch for the same file (decision 1).
-      if (!link?.trim() && !(await this.onBranch(found.file, github, fetcher))) {
+      found = await this.kitAt(own, github, fetcher);
+      // A link at a commit or a tag follows the default branch for the same file (decision 1).
+      if (!(await this.onBranch(found.file, github, fetcher))) {
         found = await this.kitAt(defaultBranchLink(found.file.repo, found.file.path), github, fetcher);
       }
       source = await this.composeAt(found.kit, github, fetcher);
@@ -880,7 +880,7 @@ export class AppsService {
       if (typeof entry === "string" && typeof old === "string" && previous.get(variable) === old) previous.delete(variable);
     }
     const settings = buildSettings(kit, this.address(row.name), previous);
-    let check = await this.checkSigningIn({ project: `ys-${row.name}`, app: row.name, compose: source.text, env: this.envOf(settings), interface: kit.interface ?? null, placeholders: true });
+    let check = await this.checkSigningIn({ project: `ys-${row.name}`, app: row.name, compose: source.text, env: this.runEnv(kit, settings, row), interface: kit.interface ?? null, placeholders: true });
     withFileDefaults(settings, check.variables);
     const refusals = undefinedVariables(check.variables, kitEnv(kit)).map((variable) => ({
       service: "",
@@ -938,9 +938,27 @@ export class AppsService {
       changes,
       upToDate,
       digest,
+      settingsDigest: await this.settingsDigest(this.db, row.id),
     };
     this.updates.set(preview.id, preview);
     return this.updateReviewOf(preview);
+  }
+
+  /**
+   * The environment the app runs with, as `specFor` gives it: behind the owner's published link, its
+   * address settings follow the link, and templates that use them too, so a review checks the images
+   * the update's job pulls.
+   */
+  private runEnv(kit: Kit, settings: Setting[], row: Pick<AppRow, "publish">): Record<string, string> {
+    const values = new Map(settings.map((s) => [s.name, s.value]));
+    for (const [name, value] of this.linkValues({ kit, publish: row.publish })) if (values.has(name)) values.set(name, value);
+    return this.envOf([...resolveTemplates(kitEnv(kit), values)].map(([name, value]) => ({ name, value })));
+  }
+
+  /** The app's stored settings, as a digest: a review made before the owner changed one is refused. */
+  private async settingsDigest(db: Pick<Db, "select">, appId: string): Promise<string> {
+    const rows = await db.select({ name: appSetting.name, value: appSetting.value }).from(appSetting).where(eq(appSetting.appId, appId));
+    return createHash("sha256").update(JSON.stringify(rows.sort((a, b) => a.name.localeCompare(b.name)).map((r) => [r.name, r.value]))).digest("hex");
   }
 
   /** Whether a kit was read at a branch, asked with the credential it was read with. */
@@ -997,7 +1015,8 @@ export class AppsService {
     // stay those the review showed: a tag that names another digest now is refused (FR-006).
     let check = p.check;
     if (Object.keys(values ?? {}).length) {
-      check = await this.checkSigningIn({ project: `ys-${p.name}`, app: p.name, compose: p.source.text, env: this.envOf(settings), interface: p.kit.interface ?? null });
+      const current = (await this.db.select({ publish: app.publish }).from(app).where(eq(app.id, p.appId)))[0];
+      check = await this.checkSigningIn({ project: `ys-${p.name}`, app: p.name, compose: p.source.text, env: this.runEnv(p.kit, settings, { publish: current?.publish ?? null }), interface: p.kit.interface ?? null });
       if (!check.ok) {
         const reasons = check.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`).join(" ");
         throw new AppError(400, "refused", `Your Space can't run this update with these settings: ${reasons}`, check.refusals);
@@ -1009,61 +1028,72 @@ export class AppsService {
     }
     const images = Object.fromEntries(check.images.filter((i) => i.digest).map((i) => [i.ref, { digest: i.digest!, ...(i.private ? { private: true as const } : {}) }]));
 
+    // The app is claimed before anything is written, and its job is recorded in the same transaction
+    // as the change, so no other change, here or in a server command's process, runs in between.
     if (this.busy.has(p.appId)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
+    this.busy.add(p.appId);
     this.updates.delete(previewId);
-    await this.db.transaction(async (tx) => {
-      const [row] = await tx.select().from(app).where(eq(app.id, p.appId)).for("update");
-      if (!row || row.state === "removed" || row.kitSource !== p.expected) {
-        throw new AppError(409, "update_changed", "The app changed while you were reviewing the update. Check for the update again.");
-      }
-      const [running] = await tx.select({ id: installJob.id }).from(installJob).where(and(eq(installJob.appId, row.id), eq(installJob.state, "running"))).limit(1);
-      if (running) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
-      const limits: Record<string, { memory: number; cpus: number }> = {};
-      for (const service of check.services) {
-        const fromKit = p.kit.limits?.[service.name];
-        limits[service.name] = row.limits[service.name] ?? { memory: fromKit?.memory ?? DEFAULT_MEMORY, cpus: fromKit?.cpus ?? DEFAULT_CPUS };
-      }
-      await tx
-        .update(app)
-        .set({
-          title: p.kit.title ?? row.title,
-          sourceUrl: p.source.link,
-          repo: p.source.repo,
-          path: p.source.path,
-          ref: p.source.ref,
-          commit: p.source.commit,
-          compose: p.source.text,
-          kit: p.kit,
-          kitSource: p.kitSource,
-          kitLink: p.kitLink,
-          provenance: { kit: p.kitRead, compose: p.source.read ?? null },
-          images,
-          adaptations: check.adaptations,
-          interface: p.kit.interface ?? null,
-          pane: p.kit.pane ?? true,
-          limits,
-          updatedAt: new Date(),
-        })
-        .where(eq(app.id, row.id));
-      const names = settings.map((s) => s.name);
-      await tx.delete(appSetting).where(and(eq(appSetting.appId, row.id), names.length ? notInArray(appSetting.name, names) : undefined));
-      for (const s of settings) {
-        const value = s.value === null ? null : encrypt(this.config.dataKey, s.value);
+    let jobId: string;
+    try {
+      jobId = await this.db.transaction(async (tx) => {
+        const [row] = await tx.select().from(app).where(eq(app.id, p.appId)).for("update");
+        if (!row || row.state === "removed" || row.kitSource !== p.expected || (await this.settingsDigest(tx, row.id)) !== p.settingsDigest) {
+          throw new AppError(409, "update_changed", "The app changed while you were reviewing the update. Check for the update again.");
+        }
+        const [running] = await tx.select({ id: installJob.id }).from(installJob).where(and(eq(installJob.appId, row.id), eq(installJob.state, "running"))).limit(1);
+        if (running) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
+        const limits: Record<string, { memory: number; cpus: number }> = {};
+        for (const service of check.services) {
+          const fromKit = p.kit.limits?.[service.name];
+          limits[service.name] = row.limits[service.name] ?? { memory: fromKit?.memory ?? DEFAULT_MEMORY, cpus: fromKit?.cpus ?? DEFAULT_CPUS };
+        }
         await tx
-          .insert(appSetting)
-          .values({ appId: row.id, name: s.name, value, secret: s.secret, generated: s.generated, publishedDefault: s.publishedDefault })
-          .onConflictDoUpdate({ target: [appSetting.appId, appSetting.name], set: { value, secret: s.secret, generated: s.generated, publishedDefault: s.publishedDefault } });
-      }
-      const outbound = p.kit.outbound ?? [];
-      await tx
-        .delete(appOutbound)
-        .where(and(eq(appOutbound.appId, row.id), eq(appOutbound.source, "kit"), outbound.length ? notInArray(appOutbound.host, outbound) : undefined));
-      if (outbound.length) {
-        await tx.insert(appOutbound).values(outbound.map((host) => ({ appId: row.id, host, source: "kit" as const, approvedBy: actorId }))).onConflictDoNothing();
-      }
-      await recordEvent(tx, "app.updated", actorId, null, row.id);
-    });
-    const { jobId, done } = await this.startJob(p.appId, "update");
+          .update(app)
+          .set({
+            title: p.kit.title ?? row.title,
+            sourceUrl: p.source.link,
+            repo: p.source.repo,
+            path: p.source.path,
+            ref: p.source.ref,
+            commit: p.source.commit,
+            compose: p.source.text,
+            kit: p.kit,
+            kitSource: p.kitSource,
+            kitLink: p.kitLink,
+            provenance: { kit: p.kitRead, compose: p.source.read ?? null },
+            images,
+            adaptations: check.adaptations,
+            interface: p.kit.interface ?? null,
+            pane: p.kit.pane ?? true,
+            limits,
+            updatedAt: new Date(),
+          })
+          .where(eq(app.id, row.id));
+        const names = settings.map((s) => s.name);
+        await tx.delete(appSetting).where(and(eq(appSetting.appId, row.id), names.length ? notInArray(appSetting.name, names) : undefined));
+        for (const s of settings) {
+          const value = s.value === null ? null : encrypt(this.config.dataKey, s.value);
+          await tx
+            .insert(appSetting)
+            .values({ appId: row.id, name: s.name, value, secret: s.secret, generated: s.generated, publishedDefault: s.publishedDefault })
+            .onConflictDoUpdate({ target: [appSetting.appId, appSetting.name], set: { value, secret: s.secret, generated: s.generated, publishedDefault: s.publishedDefault } });
+        }
+        const outbound = p.kit.outbound ?? [];
+        await tx
+          .delete(appOutbound)
+          .where(and(eq(appOutbound.appId, row.id), eq(appOutbound.source, "kit"), outbound.length ? notInArray(appOutbound.host, outbound) : undefined));
+        if (outbound.length) {
+          await tx.insert(appOutbound).values(outbound.map((host) => ({ appId: row.id, host, source: "kit" as const, approvedBy: actorId }))).onConflictDoNothing();
+        }
+        await recordEvent(tx, "app.updated", actorId, null, row.id);
+        const [job] = await tx.insert(installJob).values({ appId: row.id, kind: "update" }).returning({ id: installJob.id });
+        return job!.id;
+      });
+    } catch (error) {
+      this.busy.delete(p.appId);
+      throw error;
+    }
+    const done = this.runJob(jobId, p.appId, "update").finally(() => this.busy.delete(p.appId));
     log("info", "app.update_started", { app: p.name });
     return { name: p.name, jobId, done };
   }
