@@ -300,8 +300,8 @@ spec's migration follows it.
   review digest, and the apply is refused when the review it makes has another.
 - **FR-007**: An update whose job fails, or whose app isn't running when it ends, is rolled back
   once to what it replaced, and the rollback is recorded and shown with its reason.
-- **FR-008**: Events record each check that found an update, each update and each rollback, with
-  the actor.
+- **FR-008**: Events record each update and each rollback, with the actor. Each check is kept as
+  the app's last check (section 4), not as an event.
 - **FR-009**: The dashboard's app page has **Check for update**, the review, and apply. The CLI has
   `your-space app check-update` and `your-space app update`, with `--review`, `--yes` and `--json`,
   over server commands.
