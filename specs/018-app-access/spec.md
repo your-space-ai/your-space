@@ -123,7 +123,7 @@ unseen (the recommendation); starting every grant blank, which would drop the ro
 ## 9. Removing an App
 
 **Decided (2026-11-27):** as recommended; the owner: "removing an app should remove the agent access
-yeah". removing an app ends its grants and app keys, as today, whether or not its data is
+yeah". Removing an app ends its grants and app keys, as today, whether or not its data is
 kept; installing it again starts with no agent access. Only a change to the installed app (decision
 5) keeps them.
 
