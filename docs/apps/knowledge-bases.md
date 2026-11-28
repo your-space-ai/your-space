@@ -91,7 +91,10 @@ folder, Docker makes it in the container, owned by root with mode `0755`, so an 
 as root can't write there, and anything an app writes there beside the folders is lost whenever the
 container is recreated, as when the owner changes its knowledge bases. An app that keeps files at the
 root of the folder it opens, as Obsidian keeps a vault's `.obsidian` settings, needs a path inside one
-of its own volumes, such as `knowledge: { path: /config/vault }` with a volume at `/config`.
+of its own volumes, such as `knowledge: { path: /config/vault }` with a volume at `/config`. There
+too, Docker makes the folder owned by root with mode `0755` when the volume doesn't have it, so an
+app that doesn't run as root needs the folder in the volume already, owned by its user, as when its
+image has the folder and Docker copies it into the new volume.
 
 Keeping a knowledge base in sync with a Google Drive folder is
 [planned](../roadmap.md#knowledge-bases).
