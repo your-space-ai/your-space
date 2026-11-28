@@ -5,7 +5,7 @@
 **Created**: 2026-11-27
 
 **Status**: Proposed. The owner set the model on 2026-11-27 (decisions 1 to 5) and settled
-decisions 6 to 9; one detail is open, each with a recommendation. Nothing is built.
+decisions 6 to 10, all on 2026-11-27; decision 11, on kits already stored, is open. Nothing is built.
 
 **Input**: The owner, on 2026-11-27, after the first live run of journey 017: 017's per-route model
 is too granular to start with. Start broad and add granularity only when it's needed. "access is per
@@ -42,7 +42,8 @@ applies the actual api key, agent never sees the api key."
 | 7 | Whose list is it? | **Decided:** each agent's, per app, beside the key it uses. Owner: "per agent per app is ok" |
 | 8 | What happens to 017's grants and Ask settings? | **Decided:** each grant carries over working, with its key and its routes that asked; its reach grows to the whole API on that key. Owner, told a read-only grant on a key that can also write would gain those writes: "thats fine" |
 | 9 | Does removing an app keep its agent access? | **Decided:** no. Removing an app, even keeping its data, ends its grants and app keys; only a kit change keeps them. Owner: "removing an app should remove the agent access yeah" |
-| 10 | What about kits that still list roles and routes? | Open. Recommended: they keep installing; Your Space ignores the lists and takes the API's path from the routes' common prefix until the kit names it |
+| 10 | What about kits that still list roles and routes? | **Decided:** they are refused, with a message to name `api`; Your Space infers nothing from routes. Owner: "we'll rewrite them, they shouldn't work any more" |
+| 11 | What happens to an installed app whose stored kit lists roles and routes? | Open. Recommended: the migration rewrites each stored kit's agent access once, naming `api` from its routes, so the app's grants keep working until its kit is rewritten |
 
 ## What Exists Today
 
@@ -132,21 +133,37 @@ keys the owner may have meant to retire with the app.
 
 ## 10. Kits That Still List Roles and Routes
 
-**Recommended:** they keep installing. Your Space ignores `roles` and `routes`, takes the API's path
-from the routes' longest common prefix of literal segments when the kit names no `api`, stopping at
-the first `{parameter}` segment (`/rest` for the owner's Twenty kit; `/items` for a kit whose one
-route is `/items/{id}`), or `/` when no literal segment is common, and ignores per-route `credential`
-and `approval`. A kit that
-names `api` is used as it says. Stored kits read the same way.
+**Decided (2026-11-27):** refused. The owner: "we'll rewrite them, they shouldn't work any more". A
+kit whose `agentAccess` lists `roles` or `routes`, or names no `api`, is refused with a message saying
+agent access is per app and to name the API's path with `api`. Your Space infers nothing from routes.
+The fixture kits and the owner's Twenty kit are rewritten.
 
-**Considered:** refusing them with a message to add `api`. Clean, but every kit written for 017 would
-need changing before its app could install again.
+**Considered:** accepting them and taking the API's path from the routes' common prefix (the
+recommendation).
+
+## 11. Installed Apps Whose Stored Kit Lists Roles and Routes
+
+An installed app keeps the kit it was installed with. The owner's Twenty was installed from a 017
+kit, so after the upgrade its stored kit has routes and no `api`, and there is no in-place kit update
+yet (journey 019). Removing and reinstalling it would end its agent access (decision 9).
+
+**Recommended:** the migration rewrites each stored kit's `agentAccess` once into the 018 form: its
+credentials as they are, and `api` from its routes' longest common prefix of literal segments,
+stopping at the first `{parameter}`, or `/`. Roles and routes are dropped. This applies to kits
+already stored only: a kit installed from now on must name `api` (decision 10). The owner's Twenty
+gets `api: /rest`, and its grant keeps working through the upgrade; installing the rewritten kit
+later, through 019's update, replaces the stored one.
+
+**Considered:** leaving stored kits as they are, with agent access unavailable for those apps until
+their kit is rewritten and installed: the owner's onboarding agent would stop until 019 ships, and
+removing and reinstalling Twenty instead would end its grant and keys.
 
 ## Requirements
 
 - **FR-001**: A version 2 kit's `agentAccess` has `api`, a path starting with `/`, and one
-  `credential` or one to eight named `credentials`, as journey 017 has them. A kit may still list
-  `roles` and `routes`; they grant nothing (decision 10).
+  `credential` or one to eight named `credentials`, as journey 017 has them. A kit that lists `roles`
+  or `routes`, or names no `api`, is refused with a message saying so (decision 10). Kits already
+  stored are rewritten once (decision 11).
 - **FR-002**: The owner binds each credential separately, as today; a binding enables no roles.
 - **FR-003**: A grant for an agent and installation names one bound credential, and holds its routes
   that ask (decisions 6 and 7). Without a grant the agent can't reach the app.
@@ -184,7 +201,8 @@ need changing before its app could install again.
   <path> [--body-stdin]` and `your-space agent request <id>`; `invoke` and `actions` are gone.
 - **FR-011**: Tests cover a call under and outside the API, malformed paths, a route that asks and
   one that doesn't, the grant's credential sent alone, a kit change that keeps the grant, removal
-  that ends it, the migration from a 017 grant, including one on two credentials, and an old kit's derived API path.
+  that ends it, the migration from a 017 grant, including one on two credentials, refusing a kit with roles or routes,
+  and the one-time rewrite of a stored 017 kit.
 - **FR-012**: The agent access guide, 005's contracts, the decision record, the roadmap, the fixture
   kits and the owner's Twenty kit describe the new model.
 - **FR-013**: Acceptance repeats journey 017's live run on the owner's installation through `agent
