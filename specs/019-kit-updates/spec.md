@@ -113,7 +113,8 @@ runs. The CLI prints the same summary:
 - the kit's commit, and the Compose file's repository, path and commit, old to new, each linked to
   GitHub so the owner can open the diff there;
 - each image whose reference or digest changes, and whether it is private;
-- settings added, with the ones to fill in, and settings removed;
+- settings added, with the ones to fill in, settings removed, and settings whose value the kit sets
+  that take the new kit's value (section 5);
 - internet hosts the kit adds, approved by applying the update, and hosts it no longer lists;
 - limits for added or removed services, and a changed interface.
 
@@ -131,9 +132,10 @@ instead).
 
 **Decided (2026-11-27):** automatic, once. The owner: "recommended is fine".
 
-Before an update applies, the server keeps what it replaces: the kit, `kit_source`, the Compose
-file and its commit, image pins, settings and kit-listed hosts. If the update's job fails, or the
-app isn't running when the job ends, the server restores them, starts the app again with them,
+Before an update applies, the server keeps what it replaces: the kit, `kit_source`, the app's link,
+the Compose file and its commit, image pins, settings and kit-listed hosts. If the update's job
+fails, or the app isn't running within 5 minutes and then for 10 seconds without a break, the server
+restores them, starts the app again with them,
 records the rollback with the reason, and the owner sees "Update failed and was rolled back:
 \<reason\>". If the rollback doesn't start either, the app shows as failed, as any failed apply does.
 
@@ -159,7 +161,10 @@ show); no rollback (the owner re-pastes the old pinned link).
 
 The server keeps, per app, when it last checked and the update it found, if any, so the Apps list
 and the details page can show "Update available" without checking again. A check that fails, such
-as with GitHub unreachable, counts as a check, so the page doesn't try again on each visit.
+as with GitHub unreachable, counts as a check, so the page doesn't try again on each visit. A check's
+result is kept only while the app still runs the kit it was made against, so a check that finishes
+after an update was applied records nothing. Applying an update clears the result, since the app now
+runs the kit it found; a rolled-back update keeps it, since the update is still there to apply.
 
 These checks are owner-started, so the no-telemetry rule holds: no GitHub request leaves the server
 unless the owner is using it. 015's R7 says the GitHub connection is used "only while the owner
@@ -282,8 +287,8 @@ spec's migration follows it.
   check is over 12 hours old, or when the owner asks for one; never on a timer. The last check's time
   and result are kept per app.
 - **FR-003**: An update's review lists, against the installed app: kit and Compose commits with
-  links, changed images, settings added and removed, hosts added and removed, changed limits and
-  interface. A refused file can't be applied.
+  links, changed images, settings added and removed, kit-set values that take the new kit's value,
+  hosts added and removed, changed limits and interface. A refused file can't be applied.
 - **FR-004**: Applying an update changes the app's row in place and keeps the app's ID, volumes,
   kept settings, publish settings, owner-approved hosts, owner-set limits, agent grants and bound
   credentials; it deletes removed settings and kit hosts the kit dropped and adds the new ones.
