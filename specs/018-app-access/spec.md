@@ -5,7 +5,7 @@
 **Created**: 2026-11-27
 
 **Status**: Proposed. The owner set the model on 2026-11-27 (decisions 1 to 5) and settled
-decision 6; four details are open, each with a recommendation. Nothing is built.
+decisions 6 and 7; three details are open, each with a recommendation. Nothing is built.
 
 **Input**: The owner, on 2026-11-27, after the first live run of journey 017: 017's per-route model
 is too granular to start with. Start broad and add granularity only when it's needed. "access is per
@@ -39,7 +39,7 @@ applies the actual api key, agent never sees the api key."
 | 4 | When does a call ask the owner first? | **Decided:** never, unless the owner adds a route that asks. Owner: "start with a blank list by default, allow all routes and api key determines access. and if usr wants they can define specific route that triggers approval request." |
 | 5 | What does a kit change do to app keys and grants? | **Decided:** keeps them. A grant is to the app, so a new kit, source, commit or Compose file leaves it and the bound keys in place |
 | 6 | How is a route that asks written? | **Decided:** a method and a path, where `*` stands for one path segment, such as `DELETE /rest/people/*`. Owner: "thats fine" |
-| 7 | Whose list is it? | Open. Recommended: each agent's, per app, beside the key it uses |
+| 7 | Whose list is it? | **Decided:** each agent's, per app, beside the key it uses. Owner: "per agent per app is ok" |
 | 8 | What happens to 017's grants and Ask settings? | Open. Recommended: each grant keeps its key and its routes that asked, and waits for the owner to confirm it before it works, since a 018 grant reaches the whole API on that key |
 | 9 | Does removing an app keep its agent access? | Open. Recommended: no. Removing an app, even keeping its data, ends its grants and app keys, as today; only a kit change keeps them |
 | 10 | What about kits that still list roles and routes? | Open. Recommended: they keep installing; Your Space ignores the lists and takes the API's path from the routes' common prefix until the kit names it |
@@ -94,8 +94,8 @@ without a method. Shorter, but it can't single out a delete of one kind of recor
 
 ## 7. Whose List It Is
 
-**Recommended:** each agent's, per app: a grant holds the key the agent uses and its routes that ask.
-One agent can run freely while another asks before the same call.
+**Decided (2026-11-27):** each agent's, per app, as recommended; the owner: "per agent per app is
+ok". A grant holds the key the agent uses and its routes that ask: one agent can run freely while another asks before the same call.
 
 **Considered:** one list per app, for every agent. Fewer settings, but every agent of the app would
 ask the same way.
