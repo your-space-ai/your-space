@@ -172,7 +172,7 @@ describe("links, kits and settings", () => {
     // Without source, a kit names no Compose file: not even the compose.yaml beside it.
     expect(() => composeOf(parseKit(BESIDE))).toThrow(/names no Compose file/);
     // A source without its exact commit is refused, in both kit formats, naming the field.
-    for (const version of ["kit: 1", "kit: 2\nagentAccess: { roles: {}, routes: {} }"]) {
+    for (const version of ["kit: 1", "kit: 2\nagentAccess: { api: /, credential: { binding: key, inject: { location: header, name: X-API-Key } } }"]) {
       expect(() => parseKit(`${version}\nsource: { repo: a/b, path: compose.yaml }\n`), version).toThrow(/source has no commit\. Add source\.commit/);
     }
     for (const commit of ["main", "v1.2.0", COMMIT.slice(0, 12), COMMIT.toUpperCase(), "1234"]) {

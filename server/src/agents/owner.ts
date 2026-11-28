@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
 import { encrypt } from "../apps/settings.ts";
-import { credentialNames, roleCredential } from "../apps/agent-kit.ts";
-import { catalog, conflict, forbidden, hash, invalid, object, owned, roles } from "./store.ts";
+import { AgentKitError, OLD_FORMAT, credentialNames, parseAskRules } from "../apps/agent-kit.ts";
+import { catalog, conflict, forbidden, hash, invalid, object, owned } from "./store.ts";
 
 function name(input: unknown) {
   if (typeof input !== "string" || !input.trim() || input.trim().length > 80)
@@ -54,14 +54,14 @@ export async function manageKey(client: pg.PoolClient, owner: string, id: string
   return { id: result.rows[0].id, key };
 }
 /**
- * Binds an installation's app credentials and the roles it delegates. A kit with one `credential`
- * takes `credential`; a kit with named `credentials` takes `credentials`, a value or null for each name
- * it changes (spec 017). Changing a credential withdraws the grants of the roles that use it.
+ * Binds an installation's app credentials. A kit with one `credential` takes `credential`; a kit with
+ * named `credentials` takes `credentials`, a value or null for each name it changes. Grants name the
+ * credential they use and stay when it is replaced (spec 018); pending approvals go stale.
  */
 export async function bind(client: pg.PoolClient, id: string, body: Record<string, unknown>, dataKey: string) {
-  const { row, access, digest, current, bound } = await catalog(client, id);
+  const { row, access, problem } = await catalog(client, id);
+  if (!access) invalid(problem === "old_format" ? OLD_FORMAT : "This app gives agents no access.");
   if (body.revision !== (row.revision ?? 0)) conflict();
-  const enabled = roles(body.enabledRoles, Object.keys(access.roles));
   const names = credentialNames(access);
   let supplied: Record<string, unknown> = {};
   if (access.credentials) {
@@ -75,50 +75,33 @@ export async function bind(client: pg.PoolClient, id: string, body: Record<strin
   for (const value of Object.values(supplied))
     if (value !== null && (typeof value !== "string" || !/^[\x21-\x7e]{1,4096}$/.test(value)))
       invalid("Enter a valid app credential.");
-  const next: Record<string, string> = { ...bound };
-  for (const [name, value] of Object.entries(supplied)) {
-    if (value === null) delete next[name];
-    else next[name] = encrypt(dataKey, value as string);
-  }
-  for (const role of enabled) {
-    const needs = roleCredential(access, role);
-    if (needs && !Object.hasOwn(next, needs))
-      invalid(access.credentials ? `Supply the ${needs} credential before enabling a role that uses it.` : "Supply an app credential before enabling roles.");
-  }
   const changed = Object.keys(supplied);
   const revision = (row.revision ?? 0) + 1;
-  const credentialRevision = current && !changed.length ? row.credential_revision : revision;
+  const credentialRevision = changed.length ? revision : (row.credential_revision ?? revision);
   await client.query(
-    `insert into agent_binding(app_id,credential,enabled_roles,kit_digest,revision,credential_revision) values ($1,null,$2,$3,$4,$5)
-    on conflict(app_id) do update set credential=null,enabled_roles=excluded.enabled_roles,kit_digest=excluded.kit_digest,revision=excluded.revision,credential_revision=excluded.credential_revision`,
-    [id, enabled, digest, revision, credentialRevision],
+    `insert into agent_binding(app_id,credential,enabled_roles,kit_digest,revision,credential_revision) values ($1,null,'{}','',$2,$3)
+    on conflict(app_id) do update set revision=excluded.revision,credential_revision=excluded.credential_revision`,
+    [id, revision, credentialRevision],
   );
-  await client.query("delete from agent_credential where app_id=$1 and not (name = any($2))", [id, Object.keys(next)]);
-  for (const name of current ? changed : Object.keys(next)) {
-    if (!Object.hasOwn(next, name)) continue;
-    await client.query(
-      `insert into agent_credential(app_id,name,credential) values ($1,$2,$3)
-      on conflict(app_id,name) do update set credential=excluded.credential`,
-      [id, name, next[name]],
-    );
+  for (const [name, value] of Object.entries(supplied)) {
+    if (value === null) await client.query("delete from agent_credential where app_id=$1 and name=$2", [id, name]);
+    else
+      await client.query(
+        `insert into agent_credential(app_id,name,credential) values ($1,$2,$3)
+        on conflict(app_id,name) do update set credential=excluded.credential`,
+        [id, name, encrypt(dataKey, value as string)],
+      );
   }
-  // A replacement credential or kit could represent broader upstream authority. Regrant explicitly:
-  // the roles that use a changed credential, or every grant for a new kit or a kit's only credential.
-  const affected = Object.keys(access.roles).filter((role) => changed.includes(roleCredential(access, role) ?? ""));
-  if (!current || (changed.length && (!access.credentials || affected.length === Object.keys(access.roles).length)))
-    await client.query("delete from agent_grant where app_id=$1", [id]);
-  else
-    await client.query(
-      `update agent_grant set roles=array(select x from unnest(roles) as x where x=any($2) and not x=any($3)), revision=revision+1
-    where app_id=$1 and (not roles <@ $2::text[] or roles && $3::text[])`,
-      [id, enabled, affected],
-    );
   await client.query(
     "update agent_request set status='stale',input=null,revision=revision+1 where app_id=$1 and status='pending'",
     [id],
   );
   return { revision };
 }
+/**
+ * Gives an agent an app, or takes it away (spec 018): the bound credential it uses, and its routes that
+ * ask first. A null credential removes the grant.
+ */
 export async function grant(
   client: pg.PoolClient,
   owner: string,
@@ -127,22 +110,36 @@ export async function grant(
   body: Record<string, unknown>,
 ) {
   await owned(client, id, owner);
-  const { row, access, current, bound } = await catalog(client, appId);
-  if (!current || !Object.keys(bound).length) forbidden();
-  if (body.bindingRevision !== row.revision) conflict();
-  const selected = roles(body.roles, row.enabled_roles);
+  const { row, access, problem, bound } = await catalog(client, appId);
+  if (body.bindingRevision !== (row.revision ?? 0)) conflict();
   const prior = (await client.query("select revision from agent_grant where agent_id=$1 and app_id=$2", [id, appId]))
     .rows[0];
   if (body.revision !== (prior?.revision ?? 0)) conflict();
-  const overrides = object(body.overrides);
-  if (Object.entries(overrides).some(([k, v]) => !Object.hasOwn(access.routes, k) || (v !== "ask" && v !== "allow")))
-    invalid();
+  if (body.credential === null) {
+    await client.query("delete from agent_grant where agent_id=$1 and app_id=$2", [id, appId]);
+    await client.query(
+      "update agent_request set status='revoked',input=null,revision=revision+1 where agent_id=$1 and app_id=$2 and status='pending'",
+      [id, appId],
+    );
+    return { revision: 0 };
+  }
+  // Removing access works on any app; giving it needs a kit that names its API.
+  if (!access) invalid(problem === "old_format" ? OLD_FORMAT : "This app gives agents no access.");
+  if (typeof body.credential !== "string" || !credentialNames(access).includes(body.credential) || !Object.hasOwn(bound, body.credential))
+    invalid("Pick a bound app key for this agent.");
+  let asks;
+  try {
+    asks = parseAskRules(body.asks ?? []);
+  } catch (error) {
+    if (error instanceof AgentKitError) invalid(error.message);
+    throw error;
+  }
   const revision = (prior?.revision ?? 0) + 1;
-  // Ask for all writes is gone (spec 017): nothing reads ask_all_writes, and new grants store false.
+  // Roles, Ask for all writes and route overrides are 017's and stay unread (spec 018).
   await client.query(
-    `insert into agent_grant(app_id,agent_id,roles,ask_all_writes,overrides,revision) values($1,$2,$3,false,$4,$5)
-    on conflict(app_id,agent_id) do update set roles=excluded.roles,ask_all_writes=false,overrides=excluded.overrides,revision=excluded.revision`,
-    [appId, id, selected, overrides, revision],
+    `insert into agent_grant(app_id,agent_id,roles,ask_all_writes,overrides,credential,asks,revision) values($1,$2,'{}',false,'{}',$3,$4,$5)
+    on conflict(app_id,agent_id) do update set credential=excluded.credential,asks=excluded.asks,revision=excluded.revision`,
+    [appId, id, body.credential, JSON.stringify(asks), revision],
   );
   // Pending reviews are exact. A new policy cannot auto-release an earlier request.
   await client.query(

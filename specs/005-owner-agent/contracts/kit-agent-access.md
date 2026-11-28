@@ -1,5 +1,9 @@
 # Installation kit extension for agent access
 
+**Per app (2026-11-27, [journey 018](../../018-app-access/spec.md)).** Agent access is per app: a kit's
+`agentAccess` names the path its API lives under (`api`) and its credentials, and lists no roles or
+routes. The role and route tables below are superseded; a kit that declares them is refused.
+
 Extend the [002 installation kit](../../002-install-an-app/contracts/kit-format.md). Version 1 keeps its current behavior and grants zero agent routes. A new version adds declarative role and route tables. Older servers reject unsupported versions atomically. Registration stores the exact source revision or local digest. App-specific declarations live in the independent kits repository.
 
 To add these declarations to an installed app, remove the app, keeping its data, and install it again with the version 2 kit. (Superseded 2026-11-23: `your-space app upgrade-agent-kit` upgraded a local version 1 kit in place, a one-off for installs from before version 2 kits and labelled interfaces. It left the alpha with no release depending on it; see the [alpha scope](../../../docs/architecture/decisions.md#alpha-scope).)

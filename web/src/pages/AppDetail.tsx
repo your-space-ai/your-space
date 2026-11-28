@@ -1,5 +1,6 @@
 // One app's details (journey 002, US5, US6, US8, US9): its state, settings, internet access,
 // advanced controls (services, limits, logs), and removal.
+import { AgentAccessProblem } from "../components/AgentAccess.tsx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
@@ -126,7 +127,16 @@ function Status({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
             </dd>
           </>
         ) : null}
+        {d.agentAccess ? (
+          <>
+            <dt>Agent access</dt>
+            <dd>
+              {d.agentAccess.problem ? "Unavailable" : <>Agents call its API under <code>{d.agentAccess.api}</code></>}
+            </dd>
+          </>
+        ) : null}
       </dl>
+      {d.agentAccess && <AgentAccessProblem app={d.agentAccess} />}
       <div className="actions">
         {d.interface && d.state !== "removed" && ownTab ? (
           <a className="button" href={ownTab} target="_blank" rel="noreferrer">
@@ -577,7 +587,7 @@ function Remove({ detail: d, onStarted }: { detail: Detail; onStarted: (r: { job
         <div role="alertdialog" aria-labelledby="remove-confirm" className="confirm">
           <p id="remove-confirm">
             Remove {d.title}? Its containers stop and are removed. Its data is kept, so you can install it again with its data, or
-            delete the data later.
+            delete the data later.{d.agentAccess ? " Its agents' access and app keys end; installing it again starts with no agent access." : ""}
           </p>
           <div className="actions">
             <button type="button" className="danger" onClick={() => remove.mutate()} disabled={remove.isPending}>

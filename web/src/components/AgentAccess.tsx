@@ -6,7 +6,7 @@ import {
   type Agent,
   type AgentGrant,
   type AgentInstallation,
-  type Approval,
+  type AskRule,
 } from "../agents-api.ts";
 
 export function ActionFeedback({ action }: { action: ReturnType<typeof useAgentAction> }) {
@@ -22,229 +22,235 @@ export function ActionFeedback({ action }: { action: ReturnType<typeof useAgentA
   );
 }
 
-function RoleChoices({
-  app,
-  choices,
-  selected,
-  change,
-}: {
-  app: AgentInstallation;
-  choices: string[];
-  selected: string[];
-  change: (ids: string[]) => void;
-}) {
-  if (!choices.length) return <p className="muted">No roles are available.</p>;
+/** Why agents can't reach the app, and what brings access back (spec 018 decision 11). */
+export function AgentAccessProblem({ app }: { app: { problem: AgentInstallation["problem"] | "no_interface" } }) {
+  if (app.problem === "no_interface")
+    return (
+      <p className="notice warning">
+        Agent access is unavailable: this app's kit names no interface for Your Space to reach its API through.
+      </p>
+    );
+  if (app.problem !== "old_format") return null;
   return (
-    <div className="role-choices">
-      {choices.map((id) => {
-        const role = app.roles[id];
-        if (!role) return null;
-        return (
-          <label className="checkbox" key={id}>
-            <input
-              type="checkbox"
-              checked={selected.includes(id)}
-              onChange={(e) =>
-                change(e.target.checked ? [...selected, id] : selected.filter((value) => value !== id))
-              }
-            />{" "}
-            {role.title || id}
-            {app.named && app.roleCredentials[id] && <small>Uses the {app.roleCredentials[id]} credential</small>}
-            <small>
-              {role.routes.map((routeId) => {
-                const route = app.routes[routeId];
-                return route ? (
-                  <code key={routeId}>
-                    {route.method} {route.path}
-                  </code>
-                ) : null;
-              })}
-            </small>
-          </label>
-        );
-      })}
-    </div>
+    <p className="notice warning">
+      Agent access is unavailable: this app's kit lists roles and routes, the format before agent access per
+      app. It returns, with its app keys and agents' access as they are, once the app runs a kit that names
+      its API with <code>api</code>. Removing and installing the app again starts with no agent access.
+    </p>
   );
 }
 
-/** Installation-level credential and role ceiling, shared across all of its agents. */
+/** The app keys bound to an installation, shared across its agents. Your Space attaches them; agents never see them. */
 export function AppConnection({ app }: { app: AgentInstallation }) {
   const action = useAgentAction();
-  const [credential, setCredential] = useState("");
-  // A kit that names its credentials takes a value for each, bound separately (spec 017).
-  const [named, setNamed] = useState<Record<string, string>>({});
-  const [roles, setRoles] = useState(app.enabledRoles);
-  const filled = Object.fromEntries(Object.entries(named).filter(([, value]) => value));
+  const [values, setValues] = useState<Record<string, string>>({});
+  const filled = Object.fromEntries(Object.entries(values).filter(([, value]) => value));
   const path = agentPath + "/installations/" + encodeURIComponent(app.id);
+  const bound = app.credentials.some((credential) => credential.bound);
+  const label = (name: string, isBound: boolean) =>
+    app.named
+      ? isBound
+        ? `Replacement ${name} key (optional)`
+        : `App key: ${name}`
+      : isBound
+        ? "Replacement app key (optional)"
+        : "App key";
   return (
     <details className="agent-details">
       <summary>
-        {app.title || app.name} · {app.bound ? "Credential saved" : "No credential"}
+        {app.title || app.name} · {app.problem ? "Unavailable" : bound ? "Key saved" : "No key"}
       </summary>
       <p className="muted small">
         Kit source: <code>{app.source || "Unknown"}</code>
+        {app.api && (
+          <>
+            {" "}
+            · API: <code>{app.api}</code>
+          </>
+        )}
       </p>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void action.run(async () => {
-            await api("PUT", path, {
-              enabledRoles: roles,
-              revision: app.revision,
-              ...(app.named
-                ? Object.keys(filled).length
+      <AgentAccessProblem app={app} />
+      {!app.problem && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void action.run(async () => {
+              await api("PUT", path, {
+                revision: app.revision,
+                ...(app.named
                   ? { credentials: filled }
-                  : {}
-                : credential
-                  ? { credential }
-                  : {}),
-            });
-            setCredential("");
-            setNamed({});
-          }, "Connection saved.");
-        }}
-      >
-        {app.named ? (
-          app.credentials.map(({ name, bound }) => (
+                  : filled[app.credentials[0]!.name]
+                    ? { credential: filled[app.credentials[0]!.name] }
+                    : {}),
+              });
+              setValues({});
+            }, "Keys saved.");
+          }}
+        >
+          {app.credentials.map(({ name, bound: isBound }) => (
             <label key={name}>
-              {bound ? `Replacement ${name} credential (optional)` : `App credential: ${name}`}
+              {label(name, isBound)}
               <input
                 type="password"
                 autoComplete="new-password"
-                value={named[name] ?? ""}
+                value={values[name] ?? ""}
                 maxLength={4096}
-                onChange={(e) => setNamed({ ...named, [name]: e.target.value })}
+                onChange={(e) => setValues({ ...values, [name]: e.target.value })}
               />
             </label>
-          ))
-        ) : (
-          <label>
-            {app.bound ? "Replacement app credential (optional)" : "App credential"}
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={credential}
-              required={!app.bound}
-              maxLength={4096}
-              onChange={(e) => setCredential(e.target.value)}
-            />
-          </label>
-        )}
-        {app.named && app.credentials.some(({ name, bound }) => bound && filled[name]) && (
-          <p className="notice warning">
-            Replacing a credential withdraws the roles that use it from existing agent grants. Grant them again after saving.
+          ))}
+          <p className="muted small">
+            An agent can do what its key's role in the app allows. Give an agent that should do less a narrower key.
+            Replacing a key keeps the agents that use it, on the new key; Your Space stops using the old one at
+            once. Revoke the old key in the app too: Your Space can't.
           </p>
-        )}
-        {!app.named && app.bound && credential && (
-          <p className="notice warning">
-            Replacing this credential clears existing agent grants. Review and grant access again after saving.
-          </p>
-        )}
-        <fieldset>
-          <legend>Roles available for delegation</legend>
-          <RoleChoices app={app} choices={Object.keys(app.roles)} selected={roles} change={setRoles} />
-        </fieldset>
-        <div className="actions">
-          <button disabled={action.busy}>Save connection</button>
-          {app.bound && (
-            <button
-              className="danger-outline"
-              type="button"
-              disabled={action.busy}
-              onClick={() => {
-                if (window.confirm("Disconnect this app credential for all agents?"))
-                  void action.run(async () => {
-                    await api("PUT", path, {
-                      enabledRoles: [],
-                      revision: app.revision,
-                      ...(app.named
-                        ? { credentials: Object.fromEntries(app.credentials.map(({ name }) => [name, null])) }
-                        : { credential: null }),
-                    });
-                    setCredential("");
-                    setNamed({});
-                  }, "Credential disconnected.");
-              }}
-            >
-              Disconnect
-            </button>
-          )}
-        </div>
-      </form>
+          <div className="actions">
+            <button disabled={action.busy || !Object.keys(filled).length}>Save keys</button>
+            {bound && (
+              <button
+                className="danger-outline"
+                type="button"
+                disabled={action.busy}
+                onClick={() => {
+                  if (window.confirm("Disconnect this app's keys for all agents? Revoke them in the app too."))
+                    void action.run(async () => {
+                      await api("PUT", path, {
+                        revision: app.revision,
+                        ...(app.named
+                          ? { credentials: Object.fromEntries(app.credentials.map(({ name }) => [name, null])) }
+                          : { credential: null }),
+                      });
+                      setValues({});
+                    }, "Keys disconnected.");
+                }}
+              >
+                Disconnect
+              </button>
+            )}
+          </div>
+        </form>
+      )}
       <ActionFeedback action={action} />
     </details>
   );
 }
 
+const METHODS: AskRule["method"][] = ["GET", "POST", "PATCH", "PUT", "DELETE"];
+
+/** One agent's access to one app: the app key it uses, and the routes that ask the owner first. */
 export function GrantEditor({ agent, app, grant }: { agent: Agent; app: AgentInstallation; grant?: AgentGrant }) {
   const action = useAgentAction();
-  const [roles, setRoles] = useState(grant?.roles ?? []);
-  const [overrides, setOverrides] = useState<Record<string, Approval>>(grant?.overrides ?? {});
-  const routes = [...new Set(roles.flatMap((id) => app.roles[id]?.routes ?? []))].sort();
+  const choices = app.credentials.filter((credential) => credential.bound).map((credential) => credential.name);
+  const [credential, setCredential] = useState(grant?.credential ?? "");
+  const [asks, setAsks] = useState<AskRule[]>(grant?.asks ?? []);
+  const [method, setMethod] = useState<AskRule["method"]>("DELETE");
+  const [askPath, setAskPath] = useState("");
+  const path = agentPath + "/" + encodeURIComponent(agent.id) + "/grants/" + encodeURIComponent(app.id);
+  const save = (next: string | null) =>
+    action.run(
+      async () => {
+        await api("PUT", path, { credential: next, asks, bindingRevision: app.revision, revision: grant?.revision ?? 0 });
+      },
+      next ? "Agent access saved." : "Agent access removed.",
+    );
   return (
     <details className="agent-details">
       <summary>
         {app.title || app.name} ·{" "}
-        {grant?.roles.length ? grant.roles.map((id) => app.roles[id]?.title || id).join(", ") : "No access"}
+        {grant ? (grant.credential ? `Uses the ${grant.credential} key` : "Pick a key") : "No access"}
       </summary>
-      {!app.bound ? (
-        <p className="muted">Connect a credential for this app below.</p>
-      ) : (
+      <AgentAccessProblem app={app} />
+      {app.problem && grant && (
+        <div className="actions">
+          <button type="button" className="danger-outline" disabled={action.busy} onClick={() => void save(null)}>
+            Remove access
+          </button>
+        </div>
+      )}
+      {!app.problem && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void action.run(async () => {
-              await api(
-                "PUT",
-                agentPath + "/" + encodeURIComponent(agent.id) + "/grants/" + encodeURIComponent(app.id),
-                {
-                  roles,
-                  overrides: Object.fromEntries(Object.entries(overrides).filter(([id]) => routes.includes(id))),
-                  bindingRevision: app.revision,
-                  revision: grant?.revision ?? 0,
-                },
-              );
-            }, "Agent access saved.");
+            void save(credential || null);
           }}
         >
+          {choices.length ? (
+            <label>
+              App key this agent uses
+              <select value={credential} onChange={(e) => setCredential(e.target.value)}>
+                <option value="">No access</option>
+                {choices.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <p className="muted">Save an app key under App connections first.</p>
+          )}
+          {grant && !grant.credential && (
+            <p className="notice warning">This agent's access waits for you to pick the app key it uses.</p>
+          )}
+          <p className="muted small">
+            The agent can call any route under <code>{app.api}</code> that its key allows. Nothing asks you first
+            unless you add a route that does; <code>*</code> stands for one path segment.
+          </p>
           <fieldset>
-            <legend>Granted roles</legend>
-            <RoleChoices app={app} choices={app.enabledRoles} selected={roles} change={setRoles} />
+            <legend>Routes that ask first</legend>
+            {asks.length ? (
+              <ul className="ask-rules">
+                {asks.map((rule, index) => (
+                  <li key={rule.method + " " + rule.path}>
+                    <code>
+                      {rule.method} {rule.path}
+                    </code>{" "}
+                    <button
+                      type="button"
+                      className="danger-outline"
+                      aria-label={`Remove ${rule.method} ${rule.path}`}
+                      onClick={() => setAsks(asks.filter((_, other) => other !== index))}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted small">None: every call runs directly.</p>
+            )}
+            <div className="ask-rule-new">
+              <select aria-label="Method that asks" value={method} onChange={(e) => setMethod(e.target.value as AskRule["method"])}>
+                {METHODS.map((item) => (
+                  <option key={item}>{item}</option>
+                ))}
+              </select>
+              <input
+                aria-label="Path that asks"
+                placeholder={(app.api === "/" ? "" : app.api) + "/items/*"}
+                value={askPath}
+                maxLength={512}
+                onChange={(e) => setAskPath(e.target.value)}
+              />
+              <button
+                type="button"
+                disabled={!askPath.startsWith("/")}
+                onClick={() => {
+                  setAsks([...asks, { method, path: askPath }]);
+                  setAskPath("");
+                }}
+              >
+                Add
+              </button>
+            </div>
           </fieldset>
-          {routes.map((id) => {
-            const route = app.routes[id];
-            if (!route) return null;
-            // A write nobody set asks first, as the gateway does (spec 017).
-            const fallback = route.approval ?? (route.method === "GET" ? "allow" : "ask");
-            const asks = overrides[id] ?? fallback;
-            return (
-              <label className="agent-route" key={id}>
-                <span>
-                  {id}{" "}
-                  <code>
-                    {route.method} {route.path}
-                  </code>
-                </span>
-                <select
-                  aria-label={"Approval for " + id}
-                  value={overrides[id] ?? ""}
-                  onChange={(e) => {
-                    const next = { ...overrides };
-                    if (e.target.value) next[id] = e.target.value as Approval;
-                    else delete next[id];
-                    setOverrides(next);
-                  }}
-                >
-                  <option value="">Use default ({fallback})</option>
-                  <option value="ask">Ask</option>
-                  <option value="allow">Allow</option>
-                </select>
-                <small>{asks === "ask" ? "Approval required." : "Runs directly."}</small>
-              </label>
-            );
-          })}
-          <div>
-            <button disabled={action.busy}>Save agent access</button>
+          <div className="actions">
+            <button disabled={action.busy || !credential}>Save agent access</button>
+            {grant && (
+              <button type="button" className="danger-outline" disabled={action.busy} onClick={() => void save(null)}>
+                Remove access
+              </button>
+            )}
           </div>
         </form>
       )}

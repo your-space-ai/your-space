@@ -1,51 +1,32 @@
-// The declaration lives in the pinned installation kit. Only this module turns a declared route,
-// its validated scalar fields and the agent's body into an upstream request. A role grants a route at
-// its HTTP method and nothing finer (spec 017): a write route declares no effect and no body, and the
-// body passes to the app, which checks it. The app's JSON response reaches the agent unchanged
-// (decision 2026-11-24), so a route declares no output.
-type FieldType = "string" | "uuid" | "integer" | "boolean";
-type Fields = Record<string, FieldType>;
-const WRITE_METHODS = ["POST", "PATCH", "PUT", "DELETE"] as const;
-export interface AgentRoute {
-  method: "GET" | (typeof WRITE_METHODS)[number];
-  path: string;
-  /** Only a GET declares it, as `read`. A stored route with `effect: write`, from before the cut, is left out of every role. */
-  effect?: "read";
-  approval?: "ask" | "allow";
-  pathParams?: Fields;
-  queryFields?: Fields;
-  /** With named `credentials`, the one this route is sent with. */
-  credential?: string;
-}
-/** Fields of the write routes cut on 2026-11-23: Your Space no longer checks bodies or matches retries. */
-const CUT_FIELDS = ["bodyFields", "operationId", "expectedRevision", "receipt"];
-const ROUTE_SHAPE =
-  "A route is a GET with effect: read, or a POST, PATCH, PUT or DELETE with no effect. A role grants the route at its method: a route declares no body fields, operation ID, revision or receipt, and the app checks the body.";
-/** The largest body, in bytes of JSON, that a write sends to the app. */
+// The declaration lives in the pinned installation kit. Agent access is per app (spec 018): a kit
+// says where the app's API lives (`api`) and how its credentials are sent, and lists no roles or
+// routes. A grant gives an agent that API with the bound credential the owner picks for it; the
+// credential's own role in the app limits what the agent can do. This module checks an agent's call
+// (its method, its path under the API, its query and body) and matches the owner's routes that ask.
+// The app's JSON response reaches the agent unchanged (decision 2026-11-24).
+export const METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE"] as const;
+export type Method = (typeof METHODS)[number];
+/** The largest body, in bytes of JSON, that a call sends to the app. */
 export const AGENT_BODY_LIMIT = 32 * 1024;
-export const isWrite = (route: Pick<AgentRoute, "method">) => route.method !== "GET";
-const NO_OUTPUT_FIELDS =
-  "outputFields was removed: Your Space passes the app's JSON response to the agent unchanged. Remove outputFields from the route.";
 /** The largest app result, in bytes of JSON, that an agent gets; the transport stops reading past it. */
 export const AGENT_RESULT_LIMIT = 256 * 1024;
+const PATH_LIMIT = 2048;
 type Inject = { location: "header"; name: string; scheme?: "Bearer" };
 /**
- * A kit names one `credential`, as before spec 017, or several `credentials`, each route naming the
- * one it is sent with, so a setup role can use an admin credential that no record role carries.
+ * A kit names one `credential`, or several `credentials` the owner binds separately, so different
+ * agents can use different app keys, such as a record key and an admin key.
  */
 export interface AgentAccess {
+  /** The path the app's API lives under, without a trailing slash; `/` for the whole app. */
+  api: string;
   credential?: { binding: string; inject: Inject };
   credentials?: Record<string, { inject: Inject }>;
-  roles: Record<string, { title: string; routes: string[] }>;
-  routes: Record<string, AgentRoute>;
 }
 export class AgentKitError extends Error {}
 function check(ok: unknown, message: string): asserts ok {
   if (!ok) throw new AgentKitError(message);
 }
 const id = /^[a-z][a-z0-9-]{0,63}$/;
-const field = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
-const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 function allowedName(value: unknown, pattern: RegExp): value is string {
   return typeof value === "string" && pattern.test(value) && !Object.hasOwn(Object.prototype, value) && value !== "prototype";
 }
@@ -66,61 +47,6 @@ function keys(value: unknown, allowed: readonly string[]): Record<string, unknow
   );
   return obj;
 }
-function nameList(value: unknown, pattern: RegExp): string[] {
-  check(
-    Array.isArray(value) &&
-      value.length <= 128 &&
-      value.every((v) => allowedName(v, pattern)) &&
-      new Set(value).size === value.length,
-    "Invalid or duplicate field or route name.",
-  );
-  return value;
-}
-function parseFields(value: unknown): Fields {
-  const fields: Fields = {};
-  for (const [name, type] of Object.entries(mapping(value))) {
-    check(
-      allowedName(name, field) && (type === "uuid" || type === "integer" || type === "boolean" || type === "string"),
-      "Invalid field declaration.",
-    );
-    fields[name] = type;
-  }
-  return fields;
-}
-function parseRoute(value: unknown): AgentRoute {
-  const declared = mapping(value);
-  check(!CUT_FIELDS.some((name) => Object.hasOwn(declared, name)), ROUTE_SHAPE);
-  check(!Object.hasOwn(declared, "outputFields"), NO_OUTPUT_FIELDS);
-  const r = keys(value, ["method", "path", "effect", "approval", "pathParams", "queryFields", "credential"]);
-  const { method, path, effect, approval } = r;
-  check(
-    (method === "GET" && effect === "read") ||
-      (WRITE_METHODS.includes(method as (typeof WRITE_METHODS)[number]) && effect === undefined),
-    ROUTE_SHAPE,
-  );
-  check(approval === undefined || approval === "allow" || approval === "ask", "Unknown approval setting.");
-  check(typeof path === "string" && path.startsWith("/") && path.length <= 512, "Expected a relative route path.");
-  const route = { method, path, ...(effect ? { effect } : {}), approval } as AgentRoute;
-  if (r.credential !== undefined) {
-    check(allowedName(r.credential, id), "Invalid credential name.");
-    route.credential = r.credential;
-  }
-  for (const slot of ["pathParams", "queryFields"] as const) {
-    if (r[slot] !== undefined) route[slot] = parseFields(r[slot]);
-  }
-  const params = new Set(Object.keys(route.pathParams ?? {}));
-  const segments = path.slice(1).split("/");
-  if (segments.at(-1) === "") segments.pop();
-  for (const segment of segments) {
-    if (/^[a-z\d_~-][a-z\d_.~-]*$/i.test(segment)) continue;
-    check(
-      /^\{[A-Za-z][A-Za-z0-9_]*\}$/.test(segment) && params.delete(segment.slice(1, -1)),
-      "Invalid path segment or undeclared parameter.",
-    );
-  }
-  check(params.size === 0, "Unused path parameter.");
-  return route;
-}
 function parseInject(value: unknown): Inject {
   const inject = keys(value, ["location", "name", "scheme"]);
   check(inject.location === "header" && typeof inject.name === "string", "Invalid credential binding.");
@@ -133,128 +59,156 @@ function parseInject(value: unknown): Inject {
   );
   return { location: "header", name: inject.name, ...(authName === "authorization" ? { scheme: "Bearer" as const } : {}) };
 }
+export const OLD_FORMAT =
+  "Agent access is per app: a kit names the path its API lives under with api, such as api: /rest, and its credential or credentials, and lists no roles or routes. Remove roles and routes and add api.";
+/** RFC 3986 path characters, less `;`, which some apps read as path parameters and strip before routing. */
+const PATH_CHARS = /^[A-Za-z0-9\-._~!$&'()*+,=:@%/]*$/;
+/** One segment of a path the owner writes, such as in `api` or a route that asks: no escapes, no `;`. */
+const LITERAL_SEGMENT = /^[A-Za-z0-9\-._~!$&'()*+,=:@]+$/;
+function parseApi(value: unknown): string {
+  check(typeof value === "string" && value.startsWith("/") && value.length <= 256, "api must be a path starting with /.");
+  const segments = value.slice(1).split("/");
+  if (segments.at(-1) === "") segments.pop();
+  check(
+    segments.every((segment) => LITERAL_SEGMENT.test(segment) && segment !== "." && segment !== ".."),
+    "api must be a plain path, such as /rest.",
+  );
+  return "/" + segments.join("/");
+}
 export function parseAgentAccess(value: unknown): AgentAccess {
-  const a = keys(value, ["credential", "credentials", "roles", "routes"]);
+  const declared = mapping(value);
+  check(!Object.hasOwn(declared, "roles") && !Object.hasOwn(declared, "routes") && declared.api !== undefined, OLD_FORMAT);
+  const a = keys(value, ["api", "credential", "credentials"]);
   check((a.credential === undefined) !== (a.credentials === undefined), "Declare either credential or credentials.");
-  let single: AgentAccess["credential"];
-  let named: AgentAccess["credentials"];
+  const api = parseApi(a.api);
   if (a.credential !== undefined) {
     const credential = keys(a.credential, ["binding", "inject"]);
     check(allowedName(credential.binding, id), "Invalid credential binding.");
-    single = { binding: credential.binding, inject: parseInject(credential.inject) };
-  } else {
-    named = {};
-    const entries = Object.entries(mapping(a.credentials));
-    check(entries.length >= 1 && entries.length <= 8, "Declare between one and eight credentials.");
-    for (const [name, declared] of entries) {
-      check(allowedName(name, id), "Invalid credential name.");
-      named[name] = { inject: parseInject(keys(declared, ["inject"]).inject) };
-    }
+    return { api, credential: { binding: credential.binding, inject: parseInject(credential.inject) } };
   }
-  const routes: AgentAccess["routes"] = {};
-  for (const [name, declaration] of Object.entries(mapping(a.routes))) {
-    check(allowedName(name, id), "Invalid route ID.");
-    const route = parseRoute(declaration);
-    check(
-      named ? route.credential !== undefined && Object.hasOwn(named, route.credential) : route.credential === undefined,
-      "With credentials, each route names one of them; with one credential, routes name none.",
-    );
-    const segments = route.path.toLowerCase().replace(/\/$/, "").split("/");
-    for (const other of Object.values(routes)) {
-      if (other.method !== route.method) continue;
-      const previous = other.path.toLowerCase().replace(/\/$/, "").split("/");
-      const overlaps =
-        previous.length === segments.length &&
-        previous.every((s, i) => s === segments[i] || s.startsWith("{") || segments[i].startsWith("{"));
-      check(!overlaps, "Ambiguous method and route.");
-    }
-    routes[name] = route;
+  const credentials: NonNullable<AgentAccess["credentials"]> = {};
+  const entries = Object.entries(mapping(a.credentials));
+  check(entries.length >= 1 && entries.length <= 8, "Declare between one and eight credentials.");
+  for (const [name, entry] of entries) {
+    check(allowedName(name, id), "Invalid credential name.");
+    credentials[name] = { inject: parseInject(keys(entry, ["inject"]).inject) };
   }
-  const roles: AgentAccess["roles"] = {};
-  for (const [name, declaration] of Object.entries(mapping(a.roles))) {
-    const role = keys(declaration, ["title", "routes"]);
-    check(
-      allowedName(name, id) &&
-        typeof role.title === "string" &&
-        role.title.trim().length > 0 &&
-        role.title.length <= 80 &&
-        !/[\x00-\x1f\x7f]/.test(role.title),
-      "Invalid role ID or title.",
-    );
-    const roleRoutes = nameList(role.routes, id);
-    check(
-      roleRoutes.every((key) => Object.hasOwn(routes, key)),
-      "Role includes an unknown route.",
-    );
-    // A grant carries one app credential, so granting a record role never carries a setup role's key.
-    check(new Set(roleRoutes.map((key) => routes[key]!.credential)).size <= 1, "A role's routes all use one credential.");
-    roles[name] = { title: role.title, routes: roleRoutes };
-  }
-  return { ...(single ? { credential: single } : { credentials: named }), roles, routes };
+  return { api, credentials };
+}
+/**
+ * The agent access a stored kit gives, or why it gives none. A kit stored before spec 018 lists roles
+ * and routes and names no api: it stays as it is, with its app's agent access unavailable until the
+ * app runs a kit that names api (spec 018 decision 11).
+ */
+export function storedAgentAccess(kit: unknown): { access: AgentAccess } | { problem: "old_format" } | undefined {
+  const declared = (kit as { agentAccess?: Record<string, unknown> } | null)?.agentAccess;
+  if (!declared) return undefined;
+  if (typeof declared.api !== "string" || Object.hasOwn(declared, "roles") || Object.hasOwn(declared, "routes"))
+    return { problem: "old_format" };
+  return { access: declared as unknown as AgentAccess };
 }
 /** The credentials a kit declares, by name in sorted order (a stored kit's keys don't keep theirs): a kit with one `credential` names it by its binding. */
 export function credentialNames(access: AgentAccess): string[] {
   return access.credentials ? Object.keys(access.credentials).sort() : access.credential ? [access.credential.binding] : [];
 }
-/** The name and injection of the credential a route is sent with. */
-export function routeCredential(access: AgentAccess, route: AgentRoute): { name: string; inject: Inject } {
-  if (access.credentials) {
-    const name = route.credential!;
-    return { name, inject: access.credentials[name]!.inject };
-  }
-  return { name: access.credential!.binding, inject: access.credential!.inject };
+/** How the named credential is sent, or nothing when the kit doesn't name it. */
+export function credentialInject(access: AgentAccess, name: string): Inject | undefined {
+  if (access.credentials) return Object.hasOwn(access.credentials, name) ? access.credentials[name]!.inject : undefined;
+  return access.credential?.binding === name ? access.credential.inject : undefined;
 }
-/** The credential a role's routes use, or none for a role with no routes. */
-export function roleCredential(access: AgentAccess, role: string): string | undefined {
-  const first = access.roles[role]?.routes[0];
-  return first && access.routes[first] ? routeCredential(access, access.routes[first]).name : undefined;
+/** An agent's call, checked: what is sent, and the decoded path routes that ask are matched against. */
+export interface AgentCall {
+  method: Method;
+  /** The path as sent: the agent's path, and its query encoded again. */
+  target: string;
+  /** The path's segments, decoded once, without a trailing empty one. */
+  segments: string[];
+  /** The method and decoded path, for Activity and for the owner; never the query. */
+  label: string;
+  body?: string;
 }
-function validateInput(fields: Fields, values: unknown): Record<string, string | boolean | number> {
-  const result: Record<string, string | boolean | number> = {};
-  const input = mapping(values);
-  for (const name of Object.keys(input).sort()) {
-    const v = input[name];
-    check(Object.hasOwn(fields, name), "Undeclared input field.");
-    const type = fields[name];
-    if (type === "integer") check(typeof v === "number" && Number.isSafeInteger(v), "Expected integer.");
-    else if (type === "boolean") check(typeof v === "boolean", "Expected boolean.");
-    else {
-      check(typeof v === "string" && v.length <= 8192, "Expected bounded text.");
-      if (type === "uuid") check(uuid.test(v), "Expected UUID.");
-    }
-    result[name] = v;
-  }
-  return result;
-}
-export function renderAgentRequest(
-  route: AgentRoute,
-  input: unknown,
-): { method: string; path: string; headers: Record<string, string>; body?: string } {
-  const values = keys(input === undefined ? {} : input, ["path", "query", "body"]);
-  // A write's body is the agent's JSON, sent as it is: the app checks it. Only its size is limited here.
-  let body: string | undefined;
-  if (values.body !== undefined) {
-    check(isWrite(route), "A read takes no body.");
+export function parseCall(access: AgentAccess, input: { method: unknown; path: unknown; body?: unknown }): AgentCall {
+  const method = input.method;
+  check(typeof method === "string" && (METHODS as readonly string[]).includes(method), "Use GET, POST, PATCH, PUT or DELETE.");
+  const raw = input.path;
+  check(typeof raw === "string" && raw.startsWith("/") && raw.length <= PATH_LIMIT, "The path must start with / and be at most 2048 characters.");
+  const mark = raw.indexOf("?");
+  const path = mark < 0 ? raw : raw.slice(0, mark);
+  check(PATH_CHARS.test(path) && !/%(?![\da-fA-F]{2})/.test(path), "The path has a character Your Space doesn't send, such as ; or a space.");
+  const parts = path === "/" ? [] : path.slice(1).split("/");
+  if (parts.length > 1 && parts.at(-1) === "") parts.pop();
+  const segments = parts.map((part) => {
+    let decoded: string;
     try {
-      body = JSON.stringify(values.body);
+      decoded = decodeURIComponent(part);
+    } catch {
+      throw new AgentKitError("The path has an invalid escape.");
+    }
+    // An app that decodes again mustn't see a path Your Space didn't check.
+    check(part.length > 0 && decoded !== "." && decoded !== ".." && !/[/\\\0%;]/.test(decoded), "The path has an empty, dot or escaped segment.");
+    return decoded;
+  });
+  const apiSegments = access.api === "/" ? [] : access.api.slice(1).split("/");
+  check(
+    segments.length >= apiSegments.length && apiSegments.every((segment, index) => segments[index] === segment),
+    `The path must be under ${access.api}, where this app's API lives.`,
+  );
+  let target = path;
+  if (mark >= 0) {
+    const query = new URLSearchParams(raw.slice(mark + 1)).toString();
+    if (query) target += "?" + query;
+  }
+  let body: string | undefined;
+  if (input.body !== undefined) {
+    check(method !== "GET", "A GET takes no body.");
+    try {
+      body = JSON.stringify(input.body);
     } catch {
       // Not JSON.
     }
     check(typeof body === "string", "The body must be JSON.");
     check(Buffer.byteLength(body) <= AGENT_BODY_LIMIT, "The body is larger than 32 KiB.");
   }
-  const params = validateInput(route.pathParams ?? {}, values.path === undefined ? {} : values.path);
-  const query = validateInput(route.queryFields ?? {}, values.query === undefined ? {} : values.query);
-  let path = route.path.replace(/\{([^{}]+)\}/g, (_, k: string) => {
-    check(Object.hasOwn(params, k), "Missing path parameter.");
-    const value = String(params[k]);
-    check(/^[A-Za-z0-9_~-][A-Za-z0-9_.~-]{0,255}$/.test(value), "Invalid path parameter.");
-    return value;
+  return { method: method as Method, target, segments, label: method + " /" + segments.join("/"), ...(body === undefined ? {} : { body }) };
+}
+/** A route the owner set to ask first: a method and a path whose segments are literal or `*`. */
+export interface AskRule {
+  method: Method;
+  path: string;
+}
+export function parseAskRules(value: unknown): AskRule[] {
+  // At most as many as a 017 kit had routes, so every grant the 0019 migration carries over fits.
+  check(Array.isArray(value) && value.length <= 128, "List at most 128 routes that ask.");
+  const rules: AskRule[] = [];
+  for (const entry of value) {
+    const rule = keys(entry, ["method", "path"]);
+    check(typeof rule.method === "string" && (METHODS as readonly string[]).includes(rule.method), "A route that asks names GET, POST, PATCH, PUT or DELETE.");
+    check(typeof rule.path === "string" && rule.path.startsWith("/") && rule.path.length <= 512, "A route that asks has a path starting with /.");
+    const segments = rule.path === "/" ? [] : rule.path.slice(1).split("/");
+    if (segments.length > 1 && segments.at(-1) === "") segments.pop();
+    check(
+      segments.every((segment) => segment === "*" || (LITERAL_SEGMENT.test(segment) && segment !== "." && segment !== "..")),
+      "A route that asks has plain path segments, or * for one segment.",
+    );
+    const normalized = { method: rule.method as Method, path: "/" + segments.join("/") };
+    if (!rules.some((r) => r.method === normalized.method && r.path === normalized.path)) rules.push(normalized);
+  }
+  return rules;
+}
+/**
+ * Whether a call asks first. A rule matches its method and each decoded segment, `*` matching any
+ * one, ignoring letter case and a trailing slash: matching too much only asks once more.
+ */
+export function asksFirst(rules: readonly AskRule[], call: AgentCall): boolean {
+  return rules.some((rule) => {
+    if (rule.method !== call.method) return false;
+    const segments = rule.path === "/" ? [] : rule.path.slice(1).split("/");
+    const called = call.segments;
+    return (
+      segments.length === called.length &&
+      segments.every((segment, index) => segment === "*" || segment.toLowerCase() === called[index]!.toLowerCase())
+    );
   });
-  const search = new URLSearchParams();
-  for (const key of Object.keys(query).sort()) search.set(key, String(query[key]));
-  if (search.size) path += "?" + search.toString();
-  return { method: route.method, path, headers: {}, ...(body === undefined ? {} : { body }) };
 }
 export function agentCredentialHeader(inject: Inject, secret: string): Record<string, string> {
   check(typeof secret === "string" && /^[\x21-\x7e]{1,8192}$/.test(secret), "Invalid app credential.");

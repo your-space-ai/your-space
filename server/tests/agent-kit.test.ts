@@ -1,123 +1,130 @@
 import { describe, expect, it } from "vitest";
 import { parseKit, KitError } from "../src/apps/kits.ts";
-import { AGENT_RESULT_LIMIT, agentCredentialHeader, passAgentResult, renderAgentRequest } from "../src/apps/agent-kit.ts";
+import {
+  AGENT_RESULT_LIMIT,
+  agentCredentialHeader,
+  asksFirst,
+  parseAgentAccess,
+  parseAskRules,
+  parseCall,
+  passAgentResult,
+  storedAgentAccess,
+} from "../src/apps/agent-kit.ts";
 
-const fixture = {
-  kit: 2,
-  agentAccess: {
-    credential: { binding: "service", inject: { location: "header", name: "Authorization", scheme: "Bearer" } },
-    roles: { read: { title: "Read", routes: ["list"] }, inspect: { title: "Inspect", routes: ["list", "show"] } },
-    routes: {
-      list: { method: "GET", path: "/items", effect: "read", queryFields: { search: "string" } },
-      show: {
-        method: "GET",
-        path: "/items/{id}",
-        effect: "read",
-        approval: "ask",
-        pathParams: { id: "integer" },
-      },
-    },
-  },
-};
+const bearer = { location: "header", name: "Authorization", scheme: "Bearer" };
+const fixture = { kit: 2, agentAccess: { api: "/rest", credential: { binding: "service", inject: bearer } } };
 const access = parseKit(JSON.stringify(fixture)).agentAccess!;
-const { show, list } = access.routes;
-const write = {
-  method: "PATCH",
-  path: "/items/{id}",
-  effect: "write",
-  pathParams: { id: "integer" },
-  bodyFields: { title: "string" },
-  operationId: { in: "header", name: "Idempotency-Key" },
-};
+const call = (method: string, path: string, body?: unknown) => parseCall(access, { method, path, body });
 
-describe("a pinned agent-access kit", () => {
-  it("keeps legacy kits browser-only and rejects a partial upgrade", () => {
+describe("a kit's agent access (spec 018)", () => {
+  it("names the API's path and its credentials, and nothing else", () => {
+    expect(access).toEqual({ api: "/rest", credential: { binding: "service", inject: bearer } });
+    expect(parseAgentAccess({ api: "/", credentials: { records: { inject: bearer }, setup: { inject: bearer } } })).toEqual({
+      api: "/",
+      credentials: { records: { inject: bearer }, setup: { inject: bearer } },
+    });
+    expect(parseAgentAccess({ api: "/rest/", credential: fixture.agentAccess.credential }).api).toBe("/rest");
     expect(parseKit("kit: 1\n").agentAccess).toBeUndefined();
     expect(() => parseKit(JSON.stringify({ ...fixture, kit: 1 }))).toThrow(KitError);
-    expect(() => parseKit("kit: 2\n")).toThrow(KitError);
-    expect(access.roles.inspect.routes).toEqual(["list", "show"]);
-  });
-
-  it("validates role references, credential bindings and overlapping routes", () => {
-    for (const change of [
-      { roles: { operator: { title: "Operator", routes: ["missing"] } } },
-      { routes: { list: { ...list, path: "https://example.test" } } },
-      { routes: { list, show, another: { ...show, path: "/items/current", pathParams: {} } } },
-      { credential: { binding: "service", inject: { location: "header", name: "Host" } } },
-      { vetted: true },
-    ]) {
-      expect(() => parseKit(JSON.stringify({ ...fixture, agentAccess: { ...fixture.agentAccess, ...change } }))).toThrow(
-        KitError,
-      );
-    }
-  });
-
-  it("accepts a write route by its method alone and refuses what a cut write route declared", () => {
-    const routes = {
-      list,
-      show,
-      create: { method: "POST", path: "/items" },
-      edit: { method: "PATCH", path: "/items/{id}", pathParams: { id: "integer" }, approval: "allow" },
-      replace: { method: "PUT", path: "/items/{id}", pathParams: { id: "integer" } },
-      remove: { method: "DELETE", path: "/items/{id}", pathParams: { id: "integer" } },
-    };
-    const parsed = parseKit(JSON.stringify({ ...fixture, agentAccess: { ...fixture.agentAccess, routes } })).agentAccess!;
-    expect(parsed.routes.create).toEqual({ method: "POST", path: "/items" });
-    expect(parsed.routes.edit!.approval).toBe("allow");
-    for (const route of [
-      write,
-      { ...write, effect: "read" },
-      { method: "POST", path: "/items", effect: "write" },
-      { method: "POST", path: "/items", effect: "create" },
-      { ...list, method: "POST" },
-      { ...list, method: "OPTIONS", effect: undefined },
-      { method: "POST", path: "/items", bodyFields: { title: "string" } },
-      { method: "POST", path: "/items", operationId: { in: "header", name: "Idempotency-Key" } },
-      { method: "PATCH", path: "/items", expectedRevision: { in: "header", name: "If-Match" } },
-      { method: "POST", path: "/items", receipt: { route: "list", param: "id" } },
-    ]) {
-      expect(() =>
-        parseKit(JSON.stringify({ ...fixture, agentAccess: { ...fixture.agentAccess, routes: { list, show, edit: route } } })),
-      ).toThrow(/A route is a GET with effect: read, or a POST, PATCH, PUT or DELETE with no effect/);
-    }
-  });
-
-  it("sends a write's body as the agent's JSON, up to 32 KiB, and no body on a read", () => {
-    const create = { method: "POST" as const, path: "/items" };
-    const body = { title: "new", company: { create: { name: "Nested" } }, tags: [1, null] };
-    expect(renderAgentRequest(create, { body })).toEqual({
-      method: "POST",
-      path: "/items",
-      headers: {},
-      body: JSON.stringify(body),
-    });
-    expect(renderAgentRequest(create, {})).toEqual({ method: "POST", path: "/items", headers: {} });
-    expect(() => renderAgentRequest(create, { body: { text: "x".repeat(32 * 1024) } })).toThrow(/32 KiB/);
-    expect(() => renderAgentRequest(list, { body: {} })).toThrow(/A read takes no body/);
-  });
-
-  it("refuses outputFields, saying the app's response is passed through", () => {
-    const routes = { list: { ...list, outputFields: ["id"] }, show };
-    expect(() => parseKit(JSON.stringify({ ...fixture, agentAccess: { ...fixture.agentAccess, routes } }))).toThrow(
-      /outputFields was removed: Your Space passes the app's JSON response to the agent unchanged/,
-    );
-  });
-
-  it("renders only kit-declared input and sorted query parameters", () => {
-    expect(renderAgentRequest(list, { query: { search: "blue & green" } }).path).toBe("/items?search=blue+%26+green");
-    expect(renderAgentRequest(show, { path: { id: 7 } })).toEqual({ method: "GET", path: "/items/7", headers: {} });
     expect(agentCredentialHeader(access.credential!.inject, "synthetic-key")).toEqual({ Authorization: "Bearer synthetic-key" });
   });
 
-  it("rejects unknown fields, a body and unsafe parameter segments", () => {
-    expect(() => renderAgentRequest(list, { headers: {} })).toThrow();
-    expect(() => renderAgentRequest(list, { body: { title: "new" } })).toThrow();
-    expect(() => renderAgentRequest(list, { query: { unexpected: "x" } })).toThrow();
-    expect(() => renderAgentRequest(list, { query: null })).toThrow();
-    expect(() => renderAgentRequest(show, { path: { id: "7" } })).toThrow();
-    const textRoute = { ...show, pathParams: { id: "string" as const } };
-    for (const id of ["..", "a/b", "a%2fb", "?x", "a\\b"]) {
-      expect(() => renderAgentRequest(textRoute, { path: { id } })).toThrow();
+  it("refuses a kit in 017's format, with roles or routes or no api, saying what to change", () => {
+    for (const agentAccess of [
+      { credential: fixture.agentAccess.credential, roles: {}, routes: {} },
+      { api: "/rest", credential: fixture.agentAccess.credential, routes: {} },
+      { api: "/rest", credential: fixture.agentAccess.credential, roles: {} },
+      { credential: fixture.agentAccess.credential },
+    ]) {
+      expect(() => parseKit(JSON.stringify({ kit: 2, agentAccess }))).toThrow(/Agent access is per app: a kit names the path its API lives under with api/);
+    }
+    for (const api of ["rest", "/rest/../admin", "/rest/%2e", "/a;b", "/a b", 7]) {
+      expect(() => parseAgentAccess({ api, credential: fixture.agentAccess.credential }), String(api)).toThrow();
+    }
+    for (const change of [
+      { credential: undefined },
+      { credentials: {} },
+      { credential: { binding: "service", inject: { location: "header", name: "Host" } } },
+      { vetted: true },
+    ]) {
+      expect(() => parseAgentAccess({ ...fixture.agentAccess, ...change })).toThrow();
+    }
+  });
+
+  it("reads a stored 017 kit as giving no access, and a 018 kit as it is", () => {
+    expect(storedAgentAccess({ kit: 2, agentAccess: { credential: {}, roles: {}, routes: {} } })).toEqual({ problem: "old_format" });
+    expect(storedAgentAccess({ kit: 2, agentAccess: access })).toEqual({ access });
+    expect(storedAgentAccess({ kit: 1 })).toBeUndefined();
+  });
+
+  it("takes a call under the API, with its query encoded again and its body as JSON", () => {
+    expect(call("GET", "/rest/companies?limit=5&filter=name%5Beq%5D%3AAcme&tag=a&tag=b")).toEqual({
+      method: "GET",
+      target: "/rest/companies?limit=5&filter=name%5Beq%5D%3AAcme&tag=a&tag=b",
+      segments: ["rest", "companies"],
+      label: "GET /rest/companies",
+    });
+    const body = { name: "Acme", company: { create: { name: "Nested" } } };
+    expect(call("POST", "/rest/companies", body)).toMatchObject({ target: "/rest/companies", body: JSON.stringify(body) });
+    expect(call("GET", "/rest/users/alice@example.com/").segments).toEqual(["rest", "users", "alice@example.com"]);
+    expect(call("PATCH", "/rest/a%20b").segments).toEqual(["rest", "a b"]);
+    expect(parseCall({ ...access, api: "/" }, { method: "GET", path: "/" }).segments).toEqual([]);
+  });
+
+  it("refuses a call outside the API, or one an app could read as another path", () => {
+    for (const path of [
+      "/restricted/x",
+      "/REST/companies",
+      "/other",
+      "rest/companies",
+      "/rest/../admin",
+      "/rest/%2e%2e/admin",
+      "/rest/a%2fb",
+      "/rest/a%5cb",
+      "/rest/a%00",
+      "/rest/%2561dmin",
+      "/rest//companies",
+      "/rest/a;v=1",
+      "/rest/a%3Bv=1",
+      "/rest/a%3bv=1",
+      "/rest/a b",
+      "/rest/%zz",
+      "/rest/" + "x".repeat(2048),
+    ]) {
+      expect(() => call("GET", path), path).toThrow();
+    }
+    expect(() => call("OPTIONS", "/rest/x")).toThrow(/GET, POST, PATCH, PUT or DELETE/);
+    expect(() => call("GET", "/rest/x", {})).toThrow(/A GET takes no body/);
+    expect(() => call("POST", "/rest/x", { text: "x".repeat(32 * 1024) })).toThrow(/32 KiB/);
+  });
+
+  it("asks first only for a call that matches a route that asks, case and trailing slash aside", () => {
+    const rules = parseAskRules([
+      { method: "DELETE", path: "/rest/people/*" },
+      { method: "POST", path: "/rest/metadata/*/" },
+      { method: "DELETE", path: "/rest/people/*" },
+    ]);
+    expect(rules).toEqual([
+      { method: "DELETE", path: "/rest/people/*" },
+      { method: "POST", path: "/rest/metadata/*" },
+    ]);
+    expect(asksFirst(rules, call("DELETE", "/rest/people/3f8a2c1e"))).toBe(true);
+    expect(asksFirst(rules, call("DELETE", "/rest/People/3f8a2c1e/"))).toBe(true);
+    expect(asksFirst(rules, call("DELETE", "/rest/people/3f8a2c1e?soft=true"))).toBe(true);
+    expect(asksFirst(rules, call("DELETE", "/rest/people"))).toBe(false);
+    expect(asksFirst(rules, call("DELETE", "/rest/people/a/b"))).toBe(false);
+    expect(asksFirst(rules, call("GET", "/rest/people/3f8a2c1e"))).toBe(false);
+    expect(asksFirst(rules, call("POST", "/rest/metadata/fields"))).toBe(true);
+    expect(asksFirst([], call("DELETE", "/rest/people/x"))).toBe(false);
+    const root = parseAskRules([{ method: "GET", path: "/" }]);
+    expect(root).toEqual([{ method: "GET", path: "/" }]);
+    const whole = { ...access, api: "/" };
+    expect(asksFirst(root, parseCall(whole, { method: "GET", path: "/" }))).toBe(true);
+    expect(asksFirst(root, parseCall(whole, { method: "GET", path: "/records" }))).toBe(false);
+    expect(parseAskRules(Array.from({ length: 128 }, (_, i) => ({ method: "POST", path: "/r" + i })))).toHaveLength(128);
+    expect(() => parseAskRules(Array.from({ length: 129 }, (_, i) => ({ method: "POST", path: "/r" + i })))).toThrow(/128/);
+    for (const rules of [[{ method: "TRACE", path: "/x" }], [{ method: "GET", path: "x" }], [{ method: "GET", path: "/a;b" }], [{ method: "GET", path: "/%2e" }], "x"]) {
+      expect(() => parseAskRules(rules)).toThrow();
     }
   });
 

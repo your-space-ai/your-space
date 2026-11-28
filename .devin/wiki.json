@@ -121,7 +121,7 @@
     },
     {
       "title": "Agent Store, Grants and Gateway",
-      "purpose": "Kit-defined read-only roles, grants, approvals, the gateway and attribution. Agents only read: kits can't declare write routes.",
+      "purpose": "Agent access per app (spec 018): a kit names its API path and app keys, a grant gives an agent an app with the key the owner picks, routes that ask, the gateway's path checks, the response check and attribution.",
       "parent": "Agent Delegation"
     },
     {

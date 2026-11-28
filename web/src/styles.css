@@ -568,19 +568,25 @@ form.inline {
 .agent-page .agent-details[open] > summary {
   margin-bottom: 1rem;
 }
-.agent-page .role-choices code {
-  display: inline-block;
-  margin-right: 0.5rem;
+.agent-page .ask-rules {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+}
+.agent-page .ask-rules li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+.agent-page .ask-rule-new {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
 }
 .agent-page .secret {
   margin-top: 1rem;
-}
-.agent-page .agent-route {
-  grid-template-columns: minmax(0,1fr) auto;
-  align-items: center;
-}
-.agent-page .agent-route small {
-  grid-column: 1 / -1;
 }
 .agent-page summary,
 .agent-page dd,
@@ -594,7 +600,7 @@ form.inline {
   margin: 0.75rem 0 0.5rem;
 }
 @media (max-width: 560px) {
-  .agent-page .agent-route {
+  .agent-page .ask-rule-new {
     grid-template-columns: auto;
   }
 }
