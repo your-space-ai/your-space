@@ -25,6 +25,10 @@ export class FakeRuntime implements Runtime {
   ];
 
   stopping = false;
+  /** The knowledge bases' storage, by name. */
+  knowledge = new Set<string>();
+  /** Per project: the spec its containers run, from its last apply that succeeded. */
+  applied = new Map<string, AppSpec>();
 
   async engine() {
     return { stopping: this.stopping, reachable: true, version: "29.0.0", os: "linux", arch: "amd64", cpus: 4, memory: 8 * 1024 ** 3, connection: "unix:///var/run/docker.sock" };
@@ -56,6 +60,10 @@ export class FakeRuntime implements Runtime {
     this.calls.push({ method: "apply", spec });
     onEvent({ step: "check" });
     if (this.failApply) throw new Error(this.failApply);
+    // Like the runtime manager, a knowledge base without its storage stops the apply before anything
+    // starts. Its refusal comes in the apply's stream, which the client answers as a failed apply.
+    const missingBase = spec.knowledge?.bases.find((name) => !this.knowledge.has(name));
+    if (missingBase) throw new RuntimeError(`The knowledge base ${missingBase} isn't on this machine's engine, so ${spec.app} can't mount it.`, 502, "apply_failed");
     // An apply never gives a required setting a placeholder.
     const missing = this.variables.find((v) => v.required && !spec.env[v.name]);
     if (missing) throw new Error(`The file isn't a Compose file Your Space can read: required variable ${missing.name} is missing a value`);
@@ -68,6 +76,7 @@ export class FakeRuntime implements Runtime {
         ? [{ name: "ys-publish", role: "publish" as const, state: "running", ...(spec.publish.frame ? { framing: String(this.calls.length).padStart(12, "0") } : {}) }]
         : []),
     ]);
+    this.applied.set(spec.project, spec);
     onEvent({ step: "started" });
   }
 
@@ -75,6 +84,7 @@ export class FakeRuntime implements Runtime {
   async down(project: string) {
     this.calls.push({ method: "down", project });
     this.running.delete(project);
+    this.applied.delete(project);
   }
 
   async deleteVolumes(project: string) {
@@ -95,6 +105,39 @@ export class FakeRuntime implements Runtime {
 
   async denials(project: string) {
     return { hosts: this.denied.get(project) ?? [] };
+  }
+
+  async createKnowledge(name: string) {
+    this.calls.push({ method: "createKnowledge", project: name });
+    const created = !this.knowledge.has(name);
+    this.knowledge.add(name);
+    return { created };
+  }
+
+  /** The apps whose containers mount it, from the spec each last ran. */
+  async knowledgeUsers(name: string) {
+    this.calls.push({ method: "knowledgeUsers", project: name });
+    return { apps: this.mounting(name) };
+  }
+
+  private mounting(name: string): string[] {
+    return [...this.applied]
+      .filter(([, spec]) => spec.knowledge?.bases.includes(name))
+      .map(([project]) => project.slice(3))
+      .sort();
+  }
+
+  async deleteKnowledge(name: string) {
+    this.calls.push({ method: "deleteKnowledge", project: name });
+    // Like the runtime manager, refused while an app's containers mount it.
+    const users = this.mounting(name);
+    if (users.length > 0) throw new RuntimeError(`The knowledge base ${name} is still mounted by ${users.join(", ")}, so it can't be deleted yet.`, 409, "engine_error");
+    this.knowledge.delete(name);
+  }
+
+  /** The spec the project's containers run, from its last apply that succeeded. */
+  lastApply(project: string): AppSpec | undefined {
+    return this.applied.get(project);
   }
 
   async checkPort(project: string, publish: { port: number; bind: string }) {

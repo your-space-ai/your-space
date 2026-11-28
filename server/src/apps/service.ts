@@ -3,15 +3,19 @@
 // app spec sent to the runtime manager.
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
-import { recordEvent } from "../actors.ts";
+import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { operatorActorId, recordEvent } from "../actors.ts";
 import type { Db } from "../db/client.ts";
 import {
   app,
   appAccessRequest,
+  appKnowledgeBase,
   appOutbound,
   appSetting,
+  event,
+  eventKnowledgeBase,
   installJob,
+  knowledgeBase,
   type AppState,
   type EventType,
   type JobStep,
@@ -33,7 +37,7 @@ import {
   type SourceFile,
   type SourceMiss,
 } from "./github.ts";
-import { composeOf, kitFromFile, kitFromLink, kitFromSource, KitError, kitIdentity, NotAKitError, type FoundKit } from "./kits.ts";
+import { composeOf, kitFromFile, kitFromLink, kitFromSource, KitError, kitIdentity, NotAKitError, reservedKnowledgePath, type FoundKit } from "./kits.ts";
 import { localSource, type LocalCompose } from "./local.ts";
 import { RuntimeError, type AppSpec, type CheckAnswer, type RegistryCredential, type Runtime, type ServiceState } from "./runtime-client.ts";
 import {
@@ -157,9 +161,41 @@ interface Preview {
   publishPort: number | null;
   pane: boolean;
   retained: boolean;
+  /** Where the app's knowledge bases are mounted, when its kit asks for knowledge (journey 014). */
+  knowledge: { path: string } | null;
+}
+
+/** The most knowledge bases an app can be given: the runtime manager's limit too. */
+const MAX_KNOWLEDGE_BASES = 100;
+/**
+ * How long an app that still mounts a knowledge base it isn't given waits to be applied again after
+ * an apply that didn't take it away: a minute, then twice as long each time, up to an hour.
+ */
+const UNMOUNT_RETRY_MS = 60_000;
+const UNMOUNT_RETRY_MAX_MS = 60 * 60_000;
+
+/** Whether the runtime manager reports any of an app's own services running. */
+function runningIn(reports: { app: string; services: ServiceState[] }[], name: string): boolean {
+  const services = reports.find((r) => r.app === name)?.services ?? [];
+  return services.some((s) => s.role === "app" && (s.state === "running" || s.state === "restarting"));
 }
 
 export type AppRow = typeof app.$inferSelect;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+/**
+ * What follows from how a job ended: `worked` is saved with the job's own end when it applied the
+ * app, and `failed` runs once a job that didn't is recorded as failed.
+ */
+interface JobEnded {
+  worked: (tx: Tx) => Promise<void>;
+  failed: () => Promise<void>;
+}
+
+/** The knowledge bases an app's containers mount without a grant, and those it is given that they don't mount. */
+interface Mounts {
+  extra: { id: string; name: string }[];
+  missing: { id: string; name: string }[];
+}
 
 /** `sure.space.localhost` for Your Space at `space.localhost`, with the same scheme and port. */
 export function appAddress(publicUrl: string, name: string): { origin: string; host: string } {
@@ -365,8 +401,18 @@ export class AppsService {
   readonly config: AppsConfig;
   private readonly previews = new Map<string, Preview>();
   private readonly busy = new Set<string>();
+  /** Knowledge bases being deleted, and how many saves of their grants are under way, by ID (journey 014). */
+  private readonly knowledgeDeleting = new Set<string>();
+  private readonly knowledgeGranting = new Map<string, number>();
+  /** The names of knowledge bases being created, retitled or deleted now. */
+  private readonly knowledgeNames = new Set<string>();
   /** Apps whose outdated Caddy this server process has renewed, or tried to: once each. */
   private readonly renewed = new Set<string>();
+  /**
+   * Apps applied again because they mounted a knowledge base they aren't given, whose apply didn't
+   * take it away yet: when the next may start, and how long it waits after that one.
+   */
+  private readonly unmounting = new Map<string, { at: number; wait: number }>();
 
   constructor(db: Db, runtime: Runtime, config: AppsConfig) {
     this.db = db;
@@ -546,7 +592,9 @@ export class AppsService {
     // them. A setting the file requires that has no value yet gets a placeholder, so the review shows
     // the file and the owner fills the setting in; installing needs a real value (install).
     const settings = buildSettings(kit, address, previous);
-    let check = await this.checkSigningIn({ project: `ys-${name}`, app: name, compose: source.text, env: this.envOf(settings), interface: kit.interface ?? null, placeholders: true });
+    // The knowledge path goes with the check, so a file that mounts something of its own there is refused.
+    const knowledge = kit.knowledge ? { path: kit.knowledge.path, bases: [] } : null;
+    let check = await this.checkSigningIn({ project: `ys-${name}`, app: name, compose: source.text, env: this.envOf(settings), interface: kit.interface ?? null, placeholders: true, knowledge });
     withFileDefaults(settings, check.variables);
     // A variable the file needs, with no default, is one the kit must define.
     const env = kitEnv(kit);
@@ -591,6 +639,7 @@ export class AppsService {
       publishPort: defaultPort(check.services, kit.interface ?? null),
       pane: kit.pane ?? true,
       retained: Boolean(existing),
+      knowledge: kit.knowledge ?? null,
     };
     this.previews.set(preview.id, preview);
     return this.reviewOf(preview);
@@ -657,6 +706,7 @@ export class AppsService {
       publishPort: p.publishPort,
       pane: p.pane,
       retained: p.retained,
+      knowledge: p.knowledge,
       warning:
         "Installing an app trusts it with everything you put into it. Your Space keeps it away from your other apps, Your Space's own data and this machine, and lets it reach only the internet hosts you approve.",
     };
@@ -668,6 +718,7 @@ export class AppsService {
     reuseData: boolean,
     actorId: string,
     publishWith: unknown = null,
+    knowledgeWith: unknown = [],
   ): Promise<{ name: string; jobId: string; done: Promise<void> }> {
     const p = this.previews.get(previewId);
     if (!p || p.expiresAt < Date.now()) throw new AppError(404, "preview_expired", "This review has expired. Paste the kit's link again.");
@@ -693,7 +744,14 @@ export class AppsService {
     // Then the file is checked again with the owner's values, so its images and changes are the real ones.
     let check = p.check;
     if (placeheld) {
-      check = await this.checkSigningIn({ project: `ys-${p.name}`, app: p.name, compose: p.source.text, env: this.envOf(settings), interface: p.kit.interface ?? null });
+      check = await this.checkSigningIn({
+        project: `ys-${p.name}`,
+        app: p.name,
+        compose: p.source.text,
+        env: this.envOf(settings),
+        interface: p.kit.interface ?? null,
+        knowledge: p.knowledge && { path: p.knowledge.path, bases: [] },
+      });
       if (!check.ok) {
         const reasons = check.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`).join(" ");
         throw new AppError(400, "refused", `Your Space can't run this app with these settings: ${reasons}`, check.refusals);
@@ -708,9 +766,19 @@ export class AppsService {
       publish = publishFrom(publishWith, { port: p.publishPort, bind: DEFAULT_BIND, link: null });
       await this.refuseTakenPort(publish, p.name);
     }
+    const bases = await this.knowledgeBases(p.kit, p.title, knowledgeWith);
 
+    // Used once: another request that read the same review may have installed from it meanwhile.
+    if (this.previews.get(previewId) !== p) throw new AppError(404, "preview_expired", "This review has expired. Paste the kit's link again.");
     this.previews.delete(previewId);
-    const appId = await this.db.transaction(async (tx) => {
+    // The app's rows and its install job are saved together, once the job holds the app: a request
+    // that fails leaves no app installing without a job.
+    const retained = p.retained
+      ? (await this.db.select({ id: app.id }).from(app).where(and(eq(app.name, p.name), eq(app.state, "removed"))))[0]
+      : undefined;
+    if (p.retained && !retained) throw new AppError(409, "conflict", "The app changed while you were reviewing it. Paste the kit's link again.");
+    const appId = retained?.id ?? randomUUID();
+    const write = async (tx: Tx) => {
       const values = {
         title: p.title,
         sourceUrl: p.source.link,
@@ -736,21 +804,24 @@ export class AppsService {
         updatedAt: new Date(),
         removedAt: null,
       };
-      let id: string;
-      if (p.retained) {
-        const updated = await tx.update(app).set(values).where(and(eq(app.name, p.name), eq(app.state, "removed"))).returning({ id: app.id });
+      const id = appId;
+      if (retained) {
+        const updated = await tx
+          .update(app)
+          .set(values)
+          .where(and(eq(app.id, id), eq(app.state, "removed")))
+          .returning({ id: app.id });
         if (!updated[0]) throw new AppError(409, "conflict", "The app changed while you were reviewing it. Paste the kit's link again.");
-        id = updated[0].id;
         await tx.delete(appSetting).where(eq(appSetting.appId, id));
         await tx.delete(appOutbound).where(eq(appOutbound.appId, id));
+        await tx.delete(appKnowledgeBase).where(eq(appKnowledgeBase.appId, id));
       } else {
         const inserted = await tx
           .insert(app)
-          .values({ name: p.name, ...values })
+          .values({ id, name: p.name, ...values })
           .onConflictDoNothing()
           .returning({ id: app.id });
         if (!inserted[0]) throw new AppError(409, "already_installed", `An app called ${p.name} is already installed.`);
-        id = inserted[0].id;
       }
       if (settings.length) {
         await tx.insert(appSetting).values(
@@ -768,9 +839,13 @@ export class AppsService {
         await tx.insert(appOutbound).values(p.outbound.map((host) => ({ appId: id, host, source: "kit" as const, approvedBy: actorId })));
       }
       await recordEvent(tx, "app.installed", actorId, null, id);
-      return id;
-    });
-    const { jobId, done } = await this.startJob(appId, "install");
+      await this.stillExist(tx, bases);
+      if (bases.length) {
+        await tx.insert(appKnowledgeBase).values(bases.map((base) => ({ appId: id, knowledgeBaseId: base.id, grantedBy: actorId })));
+        for (const base of bases) await recordEvent(tx, "knowledge.granted", actorId, null, id, base);
+      }
+    };
+    const { jobId, done } = await this.granting(bases, () => this.startJob(appId, "install", { first: write }));
     log("info", "app.install_started", { app: p.name });
     return { name: p.name, jobId, done };
   }
@@ -814,6 +889,7 @@ export class AppsService {
     for (const [name, value] of this.linkValues(row)) if (values.has(name)) values.set(name, value);
     const outbound = await this.db.select({ host: appOutbound.host }).from(appOutbound).where(eq(appOutbound.appId, row.id));
     const pins = Object.fromEntries(Object.entries(row.images).map(([ref, { digest }]) => [ref, digest]));
+    const bases = row.kit?.knowledge ? (await this.grants(row.id)).map((base) => base.name) : [];
     return {
       project: `ys-${row.name}`,
       ...(row.kit?.agentAccess ? { appId: row.id } : {}),
@@ -826,7 +902,119 @@ export class AppsService {
       egress: outbound.map((o) => o.host),
       // The app's Caddy replaces its framing rules only where the pane frames it.
       publish: row.publish ? { port: row.publish.port, bind: row.publish.bind, frame: inPane(this.config.publicUrl, row) } : null,
+      knowledge: row.kit?.knowledge ? { path: row.kit.knowledge.path, bases } : null,
     };
+  }
+
+  /** The knowledge bases the owner gave the app, by name. */
+  async grants(appId: string, db: Db | Tx = this.db): Promise<{ id: string; name: string; title: string }[]> {
+    return db
+      .select({ id: knowledgeBase.id, name: knowledgeBase.name, title: knowledgeBase.title })
+      .from(appKnowledgeBase)
+      .innerJoin(knowledgeBase, eq(appKnowledgeBase.knowledgeBaseId, knowledgeBase.id))
+      .where(eq(appKnowledgeBase.appId, appId))
+      .orderBy(knowledgeBase.name);
+  }
+
+  /**
+   * The knowledge bases a request names for an app, checked: a list of names, each an existing
+   * knowledge base. Only an app whose kit asks for knowledge can be given any (journey 014).
+   */
+  private async knowledgeBases(kit: Kit | null, title: string, input: unknown): Promise<{ id: string; name: string }[]> {
+    const given = input ?? [];
+    if (!Array.isArray(given) || given.some((name) => typeof name !== "string")) {
+      throw new AppError(400, "bad_knowledge", "Send the knowledge bases to give the app as a list of their names.");
+    }
+    const names = [...new Set(given as string[])];
+    if (names.length === 0) return [];
+    // The runtime manager mounts at most this many in an app.
+    if (names.length > MAX_KNOWLEDGE_BASES) {
+      throw new AppError(400, "too_many_knowledge_bases", `An app can be given at most ${MAX_KNOWLEDGE_BASES} knowledge bases.`);
+    }
+    if (!kit?.knowledge) throw new AppError(400, "no_knowledge", `${title}'s kit doesn't ask for knowledge, so it can't be given knowledge bases.`);
+    // Its folder in the app, as /etc and hosts give, can't be one of the files Docker mounts.
+    const reserved = names.find((name) => reservedKnowledgePath(`${kit.knowledge!.path}/${name}`));
+    if (reserved) {
+      throw new AppError(400, "reserved_knowledge_path", `${title} can't be given ${reserved}: its folder would be ${kit.knowledge.path}/${reserved}, a file Docker mounts in every container.`);
+    }
+    const rows = await this.db.select({ id: knowledgeBase.id, name: knowledgeBase.name }).from(knowledgeBase).where(inArray(knowledgeBase.name, names));
+    const missing = names.filter((name) => !rows.some((row) => row.name === name));
+    if (missing.length) throw new AppError(400, "unknown_knowledge_base", `There is no knowledge base called ${missing.join(", ")}.`);
+    return rows.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** Whether the app has a job running, or a change holds it (hold). */
+  isBusy(appId: string): boolean {
+    return this.busy.has(appId);
+  }
+
+  /**
+   * Holds free apps for a change that runs a job on each of them in turn, as deleting a knowledge base
+   * does: until it lets go, none of them starts another change, so what it reads of them stays true.
+   * Its jobs pass `held`. Returns what lets them go.
+   */
+  hold(appIds: string[]): () => void {
+    if (appIds.some((id) => this.busy.has(id))) throw new AppError(409, "busy", "An app is busy with another change. Try again when it finishes.");
+    for (const id of appIds) this.busy.add(id);
+    return () => {
+      for (const id of appIds) this.busy.delete(id);
+    };
+  }
+
+  /**
+   * Holds a knowledge base for its deletion, so no app is given it meanwhile (granting). Refused while
+   * a grant of it is being saved, or it is being deleted already. Returns what lets it go.
+   */
+  holdKnowledge(id: string): () => void {
+    if (this.knowledgeDeleting.has(id) || this.knowledgeGranting.has(id)) {
+      throw new AppError(409, "busy", "The knowledge base is being given to an app, or deleted, right now. Try again when that finishes.");
+    }
+    this.knowledgeDeleting.add(id);
+    return () => {
+      this.knowledgeDeleting.delete(id);
+    };
+  }
+
+  /**
+   * Holds a knowledge base's name while it is created, retitled or deleted, so none of those runs on
+   * it at once. Refused with 409 busy while another holds it. Returns what lets it go.
+   */
+  holdKnowledgeName(name: string): () => void {
+    if (this.knowledgeNames.has(name)) throw new AppError(409, "busy", `The knowledge base ${name} is being created, renamed or deleted right now. Try again when that finishes.`);
+    this.knowledgeNames.add(name);
+    return () => {
+      this.knowledgeNames.delete(name);
+    };
+  }
+
+  /**
+   * Checks, in the transaction that saves their grants, that these knowledge bases still exist: one
+   * deleted since the request named it isn't given, nor one created since with its name.
+   */
+  private async stillExist(tx: Tx, bases: { id: string; name: string }[]): Promise<void> {
+    if (bases.length === 0) return;
+    const rows = await tx.select({ id: knowledgeBase.id }).from(knowledgeBase).where(inArray(knowledgeBase.id, bases.map((base) => base.id)));
+    const gone = bases.filter((base) => !rows.some((row) => row.id === base.id));
+    if (gone.length) throw new AppError(400, "unknown_knowledge_base", `There is no knowledge base called ${gone.map((base) => base.name).join(", ")}.`);
+  }
+
+  /**
+   * Saves grants of these knowledge bases with `save`, which ends once they are saved. Refused while
+   * one is being deleted (holdKnowledge), so a deletion never misses a grant saved while it runs.
+   */
+  private async granting<T>(bases: { id: string; name: string }[], save: () => Promise<T>): Promise<T> {
+    const deleting = bases.find((base) => this.knowledgeDeleting.has(base.id));
+    if (deleting) throw new AppError(409, "busy", `The knowledge base ${deleting.name} is being deleted.`);
+    for (const { id } of bases) this.knowledgeGranting.set(id, (this.knowledgeGranting.get(id) ?? 0) + 1);
+    try {
+      return await save();
+    } finally {
+      for (const { id } of bases) {
+        const left = (this.knowledgeGranting.get(id) ?? 1) - 1;
+        if (left > 0) this.knowledgeGranting.set(id, left);
+        else this.knowledgeGranting.delete(id);
+      }
+    }
   }
 
   private async step(jobId: string, message: string): Promise<void> {
@@ -838,33 +1026,66 @@ export class AppsService {
   }
 
   /** A job for a request, which answers with the job's ID and doesn't wait for it. */
-  private async queue(appId: string, kind: "apply" | "remove"): Promise<{ jobId: string }> {
-    const { jobId } = await this.startJob(appId, kind);
+  private async queue(appId: string, kind: "apply" | "remove", first?: (tx: Tx) => Promise<void>, by?: string): Promise<{ jobId: string }> {
+    const { jobId } = await this.startJob(appId, kind, { first, by });
     return { jobId };
   }
 
-  /** Starts a job that applies the app; one job per app at a time. */
-  async startJob(appId: string, kind: "install" | "apply" | "remove"): Promise<{ jobId: string; done: Promise<void> }> {
-    if (this.busy.has(appId)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
-    this.busy.add(appId);
+  /**
+   * Starts a job that applies the app; one job per app at a time. `first` runs once the app is the
+   * job's, in the transaction that records the job, so a change it saves is never left without the
+   * job that applies it, and neither is kept when the other fails. A job of an app the caller holds
+   * (hold) passes `held`: it neither checks the app is free nor lets go of it. A removal's `by` is who
+   * the knowledge bases it takes from the app are recorded against: Your Space when it doesn't say.
+   */
+  async startJob(
+    appId: string,
+    kind: "install" | "apply" | "remove",
+    { first, ended, held = false, by }: { first?: (tx: Tx) => Promise<void>; ended?: JobEnded; held?: boolean; by?: string } = {},
+  ): Promise<{ jobId: string; done: Promise<void> }> {
+    if (!held) {
+      if (this.busy.has(appId)) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
+      this.busy.add(appId);
+    }
+    const letGo = () => {
+      if (!held) this.busy.delete(appId);
+    };
     try {
-      const inserted = await this.db.insert(installJob).values({ appId, kind }).returning({ id: installJob.id });
-      const jobId = inserted[0]!.id;
-      return { jobId, done: this.runJob(jobId, appId, kind).finally(() => this.busy.delete(appId)) };
+      const jobId = await this.db.transaction(async (tx) => {
+        // An app removed since the request read it isn't started again: its removal stands.
+        if (kind === "apply") {
+          const [current] = await tx.select({ state: app.state }).from(app).where(eq(app.id, appId));
+          if (current?.state === "removed") throw new AppError(409, "removed", "The app has been removed. Install it again to use it.");
+        }
+        await first?.(tx);
+        const inserted = await tx.insert(installJob).values({ appId, kind }).returning({ id: installJob.id });
+        return inserted[0]!.id;
+      });
+      return { jobId, done: this.runJob(jobId, appId, kind, ended, by).finally(letGo) };
     } catch (error) {
-      this.busy.delete(appId);
+      letGo();
       throw error;
     }
   }
 
-  private async runJob(jobId: string, appId: string, kind: "install" | "apply" | "remove"): Promise<void> {
+  private async runJob(jobId: string, appId: string, kind: "install" | "apply" | "remove", ended?: JobEnded, by?: string): Promise<void> {
     try {
       const row = (await this.db.select().from(app).where(eq(app.id, appId)))[0];
       if (!row) throw new AppError(404, "not_found", "The app is gone.");
       if (kind === "remove") {
         await this.step(jobId, "Stopping and removing the app's containers. Its data is kept.");
         await this.runtime.down(`ys-${row.name}`);
-        await this.db.update(app).set({ state: "removed", desired: "removed", stateReason: null, removedAt: new Date(), updatedAt: new Date() }).where(eq(app.id, appId));
+        // A removed app has no knowledge bases: installing it again gives it the ones the owner picks then.
+        // Each it had is recorded as taken away, as the other ways of taking one do.
+        await this.db.transaction(async (tx) => {
+          await tx.update(app).set({ state: "removed", desired: "removed", stateReason: null, removedAt: new Date(), updatedAt: new Date() }).where(eq(app.id, appId));
+          const taken = await tx.delete(appKnowledgeBase).where(eq(appKnowledgeBase.appId, appId)).returning({ id: appKnowledgeBase.knowledgeBaseId });
+          if (taken.length) {
+            const bases = await tx.select({ id: knowledgeBase.id, name: knowledgeBase.name }).from(knowledgeBase).where(inArray(knowledgeBase.id, taken.map((t) => t.id)));
+            const actorId = by ?? (await operatorActorId(tx));
+            for (const base of bases) await recordEvent(tx, "knowledge.revoked", actorId, null, appId, base);
+          }
+        });
       } else {
         await this.db.update(app).set({ state: kind === "install" ? "installing" : "starting", stateReason: null, updatedAt: new Date() }).where(eq(app.id, appId));
         const spec = await this.specFor(row);
@@ -891,7 +1112,10 @@ export class AppsService {
         await this.db.update(app).set({ state: "starting", updatedAt: new Date() }).where(eq(app.id, appId));
         await this.refreshState(row.name);
       }
-      await this.db.update(installJob).set({ state: "succeeded", finishedAt: new Date() }).where(eq(installJob.id, jobId));
+      await this.db.transaction(async (tx) => {
+        await tx.update(installJob).set({ state: "succeeded", finishedAt: new Date() }).where(eq(installJob.id, jobId));
+        await ended?.worked(tx);
+      });
     } catch (error) {
       let message = error instanceof AppError || error instanceof RuntimeError ? error.message : "Something went wrong on the server.";
       if (!(error instanceof AppError || error instanceof RuntimeError)) log("error", "app.job_failed", errorFields(error));
@@ -903,6 +1127,7 @@ export class AppsService {
             : " Your Space signs in to download a private image only while installing the app: remove it, then install it again, reusing its data, with your image token in place.";
       }
       await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));
+      await ended?.failed().catch((failure: unknown) => log("error", "app.job_end_failed", errorFields(failure)));
       // Refused because Your Space is stopping: the app starts again with Your Space.
       const stopping = error instanceof RuntimeError && error.status === 409;
       // A failed removal shows as failed too, so the owner sees why and can remove it again.
@@ -962,15 +1187,21 @@ export class AppsService {
       return;
     }
     const rows = await this.db.select().from(app).where(ne(app.state, "removed"));
+    const leftover = await this.leftoverKnowledge(rows, reports);
     for (const row of rows) {
       if (this.busy.has(row.id)) continue;
       const services = reports.find((r) => r.app === row.name)?.services ?? [];
-      const running = services.some((s) => s.role === "app" && (s.state === "running" || s.state === "restarting"));
+      const running = runningIn(reports, row.name);
       if (row.desired === "running" && !running && row.state !== "failed" && row.state !== "installing") {
         log("info", "apps.starting", { app: row.name });
         await this.startJob(row.id, "apply").catch(() => undefined);
         continue;
       }
+      // Its containers mount a knowledge base it isn't given, or don't mount one it is given, as after
+      // a restart of Your Space during the apply that took it away or gave it: applied again, with its
+      // grants, or removed when the owner asked to remove it (journey 014, 2026-11-26).
+      const differs = leftover.get(row.id);
+      if (differs && (await this.unmount(row, differs))) continue;
       // A published app's Caddy follows Your Space's own after an update, and replaces the port
       // forwarder an earlier Your Space ran. Only it is recreated; the app's services keep running.
       // Once per app while this server runs, so a start that fails isn't repeated.
@@ -998,9 +1229,147 @@ export class AppsService {
       const { state, reason } = row.desired === "stopped" && !running ? { state: "stopped" as const, reason: null } : stateFromServices(services);
       if (row.state === "failed" && !running) continue;
       if (state !== row.state || reason !== row.stateReason) {
-        await this.db.update(app).set({ state, stateReason: reason, updatedAt: new Date() }).where(eq(app.id, row.id));
+        // Never over a removal that ended since the rows were read: the app stays removed.
+        await this.db.update(app).set({ state, stateReason: reason, updatedAt: new Date() }).where(and(eq(app.id, row.id), ne(app.state, "removed")));
       }
       if (running) await this.collectDenials(row.id, row.name);
+    }
+  }
+
+  /**
+   * The knowledge bases each app that runs still mounts without a grant (`extra`), and, for an app
+   * that should run, those it is given that its containers don't mount (`missing`), by app: the
+   * runtime manager names the apps whose containers mount each knowledge base. An app that mounts one
+   * it isn't given is one that should run, or one the owner asked to remove whose removal didn't
+   * finish, as a deletion of a knowledge base removes. A stopped app's containers are left as they
+   * are, as it gets its grants when it next starts, and so is a busy app's, whose job is changing
+   * them. A knowledge base the runtime manager doesn't answer for gives none this time, and the
+   * others still do.
+   */
+  private async leftoverKnowledge(rows: AppRow[], reports: { app: string; services: ServiceState[] }[]): Promise<Map<string, Mounts>> {
+    const leftover = new Map<string, Mounts>();
+    let unknown = false;
+    const running = rows.filter((row) => (row.desired === "running" || row.desired === "removed") && !this.busy.has(row.id) && runningIn(reports, row.name));
+    const bases = running.length ? await this.db.select({ id: knowledgeBase.id, name: knowledgeBase.name }).from(knowledgeBase) : [];
+    if (bases.length) {
+      const granted = await this.db.select().from(appKnowledgeBase).where(inArray(appKnowledgeBase.appId, running.map((row) => row.id)));
+      for (const base of bases) {
+        let users: string[];
+        try {
+          users = (await this.runtime.knowledgeUsers(base.name)).apps;
+        } catch (error) {
+          // As for a volume of its name that Your Space didn't make: the other knowledge bases are still checked.
+          log("warn", "apps.knowledge_check_failed", { knowledgeBase: base.name, ...errorFields(error) });
+          unknown = true;
+          continue;
+        }
+        for (const row of running) {
+          const mounts = users.includes(row.name);
+          const given = granted.some((g) => g.appId === row.id && g.knowledgeBaseId === base.id);
+          const kind = mounts && !given ? "extra" : !mounts && given && row.desired === "running" ? "missing" : undefined;
+          if (!kind) continue;
+          const differs = leftover.get(row.id) ?? { extra: [], missing: [] };
+          differs[kind].push(base);
+          leftover.set(row.id, differs);
+        }
+      }
+    }
+    // An app whose mounts match its grants waits from the start again if they ever don't; while a
+    // knowledge base's mounts are unknown, no app's wait is forgotten.
+    if (!unknown) for (const id of this.unmounting.keys()) if (!leftover.has(id) && !this.busy.has(id)) this.unmounting.delete(id);
+    return leftover;
+  }
+
+  /**
+   * Applies again an app whose containers mount knowledge bases it isn't given, so they leave it, or
+   * don't mount ones it is given, so they get them, and says whether it did; one the owner asked to
+   * remove is removed, as deleting a knowledge base does. Decided again once the app is held, so a
+   * change of the owner's that ended meanwhile isn't taken for one: it applies the app as it is then.
+   * After an apply that didn't make the mounts match, the next waits (UNMOUNT_RETRY_MS) from the end
+   * of that one. Once it worked, each knowledge base the runtime manager no longer reports the app
+   * mounting is recorded as taken away, against Your Space, and each it now reports the app mounting
+   * as given, against whoever gave it, unless that grant's giving was recorded already, as when the
+   * apply that gave it failed without the runtime manager's answer.
+   */
+  private async unmount(row: AppRow, { extra, missing }: Mounts): Promise<boolean> {
+    const retry = this.unmounting.get(row.id);
+    if (retry && Date.now() < retry.at) return false;
+    let release: () => void;
+    try {
+      release = this.hold([row.id]);
+    } catch {
+      return false;
+    }
+    try {
+      const [now] = await this.db.select({ state: app.state, desired: app.desired }).from(app).where(eq(app.id, row.id));
+      if (!now || now.state === "removed" || now.desired === "stopped") {
+        release();
+        return false;
+      }
+      const granted = await this.grants(row.id);
+      const mounted = async (base: { name: string }) => (await this.runtime.knowledgeUsers(base.name)).apps.includes(row.name);
+      const left: { id: string; name: string }[] = [];
+      for (const base of extra) {
+        if (granted.some((g) => g.id === base.id)) continue;
+        if (await mounted(base)) left.push(base);
+      }
+      const absent: { id: string; name: string }[] = [];
+      if (now.desired === "running") {
+        for (const base of missing) {
+          if (!granted.some((g) => g.id === base.id)) continue;
+          if (!(await mounted(base))) absent.push(base);
+        }
+      }
+      if (left.length === 0 && absent.length === 0) {
+        release();
+        return false;
+      }
+      const wait = retry ? Math.min(retry.wait * 2, UNMOUNT_RETRY_MAX_MS) : UNMOUNT_RETRY_MS;
+      const waitFromNow = () => this.unmounting.set(row.id, { at: Date.now() + wait, wait });
+      waitFromNow();
+      log("warn", "apps.knowledge_unmounting", { app: row.name, knowledgeBases: left.map((base) => base.name).join(","), missing: absent.map((base) => base.name).join(",") });
+      const yourSpace = await operatorActorId(this.db);
+      const ended: JobEnded = {
+        // An apply that worked can still leave a container that mounts one, which it didn't replace:
+        // that one isn't recorded, and the app is applied again after the wait. Without the runtime
+        // manager's answer, the apply that worked is taken for having taken it away.
+        worked: async (tx) => {
+          for (const base of left) {
+            const still = await this.runtime.knowledgeUsers(base.name).then(({ apps }) => apps.includes(row.name), () => false);
+            if (!still) await recordEvent(tx, "knowledge.revoked", yourSpace, null, row.id, base);
+          }
+          for (const base of absent) {
+            if (!(await this.runtime.knowledgeUsers(base.name).then(({ apps }) => apps.includes(row.name), () => false))) continue;
+            const [grant] = await tx
+              .select({ grantedBy: appKnowledgeBase.grantedBy, createdAt: appKnowledgeBase.createdAt })
+              .from(appKnowledgeBase)
+              .where(and(eq(appKnowledgeBase.appId, row.id), eq(appKnowledgeBase.knowledgeBaseId, base.id)));
+            if (!grant) continue;
+            const [recorded] = await tx
+              .select({ id: event.id })
+              .from(event)
+              .innerJoin(eventKnowledgeBase, eq(eventKnowledgeBase.eventId, event.id))
+              .where(and(eq(event.type, "knowledge.granted"), eq(event.subjectAppId, row.id), eq(eventKnowledgeBase.knowledgeBaseId, base.id), gte(event.createdAt, grant.createdAt)))
+              .limit(1);
+            if (!recorded) await recordEvent(tx, "knowledge.granted", grant.grantedBy, null, row.id, base);
+          }
+        },
+        failed: async () => {},
+      };
+      const { done } = await this.startJob(row.id, now.desired === "removed" ? "remove" : "apply", { held: true, ended, by: yourSpace });
+      // The wait starts again once the apply ends, before the app is let go, so one that took longer
+      // than the wait is still followed by it. A job that couldn't record its end is logged.
+      void done
+        .catch((error: unknown) => log("warn", "apps.knowledge_unmount_failed", { app: row.name, ...errorFields(error) }))
+        .finally(() => {
+          waitFromNow();
+          release();
+        });
+      return true;
+    } catch (error) {
+      release();
+      log("warn", "apps.knowledge_unmount_failed", { app: row.name, ...errorFields(error) });
+      return false;
     }
   }
 
@@ -1108,6 +1477,7 @@ export class AppsService {
     }
     const fromLink = this.linkValues(row);
     const env = kitEnv(row.kit);
+    const bases = row.kit?.knowledge ? (await this.grants(row.id)).map(({ name, title }) => ({ name, title })) : [];
     return {
       id: row.id,
       name: row.name,
@@ -1140,6 +1510,7 @@ export class AppsService {
       outbound: outbound.map((o) => ({ host: o.host, source: o.source, createdAt: o.createdAt })),
       requests: requests.map((r) => ({ id: r.id, host: r.host, state: r.state, attempts: r.attempts, firstSeen: r.firstSeen, lastSeen: r.lastSeen })),
       job: job ? { id: job.id, kind: job.kind, state: job.state, steps: job.steps, error: job.error } : null,
+      knowledge: row.kit?.knowledge ? { path: row.kit.knowledge.path, bases } : null,
       installedAt: row.createdAt,
       removedAt: row.removedAt,
     };
@@ -1284,6 +1655,63 @@ export class AppsService {
     return this.queue(row.id, "apply");
   }
 
+  /**
+   * Gives the app exactly these knowledge bases (journey 014). Applying it again recreates its
+   * interface service with their folders; its data is kept.
+   */
+  async updateKnowledge(name: string, input: unknown, actorId: string): Promise<{ jobId: string }> {
+    const row = await this.liveRow(name);
+    if (!row.kit?.knowledge) throw new AppError(400, "no_knowledge", `${row.title}'s kit doesn't ask for knowledge, so it can't be given knowledge bases.`);
+    const next = await this.knowledgeBases(row.kit, row.title, input);
+    let added: { id: string; name: string }[] = [];
+    let removed: { id: string; name: string }[] = [];
+    let taken: (typeof appKnowledgeBase.$inferSelect)[] = [];
+    // Read and saved only once the app is the job's, with the job: a grant saved without the apply
+    // that mounts it, or takes it away, would leave the app's containers and its grants disagreeing,
+    // and grants read before then may be another change's, from before it was saved.
+    const first = async (tx: Tx) => {
+      // As the app is now: one installed again since from a kit that doesn't ask for knowledge gets none.
+      const [now] = await tx.select({ kit: app.kit }).from(app).where(eq(app.id, row.id));
+      if (!now?.kit?.knowledge) throw new AppError(400, "no_knowledge", `${row.title}'s kit doesn't ask for knowledge, so it can't be given knowledge bases.`);
+      await this.stillExist(tx, next);
+      const current = await this.grants(row.id, tx);
+      added = next.filter((base) => !current.some((c) => c.id === base.id));
+      removed = current.filter((base) => !next.some((n) => n.id === base.id));
+      if (removed.length) {
+        taken = await tx
+          .delete(appKnowledgeBase)
+          .where(and(eq(appKnowledgeBase.appId, row.id), inArray(appKnowledgeBase.knowledgeBaseId, removed.map((base) => base.id))))
+          .returning();
+      }
+      if (added.length) await tx.insert(appKnowledgeBase).values(added.map((base) => ({ appId: row.id, knowledgeBaseId: base.id, grantedBy: actorId })));
+    };
+    // The grants follow the apply. Once it worked, the app mounts exactly them. When it failed, the
+    // app keeps what its containers mount, as the runtime manager reports it: a knowledge base taken
+    // away that it still mounts gets its grant back, as deleting a knowledge base does, and one added
+    // that it doesn't mount loses its grant, so the app has what it had and its page says so. Without
+    // the runtime's answer, the grant stays.
+    const ended: JobEnded = {
+      worked: async (tx) => {
+        for (const base of added) await recordEvent(tx, "knowledge.granted", actorId, null, row.id, base);
+        for (const base of removed) await recordEvent(tx, "knowledge.revoked", actorId, null, row.id, base);
+      },
+      failed: async () => {
+        const mounts = (base: { name: string }) => this.runtime.knowledgeUsers(base.name).then(({ apps }) => apps.includes(row.name), () => undefined);
+        const back: typeof taken = [];
+        for (const grant of taken) if ((await mounts(removed.find((base) => base.id === grant.knowledgeBaseId)!)) !== false) back.push(grant);
+        const dropped: typeof added = [];
+        for (const base of added) if ((await mounts(base)) === false) dropped.push(base);
+        await this.db.transaction(async (tx) => {
+          if (back.length) await tx.insert(appKnowledgeBase).values(back).onConflictDoNothing();
+          if (dropped.length) await tx.delete(appKnowledgeBase).where(and(eq(appKnowledgeBase.appId, row.id), inArray(appKnowledgeBase.knowledgeBaseId, dropped.map((base) => base.id))));
+          for (const base of added.filter((b) => !dropped.includes(b))) await recordEvent(tx, "knowledge.granted", actorId, null, row.id, base);
+          for (const base of removed.filter((b) => !back.some((g) => g.knowledgeBaseId === b.id))) await recordEvent(tx, "knowledge.revoked", actorId, null, row.id, base);
+        });
+      },
+    };
+    return this.granting(next, async () => ({ jobId: (await this.startJob(row.id, "apply", { first, ended })).jobId }));
+  }
+
   async approve(name: string, host: string, actorId: string): Promise<{ jobId: string }> {
     const row = await this.liveRow(name);
     const clean = host.trim().toLowerCase();
@@ -1328,9 +1756,17 @@ export class AppsService {
   /** Removes the app's containers and networks; its data and settings stay as retained data (FR-023). */
   async remove(name: string, actorId: string): Promise<{ jobId: string }> {
     const row = await this.liveRow(name);
-    await this.db.update(app).set({ desired: "removed" }).where(eq(app.id, row.id));
-    await this.event("app.removed", actorId, row.id);
-    return this.queue(row.id, "remove");
+    // Recorded once the job holds the app, so a removal refused as busy changes nothing: a change that
+    // holds the app, such as deleting a knowledge base, never reads a removal it doesn't run.
+    return this.queue(
+      row.id,
+      "remove",
+      async (tx) => {
+        await tx.update(app).set({ desired: "removed" }).where(eq(app.id, row.id));
+        await recordEvent(tx, "app.removed", actorId, null, row.id);
+      },
+      actorId,
+    );
   }
 
   async deleteData(name: string, confirm: string, actorId: string): Promise<void> {

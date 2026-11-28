@@ -2,6 +2,7 @@
 // from `docker compose config --format json`, and build the file Your Space runs. Pure functions, so
 // the rules are tested without Docker.
 import { createHash } from "node:crypto";
+import { posix } from "node:path";
 import type { RegistryCredential } from "./engine.ts";
 
 export interface AppSpec {
@@ -34,6 +35,12 @@ export interface AppSpec {
    * pulls of those images alone (journey 015, R9).
    */
   registryCredentials?: RegistryCredential[];
+  /**
+   * The knowledge bases the owner gave an app whose kit asks for knowledge (journey 014): Your Space
+   * mounts each in the interface service at `<path>/<name>`. A check sends the path with no bases, so
+   * the review refuses a file that mounts something of its own there.
+   */
+  knowledge?: { path: string; bases: string[] } | null;
 }
 
 export interface Adaptation {
@@ -85,6 +92,53 @@ const PUBLISH_MEMORY = 128 * 1024 * 1024;
 const PUBLISH_CPUS = 0.5;
 /** Labels a published app's Caddy with the origin it lets frame the app, when it lets one. */
 export const FRAME_ORIGIN_LABEL = "ai.your-space.frame-origin";
+
+/**
+ * Every knowledge base's volume name starts with this (journey 014). Compose names an app's volumes
+ * `ys-<app>_<key>`, and a Compose project's name has no dot, so no volume Compose makes for an app
+ * can have this name; an app's file can't name one either (`checkTopLevel`, `checkVolumes`).
+ */
+export const KNOWLEDGE_PREFIX = "ys-knowledge.";
+/** A knowledge base's name, and its folder in the apps given it: lower-case letters, digits and dashes. */
+export const KNOWLEDGE_NAME = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+/**
+ * A knowledge path: absolute and normalised, so not `/`, with no empty, `.` or `..` folder, since a
+ * folder name can't start with a dot.
+ */
+export const KNOWLEDGE_PATH = /^(?:\/[A-Za-z0-9_][A-Za-z0-9._-]{0,63}){1,8}$/;
+/**
+ * Folders the container's kernel file systems are at, and the files Docker mounts in every container,
+ * which a mount can't go in.
+ */
+const SYSTEM_FOLDERS = ["/proc", "/sys", "/dev", "/etc/resolv.conf", "/etc/hosts", "/etc/hostname"];
+
+/** The volume that holds a knowledge base of this installation. */
+export function knowledgeVolume(installation: string, name: string): string {
+  return `${KNOWLEDGE_PREFIX}${installation}.${name}`;
+}
+
+/**
+ * A knowledge base volume's labels: Your Space's installation and the knowledge base, never an app's
+ * or a Compose project's, so nothing that finds an app's volumes finds it.
+ */
+export function knowledgeLabels(installation: string, name: string): Record<string, string> {
+  return { "ai.your-space.installation": installation, "ai.your-space.role": "knowledge", "ai.your-space.knowledge": name };
+}
+
+/** Whether a path is the folder or inside it. */
+function within(path: string, folder: string): boolean {
+  return path === folder || path.startsWith(`${folder}/`);
+}
+
+/** Whether a path is at or in one of the system folders or files a mount can't go in. */
+export function reservedPath(path: string): boolean {
+  return SYSTEM_FOLDERS.some((folder) => within(path, folder));
+}
+
+/** Whether a knowledge path is one Your Space mounts knowledge bases under. */
+export function validKnowledgePath(path: string): boolean {
+  return KNOWLEDGE_PATH.test(path) && !reservedPath(path);
+}
 
 /** Your Space's own Caddy: the image a published app's Caddy runs too, and the origin it lets frame apps. */
 export interface OwnCaddy {
@@ -280,11 +334,17 @@ export function resetFiles(reset: EnvFiles["reset"]): string {
   return `${lines.join("\n")}\n`;
 }
 
+const KNOWLEDGE_ONLY = "only Your Space mounts knowledge bases, in the apps the owner gives them to.";
+
 function checkVolumes(service: string, volumes: unknown, refusals: Refusal[]): void {
   if (!Array.isArray(volumes)) return;
   for (const volume of volumes) {
     if (!isObject(volume)) continue;
     const type = volume.type;
+    if (type === "volume" && String(volume.source ?? "").startsWith(KNOWLEDGE_PREFIX)) {
+      refusals.push({ service, setting: "volumes", reason: `Volume ${String(volume.source)} is a knowledge base's: ${KNOWLEDGE_ONLY}` });
+      continue;
+    }
     if (type === "volume" || type === "tmpfs") continue;
     if (type === "bind") {
       refusals.push({ service, setting: "volumes", reason: `Host folder ${String(volume.source)} can't be mounted; apps keep data in named volumes.` });
@@ -345,6 +405,11 @@ function checkService(name: string, service: Json, refusals: Refusal[], adaptati
 function checkTopLevel(resolved: Json, refusals: Refusal[]): void {
   const volumes = isObject(resolved.volumes) ? resolved.volumes : {};
   for (const [name, volume] of Object.entries(volumes)) {
+    // Your Space's own knowledge base volumes are named this way in the file it runs.
+    if (name.startsWith(KNOWLEDGE_PREFIX) || (isObject(volume) && String(volume.name ?? "").startsWith(KNOWLEDGE_PREFIX))) {
+      refusals.push({ service: "", setting: `volumes.${name}`, reason: `The volume names a knowledge base's: ${KNOWLEDGE_ONLY}` });
+      continue;
+    }
     if (!isObject(volume)) continue;
     if (volume.external) refusals.push({ service: "", setting: `volumes.${name}`, reason: "External volumes belong to something else on the machine." });
     if (volume.driver && volume.driver !== "local") refusals.push({ service: "", setting: `volumes.${name}`, reason: `Volume driver ${String(volume.driver)} isn't supported.` });
@@ -363,6 +428,22 @@ function checkTopLevel(resolved: Json, refusals: Refusal[]): void {
       refusals.push({ service: "", setting: key, reason: REFUSED[key] ?? `${key} aren't supported.` });
     }
   }
+}
+
+/**
+ * The paths a service mounts a volume, a host folder or a tmpfs at, normalised as the engine does:
+ * Compose cleans a volume's target, but leaves a short-form tmpfs as written, so `//knowledge`,
+ * `/./knowledge/notes` and `/x/../knowledge` are each in the knowledge path.
+ */
+function mountTargets(service: Json): string[] {
+  const targets: string[] = [];
+  for (const volume of Array.isArray(service.volumes) ? service.volumes : []) if (isObject(volume) && typeof volume.target === "string") targets.push(volume.target);
+  const tmpfs = Array.isArray(service.tmpfs) ? service.tmpfs : typeof service.tmpfs === "string" ? [service.tmpfs] : [];
+  for (const entry of tmpfs) targets.push(String(entry).split(":")[0]!);
+  return targets.map((target) => {
+    const clean = posix.normalize(target);
+    return clean.length > 1 ? clean.replace(/\/+$/, "") : clean;
+  });
 }
 
 function dependsOn(service: Json): string[] {
@@ -493,6 +574,29 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
   }
   if (spec.publish?.frame && spec.interface && caddy && !caddy.origin) {
     refusals.push({ service: "", setting: "publish", reason: "Your Space's Caddy has no origin set, so the app can't be shown inside Your Space. Turn that off for it." });
+  }
+  const knowledge = spec.knowledge ?? null;
+  if (knowledge && !spec.interface) {
+    refusals.push({ service: "", setting: "knowledge", reason: "Only an app with an interface can be given knowledge bases: Your Space mounts them in its interface service." });
+  }
+  if (knowledge && spec.interface && isObject(services[spec.interface.service])) {
+    // The knowledge path is Your Space's, so a knowledge base's folder is never hidden or taken.
+    for (const target of mountTargets(services[spec.interface.service] as Json)) {
+      if (within(target, knowledge.path)) {
+        refusals.push({
+          service: spec.interface.service,
+          setting: "volumes",
+          reason: `The file mounts ${target} in the app's knowledge path, ${knowledge.path}, where Your Space mounts the knowledge bases the owner gives the app.`,
+        });
+      }
+    }
+    // A knowledge base's folder can land on one of the files Docker mounts, as /etc and hosts do.
+    for (const name of knowledge.bases) {
+      const target = `${knowledge.path}/${name}`;
+      if (reservedPath(target)) {
+        refusals.push({ service: spec.interface.service, setting: "knowledge", reason: `The knowledge base ${name} would be mounted at ${target}, where Docker mounts a file of its own, so the app can't be given it.` });
+      }
+    }
   }
 
   const summaries: ServiceSummary[] = Object.entries(services)
@@ -629,6 +733,26 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
   const volumes = isObject(resolved.volumes) ? resolved.volumes : {};
   const outVolumes: Json = {};
   for (const name of Object.keys(volumes)) outVolumes[name] = { labels: labels };
+
+  if (knowledge && spec.interface && knowledge.bases.length > 0) {
+    // The one shared volume an app mounts (decision 2026-11-25): Your Space's own knowledge bases, the
+    // ones the owner gave the app, each in its own folder. Compose uses each as it is and never removes
+    // it; `nocopy` keeps an image's files at the folder from being copied into an empty one.
+    const service = outServices[spec.interface.service] as Json;
+    const mounts = knowledge.bases.map((name) => ({
+      type: "volume",
+      source: knowledgeVolume(spec.installation, name),
+      target: `${knowledge.path}/${name}`,
+      volume: { nocopy: true },
+    }));
+    service.volumes = [...(Array.isArray(service.volumes) ? service.volumes : []), ...mounts];
+    for (const mount of mounts) outVolumes[mount.source] = { external: true, name: mount.source };
+    adaptations.push({
+      service: spec.interface.service,
+      kind: "added",
+      detail: `Added the knowledge bases you gave the app: ${mounts.map((m) => m.target).join(", ")}.`,
+    });
+  }
 
   const adapted: Json = {
     name: spec.project,

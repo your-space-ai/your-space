@@ -30,6 +30,7 @@ textarea { background: var(--panel); color: var(--fg); font: inherit; }
 .nav-agents::before, .nav-agents::after { content: ""; position: absolute; border: 1.5px solid; }
 .nav-agents::before { inset: 0 25% 46%; border-radius: 50%; }
 .nav-agents::after { inset: 57% 4% 0; border-radius: 50% 50% 16% 16%; }
+.nav-knowledge { border-bottom: 1.5px solid; background: linear-gradient(currentColor,currentColor) left bottom/22% 100%, linear-gradient(currentColor,currentColor) 50% bottom/22% 72%, linear-gradient(currentColor,currentColor) right bottom/22% 88%; background-repeat: no-repeat; }
 .nav-appearance { border: 1.5px solid; border-radius: 50%; background: linear-gradient(130deg, currentColor 49%, transparent 50%); }
 .nav-engine { border: 1.5px solid; border-radius: 3px; background: linear-gradient(transparent 42%, currentColor 42% 54%, transparent 54%); }
 .nav-github { border: 1.5px solid; border-radius: 50%; background: radial-gradient(currentColor 0 26%, transparent 30%); }

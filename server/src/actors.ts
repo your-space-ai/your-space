@@ -1,7 +1,7 @@
 // Actors and events (FR-025, cross-cutting scenario 7). The full activity log is spec 005.
 import { eq } from "drizzle-orm";
 import type { Db } from "./db/client.ts";
-import { actor, event, type EventType } from "./db/schema.ts";
+import { actor, event, eventKnowledgeBase, type EventType } from "./db/schema.ts";
 import { errorFields, log } from "./log.ts";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -33,8 +33,10 @@ export async function recordEvent(
   actorId: string,
   subjectUserId: string | null,
   subjectAppId: string | null = null,
+  subjectKnowledgeBase: { id: string; name: string } | null = null,
 ): Promise<void> {
-  await db.insert(event).values({ type, actorId, subjectUserId, subjectAppId });
+  const [row] = await db.insert(event).values({ type, actorId, subjectUserId, subjectAppId }).returning({ id: event.id });
+  if (subjectKnowledgeBase) await db.insert(eventKnowledgeBase).values({ eventId: row!.id, knowledgeBaseId: subjectKnowledgeBase.id, name: subjectKnowledgeBase.name });
 }
 
 /**

@@ -231,7 +231,10 @@ starts again when you open the app.
 
 Apps keep their data in their own volumes, named after the app, such as `ys-notes_postgres-data`.
 `docker compose down -v` doesn't delete them, and doesn't stop the apps: stop them first with
-`docker compose exec runtime stop-apps`.
+`docker compose exec runtime stop-apps`. [Knowledge bases](../apps/knowledge-bases.md) are volumes
+of Your Space's, such as `ys-knowledge.your-space.course-notes`. `docker compose down -v` doesn't
+delete them either, and neither does removing an app or deleting its data; deleting the knowledge
+base in **Knowledge** does.
 
 > [!WARNING]
 > `docker compose down -v` is not a restart. `-v` (`--volumes`) deletes all of Your Space's volumes,
@@ -251,7 +254,8 @@ that server's apps. Otherwise they say when to quit the app and how to reach its
 
 1. With Your Space running (`your-space start` if you stopped it), open each app in **Apps** and
    select **Remove app**, then **Delete data**. Removing an app deletes its containers and
-   networks; deleting its data deletes its volumes, which can't be undone.
+   networks; deleting its data deletes its volumes, which can't be undone. Then delete each
+   knowledge base in **Knowledge**, which deletes its files.
 2. In the installation folder (`~/my-your-space` if you used `setup` and kept its default), stop
    any app still running, then delete Your Space's containers, networks and volumes. If Your Space is
    already stopped, as after quitting the Mac app, its apps are too: skip the first command.
@@ -271,11 +275,13 @@ that server's apps. Otherwise they say when to quit the app and how to reach its
 > networks and volumes stay behind, and apps that weren't stopped keep running. If you later install
 > an app with the same name on this Docker engine, it reuses that app's leftover volumes: the old
 > data meets newly generated settings, such as a new database password, and the app may not start.
+> A knowledge base created again with the same name keeps its leftover files the same way.
 
 To find what an earlier installation left behind, list what carries its label for its apps. The
 label's value is the installation's Compose project name: `your-space`, the `name` in
 `compose.yaml`, unless you changed it. If you did, use yours in each command below. App volumes are
-named after their app, such as `ys-notes_postgres-data`. Run these commands against the Docker
+named after their app, such as `ys-notes_postgres-data`, and knowledge bases' volumes after the
+installation and the knowledge base, such as `ys-knowledge.your-space.course-notes`. Run these commands against the Docker
 engine your apps ran on: if `.env` set `YS_ENGINE_SOCKET`, that's the engine at that path, so first
 run `unset DOCKER_CONTEXT` and `export DOCKER_HOST="unix://<that path>"` in the same shell. If the
 folder is already gone and you don't know the path, run the lists against each engine on this

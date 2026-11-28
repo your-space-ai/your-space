@@ -1,0 +1,13 @@
+# An app that reads and writes the knowledge bases it is given (journey 014): busybox with an HTTP
+# server, so tests can run commands in it. Its kits run it as user 1000, or as APP_USER.
+services:
+  web:
+    image: busybox:1.37
+    user: "${APP_USER:-1000}:${APP_USER:-1000}"
+    command: ["sh", "-c", "mkdir -p /tmp/www && echo ok > /tmp/www/index.html && httpd -f -p 8080 -h /tmp/www"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - data:/data
+volumes:
+  data:

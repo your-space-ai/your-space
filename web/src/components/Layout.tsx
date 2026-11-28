@@ -39,6 +39,11 @@ export function Layout() {
             </Link>
           </li>
           <li>
+            <Link to="/knowledge" onClick={close}>
+              <span className="nav-symbol nav-knowledge" aria-hidden="true" />Knowledge
+            </Link>
+          </li>
+          <li>
             <Link to="/agents" onClick={close}><span className="nav-symbol nav-agents" aria-hidden="true" />Agents</Link>
           </li>
         </ul>

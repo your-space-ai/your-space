@@ -8,6 +8,7 @@ import type { Db } from "../db/client.ts";
 import { member } from "../db/auth-schema.ts";
 import { installation } from "../db/schema.ts";
 import { safeReturn, type Handoffs } from "./gate.ts";
+import { KnowledgeBases } from "./knowledge.ts";
 import { AppError, type AppsService } from "./service.ts";
 
 interface Owner {
@@ -46,6 +47,7 @@ type Handler = (req: Request, res: Response, owner: Owner) => Promise<void>;
 export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Handoffs): Router {
   const router = Router();
   const publicOrigin = new URL(apps.config.publicUrl).origin;
+  const knowledge = new KnowledgeBases(apps);
 
   const owner = (handler: Handler) => async (req: Request, res: Response, next: NextFunction) => {
     res.set("Cache-Control", "no-store");
@@ -80,7 +82,7 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
   router.post(
     "/apps",
     owner(async (req, res, who) => {
-      const { previewId, settings, reuseData, publish } = body(req);
+      const { previewId, settings, reuseData, publish, knowledge } = body(req);
       if (typeof previewId !== "string") throw new AppError(400, "preview_required", "Review the app before installing it.");
       if (settings !== undefined && (typeof settings !== "object" || settings === null || Array.isArray(settings))) {
         throw new AppError(400, "invalid_setting", "Settings must be names with text values.");
@@ -89,7 +91,7 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
       for (const [key, value] of Object.entries(values)) {
         if (typeof value !== "string") throw new AppError(400, "invalid_setting", `${key} must be text.`);
       }
-      const { name, jobId } = await apps.install(previewId, values as Record<string, string>, reuseData === true, who.actorId, publish ?? null);
+      const { name, jobId } = await apps.install(previewId, values as Record<string, string>, reuseData === true, who.actorId, publish ?? null, knowledge ?? []);
       res.status(202).json({ name, jobId });
     }),
   );
@@ -124,6 +126,14 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
       res.status(202).json(await apps.updatePublish(name(req), publish, who.actorId));
     }),
   );
+  router.put(
+    "/apps/:name/knowledge",
+    owner(async (req, res, who) => {
+      const { bases } = body(req);
+      if (bases === undefined) throw new AppError(400, "knowledge_required", "Send the knowledge bases to give the app, as a list of their names.");
+      res.status(202).json(await apps.updateKnowledge(name(req), bases, who.actorId));
+    }),
+  );
   router.post(
     "/apps/:name/outbound",
     owner(async (req, res, who) => {
@@ -156,6 +166,24 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
     }),
   );
   router.get("/jobs/:id", owner(async (req, res) => void res.json(await apps.job(String(req.params.id)))));
+
+  // Knowledge bases (journey 014): Your Space's own folders of files, which the owner gives to apps.
+  router.get("/knowledge", owner(async (_req, res) => void res.json(await knowledge.list())));
+  router.post(
+    "/knowledge",
+    owner(async (req, res, who) => {
+      const { name: kb, title } = body(req);
+      res.status(201).json(await knowledge.create({ name: kb, title }, who.actorId));
+    }),
+  );
+  router.patch("/knowledge/:name", owner(async (req, res, who) => void res.json(await knowledge.retitle(name(req), body(req).title, who.actorId))));
+  router.delete(
+    "/knowledge/:name",
+    owner(async (req, res, who) => {
+      await knowledge.delete(name(req), who.actorId);
+      res.status(204).end();
+    }),
+  );
   router.get("/engine", owner(async (_req, res) => void res.json(await apps.engine())));
 
   // Opening an app: a one-time code takes the owner's signed-in session to the app's own origin,
