@@ -79,13 +79,14 @@ app's (an internal network in isolated gateway mode, a normal egress network) (2
 | `dns_search: .` | No `search` line; the machine's search domains are gone |
 | A fixed address for the responder on a network whose range Docker picked | Works with `docker run --ip`; Compose needs the range in the file (`ipam`) |
 | Adding `ipam` with the range Docker had picked to an existing app's network | Compose stops the app's containers, recreates the network on the same range, and starts the same containers again; the next `up` changes nothing |
+| The same, with a container from outside the project attached to the network (as Your Space's Caddy is to every app's) | Compose stops the app's containers, then can't remove the network ("has active endpoints") and leaves the app stopped |
 | A range already used by another network | Docker refuses it: "Pool overlaps with other one on this address space" |
 | CoreDNS 1.15.0 sharing `ys-egress`'s network (`network_mode: service:`) | Works, and Compose recreates it with `ys-egress`; but recreating `ys-egress` alone leaves it answering on a network that's gone |
 | CoreDNS in its own container on `app`, at a fixed address, and on `egress` | Works, and keeps working when `ys-egress` restarts; about 9 MB of memory, as user 65532 with every capability but `NET_BIND_SERVICE` dropped (with none, `exec /coredns: operation not permitted`) |
 | The Corefile of section 3 | A, AAAA and either case of an approved name: answered; its TXT and HTTPS: `NOERROR`, empty; a subdomain, an unapproved name, a made-up TXT: `NXDOMAIN` |
 | CoreDNS's `view` plugin with `expr name() in ['a.example.com.', …]` | Matches exact names only; double quotes in the expression break the Corefile, single quotes work |
 
-Docker forwards from an internal network to a DNS server inside it since Engine 26.1
+Docker forwards from an internal network to a DNS server inside it since Engine 26.1.3
 ([moby#47832](https://github.com/moby/moby/pull/47832)); Your Space requires 28.3.3 or newer. The
 check above ran only on Linux; the build runs it on CI's engine and on a Mac engine (FR-011).
 
@@ -110,16 +111,18 @@ Each app gets a second Your Space service, `ys-dns`, beside `ys-egress`:
   Compose config, with its hash as a label so Compose recreates `ys-dns` when the hosts change.
   (Compose refuses an inline config in a `read_only` service, so the root stays writable; CoreDNS
   writes nothing.)
+- **Log.** Only refused names are logged, and the log is capped (Compose `logging`, the `local`
+  driver with a small size limit), so a chatty app can't fill the disk.
 
 Rejected: an `ys-egress` image of Your Space's own with Squid and a DNS server (a second image to
 build, sign and update for both processor types, and Squid no longer run unmodified); and a
-container sharing `ys-egress`'s network, which is lost whenever `ys-egress` is recreated or started
-alone.
+container sharing `ys-egress`'s network, which in the probe stopped answering when `ys-egress` was
+recreated alone.
 
 ## 2. Refused Lookups Become Access Requests
 
-`ys-dns` logs every query it answers. When the runtime reads an app's denied hosts from Squid's log,
-it also reads `ys-dns`'s log (`docker logs`) for names it refused, keeps those that pass `HOST`, and
+`ys-dns` logs each name it refuses. When the runtime reads an app's denied hosts from Squid's log,
+it also reads `ys-dns`'s log (`docker logs -t`, since CoreDNS's lines carry no time) for those names, keeps those that pass `HOST`, and
 merges both into the app's access requests, with the time and count of tries as today. A host tried
 both ways is one request. Dismissing a request stops it from being asked again, as today.
 
@@ -149,7 +152,8 @@ Every app service gets:
 - `dns_search: .`, so the machine's search domains don't reach the app or turn one lookup into
   several refused names.
 - `depends_on: ys-dns` with `service_started`. The CoreDNS image has no shell, so it has no Docker
-  healthcheck; a lookup in the moment before it listens gets `SERVFAIL` and is retried by the app.
+  healthcheck; a lookup in the moment before it listens gets `SERVFAIL`, as a lookup does when any
+  DNS server is briefly away, and what happens next is up to the app.
 
 A Compose file's own `dns`, `dns_search` and `dns_opt` stay dropped, as every setting outside
 the allowed list is.
@@ -168,9 +172,16 @@ the file sets. So Your Space sets the `app` network's range:
 - **Inside the range**, Docker hands out addresses only from its lower half (`ip_range`), and
   `ys-dns` takes the last usable address, so no container can take it first.
 
-The first apply after an upgrade adds the range to each existing app's network, so Compose stops
-the app, recreates the network and starts the app again, once. Your Space already renews every app
-when its server starts after an upgrade, so this adds no second restart.
+Compose can't recreate a network while a container from outside the project is attached, and Your
+Space's own Caddy is attached to every app's network. So when the range is first added, the runtime
+disconnects its Caddy from the network, runs `up`, and connects it again, as it already does when it
+removes an app and when Caddy is recreated.
+
+The first apply after an upgrade adds the range to each existing app's network and the DNS settings
+to each of its services, so Compose recreates the network and every container of the app, once. A
+one-time service that finished, such as a migration, runs again then, because its configuration
+changed, as it does today when its settings change. Your Space already renews every app when its
+server starts after an upgrade, so this adds no second restart.
 
 ## 6. Approving and Removing Hosts
 
@@ -197,8 +208,8 @@ and removal.
 3. **Exfiltration refused.** A compromised app looks up `<data>.attacker.example`. It gets `NXDOMAIN`,
    and no DNS server outside the machine ever sees the name.
 4. **Service names.** The app's API reaches its database as `db`, as before.
-5. **Upgrade.** After an upgrade every app restarts once and keeps its data; its approved hosts
-   resolve.
+5. **Upgrade.** After an upgrade every app is recreated once and keeps its data; its approved
+   hosts resolve.
 
 ## Requirements
 
@@ -212,7 +223,8 @@ and removal.
 - **FR-004**: Every app service resolves through `ys-dns` (section 4) and still resolves the app's
   service and container names; no app service gets a route out or a DNS server outside the app.
 - **FR-005**: The `app` network's range is set as in section 5, with `ys-dns` at a fixed address
-  outside the range Docker hands out.
+  outside the range Docker hands out; the runtime disconnects its Caddy while the network is
+  recreated and connects it again, and an apply that fails there leaves Caddy connected.
 - **FR-006**: Approving or removing a host changes what `ys-dns` answers in the same apply that
   changes Squid, without recreating the app's own containers.
 - **FR-007**: Refused names that pass `HOST` become access requests merged with Squid's (decision 2).
