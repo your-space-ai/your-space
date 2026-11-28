@@ -23,10 +23,12 @@ Errors use journey 001's shape `{ "error": "<code>", "message": "…" }`.
 | `DELETE /api/apps/{name}/outbound/{host}` | | `202 { jobId }` |
 | `POST /api/apps/{name}/requests/{id}/approve` | | `202 { jobId }` |
 | `POST /api/apps/{name}/requests/{id}/dismiss` | | `204` |
+| `POST /api/apps/{name}/update/check` | `{ link? }` | The review of an update ([journey 019](../../019-kit-updates/spec.md)): the kit read again at the app's stored link, or at `link` (Update from a link), with the Compose file it pins, checked with the app's stored settings: `{ previewId, name, upToDate, digest, link, kit: { source, repo, path, commit, read }, source: { repo, path, commit, pinnedLink, read }, changes: { kit: { from, to }, compose, images: [{ ref, from, to, private }], settings: { added, removed }, outbound: { added, removed }, services: { added, removed }, interface }, ok, refusals, settings }`. `compose` and `interface` are null when unchanged; `settings` lists the added settings, to fill as at install. `upToDate` when the kit, its Compose file and its images are the ones the app runs. `digest` covers the installed kit, the candidate's commits and its image digests. `409 link_required` for an app with no stored link, as one installed before links were kept; `400 other_app` for a kit that names another app; otherwise the errors of `POST /api/kits/preview` |
+| `POST /api/apps/{name}/update` | `{ previewId, settings?: { NAME: value }, digest? }` | `202 { name, jobId }`; the reviewed candidate is applied in place by an `update` job, which signs in for the app's private images as an install does. `409 update_changed` when the app no longer runs the kit the review was made against, `digest` isn't the review's, or an image now names another digest; `409 up_to_date`; `400 refused`; `400 settings_required` |
 | `POST /api/apps/{name}/remove` | | `202 { jobId }`; data is kept |
 | `DELETE /api/apps/{name}/data` | `{ confirm: "<name>" }` | `204`; only for a removed app |
 | `GET /api/apps/{name}/open?return=/path` | | `302` to the app's handoff, or to sign-in. `return` must start with a single `/`; anything else (a scheme, `//`, a backslash) becomes `/`. Sent with `Referrer-Policy: no-referrer` |
-| `GET /api/jobs/{id}` | | `{ id, state, steps, error }` |
+| `GET /api/jobs/{id}` | | `{ id, kind, state, steps, error }`; `kind` is `install`, `apply`, `update` or `remove` |
 | `GET /api/engine` | | `{ reachable, version, arch, cpus, memory, connection, apps: [{ name, memory, cpuPercent }] }` |
 
 ## Gate listener (port 3001, reached only by Caddy)
