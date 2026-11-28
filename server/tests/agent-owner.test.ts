@@ -80,9 +80,8 @@ it("binds an app without granting access and rejects a stale grant or binding re
   const kit = parseKit(JSON.stringify({
     kit: 2,
     agentAccess: {
+      api: "/",
       credential: { binding: "catalog", inject: { location: "header", name: "X-API-Key" } },
-      roles: { reader: { title: "Reader", routes: ["list"] } },
-      routes: { list: { method: "GET", path: "/items", effect: "read" } },
     },
   }));
   const [installation] = await database.db.insert(app).values({
@@ -93,7 +92,7 @@ it("binds an app without granting access and rejects a stale grant or binding re
   const install = installation!.id;
   const secret = "synthetic-catalog-key";
   const binding = "/api/agents/installations/" + install;
-  const bound = await change(binding, "PUT", { revision: 0, enabledRoles: ["reader"], credential: secret });
+  const bound = await change(binding, "PUT", { revision: 0, credential: secret });
   expect(bound.status).toBe(200);
   expect(await bound.json()).toEqual({ revision: 1 });
   const created = await change("/api/agents", "POST", { name: "Reader" });
@@ -104,20 +103,20 @@ it("binds an app without granting access and rejects a stale grant or binding re
   const view = await overview.text();
   expect(view).not.toContain(secret);
   expect(JSON.parse(view)).toMatchObject({
-    agents: [{ id, grants: [] }], installations: [{ id: install, bound: true, enabledRoles: ["reader"] }],
+    agents: [{ id, grants: [] }], installations: [{ id: install, api: "/", problem: null, credentials: [{ name: "catalog", bound: true }] }],
   });
 
   const path = "/api/agents/" + id + "/grants/" + install;
-  const policy = { revision: 0, bindingRevision: 1, roles: ["reader"], overrides: {} };
+  const policy = { revision: 0, bindingRevision: 1, credential: "catalog", asks: [] };
   const granted = await change(path, "PUT", policy);
   expect(granted.status).toBe(200);
   expect(await granted.json()).toEqual({ revision: 1 });
-  expect((await change(path, "PUT", { ...policy, roles: [] })).status).toBe(409);
-  expect((await change(binding, "PUT", { revision: 1, enabledRoles: ["reader"] })).status).toBe(200);
-  expect((await change(path, "PUT", { ...policy, revision: 1, roles: [] })).status).toBe(409);
+  expect((await change(path, "PUT", policy)).status).toBe(409);
+  expect((await change(binding, "PUT", { revision: 1 })).status).toBe(200);
+  expect((await change(path, "PUT", { ...policy, revision: 1 })).status).toBe(409);
   const current = await server.request("/api/agents/dashboard", { headers: { cookie } });
   expect(await current.json()).toMatchObject({
-    agents: [{ id, grants: [{ installationId: install, revision: 1, roles: ["reader"] }] }],
+    agents: [{ id, grants: [{ installationId: install, revision: 1, credential: "catalog", asks: [] }] }],
   });
   const activity = await server.request("/api/agents/activity", { headers: { cookie } });
   expect(activity.status).toBe(200);

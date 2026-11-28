@@ -2,16 +2,10 @@ kit: 2
 source: {repo: ys-fixtures/records, path: compose.yaml, commit: e35d317876d749aaeece94b1a33dbb291f91feb3}
 name: records-setup
 interface: {service: app, port: 8080}
-# Two credentials (spec 017): the record key for the Editor, and the admin key for Setup, which no
-# record role carries.
+# Two keys (spec 017 decision 1, kept by 018): the owner picks which one each agent uses. The app
+# answers its records only to the record key, and its data model only to the admin key.
 agentAccess:
+  api: /
   credentials:
     records: {inject: {location: header, name: X-API-Key}}
     setup: {inject: {location: header, name: X-API-Key}}
-  roles:
-    editor: {title: Editor, routes: [list, create]}
-    setup: {title: Setup, routes: [fields]}
-  routes:
-    list: {method: GET, path: /items, effect: read, credential: records}
-    create: {method: POST, path: /items, credential: records, approval: allow}
-    fields: {method: GET, path: /meta/fields, effect: read, credential: setup}

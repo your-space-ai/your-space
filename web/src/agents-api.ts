@@ -3,14 +3,10 @@ import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "./apps-api.ts";
 
-export type Approval = "ask" | "allow";
-
-export interface AgentRoute {
-  method: string;
+/** A route that asks the owner first: a method and a path, `*` standing for one segment (spec 018). */
+export interface AskRule {
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   path: string;
-  /** Only a read declares it (spec 017). */
-  effect?: "read";
-  approval?: Approval;
 }
 
 export interface AgentInstallation {
@@ -18,21 +14,21 @@ export interface AgentInstallation {
   name: string;
   title?: string;
   source: string | null;
-  roles: Record<string, { title: string; routes: string[] }>;
-  routes: Record<string, AgentRoute>;
-  bound: boolean;
-  /** The kit names its credentials, each role using one (spec 017). */
+  /** Why agents can't reach the app: its stored kit is in the format before agent access per app. */
+  problem: "old_format" | null;
+  /** The path the app's API lives under. */
+  api: string | null;
+  /** The kit names its credentials. */
   named: boolean;
   credentials: { name: string; bound: boolean }[];
-  roleCredentials: Record<string, string | undefined>;
-  enabledRoles: string[];
   revision: number;
 }
 
 export interface AgentGrant {
   installationId: string;
-  roles: string[];
-  overrides: Record<string, Approval>;
+  /** The bound credential this agent uses; none until the owner picks one. */
+  credential: string | null;
+  asks: AskRule[];
   revision: number;
 }
 

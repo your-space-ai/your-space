@@ -1,6 +1,7 @@
 // Installing and managing apps (components A, F, G, H, N, O, P). The server keeps each app's record,
 // settings and approvals; the runtime manager runs it. Secret values leave the server only in the
 // app spec sent to the runtime manager.
+import { storedAgentAccess } from "./agent-kit.ts";
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
@@ -61,6 +62,14 @@ const MAX_PENDING_REQUESTS = 50;
 const RESERVED_NAMES = new Set(["www", "api", "app", "apps", "space", "admin", "static", "assets", "mail"]);
 /** A published port listens only on this machine unless the owner chooses another address. */
 export const DEFAULT_BIND = "127.0.0.1";
+
+
+/** The agent access an app's stored kit gives: its API's path, or why it gives none. */
+function agentAccessOf(kit: unknown): { api: string | null; problem: "old_format" | null } | null {
+  const stored = storedAgentAccess(kit);
+  if (!stored) return null;
+  return "access" in stored ? { api: stored.access.api, problem: null } : { api: null, problem: stored.problem };
+}
 
 export class AppError extends Error {
   readonly status: number;
@@ -1121,6 +1130,8 @@ export class AppsService {
       publish: publishOf(this.config.publicUrl, row),
       source: { link: row.sourceUrl, repo: row.repo, path: row.path, ref: row.ref, commit: row.commit },
       kitSource: row.kitSource,
+      // Whether agents can reach the app through Your Space, and why not (spec 018 decision 11).
+      agentAccess: agentAccessOf(row.kit),
       provenance: row.provenance,
       images: row.images,
       adaptations: row.adaptations,

@@ -14,20 +14,19 @@ function endpoint(env: NodeJS.ProcessEnv): { origin: string; credential: string 
   return { origin: url.origin, credential: env.YOUR_SPACE_AGENT_KEY };
 }
 
-async function readInput(): Promise<Record<string, unknown>> {
-  if (process.stdin.isTTY) throw new CliError("usage", "Pipe a JSON input object on stdin.");
+async function readBody(): Promise<unknown> {
+  if (process.stdin.isTTY) throw new CliError("usage", "Pipe the JSON body on stdin.");
   let size = 0;
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
     size += chunk.length;
-    if (size > 60 * 1024) throw new CliError("invalid_input", "The action input exceeds 60 KiB.");
+    if (size > 60 * 1024) throw new CliError("invalid_input", "The body exceeds 60 KiB.");
     chunks.push(Buffer.from(chunk));
   }
   try {
-    const value: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch { /* Invalid input never appears in diagnostics. */ }
-  throw new CliError("invalid_input", "The action input must be a JSON object.");
+  throw new CliError("invalid_input", "The body must be JSON.");
 }
 
 async function callAgent(ui: Ui, path: string, input?: Record<string, unknown>): Promise<void> {
@@ -69,14 +68,15 @@ async function callAgent(ui: Ui, path: string, input?: Record<string, unknown>):
 
 export function registerAgentCommands(program: Command, ui: () => Ui): void {
   const agent = program.command("agent").description("use installed apps with an agent credential");
-  agent.command("actions").description("list available kit actions").action(() => callAgent(ui(), "/api/agent/actions"));
-  agent.command("request <id>").description("check a previously submitted request").action((id: string) =>
+  agent.command("apps").description("list the apps this agent can reach, and the routes that ask first")
+    .action(() => callAgent(ui(), "/api/agent/apps"));
+  agent.command("request <id>").description("check a call that waited for approval").action((id: string) =>
     callAgent(ui(), "/api/agent/requests/" + encodeURIComponent(id)));
-  // An action takes path and query fields, and a write its body, sent to the app as it is (spec 017).
-  agent.command("invoke <installation-id> <action-id>").description("submit a kit action")
-    .requiredOption("--input-stdin", "read the input object (path, query and a write's body) from stdin")
-    .action(async (installationId: string, actionId: string) => {
-      const input = await readInput();
-      await callAgent(ui(), "/api/agent/invoke", { installationId, actionId, input });
+  // Agent access is per app (spec 018): a call is a method and a path under the app's API, with a body.
+  agent.command("call <installation-id> <method> <path>").description("call an app's API, such as GET /rest/companies?limit=5")
+    .option("--body-stdin", "read the JSON body from stdin")
+    .action(async (installationId: string, method: string, path: string, options: { bodyStdin?: boolean }) => {
+      const body = options.bodyStdin ? await readBody() : undefined;
+      await callAgent(ui(), "/api/agent/call", { installationId, method: method.toUpperCase(), path, ...(body === undefined ? {} : { body }) });
     });
 }

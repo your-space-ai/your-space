@@ -24,7 +24,7 @@ test("an owner issues, rotates and revokes a zero-grant agent's keys", async ({ 
   const client = await playwright.request.newContext({ baseURL });
   const discovery = async (secret: string) =>
     (
-      await client.get("/api/agent/actions", {
+      await client.get("/api/agent/apps", {
         headers: { Authorization: "Bearer " + secret },
       })
     ).status();
@@ -51,7 +51,7 @@ test("an owner issues, rotates and revokes a zero-grant agent's keys", async ({ 
   }
 });
 
-test("kit grants and exact approvals route real reads to the installed app", async ({
+test("an agent granted an app reads and writes its API with the owner's key, asking only where the owner said", async ({
   page,
   baseURL,
 }) => {
@@ -70,182 +70,82 @@ test("kit grants and exact approvals route real reads to the installed app", asy
   const key = await page.getByLabel("New agent key", { exact: true }).inputValue();
   await page.getByRole("button", { name: "Dismiss key" }).click();
 
+  // The owner binds the app key once; agents never see it.
   const app = page.getByRole("region", { name: "App connections" });
   await app.locator("summary").click();
-  // There is no Ask for all writes: each route asks or runs as the owner sets it (spec 017).
-  await expect(app).not.toContainText("No verified review");
-  await app.getByLabel("App credential", { exact: true }).fill("local-fixture-key");
-  await app.getByRole("checkbox", { name: /Inspector/ }).check();
-  await app.getByRole("checkbox", { name: /Reader/ }).check();
-  await app.getByRole("button", { name: "Save connection" }).click();
-  await expect(app.locator("summary")).toContainText("Credential saved");
+  await expect(app).toContainText("/items");
+  await app.getByLabel("App key", { exact: true }).fill("local-fixture-key");
+  await app.getByRole("button", { name: "Save keys" }).click();
+  await expect(app.locator("summary")).toContainText("Key saved");
+
+  // The agent gets the app with that key; only deletes ask first.
   const settings = page.getByRole("region", { name: "Manage agents" });
   const access = settings.locator("details").filter({ has: page.locator("summary", { hasText: /records/i }) });
   await access.locator("summary").click();
-  await access.getByRole("checkbox", { name: /Inspector/ }).check();
-  await expect(access.getByText("Ask for all writes")).toHaveCount(0);
-  await expect(access.getByLabel("Approval for show")).toHaveValue("");
+  await expect(access.getByText("None: every call runs directly.")).toBeVisible();
+  await access.getByLabel("App key this agent uses").selectOption("service");
+  await access.getByLabel("Method that asks").selectOption("DELETE");
+  await access.getByLabel("Path that asks").fill("/items/*");
+  await access.getByRole("button", { name: "Add" }).click();
   await access.getByRole("button", { name: "Save agent access" }).click();
-  await expect(access.locator("summary")).toContainText("Inspector");
+  await expect(access.locator("summary")).toContainText("Uses the service key");
 
   const cli = cliIn(process.cwd(), { YOUR_SPACE_URL: baseURL!, YOUR_SPACE_AGENT_KEY: key });
   const run = async (args: string[], input?: unknown) => {
-    const outcome = await cli.run(["--json", "agent", ...args], { input: JSON.stringify(input) });
-    expect(outcome.code).toBe(0);
+    const outcome = await cli.run(["--json", "agent", ...args], input === undefined ? {} : { input: JSON.stringify(input) });
+    expect(outcome.code, JSON.stringify(outcome.json)).toBe(0);
     return outcome.json;
   };
-  const discovered = await run(["actions"]);
-  expect(discovered.actions.map((a: { actionId: string }) => a.actionId).sort()).toEqual(["list", "show"]);
-  expect(discovered.actions.every((a: { method: string; effect: string }) => a.method === "GET" && a.effect === "read")).toBe(true);
-  const installationId = discovered.actions[0].installationId;
-  const invoke = (actionId: string, input: unknown) => run(["invoke", installationId, actionId, "--input-stdin"], input);
+  const apps = (await run(["apps"])).apps;
+  expect(apps).toMatchObject([{ api: "/items", available: true, asks: [{ method: "DELETE", path: "/items/*" }] }]);
+  const installationId = apps[0].installationId;
+  const callApp = (method: string, path: string, body?: unknown) =>
+    run(["call", installationId, method, path, ...(body === undefined ? [] : ["--body-stdin"])], body);
+
   const assignee = { firstName: "Sam" };
   const walk = { id: "3f8a2c1e-5b7d-4e9f-a1c3-6d2b8e4f7a90", revision: 1, title: "Morning walk", assignee };
-  const plants = { id: "9c4e7b2a-1d3f-4a6e-b8c5-2f7a9d1e3b64", revision: 3, title: "Water the plants", assignee };
+  const listed = await callApp("GET", "/items");
+  expect(listed).toMatchObject({ status: "succeeded", result: { data: { items: [walk, expect.anything()] }, totalCount: 2 } });
 
-  // A read the kit allows runs directly, and the app's response comes back unchanged.
-  const listed = await invoke("list", {});
-  expect(listed.status).toBe("succeeded");
-  expect(listed.result).toEqual({ data: { items: [walk, plants] }, totalCount: 2 });
+  // Writes run directly: the key's role in the app is the limit, and the body goes as it is.
+  const id = "5d1c8e3a-7b2f-4a9e-9c6d-1e4f8a2b7c30";
+  const created = await callApp("POST", "/items", { id, title: "Call the plumber" });
+  expect(created).toMatchObject({ status: "succeeded", result: { data: { createItem: { id, title: "Call the plumber" } } } });
+  const edited = await callApp("PATCH", "/items/" + id, { done: true });
+  expect(edited).toMatchObject({ status: "succeeded", result: { data: { updateItem: { id, done: true, revision: 2 } } } });
 
-  // A read the kit marks ask waits for the owner, who sees the exact input.
-  const asked = await invoke("show", { path: { id: walk.id } });
+  // A delete matches the route that asks: it waits, the owner sees the exact call, and approves once.
+  const asked = await callApp("DELETE", "/items/" + id);
   expect(asked.status).toBe("pending");
   const pending = page.getByRole("region", { name: "Pending approvals" });
   await pending.locator("summary").click();
-  await expect(pending.locator("pre")).toContainText(walk.id);
+  await expect(pending.locator("pre")).toContainText("/items/" + id);
   await pending.getByRole("button", { name: "Approve once" }).click();
   await expect(pending.getByText("No requests awaiting approval.")).toBeVisible();
-  const approved = await run(["request", asked.id]);
-  expect(approved.status).toBe("succeeded");
-  expect(approved.result).toEqual(walk);
-
-  const denied = await invoke("show", { path: { id: plants.id } });
+  expect((await run(["request", asked.id])).status).toBe("succeeded");
+  const denied = await callApp("DELETE", "/items/" + walk.id);
   expect(denied.status).toBe("pending");
   await pending.locator("summary").click();
   await pending.getByRole("button", { name: "Deny", exact: true }).click();
   await expect(pending.getByText("No requests awaiting approval.")).toBeVisible();
   expect((await run(["request", denied.id])).status).toBe("rejected");
+  const after = await callApp("GET", "/items");
+  expect(after.result.data.items.map((item: { id: string }) => item.id)).toEqual([walk.id, expect.any(String)]);
 
-  // The owner can let the read run directly instead.
+  // Outside the API is refused before anything reaches the app.
+  const outside = await cli.run(["--json", "agent", "call", installationId, "GET", "/meta/fields"]);
+  expect(outside.code).not.toBe(0);
+  expect(outside.json).toMatchObject({ error: "agent_request_failed", reason: "invalid_request" });
+
+  // Removing access ends it.
   await access.locator("summary").click();
-  await access.getByLabel("Approval for show").selectOption("allow");
-  await access.getByRole("button", { name: "Save agent access" }).click();
-  await expect(access).not.toHaveAttribute("open", "");
-  const direct = await invoke("show", { path: { id: plants.id } });
-  expect(direct.status).toBe("succeeded");
-  expect(direct.result).toEqual(plants);
-
-  // A body, or an action the kit doesn't declare, is refused.
-  const refused = await cli.run(["--json", "agent", "invoke", installationId, "show", "--input-stdin"], {
-    input: JSON.stringify({ path: { id: walk.id }, body: { title: "Changed" } }),
-  });
-  expect(refused.code).not.toBe(0);
-  expect(refused.json).toMatchObject({ error: "agent_request_failed", reason: "invalid_input" });
+  await access.getByRole("button", { name: "Remove access" }).click();
+  await expect(access.locator("summary")).toContainText("No access");
+  const removed = await cli.run(["--json", "agent", "call", installationId, "GET", "/items"]);
+  expect(removed.json).toMatchObject({ error: "agent_request_failed", reason: "denied" });
 });
 
-test("an agent creates, edits and deletes records through the routes its roles grant", async ({ page, baseURL }) => {
-  await resetStack();
-  const owner = await createOwner();
-  await setPassword(page, owner.url);
-  await signIn(page, "sam");
-  const installed = await serverCommand("install-app", [
-    "https://github.com/ys-fixtures/catalog/blob/main/apps/ys-fixtures/records.yaml",
-  ]);
-  expect(installed.json?.ok, installed.json?.error).toBe(true);
-  await page.getByRole("link", { name: "Agents", exact: true }).click();
-  await page.getByLabel("New agent name").fill("Writing agent");
-  await page.getByRole("button", { name: "Create agent" }).click();
-  await page.getByRole("button", { name: "Issue key" }).click();
-  const key = await page.getByLabel("New agent key", { exact: true }).inputValue();
-  await page.getByRole("button", { name: "Dismiss key" }).click();
-
-  const app = page.getByRole("region", { name: "App connections" });
-  await app.locator("summary").click();
-  await app.getByLabel("App credential", { exact: true }).fill("local-fixture-key");
-  await app.getByRole("checkbox", { name: /Editor/ }).check();
-  await app.getByRole("checkbox", { name: /Remover/ }).check();
-  await app.getByRole("button", { name: "Save connection" }).click();
-  await expect(app.locator("summary")).toContainText("Credential saved");
-  const settings = page.getByRole("region", { name: "Manage agents" });
-  const access = settings.locator("details").filter({ has: page.locator("summary", { hasText: /records/i }) });
-  await access.locator("summary").click();
-  await access.getByRole("checkbox", { name: /Editor/ }).check();
-  // A write nobody set asks first; a read runs directly.
-  await expect(access.getByLabel("Approval for create").locator("option").first()).toHaveText("Use default (ask)");
-  await expect(access.getByLabel("Approval for list").locator("option").first()).toHaveText("Use default (allow)");
-  await access.getByRole("button", { name: "Save agent access" }).click();
-  await expect(access.locator("summary")).toContainText("Editor");
-
-  const cli = cliIn(process.cwd(), { YOUR_SPACE_URL: baseURL!, YOUR_SPACE_AGENT_KEY: key });
-  const run = async (args: string[], input?: unknown) => {
-    const outcome = await cli.run(["--json", "agent", ...args], { input: JSON.stringify(input) });
-    expect(outcome.code, JSON.stringify(outcome.json)).toBe(0);
-    return outcome.json;
-  };
-  const discovered = await run(["actions"]);
-  expect(discovered.actions.map((a: { actionId: string; method: string }) => a.actionId + " " + a.method).sort()).toEqual([
-    "create POST",
-    "edit PATCH",
-    "list GET",
-    "show GET",
-  ]);
-  const installationId = discovered.actions[0].installationId;
-  const invoke = (actionId: string, input: unknown) => run(["invoke", installationId, actionId, "--input-stdin"], input);
-
-  // The create waits for the owner, who sees the body it will send, then reaches the app once.
-  const id = "5d1c8e3a-7b2f-4a9e-9c6d-1e4f8a2b7c30";
-  const asked = await invoke("create", { body: { id, title: "Call the plumber" } });
-  expect(asked.status).toBe("pending");
-  const pending = page.getByRole("region", { name: "Pending approvals" });
-  await pending.locator("summary").click();
-  await expect(pending.locator("pre")).toContainText("Call the plumber");
-  await pending.getByRole("button", { name: "Approve once" }).click();
-  await expect(pending.getByText("No requests awaiting approval.")).toBeVisible();
-  const created = await run(["request", asked.id]);
-  expect(created).toMatchObject({ status: "succeeded", result: { data: { createItem: { id, title: "Call the plumber" } } } });
-
-  // Set to Allow, an edit runs directly; the app changes only the field sent.
-  await access.locator("summary").click();
-  await access.getByLabel("Approval for edit").selectOption("allow");
-  await access.getByRole("button", { name: "Save agent access" }).click();
-  await expect(access).not.toHaveAttribute("open", "");
-  const edited = await invoke("edit", { path: { id }, body: { done: true } });
-  expect(edited).toMatchObject({ status: "succeeded", result: { data: { updateItem: { id, title: "Call the plumber", done: true } } } });
-  const afterEdit = await invoke("list", {});
-  expect(afterEdit.result.data.items).toContainEqual({ id, title: "Call the plumber", done: true, revision: 2 });
-
-  // A second create of the same record ID reaches the app, which refuses it: Your Space keeps no operation ID.
-  await access.locator("summary").click();
-  await access.getByLabel("Approval for create").selectOption("allow");
-  await access.getByRole("button", { name: "Save agent access" }).click();
-  await expect(access).not.toHaveAttribute("open", "");
-  const again = await cli.run(["--json", "agent", "invoke", installationId, "create", "--input-stdin"], {
-    input: JSON.stringify({ body: { id, title: "Call the plumber" } }),
-  });
-  expect(again.json).toMatchObject({ error: "agent_request_failed", status: "refused" });
-
-  // A delete is granted only with its own role, then asks first like any write nobody set.
-  const remove = { path: { id } };
-  const unGranted = await cli.run(["--json", "agent", "invoke", installationId, "remove", "--input-stdin"], {
-    input: JSON.stringify(remove),
-  });
-  expect(unGranted.json).toMatchObject({ error: "agent_request_failed", reason: "denied" });
-  await access.locator("summary").click();
-  await access.getByRole("checkbox", { name: /Remover/ }).check();
-  await access.getByRole("button", { name: "Save agent access" }).click();
-  await expect(access.locator("summary")).toContainText("Remover");
-  const removal = await invoke("remove", remove);
-  expect(removal.status).toBe("pending");
-  await pending.locator("summary").click();
-  await pending.getByRole("button", { name: "Approve once" }).click();
-  await expect(pending.getByText("No requests awaiting approval.")).toBeVisible();
-  expect((await run(["request", removal.id])).status).toBe("succeeded");
-  const listed = await invoke("list", {});
-  expect(listed.result.data.items.map((item: { id: string }) => item.id)).not.toContain(id);
-});
-
-test("a setup role is sent with its own admin credential, which no record role carries", async ({ page, baseURL }) => {
+test("each agent uses the app key the owner picked for it, and no other", async ({ page, baseURL }) => {
   await resetStack();
   const owner = await createOwner();
   await setPassword(page, owner.url);
@@ -261,39 +161,31 @@ test("a setup role is sent with its own admin credential, which no record role c
   const key = await page.getByLabel("New agent key", { exact: true }).inputValue();
   await page.getByRole("button", { name: "Dismiss key" }).click();
 
-  // Each named credential is bound on its own, and each role shows the one it uses.
   const app = page.getByRole("region", { name: "App connections" });
   await app.locator("summary").click();
-  await expect(app.getByText("Uses the setup credential")).toBeVisible();
-  await app.getByLabel("App credential: records", { exact: true }).fill("local-fixture-key");
-  await app.getByRole("checkbox", { name: /Editor/ }).check();
-  await app.getByRole("checkbox", { name: /Setup/ }).check();
-  await app.getByRole("button", { name: "Save connection" }).click();
-  await expect(app.getByRole("alert")).toContainText("Supply the setup credential before enabling a role that uses it.");
-  await app.getByLabel("App credential: setup", { exact: true }).fill("local-fixture-admin-key");
-  await app.getByRole("button", { name: "Save connection" }).click();
-  await expect(app.locator("summary")).toContainText("Credential saved");
+  await app.getByLabel("App key: records", { exact: true }).fill("local-fixture-key");
+  await app.getByLabel("App key: setup", { exact: true }).fill("local-fixture-admin-key");
+  await app.getByRole("button", { name: "Save keys" }).click();
+  await expect(app.locator("summary")).toContainText("Key saved");
 
   const settings = page.getByRole("region", { name: "Manage agents" });
   const access = settings.locator("details").filter({ has: page.locator("summary", { hasText: /records/i }) });
-  await access.locator("summary").click();
-  await access.getByRole("checkbox", { name: /Editor/ }).check();
-  await access.getByRole("checkbox", { name: /Setup/ }).check();
-  await access.getByRole("button", { name: "Save agent access" }).click();
-  await expect(access.locator("summary")).toContainText("Setup");
+  const useKey = async (name: string) => {
+    await access.locator("summary").click();
+    await access.getByLabel("App key this agent uses").selectOption(name);
+    await access.getByRole("button", { name: "Save agent access" }).click();
+    await expect(access.locator("summary")).toContainText(`Uses the ${name} key`);
+  };
+  await useKey("setup");
 
   const cli = cliIn(process.cwd(), { YOUR_SPACE_URL: baseURL!, YOUR_SPACE_AGENT_KEY: key });
-  const run = async (args: string[], input?: unknown) => {
-    const outcome = await cli.run(["--json", "agent", ...args], { input: JSON.stringify(input) });
-    expect(outcome.code, JSON.stringify(outcome.json)).toBe(0);
-    return outcome.json;
-  };
-  const installationId = (await run(["actions"])).actions[0].installationId;
+  const callApp = async (path: string) =>
+    (await cli.run(["--json", "agent", "call", installationId, "GET", path])).json;
+  const installationId = (await cli.run(["--json", "agent", "apps"])).json.apps[0].installationId;
   // The app answers its data model only to the admin key, and its records only to the record key.
-  const fields = await run(["invoke", installationId, "fields", "--input-stdin"], {});
-  expect(fields).toMatchObject({ status: "succeeded", result: { data: { fields: ["title", "assignee"] } } });
-  const listed = await run(["invoke", installationId, "list", "--input-stdin"], {});
-  expect(listed.status).toBe("succeeded");
-  const created = await run(["invoke", installationId, "create", "--input-stdin"], { body: { title: "Set up" } });
-  expect(created).toMatchObject({ status: "succeeded", result: { data: { createItem: { title: "Set up" } } } });
+  expect(await callApp("/meta/fields")).toMatchObject({ status: "succeeded", result: { data: { fields: ["title", "assignee"] } } });
+  expect(await callApp("/items")).toMatchObject({ status: "refused" });
+  await useKey("records");
+  expect((await callApp("/items")).status).toBe("succeeded");
+  expect(await callApp("/meta/fields")).toMatchObject({ status: "refused" });
 });

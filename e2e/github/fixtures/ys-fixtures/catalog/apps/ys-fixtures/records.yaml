@@ -2,34 +2,10 @@ kit: 2
 source: {repo: ys-fixtures/records, path: compose.yaml, commit: e35d317876d749aaeece94b1a33dbb291f91feb3}
 name: records
 interface: {service: app, port: 8080}
+# Agent access per app (spec 018): an agent granted this app calls its API under /items, with the key
+# the owner binds; the key's role in the app is the limit.
 agentAccess:
+  api: /items
   credential:
     binding: service
     inject: {location: header, name: X-API-Key}
-  roles:
-    reader: {title: Reader, routes: [list]}
-    inspector: {title: Inspector, routes: [list, show]}
-    editor: {title: Editor, routes: [list, show, create, edit]}
-    remover: {title: Remover, routes: [remove]}
-  routes:
-    list:
-      method: GET
-      path: /items
-      effect: read
-    show:
-      method: GET
-      path: /items/{id}
-      effect: read
-      approval: ask
-      pathParams: {id: uuid}
-    create:
-      method: POST
-      path: /items
-    edit:
-      method: PATCH
-      path: /items/{id}
-      pathParams: {id: uuid}
-    remove:
-      method: DELETE
-      path: /items/{id}
-      pathParams: {id: uuid}

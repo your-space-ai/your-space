@@ -36,7 +36,7 @@ export function agentRoutes(auth: Auth, db: Db, dataKey: string) {
       } catch (err) {
         if (err instanceof AgencyError) res.status(err.status).json({ error: err.code, message: err.message });
         else if (err instanceof AgentKitError)
-          res.status(400).json({ error: "invalid_input", message: "The action input does not match its route." });
+          res.status(400).json({ error: "invalid_input", message: err.message });
         else next(err);
       }
     };
@@ -99,7 +99,7 @@ export function agentRoutes(auth: Auth, db: Db, dataKey: string) {
     }),
   );
   router.get(
-    "/agent/actions",
+    "/agent/apps",
     route(async (r, res) => {
       const key = verifier(r);
       res.json(await transaction(db, async (c) => discover(c, await identity(c, key))));
@@ -113,7 +113,7 @@ export function agentRoutes(auth: Auth, db: Db, dataKey: string) {
     }),
   );
   router.post(
-    "/agent/invoke",
+    "/agent/call",
     route(async (r, res) => {
       if (!r.is("application/json")) invalid();
       const outcome = await invoke(db, dataKey, verifier(r), r.body);

@@ -48,11 +48,10 @@ The [roadmap](docs/roadmap.md) tracks what’s implemented and what’s planned.
 
 ## Current limits
 
-An external agent has completed an owner-approved read from an independently installed app. A kit
-can also give agents routes that create, change or delete records; those have run against a test
-app, and a run against a real app is still to come. Your Space checks the route and its method, not
-the body: the app checks that. [Agent verification](specs/005-owner-agent/tasks.md) ·
-[Agent writes](specs/017-agent-writes/spec.md)
+External agents have read and written records in an independently installed app through Your
+Space. Agent access is per app: an agent granted an app calls its API with the app key the owner
+picks, and that key's role in the app is the limit; Your Space checks the path, not the body.
+[Agent verification](specs/005-owner-agent/tasks.md) · [Agent access per app](specs/018-app-access/spec.md)
 
 ## Feedback and contributions
 

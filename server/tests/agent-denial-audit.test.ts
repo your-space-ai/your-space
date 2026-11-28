@@ -20,10 +20,10 @@ it("samples concurrent denials per agent, caps history, and omits unusable recei
     const first = await create("First");
     const second = await create("Second");
     const deny = async (key: string, route: string) => {
-      const response = await server.request("/api/agent/invoke", {
+      const response = await server.request("/api/agent/call", {
         method: "POST",
         headers: { Authorization: "Bearer " + key },
-        body: JSON.stringify({ installationId: randomUUID(), actionId: route, input: {} }),
+        body: JSON.stringify({ installationId: randomUUID(), method: "GET", path: "/" + route }),
       });
       expect(response.status).toBe(403);
       expect(await response.json()).toEqual({ error: "denied", status: "denied" });
@@ -49,7 +49,7 @@ it("samples concurrent denials per agent, caps history, and omits unusable recei
     expect(samples.rowCount).toBe(32);
     expect(samples.rows.filter((row) => row.route !== "old")).toHaveLength(1);
     const other = await test.pool.query("select route from agent_request where agent_id=$1", [second.agentId]);
-    expect(other.rows).toEqual([{ route: "separate-agent" }]);
+    expect(other.rows).toEqual([{ route: "GET /separate-agent" }]);
   } finally {
     await server.close();
     await test.destroy();

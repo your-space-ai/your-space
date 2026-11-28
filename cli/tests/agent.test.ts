@@ -19,31 +19,32 @@ async function cli(url: string, args: string[], input?: string) {
   return { code, json: JSON.parse(out) };
 }
 
-it("uses agent credentials without an installation folder and passes exact input", async () => {
+it("uses agent credentials without an installation folder and sends the call as given", async () => {
   let sent: unknown;
   let authorization: string | undefined;
   const server = createServer(async (req, res) => {
     authorization = req.headers.authorization;
-    if (req.url === "/api/agent/invoke") {
+    if (req.url === "/api/agent/call") {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       sent = JSON.parse(Buffer.concat(chunks).toString());
     }
     res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify(req.url === "/api/agent/actions" ? { actions: [] } : { id: "request", status: "pending" }));
+    res.end(JSON.stringify(req.url === "/api/agent/apps" ? { apps: [] } : { id: "request", status: "pending" }));
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const url = "http://127.0.0.1:" + (server.address() as AddressInfo).port;
   try {
-    expect((await cli(url, ["actions"])).json.actions).toEqual([]);
-    expect((await cli(url, ["invoke", "install", "show", "--input-stdin"], '{"path":{"id":"7"}}')).json.status).toBe("pending");
+    expect((await cli(url, ["apps"])).json.apps).toEqual([]);
+    expect((await cli(url, ["call", "install", "get", "/rest/companies?limit=5"])).json.status).toBe("pending");
     expect(authorization).toBe("Bearer " + credential);
-    expect(sent).toEqual({ installationId: "install", actionId: "show", input: { path: { id: "7" } } });
-    // A write's body goes in the input as it is; Your Space keeps no operation ID (spec 017).
-    expect((await cli(url, ["invoke", "install", "create", "--input-stdin"], '{"body":{"title":"New","tags":[1]}}')).json.status).toBe("pending");
-    expect(sent).toEqual({ installationId: "install", actionId: "create", input: { body: { title: "New", tags: [1] } } });
-    expect((await cli(url, ["invoke", "install", "show", "--input-stdin", "--operation-id", "op"], "{}")).json.error).toBe("usage");
+    expect(sent).toEqual({ installationId: "install", method: "GET", path: "/rest/companies?limit=5" });
+    // A body goes as it is; Your Space keeps no operation ID (spec 017) and lists no routes (spec 018).
+    expect((await cli(url, ["call", "install", "POST", "/rest/companies", "--body-stdin"], '{"name":"New","tags":[1]}')).json.status).toBe("pending");
+    expect(sent).toEqual({ installationId: "install", method: "POST", path: "/rest/companies", body: { name: "New", tags: [1] } });
+    expect((await cli(url, ["call", "install", "POST", "/rest/companies", "--body-stdin"], "not json")).json.error).toBe("invalid_input");
+    expect((await cli(url, ["invoke", "install", "show", "--input-stdin"], "{}")).json.error).toBe("usage");
   } finally { server.close(); }
 });
 

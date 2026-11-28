@@ -184,7 +184,7 @@ it("upgrades a populated 0005 workspace in place without granting agent access",
     const dashboard = await upgraded.request("/api/agents/dashboard", { headers: { cookie } });
     expect(dashboard.status).toBe(200);
     expect(await dashboard.json()).toMatchObject({ agents: [], installations: [], requests: [], events: [] });
-    expect((await upgraded.request("/api/agent/actions", { headers: { cookie } })).status).toBe(401);
+    expect((await upgraded.request("/api/agent/apps", { headers: { cookie } })).status).toBe(401);
   } finally {
     await upgraded.close();
   }

@@ -75,8 +75,8 @@ export function Agents() {
             {data.installations.length ? (
               <>
                 <p className="muted">
-                  Choose which kit roles you can grant. Your Space supplies the app credential when an agent calls
-                  an allowed route.
+                  Save the app keys agents use. Your Space attaches the key an agent uses to each call it makes;
+                  the agent never sees it.
                 </p>
                 {data.installations.map((app) => (
                   <AppConnection key={app.id + ":" + app.revision} app={app} />
@@ -84,7 +84,7 @@ export function Agents() {
               </>
             ) : (
               <p className="muted">
-                No installed app offers agent routes. Install an app with an agent-enabled kit to connect it here.
+                No installed app offers agent access. Install an app whose kit names its API to connect it here.
               </p>
             )}
           </section>
@@ -256,7 +256,7 @@ function Requests({ data }: { data: AgentDashboard }) {
         data.requests.map((request) => {
           const app = data.installations.find((item) => item.id === request.installationId);
           const agent = data.agents.find((item) => item.id === request.agentId);
-          const route = app?.routes[request.actionId];
+          const call = request.input as { method?: string; path?: string } | undefined;
           function decide(approve: boolean) {
             void action.run(
               async () => {
@@ -279,12 +279,12 @@ function Requests({ data }: { data: AgentDashboard }) {
                 <dd>
                   <code>{request.id}</code>
                 </dd>
-                {route && (
+                {call?.method && call.path && (
                   <>
-                    <dt>Route</dt>
+                    <dt>Call</dt>
                     <dd>
                       <code>
-                        {route.method} {route.path}
+                        {call.method} {call.path}
                       </code>
                     </dd>
                   </>

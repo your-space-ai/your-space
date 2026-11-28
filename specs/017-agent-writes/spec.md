@@ -4,7 +4,9 @@
 
 **Created**: 2026-11-26
 
-**Status**: Decided. The owner settled every decision on 2026-11-26, with one rule throughout: a
+**Status**: Superseded in part on 2026-11-27 by [journey 018](../018-app-access/spec.md): agent
+access is per app, so kit roles, routes and per-route approvals are gone; bodies, outcomes, named
+credentials and the response check stay. Decided. The owner settled every decision on 2026-11-26, with one rule throughout: a
 role grants an agent a route at an HTTP method, with approvals, and Your Space adds nothing past that
 without a reason. Two decisions were dropped under that rule, and a third, which release carries
 it, as out of scope for a feature. Writes are built in

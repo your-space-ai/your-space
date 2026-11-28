@@ -322,6 +322,10 @@ export const agentGrant = pgTable(
     // Unread since 2026-11-23: Ask for all writes is gone (spec 017); new grants store false.
     askAllWrites: boolean("ask_all_writes").notNull(),
     overrides: jsonb("overrides").notNull(),
+    /** The bound credential this agent's calls are sent with (spec 018); none until the owner picks one. */
+    credential: text("credential"),
+    /** The routes that ask the owner first, as method and path pairs (spec 018). */
+    asks: jsonb("asks").notNull().default([]),
     revision: integer("revision").notNull(),
   },
   (t) => [primaryKey({ columns: [t.appId, t.agentId] })],

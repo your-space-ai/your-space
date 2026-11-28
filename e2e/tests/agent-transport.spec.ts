@@ -11,9 +11,8 @@ test("the private transport reaches only the registered interface of the selecte
     name: "probe",
     interface: { service: "web", port: 8080 },
     agentAccess: {
+      api: "/",
       credential: { binding: "fixture", inject: { location: "header", name: "X-API-Key" } },
-      routes: { read: { method: "GET", path: "/record.json", effect: "read" } },
-      roles: { reader: { title: "Reader", routes: ["read"] } },
     },
   };
   // The kit names the probe's Compose file on GitHub, at the commit the stand-in serves it at.

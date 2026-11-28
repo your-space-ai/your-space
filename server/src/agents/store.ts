@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import type pg from "pg";
 import type { Db } from "../db/client.ts";
-import { credentialNames, roleCredential, type AgentAccess } from "../apps/agent-kit.ts";
+import { credentialNames, storedAgentAccess, type AgentAccess } from "../apps/agent-kit.ts";
 import { decrypt } from "../apps/settings.ts";
 
 export class AgencyError extends Error {
@@ -71,41 +71,25 @@ export async function transaction<T>(db: Db, work: (client: pg.PoolClient) => Pr
     client.release();
   }
 }
+/**
+ * An installation's agent access: its kit's, read as stored, and its bound credentials, encrypted, by
+ * name. Bound credentials and grants outlive a kit change (spec 018 decision 5), so nothing here
+ * depends on the kit they were bound under. A kit stored before spec 018 gives no access (decision 11).
+ */
 export async function catalog(client: pg.PoolClient, id: string) {
   const row = (
     await client.query(
-      `select a.id,a.name,a.title,a.kit,a.kit_source,a.commit,a.interface,a.state,a.desired,b.enabled_roles,b.revision,b.kit_digest,b.credential_revision,
+      `select a.id,a.name,a.title,a.kit,a.kit_source,a.commit,a.interface,a.state,a.desired,b.revision,b.credential_revision,
     (select json_object_agg(c.name,c.credential) from agent_credential c where c.app_id=a.id) as credentials
     from app a left join agent_binding b on b.app_id=a.id where a.id=$1 and a.desired<>'removed' for share of a`,
       [id],
     )
   ).rows[0];
-  const declared = row?.kit?.agentAccess as AgentAccess | undefined;
-  if (!row || !declared || !row.interface) forbidden();
-  const access = withoutCutWrites(declared);
-  const digest = hash(JSON.stringify([row.kit, row.kit_source, row.commit]));
-  const current = row.kit_digest === digest;
-  // The encrypted credentials bound under the present kit, by name.
-  const bound: Record<string, string> = current ? (row.credentials ?? {}) : {};
-  return { row, access, digest, current, bound };
-}
-/**
- * A kit stored before writes were cut (2026-11-23, Alpha scope) may still declare write routes with
- * `effect: write`. They stay left out, so a server upgrade never adds a write to a role the owner
- * granted for reads; a write route of spec 017 declares no effect. A kit stored before 2026-11-24 may
- * still give its routes outputFields; nothing reads them, and the app's response reaches the agent
- * unchanged.
- */
-function withoutCutWrites(access: AgentAccess): AgentAccess {
-  const routes = Object.fromEntries(
-    Object.entries(access.routes).filter(([, route]) =>
-      route.method === "GET" ? route.effect === "read" : (route as { effect?: string }).effect === undefined,
-    ),
-  );
-  const roles = Object.fromEntries(
-    Object.entries(access.roles).map(([id, role]) => [id, { ...role, routes: role.routes.filter((r) => Object.hasOwn(routes, r)) }]),
-  );
-  return { ...access, routes, roles };
+  const stored = storedAgentAccess(row?.kit);
+  if (!row || !stored || !row.interface) forbidden();
+  const access: AgentAccess | undefined = "access" in stored ? stored.access : undefined;
+  const bound: Record<string, string> = row.credentials ?? {};
+  return { row, access, problem: "problem" in stored ? stored.problem : undefined, bound };
 }
 export async function owned(client: pg.PoolClient, id: string, owner: string, active = true) {
   const row = (await client.query("select * from external_agent where id=$1 and owner_id=$2", [id, owner])).rows[0];
@@ -141,7 +125,7 @@ export async function dashboard(client: pg.PoolClient, owner: string, dataKey: s
     await client.query(
       `select a.id,a.name,a.disabled,
     coalesce((select json_agg(json_build_object('id',k.id,'revoked',k.revoked)) from agent_key k where k.agent_id=a.id),'[]') as keys,
-    coalesce((select json_agg(json_build_object('installationId',g.app_id,'roles',g.roles,'revision',g.revision,'overrides',g.overrides)) from agent_grant g where g.agent_id=a.id),'[]') as grants
+    coalesce((select json_agg(json_build_object('installationId',g.app_id,'credential',g.credential,'asks',g.asks,'revision',g.revision)) from agent_grant g where g.agent_id=a.id),'[]') as grants
     from external_agent a where owner_id=$1 order by name,id`,
       [owner],
     )
@@ -153,19 +137,19 @@ export async function dashboard(client: pg.PoolClient, owner: string, dataKey: s
   ).rows;
   const installations = [];
   for (const { id } of apps) {
-    const { row, access, current, bound } = await catalog(client, id);
+    const { row, access, problem, bound } = await catalog(client, id);
     installations.push({
       id,
       name: row.name,
       title: row.title,
       source: row.kit_source,
-      roles: access.roles,
-      routes: access.routes,
-      bound: Object.keys(bound).length > 0,
-      named: !!access.credentials,
-      credentials: credentialNames(access).map((name) => ({ name, bound: Object.hasOwn(bound, name) })),
-      roleCredentials: Object.fromEntries(Object.keys(access.roles).map((role) => [role, roleCredential(access, role)])),
-      enabledRoles: current ? row.enabled_roles : [],
+      // Why agents can't reach the app, when they can't: its stored kit is in the format before 018.
+      problem: problem ?? null,
+      api: access?.api ?? null,
+      named: !!access?.credentials,
+      credentials: access
+        ? credentialNames(access).map((name) => ({ name, bound: Object.hasOwn(bound, name) }))
+        : Object.keys(bound).sort().map((name) => ({ name, bound: true })),
       revision: row.revision ?? 0,
     });
   }
@@ -176,8 +160,8 @@ export async function dashboard(client: pg.PoolClient, owner: string, dataKey: s
       [owner],
     )
   ).rows.map((row) => {
-    const payload = JSON.parse(decrypt(dataKey, row.input));
-    return { ...row, input: payload.input };
+    const { method, path, body } = JSON.parse(decrypt(dataKey, row.input));
+    return { ...row, input: { method, path, ...(body === undefined ? {} : { body }) } };
   });
   return { agents, installations, requests, ...(await activity(client, owner)) };
 }
