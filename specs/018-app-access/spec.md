@@ -5,7 +5,7 @@
 **Created**: 2026-11-27
 
 **Status**: Proposed. The owner set the model on 2026-11-27 (decisions 1 to 5) and settled
-decisions 6 to 10, all on 2026-11-27; decision 11, on kits already stored, is open. Nothing is built.
+decisions 6 to 11, all on 2026-11-27. Nothing is built.
 
 **Input**: The owner, on 2026-11-27, after the first live run of journey 017: 017's per-route model
 is too granular to start with. Start broad and add granularity only when it's needed. "access is per
@@ -43,7 +43,7 @@ applies the actual api key, agent never sees the api key."
 | 8 | What happens to 017's grants and Ask settings? | **Decided:** each grant carries over working, with its key and its routes that asked; its reach grows to the whole API on that key. Owner, told a read-only grant on a key that can also write would gain those writes: "thats fine" |
 | 9 | Does removing an app keep its agent access? | **Decided:** no. Removing an app, even keeping its data, ends its grants and app keys; only a kit change keeps them. Owner: "removing an app should remove the agent access yeah" |
 | 10 | What about kits that still list roles and routes? | **Decided:** they are refused, with a message to name `api`; Your Space infers nothing from routes. Owner: "we'll rewrite them, they shouldn't work any more" |
-| 11 | What happens to an installed app whose stored kit lists roles and routes? | Open. Recommended: the migration rewrites each stored kit's agent access once, naming `api` from its routes, so the app's grants keep working until its kit is rewritten |
+| 11 | What happens to an installed app whose stored kit lists roles and routes? | **Decided:** nothing is rewritten. Its agent access is unavailable until it runs a rewritten kit, and **Agents** and **Apps** say why and what fixes it. Owner: "Leave them broken" |
 
 ## What Exists Today
 
@@ -144,26 +144,25 @@ recommendation).
 ## 11. Installed Apps Whose Stored Kit Lists Roles and Routes
 
 An installed app keeps the kit it was installed with. The owner's Twenty was installed from a 017
-kit, so after the upgrade its stored kit has routes and no `api`, and there is no in-place kit update
-yet (journey 019). Removing and reinstalling it would end its agent access (decision 9).
+kit, so after the upgrade its stored kit has routes and no `api`.
 
-**Recommended:** the migration rewrites each stored kit's `agentAccess` once into the 018 form: its
-credentials as they are, and `api` from its routes' longest common prefix of literal segments,
-stopping at the first `{parameter}`, or `/`. Roles and routes are dropped. This applies to kits
-already stored only: a kit installed from now on must name `api` (decision 10). The owner's Twenty
-gets `api: /rest`, and its grant keeps working through the upgrade; installing the rewritten kit
-later, through 019's update, replaces the stored one.
+**Decided (2026-11-27):** leave them as they are. The owner: "Leave them broken". The upgrade rewrites
+no stored kit. Agent access for an app whose stored kit lists roles or routes, or names no `api`, is
+unavailable: its agents' calls are refused, and **Agents** and **Apps** say that the app's kit is in
+the old format and that agent access returns once the app runs a kit that names `api`. Its bound
+keys and grants stay (decision 5), so an in-place update to a rewritten kit (journey 019) brings the
+access back without binding or granting again. Removing and reinstalling the app instead starts with
+no agent access (decision 9), and **Apps** says so.
 
-**Considered:** leaving stored kits as they are, with agent access unavailable for those apps until
-their kit is rewritten and installed: the owner's onboarding agent would stop until 019 ships, and
-removing and reinstalling Twenty instead would end its grant and keys.
+**Considered:** the migration rewriting each stored kit's agent access once, naming `api` from its
+routes (the recommendation), so the owner's onboarding agent kept working through the upgrade.
 
 ## Requirements
 
 - **FR-001**: A version 2 kit's `agentAccess` has `api`, a path starting with `/`, and one
   `credential` or one to eight named `credentials`, as journey 017 has them. A kit that lists `roles`
-  or `routes`, or names no `api`, is refused with a message saying so (decision 10). Kits already
-  stored are rewritten once (decision 11).
+  or `routes`, or names no `api`, is refused with a message saying so (decision 10). A kit already
+  stored that lists them leaves its app without agent access, saying why (decision 11).
 - **FR-002**: The owner binds each credential separately, as today; a binding enables no roles.
 - **FR-003**: A grant for an agent and installation names one bound credential, and holds its routes
   that ask (decisions 6 and 7). Without a grant the agent can't reach the app.
@@ -176,12 +175,13 @@ removing and reinstalling Twenty instead would end its grant and keys.
   decoded once to check and match the path: a segment that decodes to `.` or `..`, or contains an
   encoded `/`, `\` or NUL, is refused, as is an empty segment other than a trailing one. The path is
   sent as given, and is under the `api` and matched against routes that ask by its decoded segments,
-  so an encoding can't move a call outside the API or past a route that asks. A segment that still
+  so an encoding can't move a call outside the API or past a route that asks; the API's path matches
+  whole segments, so `/rest` doesn't admit `/restricted`. A segment that still
   contains `%` after that one decode is refused, so an app that decodes again can't be led to a path
-  the gateway didn't check. A route that asks matches its literal segments ignoring letter case and
+  the gateway didn't check. The path may end with a query after `?`; the gateway parses it and sends
+  it encoded again, repeated names kept, and doesn't match it. A route that asks matches its literal segments ignoring letter case and
   a trailing `/`, so an app that routes case-insensitively or ignores a trailing slash can't be
-  reached past it; matching too much only asks the owner once more. Query names and values
-  are text, encoded by the gateway.
+  reached past it; matching too much only asks the owner once more.
 - **FR-005**: The gateway sends the call with the grant's credential only. The response check, the
   outcomes and the result are journey 017's.
 - **FR-006**: A call that matches a route that asks waits for the owner, as a pending request does
@@ -202,7 +202,7 @@ removing and reinstalling Twenty instead would end its grant and keys.
 - **FR-011**: Tests cover a call under and outside the API, malformed paths, a route that asks and
   one that doesn't, the grant's credential sent alone, a kit change that keeps the grant, removal
   that ends it, the migration from a 017 grant, including one on two credentials, refusing a kit with roles or routes,
-  and the one-time rewrite of a stored 017 kit.
+  and an app whose stored kit is in the old format, refused with its reason shown.
 - **FR-012**: The agent access guide, 005's contracts, the decision record, the roadmap, the fixture
   kits and the owner's Twenty kit describe the new model.
 - **FR-013**: Acceptance repeats journey 017's live run on the owner's installation through `agent
