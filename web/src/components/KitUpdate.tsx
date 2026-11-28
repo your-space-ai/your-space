@@ -34,6 +34,7 @@ export function describeChanges(changes: UpdateChanges): { mark: Mark; text: Rea
   }
   for (const name of changes.settings.added) line("add", <>A new setting, <code>{name}</code>.</>);
   for (const name of changes.settings.removed) line("del", <>The setting <code>{name}</code> is no longer used, and is removed.</>);
+  for (const name of changes.settings.changed) line("chg", <>The setting <code>{name}</code> takes the kit's new value.</>);
   for (const host of changes.outbound.added) line("add", <>The app may reach <code>{host}</code>.</>);
   for (const host of changes.outbound.removed) line("del", <>The app no longer reaches <code>{host}</code>.</>);
   for (const service of changes.services.added) line("add", <>A new service, <code>{service}</code>.</>);

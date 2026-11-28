@@ -235,7 +235,8 @@ export interface UpdateChanges {
   kit: { from: string | null; to: string };
   compose: { from: { repo: string; path: string; commit: string }; to: { repo: string; path: string; commit: string } } | null;
   images: { ref: string; from: string | null; to: string | null; private: boolean }[];
-  settings: { added: string[]; removed: string[] };
+  /** `changed`: values the kit sets, which the owner never changed, that take the new kit's value. */
+  settings: { added: string[]; removed: string[]; changed: string[] };
   outbound: { added: string[]; removed: string[] };
   services: { added: string[]; removed: string[] };
   interface: { from: { service: string; port: number } | null; to: { service: string; port: number } | null } | null;
