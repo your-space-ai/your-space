@@ -195,8 +195,10 @@ step. The [Mac app](macos-desktop.md) updates itself, and its local workspace wi
 - **A kit that asks for a value installs only from Apps.** `install-app` passes no values, so a kit
   whose `env` has a value with `ask: true` installs only from the review in **Apps**, where you give
   it. A kit in a private repository that needs such a value can't be installed yet.
-- **Installed apps don't update.** A newer kit or Compose file reaches an installed app only when you
-  remove the app, keeping its data, and install it again.
+- **Apps update only from their own kit.** An app installed from a kit on GitHub updates in place
+  when its kit changes ([Update an app](../apps/install-apps.md#update-an-app)). Moving an app to
+  another kit still means removing it, keeping its data, and installing the other kit; an app
+  installed from a kit file on the machine doesn't update.
 - **Agents only read.** A kit can give an agent routes that read, never ones that create or change
   records. See [Give an agent access to one app](../apps/agent-access.md).
 - **One account.** Only the owner signs in; inviting other people isn't available yet.

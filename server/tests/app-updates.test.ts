@@ -8,6 +8,7 @@ import { decrypt } from "../src/apps/settings.ts";
 import { app, appOutbound, appSetting, event, installJob } from "../src/db/schema.ts";
 import { GithubConnection } from "../src/github-connection.ts";
 import { restoreInterruptedUpdates, snapshotOf } from "../src/apps/rollback.ts";
+import { runCommand } from "./helpers/commands.ts";
 import { createTestDatabase, type TestDatabase } from "./helpers/db.ts";
 import { TEST_DATA_KEY as DATA_KEY } from "./helpers/env.ts";
 import { createOwnerWithPassword, OWNER } from "./helpers/owner.ts";
@@ -466,3 +467,24 @@ describe("updating an installed app in place", () => {
     expect(r.json.error, r.text).toBe("other_app");
   });
 });
+
+describe("the update-app command", () => {
+  let t: TestDatabase;
+  beforeEach(async () => {
+    t = await createTestDatabase();
+  });
+  afterEach(async () => {
+    await t?.destroy();
+  });
+
+  it("says how to use it, and what's wrong with an app it can't check", async () => {
+    const usage = await runCommand("update-app", ["--json"], { databaseUrl: t.url });
+    expect(usage.code).toBe(1);
+    expect(usage.json).toMatchObject({ ok: false, error: "usage" });
+    expect((await runCommand("update-app", ["notes", "--check", "--review", "x", "--json"], { databaseUrl: t.url })).json.error).toBe("usage");
+    const missing = await runCommand("update-app", ["notes", "--check", "--json"], { databaseUrl: t.url });
+    expect(missing.code).toBe(2);
+    expect(missing.json).toMatchObject({ ok: false });
+  });
+});
+
