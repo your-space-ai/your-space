@@ -42,8 +42,11 @@ knowledge: { path: /knowledge }   # path is optional; /knowledge is the default
 
 Your Space mounts each knowledge base the owner gives the app at `<path>/<name>` in the app's
 interface service, always one folder per knowledge base, even when there is only one. The app finds
-them by listing `<path>`. The kit names no volume, token or address. An app like Obsidian opens
-`/knowledge` as its vault, and each knowledge base is a top-level folder in it.
+them by listing `<path>`. The kit names no volume, token or address. An app like Obsidian opens its
+knowledge path as its vault, and each knowledge base is a top-level folder in it. The path itself
+holds only those folders and isn't storage: what an app writes there beside them is lost when its
+container is recreated, so a kit whose app keeps files at the vault's root, as Obsidian keeps
+`.obsidian`, sets the path inside one of the app's own volumes, such as `/config/vault`.
 
 ## Decisions (2026-11-25 to 2026-11-27)
 
@@ -114,10 +117,12 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   runtime manager answers and about every 15 seconds after, it compares the knowledge bases each
   running app's containers mount, as the runtime manager reports them, with the app's grants. An
   app that mounts one it isn't given is applied again, with only its grants, until it no longer
-  mounts it. An app the owner asked to remove, whose removal didn't finish, is removed instead, as
-  deleting a knowledge base does. An apply that fails is tried again later: after a minute, then
-  twice as long each time, up to an hour. A stopped app is left as it is: it gets its current
-  grants when it next starts, or when deleting the knowledge base applies it again, as above.
+  mounts it. An app that should run and doesn't mount one it is given, as after a restart before
+  the apply that gave it, is applied again the same way, until it mounts it. An app the owner asked
+  to remove, whose removal didn't finish, is removed instead, as deleting a knowledge base does. An
+  apply that fails is tried again later: after a minute, then twice as long each time, up to an
+  hour. A stopped app is left as it is: it gets its current grants when it next starts, or when
+  deleting the knowledge base applies it again, as above.
   Nothing new is saved for this: the containers' mounts are the record.
 - **File ownership.** A knowledge base and its files belong to Your Space; apps lease them
   (2026-11-27, see **Your Space owns the files**). A new knowledge base's folder belongs to user and
@@ -152,12 +157,16 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   bisync's own checks and stops for the owner rather than guess, with one exception: the resync Your
   Space runs by itself to finish an interrupted run (see **Interrupted runs**). The checks:
   - A marker file at both roots (`--check-access`), so an empty or replaced volume, or an unreachable
-    folder, never reads as "everything was deleted". bisync compares the marker files it finds on
-    the two sides at any depth, so a root marker missing on one side stops the run (checked on
-    rclone 1.75.2).
+    folder, never reads as "everything was deleted". Only the marker at each root is listed, by a
+    filter rule: bisync's access check compares every file of the marker's name it lists on the two
+    sides, at any depth, so a file of that name below the root, as another knowledge base's marker
+    in a subfolder of the Drive folder or an app's copy of the knowledge base, would stop every run
+    and resync. Such a file is neither compared nor synced, and a root marker missing on either
+    side, or both, stops the run (checked on rclone 1.75.2).
   - The default limit on deletions per run (`--max-delete 50`, half the files). A run over it stops
-    and lists the deletions it would make. Over 10,000 of them are more than the owner is asked to
-    confirm: none is listed, and only **Resync** is offered.
+    and lists the deletions it would make: the page shows the first 500 by name and how many there
+    are on each side, and **Apply these deletions** makes them all. Over 10,000 of them are more than
+    the owner is asked to confirm: none is listed, and only **Resync** is offered.
   - bisync's refusal to sync with an empty side outside the first run.
   - Only one run per knowledge base at a time, with a lock that expires if a run dies
     (`--resilient --recover --max-lock 2m`). A run that finds the lock held changes nothing and is
@@ -229,10 +238,10 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
     below): by the app that made it, by another app that can write in its folder, or by the owner on
     the machine Your Space runs on. Nothing is deleted or overwritten on either side. A normal run
     fails while listing, before anything changes, and the next run tries again a minute later;
-    rclone's error names the file, the page's message doesn't. A resync, as the first run after
-    connecting is, copies the other files and then stops (`resync`), and **Resync** stops the same
-    way. When a link of the name without the suffix is there too, the file is skipped and the link
-    syncs as above, until that link is gone.
+    the page shows rclone's error, which names the file's path without the suffix. A resync, as the
+    first run after connecting is, copies the other files and then stops (`resync`), and **Resync**
+    stops the same way. When a link of the name without the suffix is there too, the file is skipped
+    and the link syncs as above, until that link is gone.
 - **The sync containers.** One container for each synced knowledge base, run by the runtime
   manager for Your Space: the stock rclone image running `rclone rcd`, as root in the container
   with only `DAC_OVERRIDE` and `FOWNER` (see **Files the sync reads and writes**), every other
@@ -293,7 +302,11 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   it deleted any of them. Your Space's own resync of an interrupted run is recorded
   as `knowledge.resync_requested` against Your Space. Its own apply that finishes taking a knowledge
   base from an app after a restart is recorded as `knowledge.revoked` against Your Space when that
-  apply works, unless the runtime manager then still reports the app mounting it. Runs that change
+  apply works, unless the runtime manager then still reports the app mounting it. One that finishes
+  giving a knowledge base is recorded as `knowledge.granted` against whoever gave it, once the
+  runtime manager reports the app mounting it, unless the failed job recorded it already. Removing
+  an app records `knowledge.revoked` for each knowledge base it had, against the owner, or against
+  Your Space when its check of the apps finishes the removal. Runs that change
   nothing aren't recorded one by one; the page shows when the last one finished.
 
 ## Acceptance
@@ -310,6 +323,8 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
 - Take a knowledge base from a running app, and stop the runtime manager and the server before the
   apply ends: the app's container still mounts it and has no grant for it. Start them again: once
   Your Space is back, the app's container no longer mounts it. A stopped app isn't started for it.
+  Give a running app a knowledge base the same way: once Your Space is back, the app's container
+  mounts it, and `knowledge.granted` is recorded once.
 - Sync, run in tests against a fixture remote that production can't select: a file created, changed
   or deleted on either side reaches the other; a file changed on both sides leaves a conflict copy
   that the page lists.
@@ -319,7 +334,9 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
   knowledge base on the next runs, which don't stop, and the app can still edit a file the sync
   wrote.
 - Sync refuses to delete: empty the volume, or remove the marker, or delete over half the files, and
-  the run stops with a message and the remote is unchanged.
+  the run stops with a message and the remote is unchanged. A file named like the marker below the
+  root, in the fixture remote or the knowledge base, is neither compared nor synced, and the sync
+  goes on.
 - After a run stopped by deleting over half the files: **Resync** brings the deleted files back from
   the other side and deletes nothing; **Apply these deletions**, confirmed, deletes them on the other
   side, and the next run stops again over the limit.
@@ -352,6 +369,11 @@ them by listing `<path>`. The kit names no volume, token or address. An app like
 - With the operator's own client against real Google Drive, on a throwaway folder: connect, sync both
   ways, see that a shortcut in the folder to a folder outside it isn't synced, restart Your Space and
   sync again after the access token expires, then revoke access in Google and see **Reconnect**.
+  This run is the only check of what the other tests can't reach, as they sync with a fixture remote
+  and a stand-in rclone: rclone making the `drive` remote non-interactively with the token Your Space
+  got, renewing the access token and moving files through the sync's proxy, which lets through only
+  `oauth2.googleapis.com` and `www.googleapis.com`, and Google's refusal of a revoked grant read as
+  `unauthorized`.
 
 ## Delivery slices
 

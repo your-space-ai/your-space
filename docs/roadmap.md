@@ -195,7 +195,7 @@ Each branch puts the work on `main` beside the checks and plans for that part of
 
   - [ ] Create local knowledge bases, and give them to installed apps whose kits declare `knowledge`, mounted read-write at `<path>/<name>`.
   - [ ] Keep a knowledge base in two-way sync with a Google Drive folder through rclone, with the operator's own OAuth client, conflict copies and sync safety checks.
-  - [ ] Verify sync against real Google Drive with an operator-registered client.
+  - [ ] Verify sync against real Google Drive with an operator-registered client, the only check of what CI can't reach: a real `drive` remote, renewing its token and moving files through the sync's proxy, and a revoked grant.
 
 - [ ] **More from knowledge bases** · *Later direction*
 

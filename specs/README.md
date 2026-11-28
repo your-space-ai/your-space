@@ -32,9 +32,9 @@ The roadmap tracks [004 teams](../docs/roadmap.md#accounts-and-access), [006 lif
 These apply from the first spec, so later specs don't have to retrofit them:
 
 - **Simple by default.** Show people only what they need; advanced controls stay out of the way.
-- **No telemetry.** The only automatic outbound requests are GitHub update checks, the built-in
-  proxy's certificate requests for an owner-configured domain, and syncing a knowledge base with
-  the remote folder the owner connected it to.
+- **No telemetry.** The only automatic outbound requests are GitHub update checks and the built-in
+  proxy's certificate requests for an owner-configured domain. Syncing a knowledge base with the
+  remote folder the owner connected it to is an action the owner started, not reporting.
 - **ARM and Intel.** Your Space's own images ship for both. Apps need only images for the engine's
   processor type.
 - **Concepts, not technologies.** Build against concepts, such as an engine connection or an app
