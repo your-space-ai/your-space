@@ -148,6 +148,13 @@
       "when": 1795828706616,
       "tag": "0020_kit_link",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795829613837,
+      "tag": "0021_update_rollback",
+      "breakpoints": true
     }
   ]
 }

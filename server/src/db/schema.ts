@@ -62,6 +62,7 @@ export type EventType =
   | "recovery.password_reset"
   | "app.installed"
   | "app.updated"
+  | "app.update_rolled_back"
   | "app.agent_kit_upgraded"
   | "app.settings_changed"
   | "app.limits_changed"
@@ -250,6 +251,21 @@ export interface JobStep {
   message: string;
 }
 
+/**
+ * What an update replaced (journey 019, decision 3): the app's row as it ran before, its settings as
+ * stored (ciphertext) and the hosts its kit listed, kept on the update's job until it ends, so an
+ * update that doesn't start, or is interrupted, is put back.
+ */
+export interface UpdateSnapshot {
+  actorId: string;
+  app: Pick<
+    typeof app.$inferSelect,
+    "title" | "sourceUrl" | "repo" | "path" | "ref" | "commit" | "compose" | "kit" | "kitSource" | "kitLink" | "provenance" | "images" | "adaptations" | "interface" | "pane" | "limits" | "desired"
+  >;
+  settings: { name: string; value: string | null; secret: boolean; generated: boolean; publishedDefault: string | null }[];
+  outbound: { host: string; approvedBy: string; createdAt?: string }[];
+}
+
 export const installJob = pgTable("install_job", {
   id: uuid("id").primaryKey().defaultRandom(),
   appId: uuid("app_id")
@@ -259,6 +275,8 @@ export const installJob = pgTable("install_job", {
   state: text("state", { enum: ["running", "succeeded", "failed"] }).notNull().default("running"),
   steps: jsonb("steps").$type<JobStep[]>().notNull().default([]),
   error: text("error"),
+  /** An update's snapshot of what it replaced, while it runs; cleared when it ends (journey 019). */
+  rollback: jsonb("rollback").$type<UpdateSnapshot>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
 });

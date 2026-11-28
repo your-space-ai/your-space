@@ -39,6 +39,7 @@ import {
 } from "./github.ts";
 import { composeOf, kitFromFile, kitFromLink, kitFromSource, KitError, kitIdentity, NotAKitError, type FoundKit } from "./kits.ts";
 import { localSource, type LocalCompose } from "./local.ts";
+import { restore, restoreInterruptedUpdates, snapshotOf } from "./rollback.ts";
 import { RuntimeError, type AppSpec, type CheckAnswer, type RegistryCredential, type Runtime, type ServiceState } from "./runtime-client.ts";
 import {
   buildSettings,
@@ -146,7 +147,12 @@ export interface AppsConfig {
   credentials?: SourceCredentials;
   /** The image token; left out where nothing is connected, as in tests that don't need it. */
   registries?: RegistryCredentials;
+  /** How long an update waits for the app to run, and keep running, before it is kept (journey 019). */
+  updateSettle?: { waitMs: number; steadyMs: number; pollMs: number };
 }
+
+/** An update is kept once the app has run for 10 seconds, waiting at most five minutes for it to start. */
+const UPDATE_SETTLE = { waitMs: 300_000, steadyMs: 10_000, pollMs: 2_000 };
 
 /** The API's error code for each way GitHub gave no file. */
 const MISS_CODE: Record<SourceMiss, string> = { not_found: "not_found", not_visible: "repository_not_visible", no_ref: "not_found", no_file: "file_missing" };
@@ -1089,6 +1095,7 @@ export class AppsService {
         }
         const [running] = await tx.select({ id: installJob.id }).from(installJob).where(and(eq(installJob.appId, row.id), eq(installJob.state, "running"))).limit(1);
         if (running) throw new AppError(409, "busy", "The app is busy with another change. Try again when it finishes.");
+        const rollback = await snapshotOf(tx, row, actorId);
         const limits: Record<string, { memory: number; cpus: number }> = {};
         for (const service of check.services) {
           const fromKit = p.kit.limits?.[service.name];
@@ -1113,6 +1120,8 @@ export class AppsService {
             interface: p.kit.interface ?? null,
             pane: p.kit.pane ?? true,
             limits,
+            // An update starts the app, as Start does.
+            desired: "running",
             updatedAt: new Date(),
           })
           .where(eq(app.id, row.id));
@@ -1133,7 +1142,7 @@ export class AppsService {
           await tx.insert(appOutbound).values(outbound.map((host) => ({ appId: row.id, host, source: "kit" as const, approvedBy: actorId }))).onConflictDoNothing();
         }
         await recordEvent(tx, "app.updated", actorId, null, row.id);
-        const [job] = await tx.insert(installJob).values({ appId: row.id, kind: "update" }).returning({ id: installJob.id });
+        const [job] = await tx.insert(installJob).values({ appId: row.id, kind: "update", rollback }).returning({ id: installJob.id });
         return job!.id;
       });
     } catch (error) {
@@ -1143,6 +1152,93 @@ export class AppsService {
     const done = this.runJob(jobId, p.appId, "update").finally(() => this.busy.delete(p.appId));
     log("info", "app.update_started", { app: p.name });
     return { name: p.name, jobId, done };
+  }
+
+  /**
+   * Waits for an app to run and keep running (decision 3): it must report running within `waitMs`,
+   * then for `steadyMs` without a break. A container that exits a moment after it started is seen,
+   * and so is one that keeps restarting, or an app service that exited, even cleanly.
+   */
+  private async settle(name: string): Promise<{ ok: boolean; reason: string }> {
+    const { waitMs, steadyMs, pollMs } = this.config.updateSettle ?? UPDATE_SETTLE;
+    const until = Date.now() + waitMs;
+    let since: number | null = null;
+    for (;;) {
+      const services = (await this.runtime.apps()).find((a) => a.app === name)?.services ?? [];
+      const exited = services.find((s) => s.role === "app" && !s.completed && s.state === "exited");
+      const found = stateFromServices(services);
+      if (exited && found.state === "running") return { ok: false, reason: `${exited.name} stopped.` };
+      if (found.state === "running") {
+        since ??= Date.now();
+        if (Date.now() - since >= steadyMs) return { ok: true, reason: "" };
+      } else if (found.state === "starting") {
+        since = null;
+        if (Date.now() >= until) return { ok: false, reason: `it was still starting after ${Math.round(waitMs / 60_000)} minutes.` };
+      } else {
+        return { ok: false, reason: found.reason ?? "it isn't running." };
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+  }
+
+  /**
+   * Puts an update back (decision 3): the app's row, settings and kit hosts as they were, then, unless
+   * Your Space is stopping, starts the app with them again and waits for it to run. Recorded, with
+   * why, for the owner to see. When the kit it ran before doesn't run either, the app is stopped, so
+   * no service of the update keeps running, and shows as failed.
+   */
+  private async rollBack(jobId: string, appId: string, reason: string, start: boolean): Promise<void> {
+    const [job] = await this.db.select({ rollback: installJob.rollback }).from(installJob).where(eq(installJob.id, jobId));
+    const snapshot = job?.rollback;
+    if (!snapshot) return;
+    await this.step(jobId, `The update didn't start: ${reason} Rolling it back.`);
+    await this.db.transaction(async (tx) => {
+      await restore(tx, appId, snapshot);
+      await tx.update(installJob).set({ rollback: null }).where(eq(installJob.id, jobId));
+      await recordEvent(tx, "app.update_rolled_back", snapshot.actorId, null, appId);
+    });
+    const message = `The update didn't start and was rolled back: ${reason}`;
+    // The app's state is written before its job ends, so whoever waits on the job sees it.
+    if (!start) {
+      await this.db.update(app).set({ state: "stopped", stateReason: message, updatedAt: new Date() }).where(eq(app.id, appId));
+      await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));
+      return;
+    }
+    const row = (await this.db.select().from(app).where(eq(app.id, appId)))[0]!;
+    let why: string;
+    try {
+      const spec = await this.specFor(row);
+      spec.registryCredentials = await this.signInToPull(row);
+      await this.runtime.apply(spec, () => undefined);
+      const settled = await this.settle(row.name);
+      if (settled.ok) {
+        await this.refreshState(row.name);
+        await this.db.update(app).set({ stateReason: message, updatedAt: new Date() }).where(eq(app.id, appId));
+        await this.step(jobId, "Rolled back: the app runs the kit it ran before.");
+        await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));
+        return;
+      }
+      why = settled.reason;
+    } catch (error) {
+      why = error instanceof AppError || error instanceof RuntimeError ? error.message : "Something went wrong on the server.";
+      if (!(error instanceof AppError || error instanceof RuntimeError)) log("error", "app.rollback_failed", errorFields(error));
+    }
+    // A start that failed before Compose ran may leave the update's own services running.
+    await this.runtime.down(`ys-${row.name}`).catch((error: unknown) => log("warn", "app.rollback_stop_failed", errorFields(error)));
+    const failed = `${message} Starting it again with the kit it ran before failed too: ${why} The app is stopped; start it again once the problem is fixed.`;
+    await this.db.update(app).set({ state: "failed", stateReason: failed, updatedAt: new Date() }).where(eq(app.id, appId));
+    await this.db.update(installJob).set({ state: "failed", error: failed, finishedAt: new Date() }).where(eq(installJob.id, jobId));
+  }
+
+  /**
+   * A rollback that couldn't finish, as when the database refused a write: the job ends, so nothing
+   * waits on it, and keeps what the update replaced, which the server's next start puts back.
+   */
+  private async rollBackFailed(jobId: string, appId: string, failure: unknown): Promise<void> {
+    log("error", "app.rollback_failed", errorFields(failure));
+    const message = "The update didn't start, and Your Space couldn't roll it back. Restart Your Space to roll it back.";
+    await this.db.update(app).set({ state: "failed", stateReason: message, updatedAt: new Date() }).where(eq(app.id, appId)).catch(() => undefined);
+    await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId)).catch(() => undefined);
   }
 
   // ----- Jobs (FR-012) -----
@@ -1260,9 +1356,17 @@ export class AppsService {
         });
         await Promise.all(pending);
         await this.db.update(app).set({ state: "starting", updatedAt: new Date() }).where(eq(app.id, appId));
+        if (kind === "update") {
+          // An update is kept only once the app runs, and keeps running (decision 3).
+          const settled = await this.settle(row.name);
+          if (!settled.ok) {
+            await this.rollBack(jobId, appId, settled.reason, true).catch((failure: unknown) => this.rollBackFailed(jobId, appId, failure));
+            return;
+          }
+        }
         await this.refreshState(row.name);
       }
-      await this.db.update(installJob).set({ state: "succeeded", finishedAt: new Date() }).where(eq(installJob.id, jobId));
+      await this.db.update(installJob).set({ state: "succeeded", rollback: null, finishedAt: new Date() }).where(eq(installJob.id, jobId));
     } catch (error) {
       let message = error instanceof AppError || error instanceof RuntimeError ? error.message : "Something went wrong on the server.";
       if (!(error instanceof AppError || error instanceof RuntimeError)) log("error", "app.job_failed", errorFields(error));
@@ -1275,9 +1379,14 @@ export class AppsService {
               ? ` Check your image token ${ADD_IMAGE_TOKEN}, then check for the update again.`
             : " Your Space signs in to download a private image only while installing the app: remove it, then install it again, reusing its data, with your image token in place.";
       }
-      await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));
       // Refused because Your Space is stopping: the app starts again with Your Space.
       const stopping = error instanceof RuntimeError && error.status === 409;
+      // An update that doesn't start is put back, and started again unless Your Space is stopping (decision 3).
+      if (kind === "update") {
+        await this.rollBack(jobId, appId, message, !stopping).catch((failure: unknown) => this.rollBackFailed(jobId, appId, failure));
+        return;
+      }
+      await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));
       // A failed removal shows as failed too, so the owner sees why and can remove it again.
       await this.db
         .update(app)
@@ -1303,7 +1412,10 @@ export class AppsService {
   // ----- Restart recovery and reconcile (FR-007, FR-008) -----
 
   /** At start: jobs whose process stopped can't finish, so they end as failed. */
-  async recoverJobs(): Promise<void> {
+  async recoverJobs(restoredAtStart: string[] = []): Promise<void> {
+    // An interrupted update is put back first (decision 3); the server's start does this before it
+    // moves stored settings to a new data key, and passes the apps it put back.
+    const restored = [...restoredAtStart, ...(await restoreInterruptedUpdates(this.db))];
     const interrupted = await this.db
       .update(installJob)
       .set({ state: "failed", error: "Interrupted by a restart of Your Space. Start the app again.", finishedAt: new Date() })
@@ -1315,6 +1427,9 @@ export class AppsService {
         .set({ state: "failed", stateReason: "The change was interrupted by a restart of Your Space.", updatedAt: new Date() })
         .where(and(eq(app.id, appId), inArray(app.state, ["installing", "starting"])));
     }
+    // An app whose update was put back starts again with the kit it ran before, which replaces the
+    // update's containers before their state is recorded as the app's.
+    for (const appId of restored) await this.startJob(appId, "apply").catch((error) => log("warn", "apps.restore_start_failed", errorFields(error)));
   }
 
   private async refreshState(name: string): Promise<void> {

@@ -11,6 +11,7 @@ import { NewerSchemaError, runMigrations } from "./migrate.ts";
 import { createGate, Handoffs } from "./apps/gate.ts";
 import { socketRuntime } from "./apps/runtime-client.ts";
 import { moveSettingsToDataKey } from "./apps/keys.ts";
+import { restoreInterruptedUpdates } from "./apps/rollback.ts";
 import { AppsService } from "./apps/service.ts";
 import { GithubConnection } from "./github-connection.ts";
 
@@ -77,6 +78,18 @@ for (let attempt = 1; ; attempt++) {
   }
 }
 
+// An update a restart interrupted is put back first (journey 019, decision 3), so the settings it
+// restores move onto the data key with the others. Like the move, a failure stops the start.
+let restored: string[] = [];
+try {
+  restored = await restoreInterruptedUpdates(db);
+  if (restored.length) log("info", "apps.updates_rolled_back", { restored: restored.length });
+} catch (error) {
+  log("error", "apps.updates_rollback_failed", errorFields(error));
+  console.error("An app's interrupted update couldn't be rolled back, so the server did not start. Nothing was changed.");
+  process.exit(1);
+}
+
 // Apps' settings move onto the data key before anything is served (spec 009): values from before it
 // existed, and values a replaced data key left. Values no key can read are counted and left as they
 // are; the app says what to do when it next needs them.
@@ -99,7 +112,7 @@ const gateServer: Server = gate.listen(GATE_PORT, "0.0.0.0");
 
 // Apps that should run are started, and recorded states corrected, at start and then regularly
 // (FR-007, FR-008). Each pass waits for the one before.
-await apps.recoverJobs().catch((error) => log("warn", "apps.recover_failed", errorFields(error)));
+await apps.recoverJobs(restored).catch((error) => log("warn", "apps.recover_failed", errorFields(error)));
 let reconciling = false;
 async function reconcile(): Promise<void> {
   if (reconciling) return;
