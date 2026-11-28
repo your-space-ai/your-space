@@ -1194,9 +1194,10 @@ export class AppsService {
       await recordEvent(tx, "app.update_rolled_back", snapshot.actorId, null, appId);
     });
     const message = `The update didn't start and was rolled back: ${reason}`;
+    // The app's state is written before its job ends, so whoever waits on the job sees it.
     if (!start) {
-      await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));
       await this.db.update(app).set({ state: "stopped", stateReason: message, updatedAt: new Date() }).where(eq(app.id, appId));
+      await this.db.update(installJob).set({ state: "failed", error: message, finishedAt: new Date() }).where(eq(installJob.id, jobId));
       return;
     }
     const row = (await this.db.select().from(app).where(eq(app.id, appId)))[0]!;
@@ -1212,8 +1213,8 @@ export class AppsService {
       const why = error instanceof AppError || error instanceof RuntimeError ? error.message : "Something went wrong on the server.";
       if (!(error instanceof AppError || error instanceof RuntimeError)) log("error", "app.rollback_failed", errorFields(error));
       const failed = `${message} Starting it again with the kit it ran before failed too: ${why}`;
-      await this.db.update(installJob).set({ state: "failed", error: failed, finishedAt: new Date() }).where(eq(installJob.id, jobId));
       await this.db.update(app).set({ state: "failed", stateReason: failed, updatedAt: new Date() }).where(eq(app.id, appId));
+      await this.db.update(installJob).set({ state: "failed", error: failed, finishedAt: new Date() }).where(eq(installJob.id, jobId));
     }
   }
 
