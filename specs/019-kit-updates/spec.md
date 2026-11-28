@@ -35,7 +35,7 @@ driving the process."
 | 2 | How does the owner review an update? | **Decided:** on the app's details page. An available update shows there, and **Preview changes** opens a plain-language summary of what changes, with the diff behind it. Applying approves new hosts, as at install. Owner: "it should show up in the app details page, and maybe a preview changes button that render a diff or some nice interpretation of it that clearly showsthe user what this changes." |
 | 3 | What happens when an update doesn't start? | **Decided:** it is rolled back on its own, once: the kit, Compose file, image pins, settings and hosts it replaced are put back and the app is started again. The app's own data isn't restored. Owner: "recommended is fine" |
 | 4 | Are checks run in the background or on demand? | **Decided:** when the owner uses the app in Your Space, now and then, and on demand. Opening the app's details page checks it when its last check is over 12 hours old (the interval is recommended); **Check for update** and the CLI check at once. Nothing runs on a timer. Owner: "periodic check can be triggered occasionally when the user interacts with the app." |
-| 5 | What happens to settings the new kit adds or removes? | **Recommended:** an added setting is filled as at install (generated, derived, the kit's value, or asked in the review); a removed one is deleted when the update applies, and put back by a rollback. Values of kept settings stay, except that a value the kit sets, which the owner never changed, follows the new kit. |
+| 5 | What happens to settings the new kit adds or removes? | **Decided:** an added setting is filled as at install (generated, derived, the kit's value, or asked in the review); a removed one is deleted when the update applies, and put back by a rollback. Values of kept settings stay, except that a value the kit sets, which the owner never changed, follows the new kit. Owner: "this is fine" |
 | 6 | Who can update from the CLI? | **Recommended:** the operator, on the machine that runs Your Space: `your-space app check-update <app>` and `your-space app update <app>`, which an agent with a shell there can drive. An agent's Your Space key can't update apps. |
 | 7 | Can an update move an app to a kit or Compose file in another repository? | **Recommended:** yes, through Update from a link, with the move shown first in the review and confirmed by applying it; the app keeps its name, ID and data. |
 | 8 | Is a CLI to remove an app part of this? | **Recommended:** no. Updating in place removes the need to remove and reinstall; removing from the CLI is a follow-up of its own. |
@@ -167,7 +167,7 @@ available" badge.
 
 ## 5. Settings the New Kit Adds or Removes
 
-**Recommended:**
+**Decided (2026-11-27):** as below. The owner: "this is fine".
 
 - **Added:** filled as at install: generated, derived or set from the kit, or asked in the review.
   An update with a required value missing can't be applied until the owner gives it. From the CLI,
