@@ -33,7 +33,7 @@ driving the process."
 | --- | --- | --- |
 | 1 | What counts as a new version? | **Decided:** a newer commit that changes the installed kit file, on the branch the owner's link names. No version field, no tags. Owner: "i install from kit file at particular commit, if that commit on that file changes, its an update" |
 | 2 | How does the owner review an update? | **Decided:** on the app's details page. An available update shows there, and **Preview changes** opens a plain-language summary of what changes, with the diff behind it. Applying approves new hosts, as at install. Owner: "it should show up in the app details page, and maybe a preview changes button that render a diff or some nice interpretation of it that clearly showsthe user what this changes." |
-| 3 | What happens when an update doesn't start? | **Recommended:** it is rolled back on its own: the kit, Compose file, image pins and settings it replaced are put back and the app is started again. The app's own data isn't restored. |
+| 3 | What happens when an update doesn't start? | **Decided:** it is rolled back on its own, once: the kit, Compose file, image pins, settings and hosts it replaced are put back and the app is started again. The app's own data isn't restored. Owner: "recommended is fine" |
 | 4 | Are checks run in the background or on demand? | **Recommended:** on demand, when the owner asks, from the app's page or the CLI. Nothing polls GitHub (015 R7, the no-telemetry rule). |
 | 5 | What happens to settings the new kit adds or removes? | **Recommended:** an added setting is filled as at install (generated, derived, the kit's value, or asked in the review); a removed one is deleted when the update applies, and put back by a rollback. Values of kept settings stay. |
 | 6 | Who can update from the CLI? | **Recommended:** the operator, on the machine that runs Your Space: `your-space app check-update <app>` and `your-space app update <app>`, which an agent with a shell there can drive. An agent's Your Space key can't update apps. |
@@ -124,7 +124,7 @@ instead).
 
 ## 3. Rollback
 
-**Recommended:** automatic, once.
+**Decided (2026-11-27):** automatic, once. The owner: "recommended is fine".
 
 Before an update applies, the server keeps what it replaces: the kit, `kit_source`, the Compose
 file and its commit, image pins, settings and kit-listed hosts. If the update's job fails, or the
