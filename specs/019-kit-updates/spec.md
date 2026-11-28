@@ -100,9 +100,12 @@ bumping it would never update).
 behind it. The owner: "it should show up in the app details page, and maybe a preview changes button
 that render a diff or some nice interpretation of it that clearly showsthe user what this changes."
 
-The app's details page has **Check for update**. An update it finds shows on that page, with
-**Preview changes**, which opens a plain-language summary of what the update changes; the diff of
-the kit file, and links to the commits on GitHub, are behind it. The page stays calm by default, and
+The app's details page has **Check for update**, there at any time. An update it finds shows in
+the page's status card, as an **Update available** label on the kit's row, with **Preview changes**,
+which opens, in the same card, a list in plain sentences of what the update changes, the fields for
+any new setting to fill in, and **Update**; the diff of the kit file, and links to the commits on
+GitHub, are behind a disclosure. The owner chose this layout from three rendered side by side (inside
+the status card, a dialog, or an update card with a before-and-after table): "A, inside the card". The page stays calm by default, and
 the detail is there on demand. The summary is built from the same review as an install, made from
 the new kit and its Compose file with the app's stored values, and shows only what differs from what
 runs. The CLI prints the same summary:
