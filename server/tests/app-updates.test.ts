@@ -27,10 +27,12 @@ describe("updating an installed app in place", () => {
   let cookie: string;
   let head: string;
   let files: Record<string, string>;
+  let answerExtra: (at: string) => Response | undefined;
 
   beforeEach(async () => {
     t = await createTestDatabase();
     head = COMMIT;
+    answerExtra = () => undefined;
     files = {
       [`ys-fixtures/notes@${COMMIT}/compose.yaml`]: COMPOSE,
       [`ys-fixtures/notes@${NEXT}/compose.yaml`]: COMPOSE,
@@ -43,7 +45,7 @@ describe("updating an installed app in place", () => {
           const at = url.pathname.replace("/repos/ys-fixtures/catalog/", "");
           if (at === "commits/main" || at === "commits/HEAD") return new Response(head);
           if (at === "branches/main") return Response.json({ name: "main" });
-          return undefined;
+          return answerExtra(at);
         },
       })(input, init);
     runtime = new FakeRuntime();
@@ -153,9 +155,50 @@ describe("updating an installed app in place", () => {
     const id = await install();
     publish(NEXT, kit(NEXT, "env:\n  GREETING: hello again\n  OLD: kept\noutbound: [api.one.test]\n"));
     const check = await api("/api/apps/notes/update/check", {});
+    // The review says so.
+    expect(check.json.changes.settings).toEqual({ added: [], removed: [], changed: ["GREETING"] });
     expect((await api("/api/apps/notes/update", { previewId: check.json.previewId })).status).toBe(202);
     await settle();
     expect(await settings(id)).toEqual({ GREETING: "hello again", OLD: "kept" });
+  });
+
+  it("follows the default branch for a tag deleted since, without reading the tag", async () => {
+    let tagged = true;
+    answerExtra = (at) => (at === "commits/v1" && tagged ? new Response(COMMIT) : undefined);
+    await install("https://github.com/ys-fixtures/catalog/blob/v1/apps/notes.yaml");
+    tagged = false;
+    publish(NEXT, kit(NEXT, "env:\n  GREETING: hello\n"));
+    const check = await api("/api/apps/notes/update/check", {});
+    expect(check.json, check.text).toMatchObject({ upToDate: false, link: "https://github.com/ys-fixtures/catalog/blob/HEAD/apps/notes.yaml" });
+  });
+
+  it("checks an image a setting given at apply completes, which the review held as a placeholder", async () => {
+    await install();
+    runtime.images = (spec) => [
+      { ref: `traefik/whoami:${spec.env.IMAGE_TAG ?? "placeholder"}`, registry: "docker.io", digest: spec.env.IMAGE_TAG ? "sha256:eee" : undefined, runsHere: true, platforms: ["linux/amd64"] },
+    ];
+    publish(NEXT, kit(NEXT, "env:\n  GREETING: hello\n  IMAGE_TAG: { ask: true, secret: false }\n"));
+    const check = await api("/api/apps/notes/update/check", {});
+    const applied = await api("/api/apps/notes/update", { previewId: check.json.previewId, settings: { IMAGE_TAG: "v1.10" } });
+    expect(applied.status, applied.text).toBe(202);
+    await settle();
+    expect((await t.db.select({ images: app.images }).from(app))[0]!.images).toEqual({ "traefik/whoami:v1.10": { digest: "sha256:eee" } });
+  });
+
+  it("refuses a review made before the app's publishing changed, and keeps a kit host the owner approved", async () => {
+    const id = await install();
+    publish(NEXT, kit(NEXT, "env:\n  GREETING: hello\n  OLD: kept\n"));
+    const stale = await api("/api/apps/notes/update/check", {});
+    await t.db.update(app).set({ publish: { port: 8123, bind: "127.0.0.1", link: "https://notes.example.test" } }).where(eq(app.id, id));
+    expect((await api("/api/apps/notes/update", { previewId: stale.json.previewId })).json.error).toBe("update_changed");
+    // The owner approves a host the kit lists too; the update drops it from the kit, and it stays.
+    expect((await api("/api/apps/notes/outbound", { host: "api.one.test" })).status).toBe(202);
+    await settle();
+    const fresh = await api("/api/apps/notes/update/check", {});
+    expect(fresh.json.changes.outbound.removed).toEqual([]);
+    expect((await api("/api/apps/notes/update", { previewId: fresh.json.previewId })).status).toBe(202);
+    await settle();
+    expect(await hosts(id)).toEqual([{ host: "api.one.test", source: "owner" }]);
   });
 
   it("applies only the candidate it reviewed, and refuses one made against a kit the app no longer runs", async () => {

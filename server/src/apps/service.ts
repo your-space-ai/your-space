@@ -157,12 +157,18 @@ const ADD_IMAGE_TOKEN = "on Your Space's GitHub page, or with docker compose exe
 
 type JobKind = "install" | "apply" | "update" | "remove";
 
+/** A digest of an app's stored settings rows, as stored (ciphertext). */
+function digestOf(rows: { name: string; value: string | null }[]): string {
+  return createHash("sha256").update(JSON.stringify([...rows].sort((a, b) => a.name.localeCompare(b.name)).map((r) => [r.name, r.value]))).digest("hex");
+}
+
 /** What an update changes, against what the app runs (journey 019, section 2). */
 export interface UpdateChanges {
   kit: { from: string | null; to: string };
   compose: { from: { repo: string; path: string; commit: string }; to: { repo: string; path: string; commit: string } } | null;
   images: { ref: string; from: string | null; to: string | null; private: boolean }[];
-  settings: { added: string[]; removed: string[] };
+  /** `changed`: values the kit sets, which the owner never changed, that take the new kit's value. */
+  settings: { added: string[]; removed: string[]; changed: string[] };
   outbound: { added: string[]; removed: string[] };
   services: { added: string[]; removed: string[] };
   interface: { from: { service: string; port: number } | null; to: { service: string; port: number } | null } | null;
@@ -189,6 +195,8 @@ interface UpdatePreview {
   digest: string;
   /** The app's stored settings when the review was made; applying is refused once they changed. */
   settingsDigest: string;
+  /** How the app was published when the review was made, which its address settings follow. */
+  publish: Publish | null;
 }
 
 interface Preview {
@@ -854,11 +862,7 @@ export class AppsService {
     let found: FoundKit & { file: SourceFile };
     let source: SourceFile;
     try {
-      found = await this.kitAt(own, github, fetcher);
-      // A link at a commit or a tag follows the default branch for the same file (decision 1).
-      if (!(await this.onBranch(found.file, github, fetcher))) {
-        found = await this.kitAt(defaultBranchLink(found.file.repo, found.file.path), github, fetcher);
-      }
+      found = await this.kitAt(await this.followed(row, own, github, fetcher), github, fetcher);
       source = await this.composeAt(found.kit, github, fetcher);
     } catch (error) {
       if (error instanceof NotAKitError) throw new AppError(400, "kit_required", error.message);
@@ -873,11 +877,19 @@ export class AppsService {
 
     // Kept settings keep their values (section 5); a value the kit sets, that the owner left as the
     // installed kit set it, follows the new kit.
-    const previous = await this.storedValues(row.id);
+    // The stored settings are read once, so the digest describes exactly the values the review keeps.
+    const stored = await this.db.select({ name: appSetting.name, value: appSetting.value }).from(appSetting).where(eq(appSetting.appId, row.id));
+    const settingsDigest = digestOf(stored);
+    const previous = new Map(stored.map((r) => [r.name, r.value === null ? null : this.read(r.value)]));
     const before = kitEnv(row.kit);
+    // Values the kit sets, which follow the new kit's (decision 5), listed in the review.
+    const followed: string[] = [];
     for (const [variable, entry] of Object.entries(kitEnv(kit))) {
       const old = before[variable];
-      if (typeof entry === "string" && typeof old === "string" && previous.get(variable) === old) previous.delete(variable);
+      if (typeof entry === "string" && typeof old === "string" && previous.get(variable) === old) {
+        previous.delete(variable);
+        if (entry !== old) followed.push(variable);
+      }
     }
     const settings = buildSettings(kit, this.address(row.name), previous);
     let check = await this.checkSigningIn({ project: `ys-${row.name}`, app: row.name, compose: source.text, env: this.runEnv(kit, settings, row), interface: kit.interface ?? null, placeholders: true });
@@ -912,6 +924,7 @@ export class AppsService {
       settings: {
         added: settings.filter((s) => !previous.has(s.name) && !Object.hasOwn(before, s.name)).map((s) => s.name),
         removed: Object.keys(before).filter((variable) => !settings.some((s) => s.name === variable)).sort(),
+        changed: followed.sort(),
       },
       outbound: { added: outbound.filter((h) => !kitHosts.includes(h)), removed: kitHosts.filter((h) => !outbound.includes(h)).sort() },
       services: { added: services.filter((n) => !Object.hasOwn(row.limits, n)), removed: Object.keys(row.limits).filter((n) => !services.includes(n)).sort() },
@@ -938,7 +951,8 @@ export class AppsService {
       changes,
       upToDate,
       digest,
-      settingsDigest: await this.settingsDigest(this.db, row.id),
+      settingsDigest,
+      publish: row.publish ?? null,
     };
     this.updates.set(preview.id, preview);
     return this.updateReviewOf(preview);
@@ -957,16 +971,29 @@ export class AppsService {
 
   /** The app's stored settings, as a digest: a review made before the owner changed one is refused. */
   private async settingsDigest(db: Pick<Db, "select">, appId: string): Promise<string> {
-    const rows = await db.select({ name: appSetting.name, value: appSetting.value }).from(appSetting).where(eq(appSetting.appId, appId));
-    return createHash("sha256").update(JSON.stringify(rows.sort((a, b) => a.name.localeCompare(b.name)).map((r) => [r.name, r.value]))).digest("hex");
+    return digestOf(await db.select({ name: appSetting.name, value: appSetting.value }).from(appSetting).where(eq(appSetting.appId, appId)));
   }
 
-  /** Whether a kit was read at a branch, asked with the credential it was read with. */
-  private async onBranch(file: SourceFile, github: GithubEndpoints, fetcher: typeof fetch): Promise<boolean> {
-    if (file.ref === "HEAD") return true;
-    if (file.read?.read !== "connection") return isBranch(file.repo, file.ref, github, fetcher);
-    const reading = (await this.config.credentials?.reading()) ?? { state: "none" as const };
-    return reading.state === "ready" ? isBranch(file.repo, file.ref, github, fetcher, reading.credential) : false;
+  /**
+   * Where an app's update is read (decision 1): its own link at a branch, or the same file on the
+   * repository's default branch for a link at a commit or a tag. Only whether the ref is a branch is
+   * asked, so a tag deleted since doesn't stop the check.
+   */
+  private async followed(row: AppRow, own: string, github: GithubEndpoints, fetcher: typeof fetch): Promise<string> {
+    const pinned = kitIdentity(row.kitSource ?? "");
+    if (!pinned.repo || !pinned.path) return own;
+    const head = defaultBranchLink(pinned.repo, pinned.path);
+    const prefix = `https://github.com/${pinned.repo}/blob/`;
+    const suffix = head.slice(prefix.length + "HEAD".length);
+    if (!own.startsWith(prefix) || !own.endsWith(suffix)) return own;
+    const ref = decodeURIComponent(own.slice(prefix.length, own.length - suffix.length));
+    if (ref === "HEAD") return own;
+    let credential: SourceCredential | undefined;
+    if (row.provenance?.kit?.read === "connection") {
+      const reading = (await this.config.credentials?.reading()) ?? { state: "none" as const };
+      if (reading.state === "ready") credential = reading.credential;
+    }
+    return (await isBranch(pinned.repo, ref, github, fetcher, credential)) ? own : head;
   }
 
   private updateReviewOf(p: UpdatePreview) {
@@ -1021,8 +1048,10 @@ export class AppsService {
         const reasons = check.refusals.map((r) => `${r.service ? `${r.service}: ` : ""}${r.reason}`).join(" ");
         throw new AppError(400, "refused", `Your Space can't run this update with these settings: ${reasons}`, check.refusals);
       }
-      const reviewed = p.check.images.map((i) => [i.ref, i.digest]);
-      if (!isDeepStrictEqual(check.images.map((i) => [i.ref, i.digest]), reviewed)) {
+      // An image the review resolved must name the same version; one whose reference a setting given
+      // now completes, which the review held as a placeholder, is checked here for the first time.
+      const reviewed = new Map(p.check.images.filter((i) => i.digest).map((i) => [i.ref, i.digest]));
+      if (check.images.some((i) => reviewed.has(i.ref) && reviewed.get(i.ref) !== i.digest)) {
         throw new AppError(409, "update_changed", "An image the update uses names another version than the one you reviewed. Check for the update again.");
       }
     }
@@ -1037,7 +1066,13 @@ export class AppsService {
     try {
       jobId = await this.db.transaction(async (tx) => {
         const [row] = await tx.select().from(app).where(eq(app.id, p.appId)).for("update");
-        if (!row || row.state === "removed" || row.kitSource !== p.expected || (await this.settingsDigest(tx, row.id)) !== p.settingsDigest) {
+        if (
+          !row ||
+          row.state === "removed" ||
+          row.kitSource !== p.expected ||
+          !isDeepStrictEqual(row.publish ?? null, p.publish) ||
+          (await this.settingsDigest(tx, row.id)) !== p.settingsDigest
+        ) {
           throw new AppError(409, "update_changed", "The app changed while you were reviewing the update. Check for the update again.");
         }
         const [running] = await tx.select({ id: installJob.id }).from(installJob).where(and(eq(installJob.appId, row.id), eq(installJob.state, "running"))).limit(1);
@@ -1618,7 +1653,12 @@ export class AppsService {
     if (!HOST.test(clean)) {
       throw new AppError(400, "bad_host", "That isn't a host name, like api.example.com.");
     }
-    await this.db.insert(appOutbound).values({ appId: row.id, host: clean, source: "owner", approvedBy: actorId }).onConflictDoNothing();
+    // An owner's approval of a host the kit lists too makes it the owner's, so an update that drops it
+    // from the kit keeps it (journey 019).
+    await this.db
+      .insert(appOutbound)
+      .values({ appId: row.id, host: clean, source: "owner", approvedBy: actorId })
+      .onConflictDoUpdate({ target: [appOutbound.appId, appOutbound.host], set: { source: "owner", approvedBy: actorId } });
     await this.db.delete(appAccessRequest).where(and(eq(appAccessRequest.appId, row.id), eq(appAccessRequest.host, clean)));
     await this.event("app.outbound_approved", actorId, row.id);
     return this.queue(row.id, "apply");
