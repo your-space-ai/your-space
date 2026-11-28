@@ -126,6 +126,131 @@ The return must answer the three reasons the connection was cut: no operator reg
 
 **Decision update (2026-11-24):** At the owner's decision, an agent's read passes the app's JSON response through unchanged, and kits no longer declare `outputFields`. The field listed the top-level scalar fields the gateway returned from a record or a list of records. Real REST APIs don't fit it: Twenty, for example, wraps a list as `{data: {companies: [...]}, pageInfo, totalCount}` and nests fields such as `name.firstName`, so the gateway returned empty rows or refused the response. The gateway keeps its safety checks: the response must be JSON of at most 256 KiB, and one that contains the app credential, raw or JSON-escaped, anywhere in it is refused with a generic outcome and nothing saved. A kit that declares `outputFields` is refused with a message saying the response is passed through; a kit stored before keeps it on record, and the gateway ignores it. What a granted route returns is now limited by the app credential's own scope, not by the kit. This supersedes the "allowed output" of each route in [journey 005](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/spec.md) and its [kit contract](https://github.com/your-space-ai/your-space/blob/main/specs/005-owner-agent/contracts/kit-agent-access.md#supported-declarations).
 
+### Knowledge bases
+
+**Owner decisions, 2026-11-25.** Apps share files through knowledge bases: named volumes that belong
+to Your Space, not to any app, which the owner creates and gives to installed apps. An app's kit asks
+for knowledge with `knowledge: { path: /knowledge }` (the path is optional); the owner picks
+knowledge bases in the install review and on the app's page, and Your Space mounts each one in the
+app's interface service at `<path>/<name>`, one folder each, even when there is only one. This is a
+new isolation decision: until now each app's volumes were its own, and apps' Compose files still
+can't name external volumes or host folders. A knowledge base is the one shared volume an app may
+mount, and only Your Space adds the mount. Removing an app, and deleting its data, never deletes a
+knowledge base. [Journey 014](https://github.com/your-space-ai/your-space/blob/main/specs/014-knowledge-bases/spec.md)
+
+- **Local and synced.** A local knowledge base is only the volume. A synced one adds a two-way sync
+  with a remote folder: `rclone bisync` against the local volume, about once a minute for each
+  knowledge base, run by a long-running container of stock `rclone rcd` of its own, with only two
+  file capabilities, no FUSE, no volume plugin and no engine access. Its configuration is in memory
+  only, and its remote control listens only on a private socket the server uses to create the
+  remote and start runs, so the remote's tokens are never in a file or a container's environment.
+  Your Space adds no sync daemon of its own. A new container for each scheduled run was built
+  first and replaced at the owner's decision. Apps never mount the remote and Your Space never serves an app's files from the
+  Google API: the owner: "YS server should manage rclone on behalf of the user and serve from rclone,
+  not serve directly from the google api".
+  A live mount was rejected because it needs FUSE and extra privileges in a container, and leaves
+  apps without their files when the remote is unreachable.
+- **A sync container for each knowledge base (owner decision, 2026-11-26).** Each container mounts
+  only its own knowledge base, its sync state and its own socket's folder. This supersedes one
+  container for all synced knowledge bases (2026-11-25): without `links`, rclone wrote through a
+  symbolic link to a folder, so in a shared container an app given one knowledge base could have a
+  sync write into another app's knowledge base. Since links sync as links (below), the container
+  for each stays as defence in depth: it limits what any run can reach. Connecting or disconnecting
+  one knowledge base now leaves the others' runs alone.
+- **Links sync as links (owner decision, 2026-11-26).** rclone's `links` option is set on the
+  knowledge base's side of every sync (`:local,links:<path>`), so a symbolic link is never followed
+  out of the knowledge base: Drive keeps it as a small `<name>.rclonelink` file holding its target,
+  and such a file from Drive becomes a link. A Drive folder at the path of a link out of the
+  knowledge base, or of any absolute link, stops that knowledge base with its own reason naming the
+  path, and nothing is written where the link leads; it waits for the owner to remove the folder, or
+  the link and its `.rclonelink` file, and choose Resync. This supersedes rclone's default, which
+  wrote through a link to a folder, so an app could have a sync write into its knowledge base's own
+  sync state; refusing every run while a knowledge base has a link to a folder was not chosen. A
+  relative link to a folder inside the knowledge base is still followed, and what it leads to stays
+  in the knowledge base. Checked against the pinned rclone 1.75.2.
+- **Stopping and recovery (owner decisions, 2026-11-26).** Stopping Your Space stops each sync
+  container with SIGINT, bisync's graceful shutdown, so a run under way saves its state and the next
+  run carries on from it. An interrupted run is recorded as failed, as it may have changed files;
+  deletions the owner confirmed are recorded as theirs even when their run was interrupted. When
+  bisync can finish an interrupted run only with a resync, as after a kill without a graceful
+  shutdown or a power cut during the first run after connecting, Your Space runs that resync itself,
+  the newer copy winning: nothing is lost, and at worst a deleted file comes back. It does this once
+  for each interruption; if its own resync fails, the next run that still needs one stops for the
+  owner. This replaces stopping for the owner in that case. Every other run that bisync's checks
+  stop still waits for the owner. A run that finds bisync's lock held is tried again a minute later.
+- **Your Space owns the files, apps lease them (owner decision, 2026-11-27).** The owner: "all the
+  files should be owned and managed by your space, they are essentially leased to the apps, but the
+  apps dont own the files and shouldn't prevent sync". No owner or permission an app sets stops the
+  sync, and apps can still read and edit what it writes. Each sync container runs as root in its
+  container with only `DAC_OVERRIDE` and `FOWNER`, so it reads and writes every file and folder of
+  its knowledge base, and sets their times, whoever made them and whatever their mode. Every other
+  capability is dropped, with no new privileges, a read-only root, no engine access, only its own
+  mounts and Google reached only through its proxy, as before. It writes with a umask of 0, so what
+  it makes is readable and writable by everyone and an app running as any user can change it; its
+  socket, then writable by everyone too, is kept to the server by its folder, which only the
+  server's user opens. Docker makes capabilities it adds effective only for a container's root user:
+  as user 1000 they stay in the bounding set and nothing more (checked on Docker 28.3.3 and 29).
+  The sync containers run in the server's user name space, as root's capabilities reach only files
+  of users its name space maps: their root is the engine's own, with only these two capabilities,
+  unless the engine remaps containers' users and the server runs remapped, when theirs is remapped
+  like the apps'. This supersedes **Files apps write** (2026-11-26), which asked apps writing into a
+  knowledge base to run as user 1000 or with a umask of 002, and under which a folder an app made as
+  another user, or a file only it could read, failed runs, some stopping for the owner's Resync
+  after Drive had changed. Not chosen: giving every file to Your Space's user before each run, which
+  rewrites apps' owners and modes every minute, needs `CHOWN` too, and still fails a run on a file
+  an app makes between that pass and the run; and idmapped mounts, which Docker doesn't offer and
+  which map users one to one, not every app's to one. The lease's limit: an app can't change the
+  mode of a file the sync wrote, or set its time to anything but now, and a file that changed in
+  Drive is replaced by a copy every app can change, even where the app had made it private. Between
+  apps nothing changes: a file keeps the owner and mode the app that made it gave it (every mount is
+  read-write in v1, below). Checked on rclone 1.75.2, both ways, in normal runs and resyncs.
+- **Taking a knowledge base away finishes after a restart (owner decision, 2026-11-26).** The owner
+  required that taking a knowledge base from an app, or deleting it, finishes when Your Space comes
+  back from a restart in the middle of it, preferably with no schema change. Each time Your Space
+  checks its apps, at start once the runtime manager answers and about every 15 seconds after, it
+  compares the knowledge bases each running app's containers mount, as the runtime manager reports
+  them, with the app's grants, and applies again any app that mounts one it isn't given, until it
+  doesn't; one the owner asked to remove, whose removal didn't finish, is removed instead. A failed
+  apply is tried again after a minute, then twice as long each time, up to an hour. A stopped app
+  gets its current grants when it next starts. Saving the pending change, which changes the
+  schema, was the fallback for a case the check couldn't cover; it covers a restart
+  during a change on the app's page and during a deletion. The apply is recorded as
+  `knowledge.revoked` against Your Space when it works, unless the runtime manager then still
+  reports the app mounting it. Deleting a knowledge base applies again every app whose containers
+  mount it, running or not, so a stopped app is started without it.
+- **Smaller cases (2026-11-26).** Accepted by the owner: **Apply these deletions** checks its list
+  with a dry run, and the forced run then lists both sides again, so a file deleted in the seconds
+  between them is deleted on the other side too (v1). Kept: creating a knowledge base fails when the
+  container that set up its folder can't be removed, and connecting one is refused with `503` when
+  apps run on another engine than Your Space's server (`YS_ENGINE_SOCKET`), since the server and the
+  sync containers share the sockets' volume. Defaults picked under the owner's "pick sensible
+  defaults": a relative link to a folder inside the knowledge base is followed, so a Drive folder at
+  its path lands in that folder, and no link is followed out of it; an empty Drive folder at a
+  link's path stops the knowledge base with `link` too, though rclone reports that run as
+  successful; and a Drive file that replaces a link's `.rclonelink` file replaces the link here, and
+  that run stops rather than read as synced. That last case relies on the backups being on a mount
+  of their own: on the knowledge base's own mount, rclone moves the new file into the backups,
+  reports success, and the next run deletes it in Drive.
+- **Google Drive first, with the operator's own OAuth client.** rclone's shared client ID stops
+  working during 2026 ([rclone Drive docs](https://rclone.org/drive/)). The token is encrypted with
+  the data key and moved when the data key changes, as
+  [journey 015](https://github.com/your-space-ai/your-space/blob/main/specs/015-private-sources/spec.md)
+  now does for the GitHub token; the earlier GitHub connection didn't
+  ([Creator workflow deferred](#creator-workflow-deferred)). The OAuth scope is `drive`, as rclone
+  sees only its own files with `drive.file`; the chosen folder is the remote's root and shortcuts are
+  skipped (`skip_shortcuts`), so a sync never reaches outside the folder (2026-11-26). Any other
+  rclone remote is accepted direction, each listed once it passes a both-sides-edit and conflict
+  check.
+- **Every mount is read-write in v1.** No writer role, read-only mount or folder ownership: the owner
+  doesn't want a solution before there is a problem. Two apps writing the same file locally means the
+  last write wins; bisync's conflict copies cover only local against remote, and the remote's version
+  history is the fallback. Later, opt-in so that no v1 kit breaks: `readOnly` or `write: <folder>` in
+  the kit with owner controls; then a copy per writer merged with git; then an SDK or CRDTs for live
+  editing of the same file.
+- **No SDK or knowledge API in v1.** This supersedes the 2026-11-24 draft of journey 014: views over
+  Drive folders, read through a knowledge API and a TypeScript SDK with folder checks on every read.
+  Apps use files; search and other layers come later on top of them.
+
 ## Purpose and Scope
 
 This is the canonical project-wide record of accepted architecture and product direction, including decisions for future work.
@@ -665,6 +790,8 @@ of technical parts. The [glossary](../glossary.md) records the terms.
 **Decision update (2026-11-02):** No telemetry in the first release. Any future reporting must be opt-in; opt-out collection is an anti-pattern and is ruled out permanently.
 
 **Decision update (2026-11-03):** Certificate requests the built-in proxy makes for an owner-configured domain are part of HTTPS setup, not reporting. This qualifies the bullet above on automatic outbound requests: with a domain configured, these certificate requests are the only automatic outbound requests besides update checks. (2026-11-23: the Mac app's update check is the only one so far, and **Check for Updates Automatically** turns it off; the server and CLI have none.)
+
+**Decision update (2026-11-25):** A knowledge base the owner connects to a remote folder syncs with it about once a minute ([Knowledge bases](#knowledge-bases)). Those sync requests go only to the remote the owner chose, carry only the owner's files, and stop when the owner disconnects it; they are an action the owner started, not reporting.
 
 ### Documentation
 
@@ -1303,7 +1430,7 @@ app roles. The [spec map](https://github.com/your-space-ai/your-space/blob/main/
 | Public launch scope | The [personal dashboard decision](#personal-dashboard-release-boundary) sets the scope. The [packaged release guide](../maintainers/releasing.md) lists the evidence required. |
 | App UI execution | Apps open in panes, side by side on larger screens: cross-origin iframes in the web client and PWA, native views in the desktop app. Each app is at `<app>.<Your Space's address>` behind Caddy's `forward_auth` gate, with no port fallback; Caddy replaces framing headers, and apps keep their own sign-in (2026-11-14). The platform session is a `__Host-` cookie over HTTPS and host-only on the plain-HTTP local setup, where WebKit opens apps in their own tab. An app can also be published on a port of this machine for the owner's own proxy or tunnel, and is then reached at the owner's link, outside the gate (2026-11-19); Your Space shows it there in its pane, where the app's own Caddy lets only Your Space frame it, unless the owner turns that off for the app (2026-11-20). On Tailscale the owner creates one Tailscale Service per published app. Shell-to-app messages remain open; Safari on macOS is still to check. |
 | Project license | AGPL-3.0-only for the platform and MIT for future SDKs, with outside contributions under the DCO. The quiet source preview (2026-11-21) and packaged prereleases, starting with the alpha (2026-11-23), ship without counsel review. Trademark filing, the policy for forks, and counsel review before a later release remain open. |
-| Telemetry | None. Update checks to GitHub, which the owner can turn off, are the only automatic outbound requests planned apart from the built-in proxy's certificate requests for an owner-configured domain, which are part of HTTPS setup (2026-11-03); the Mac app's is the only update check so far (2026-11-23). Future reporting must be opt-in; opt-out is prohibited. |
+| Telemetry | None. Update checks to GitHub, which the owner can turn off, are the only automatic outbound requests planned apart from the built-in proxy's certificate requests for an owner-configured domain, which are part of HTTPS setup (2026-11-03); the Mac app's is the only update check so far (2026-11-23). A knowledge base the owner connects to a remote folder syncs with it about once a minute, an action the owner started, not reporting (2026-11-25). Future reporting must be opt-in; opt-out is prohibited. |
 | External apps | Apps can be managed or hosted elsewhere. An app someone already runs is added through a connector that connects out to Your Space and plugs into the app endpoint (2026-11-14). The connector, and whether such an app must also verify Your Space identity, need definition in a later specification. |
 | App settings, egress, and limits | Settled in the [002 plan](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/plan.md) (2026-11-14): settings encrypted in the server's database; outbound access through a Squid proxy per app, with kits' starter hosts and owner-approved access requests; fixed default limits a kit or the owner can change. What the owner sees and sets for generated secrets in the review, limits that scale with the space's resources, and an "all internet" option remain open. |
 | Activity log | Records installs, role and member changes, delegations, and agent requests. Retention, detail, and viewers need definition. |
