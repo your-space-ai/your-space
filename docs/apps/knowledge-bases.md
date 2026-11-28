@@ -139,6 +139,16 @@ service. The app finds them by listing `<path>`. The path must be absolute, isn'
 starting with a letter, digit or underscore. The app's own file can't mount anything at or inside it. See the
 [kit format](https://github.com/your-space-ai/your-space/blob/main/specs/002-install-an-app/contracts/kit-format.md).
 
+`<path>` itself only holds the knowledge bases' folders: it isn't storage. Unless the image has that
+folder, Docker makes it in the container, owned by root with mode `0755`, so an app that doesn't run
+as root can't write there, and anything an app writes there beside the folders is lost whenever the
+container is recreated, as when the owner changes its knowledge bases. An app that keeps files at the
+root of the folder it opens, as Obsidian keeps a vault's `.obsidian` settings, needs a path inside one
+of its own volumes, such as `knowledge: { path: /config/vault }` with a volume at `/config`. There
+too, Docker makes the folder owned by root with mode `0755` when the volume doesn't have it, so an
+app that doesn't run as root needs the folder in the volume already, owned by its user, as when its
+image has the folder and Docker copies it into the new volume.
+
 An app can run as any user, with any umask: Your Space owns the files in a knowledge base and lends
 them to the app, and the sync with Google Drive reads and changes whatever the app writes there,
 and writes files the app can change. Other apps given the same knowledge base can change the app's

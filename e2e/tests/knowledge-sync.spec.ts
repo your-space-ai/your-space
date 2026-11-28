@@ -449,11 +449,23 @@ test("links sync as links and are never followed out: a Drive folder at a link t
   expect(await listing(here)).toBe(before);
 });
 
-test("a missing marker or an empty knowledge base stops the sync with Drive unchanged, and Resync deletes nothing", async ({ page }, testInfo) => {
+test("a marker below the root is left out of the sync; a missing marker or an empty knowledge base stops it with Drive unchanged, and Resync deletes nothing", async ({ page }, testInfo) => {
   await asOwner(page);
   await page.goto(`/knowledge/${KB}`);
   const main = page.locator('main[data-state="knowledge-base"]');
   const drive = await listing(onDrive);
+
+  // A marker below the root, as another knowledge base's in a subfolder of the Drive folder, or an
+  // app's copy of the knowledge base, is neither compared nor synced: the sync goes on.
+  await onDrive("mkdir work && : > work/.your-space-sync && echo 'Work' > work/plan.md");
+  await here("mkdir copy && cp .your-space-sync copy/ && echo 'Copy' > copy/note.md");
+  await arrives(() => here("cat work/plan.md 2>&1"), "Work");
+  await arrives(() => onDrive("cat copy/note.md 2>&1"), "Copy");
+  await expect(main).toHaveAttribute("data-sync-result", "synced");
+  expect(await here("ls -A work")).toBe("plan.md");
+  expect(await onDrive("ls -A copy")).toBe("note.md");
+  await onBoth("rm -r copy work", "rm -r copy work");
+  expect(await listing(onDrive)).toBe(drive);
 
   // The next timed run stops, and the timer leaves the knowledge base for the owner.
   await here("rm .your-space-sync");

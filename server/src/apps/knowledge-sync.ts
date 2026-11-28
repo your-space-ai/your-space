@@ -841,6 +841,10 @@ export class KnowledgeSync {
     const { type, parameters } = remoteConfig({ clientId: connection.clientId, clientSecret, token, folderId: row.folderId }, fixture);
     // rclone then asks whether to sign in again for a new token; that question is never answered, so it
     // keeps the token it was given, and the access tokens it renews, in memory.
+    // No CI job makes a real `drive` remote: the browser tests use the `alias` one and the server's
+    // tests a stand-in rclone. So this call, renewing the token and moving files through the sync's
+    // proxy, which lets through only oauth2.googleapis.com and www.googleapis.com, and Google's refusal
+    // of a revoked grant are checked only by the run against real Google Drive (the 014 spec's acceptance).
     await this.rcFor(row.name).call("config/create", { name: remoteName(row.name), type, parameters, opt: { nonInteractive: true } });
     this.remotes.set(row.knowledgeBaseId, { executeId, version, connectedAt: connection.connectedAt?.toISOString() ?? null });
   }

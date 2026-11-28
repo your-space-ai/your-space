@@ -69,7 +69,9 @@ and where both sides have a file, the newer copy wins. When both copies have the
 time but different content, the knowledge base's copy replaces Drive's, which Drive keeps in the
 file's version history, and the page lists those files. The first sync also puts Your Space's
 marker file, `.your-space-sync`, at the top of the knowledge base and of the Drive folder. Leave it
-there: a sync that can't find it on both sides stops.
+there: a sync that can't find it on both sides stops. Only the one at the top counts: a file of that
+name in a subfolder, such as another knowledge base's marker when you connect it to a folder inside
+this one, is left out of the sync on both sides.
 
 From then on Your Space syncs about once a minute while it runs, and at once when you choose
 **Sync now**. A change on either side arrives at the next sync: Drive can't tell a self-hosted
@@ -105,7 +107,8 @@ The knowledge base's page shows when it last synced, and what to do when a sync 
   sync container mounts. What is read then goes only to the Drive folder. A file, not a
   link, whose name ends in `.rclonelink` is read as a link, so the sync can't read it: until that
   file is renamed, every sync fails before changing anything, and **Resync** copies the other
-  files, then stops.
+  files, then stops. The page shows rclone's error, which names the file's path without
+  `.rclonelink`.
 - Your Space owns the knowledge base's files, and apps lease them: whatever user an app runs as,
   and whatever modes it gives its files and folders, the sync reads and changes them, and the app
   can change what the sync writes. A folder an app made for itself, or a file only it can read,

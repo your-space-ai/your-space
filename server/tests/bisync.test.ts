@@ -74,6 +74,9 @@ describe("a run's options", () => {
       // On the same remote as Path2, by the same string, as bisync wants.
       backupDir2: ":local,links:/state/notes/backups/2026-11-25T17-05-00-123Z",
       createEmptySrcDirs: true,
+      // Only the marker at the root is listed: one below it, as another knowledge base's in a
+      // subfolder, would fail the access check on every run and resync (rclone 1.75.2).
+      _filter: { FilterRule: ["+ /.your-space-sync", "- .your-space-sync"] },
     });
     expect(SYNC_MARKER).toBe(".your-space-sync");
     expect(MAX_DELETE).toBe(50);
@@ -84,6 +87,8 @@ describe("a run's options", () => {
     expect(backupsFs("notes")).toBe(":local,links:/state/notes/backups");
     for (const options of [{}, { resync: true }, { force: true, dryRun: true }, { force: true }]) {
       const params = bisyncParams("notes", "r", options);
+      // Every run and resync lists only the root's marker.
+      expect(params._filter).toEqual({ FilterRule: ["+ /.your-space-sync", "- .your-space-sync"] });
       expect(params.path2).toBe(localFs("notes"));
       expect(params.backupDir2).toBe(`${backupsFs("notes")}/r`);
       expect(params.path1).toBe("kb-notes:");
@@ -434,8 +439,9 @@ describe("reading rclone's log", () => {
       { level: "error", msg: "Bisync critical error: failed to open source object: lstat /knowledge/kb/report: no such file or directory" },
       { level: "error", msg: "Bisync aborted. Must run --resync to recover." },
     ];
-    expect(outcome(false, logLines(json(normalRun)), "bisync aborted")).toEqual({ result: "failed", message: "Bisync aborted. Error is retryable without --resync due to --resilient mode." });
-    expect(outcome(false, logLines(json(resync)), "bisync aborted")).toEqual({ result: "stopped", reason: "resync", message: "Bisync aborted. Must run --resync to recover." });
+    // The message is bisync's critical error, which names the file's path, not its closing line.
+    expect(outcome(false, logLines(json(normalRun)), "bisync aborted")).toEqual({ result: "failed", message: "Bisync critical error: hash: failed to open: readlink /knowledge/kb/report: no such file or directory" });
+    expect(outcome(false, logLines(json(resync)), "bisync aborted")).toEqual({ result: "stopped", reason: "resync", message: "Bisync critical error: failed to open source object: lstat /knowledge/kb/report: no such file or directory" });
   });
 });
 

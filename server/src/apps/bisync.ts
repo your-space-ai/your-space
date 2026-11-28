@@ -9,6 +9,14 @@
 
 /** The file at both roots that bisync's access check looks for (`checkAccess`). */
 export const SYNC_MARKER = ".your-space-sync";
+/**
+ * Only the marker at the root: bisync's access check compares every file of the marker's name it
+ * lists on the two sides, at any depth, so one below the root, as another knowledge base's in a
+ * subfolder of the Drive folder or an app's copy of the knowledge base, would stop every run and
+ * resync. Left out of the listings, such a file is neither compared nor synced (checked on rclone
+ * 1.75.2), and a root marker missing on either side still stops the run.
+ */
+export const MARKER_FILTER = { FilterRule: [`+ /${SYNC_MARKER}`, `- ${SYNC_MARKER}`] };
 /** bisync's limit on the deletions a run makes, in percent of a side's files (`maxDelete`). */
 export const MAX_DELETE = 50;
 /** How long the files syncs replaced or deleted in a knowledge base are kept in its sync state. */
@@ -85,7 +93,7 @@ export function remoteConfig(remote: DriveRemote, fixture: boolean): { type: str
 
 /**
  * A bisync run between the knowledge base's Drive folder and the knowledge base, with bisync's own
- * checks: the marker at both roots, the deletion limit, the lock that expires if a run dies, recovery
+ * checks: the marker at both roots, and only there, the deletion limit, the lock that expires if a run dies, recovery
  * after an interruption, comparing by size, time and checksum, and the knowledge base's copy keeping
  * the name in a conflict. A file a run replaces or deletes in the knowledge base is kept in that run's
  * backup folder. `resync` copies both ways and deletes nothing, the newer copy winning; `force` makes
@@ -106,6 +114,7 @@ export function bisyncParams(knowledgeBase: string, run: string, options: { resy
     conflictResolve: "path2",
     backupDir2: `${backupsFs(knowledgeBase)}/${run}`,
     createEmptySrcDirs: true,
+    _filter: MARKER_FILTER,
     ...(options.resync ? { resync: true, resyncMode: "newer" } : {}),
     ...(options.force ? { force: true } : {}),
     ...(options.dryRun ? { dryRun: true } : {}),
@@ -337,7 +346,10 @@ export function outcome(success: boolean, lines: LogLine[], error = "", lastErro
   if (success) return { result: "synced" };
   const failures = failureLines(lines);
   const said = (stop: RegExp) => [...failures, error.trim()].map((msg) => stop.exec(msg)).filter((match) => match !== null);
-  const message = (lines.filter((l) => l.level === "error" || l.level === "critical").at(-1)?.msg.trim() ?? failures.at(-1) ?? (error || "rclone didn't say why.")).slice(0, 600);
+  // The cause: bisync's last critical error, which names the file at fault when there is one, rather
+  // than its closing line ("Bisync aborted. …"); otherwise the last error.
+  const cause = errors.filter((msg) => msg.startsWith("Bisync critical error: ")).at(-1);
+  const message = (cause ?? errors.at(-1) ?? failures.at(-1) ?? (error || "rclone didn't say why.")).slice(0, 600);
   // Each line on its own, from its start: never the lines joined, as a path can hold a line break.
   // Its message is Google's refusal as rclone words it, without the request it was for.
   const refusal = [...failures, error.trim()].map((msg) => REFUSED.exec(msg)).find((match) => match !== null);
