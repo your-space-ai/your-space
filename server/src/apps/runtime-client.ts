@@ -4,6 +4,9 @@ import { otherComposeFiles } from "./compose-file.ts";
 
 export const RUNTIME_SOCKET = process.env.YS_RUNTIME_SOCKET ?? "/run/ys-runtime/runtime.sock";
 
+/** How long a request waits for the runtime manager to say anything, an app's whole apply included. */
+export const CALL_TIMEOUT_MS = 30 * 60_000;
+
 export class RuntimeError extends Error {
   readonly status: number;
   readonly code: string;
@@ -120,6 +123,16 @@ export interface ApplyEvent {
   code?: string;
 }
 
+/** The knowledge bases' sync (journey 014): a container of stock rclone's remote control for each, which the server reaches itself. */
+export interface SyncService {
+  /** The knowledge bases that have an rclone container, running or not. */
+  knowledgeBases: string[];
+  /** Those whose container runs now. */
+  running: string[];
+  /** The browser tests' stand-in for Drive, which only the runtime manager's own environment selects. */
+  fixture: boolean;
+}
+
 /** What the server needs from a runtime; tests give a fake. */
 export interface Runtime {
   engine(): Promise<EngineInfo>;
@@ -135,13 +148,24 @@ export interface Runtime {
   checkPort(project: string, publish: { port: number; bind: string }): Promise<{ inUse: boolean; by?: string }>;
   /** Creates a knowledge base's storage, or keeps this installation's own that has its name. */
   createKnowledge(name: string): Promise<{ created: boolean }>;
-  /** The apps whose containers mount a knowledge base, running or not, with or without a grant. */
-  knowledgeUsers(name: string): Promise<{ apps: string[] }>;
-  /** Deletes a knowledge base's storage and its files; refused while an app still mounts it. */
+  /**
+   * The apps whose containers mount a knowledge base, running or not, with or without a grant, and
+   * whether the runtime manager runs a sync of it now, one a server before a restart started included.
+   */
+  knowledgeUsers(name: string): Promise<{ apps: string[]; syncing: boolean }>;
+  /** Deletes a knowledge base's storage and its files; refused while an app still mounts it, or while it syncs. */
   deleteKnowledge(name: string): Promise<void>;
+  /** The knowledge bases' sync service as it is now. */
+  syncService(): Promise<SyncService>;
+  /** Runs an rclone container for exactly each of these knowledge bases, and answers once each new one's rclone answers. */
+  ensureSyncService(knowledgeBases: string[]): Promise<SyncService>;
+  /** Stops a knowledge base's rclone as Ctrl+C stops it, so a run under way saves its state, and starts it again. */
+  restartSyncService(knowledgeBase: string): Promise<SyncService>;
+  /** Removes a knowledge base's sync state; it and the Drive folder keep their files. Refused while the service mounts it. */
+  removeSync(name: string): Promise<void>;
 }
 
-function call(method: string, path: string, body?: unknown, onLine?: (line: string) => void, socketPath = RUNTIME_SOCKET, deadlineMs?: number): Promise<{ status: number; text: string }> {
+function call(method: string, path: string, body?: unknown, onLine?: (line: string) => void, socketPath = RUNTIME_SOCKET, deadlineMs?: number, idleMs = CALL_TIMEOUT_MS): Promise<{ status: number; text: string }> {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? undefined : JSON.stringify(body);
     const req = request(
@@ -166,15 +190,16 @@ function call(method: string, path: string, body?: unknown, onLine?: (line: stri
         res.on("error", reject);
       },
     );
-    req.on("error", () => reject(new RuntimeError("Your Space's runtime manager isn't running.", 503, "runtime_unavailable")));
-    req.setTimeout(30 * 60_000, () => req.destroy(new RuntimeError("The runtime manager stopped answering.", 504, "runtime_timeout")));
+    // A timeout's own error says the runtime manager stopped answering, not that it isn't running.
+    req.on("error", (error) => reject(error instanceof RuntimeError ? error : new RuntimeError("Your Space's runtime manager isn't running.", 503, "runtime_unavailable")));
+    req.setTimeout(idleMs, () => req.destroy(new RuntimeError("The runtime manager stopped answering.", 504, "runtime_timeout")));
     if (payload) req.write(payload);
     req.end();
   });
 }
 
-async function json<T>(method: string, path: string, body?: unknown, socketPath?: string, deadlineMs?: number): Promise<T> {
-  const { status, text } = await call(method, path, body, undefined, socketPath, deadlineMs);
+async function answer<T>(method: string, path: string, body?: unknown, socketPath?: string, deadlineMs?: number, idleMs?: number): Promise<T> {
+  const { status, text } = await call(method, path, body, undefined, socketPath, deadlineMs, idleMs);
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -191,7 +216,7 @@ async function json<T>(method: string, path: string, body?: unknown, socketPath?
 /** Resolve through the private engine-owning runtime just before dispatch. */
 export function installedInterface(project: string, id: string, service: string, port: number): Promise<{ address: string }> {
   const query = new URLSearchParams({ id, service, port: String(port) });
-  return json("GET", `/apps/${encodeURIComponent(project)}/interface?${query}`, undefined, undefined, 5_000);
+  return answer("GET", `/apps/${encodeURIComponent(project)}/interface?${query}`, undefined, undefined, 5_000);
 }
 
 /** The app's spec, once its file names no other Compose file, which Compose would read (compose-file.ts). */
@@ -201,8 +226,10 @@ function oneFile(spec: AppSpec): AppSpec {
   return spec;
 }
 
-export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
+/** `callMs` is for tests: how long a request waits for the runtime manager. */
+export function socketRuntime(socketPath = RUNTIME_SOCKET, callMs = CALL_TIMEOUT_MS): Runtime {
   const p = (project: string) => `/apps/${encodeURIComponent(project)}`;
+  const json = <T>(method: string, path: string, body?: unknown, sock?: string, deadlineMs?: number, idleMs = callMs) => answer<T>(method, path, body, sock, deadlineMs, idleMs);
   return {
     engine: () => json("GET", "/engine", undefined, socketPath),
     check: async (spec) => json("POST", "/check", oneFile(spec), socketPath),
@@ -223,6 +250,8 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
           onEvent(event);
         },
         socketPath,
+        undefined,
+        callMs,
       );
       if (status >= 400) throw new RuntimeError(failure ?? "The runtime manager refused the app.", status, "runtime_error");
       if (failure) throw new RuntimeError(failure, 502, code ?? "apply_failed");
@@ -239,5 +268,9 @@ export function socketRuntime(socketPath = RUNTIME_SOCKET): Runtime {
     createKnowledge: (name) => json("POST", "/knowledge", { name }, socketPath),
     knowledgeUsers: (name) => json("GET", `/knowledge/${encodeURIComponent(name)}`, undefined, socketPath),
     deleteKnowledge: async (name) => void (await json("DELETE", `/knowledge/${encodeURIComponent(name)}`, undefined, socketPath)),
+    syncService: () => json("GET", "/knowledge-sync", undefined, socketPath),
+    ensureSyncService: (knowledgeBases) => json("PUT", "/knowledge-sync", { knowledgeBases }, socketPath),
+    restartSyncService: (name) => json("POST", `/knowledge-sync/${encodeURIComponent(name)}/restart`, {}, socketPath),
+    removeSync: async (name) => void (await json("DELETE", `/knowledge/${encodeURIComponent(name)}/sync`, undefined, socketPath)),
   };
 }

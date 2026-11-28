@@ -118,6 +118,20 @@ export function knowledgeVolume(installation: string, name: string): string {
 }
 
 /**
+ * The volume of a synced knowledge base's sync state (journey 014): rclone bisync's listings and lock,
+ * and the files a sync replaced or deleted in the knowledge base. Its name starts as a knowledge
+ * base's does, so no app's file can name it and nothing that removes an app's volumes removes it.
+ */
+export function knowledgeStateVolume(installation: string, name: string): string {
+  return `${knowledgeVolume(installation, name)}.sync`;
+}
+
+/** The labels of a knowledge base's sync state volume, and of the containers that sync it. */
+export function knowledgeSyncLabels(installation: string, name: string): Record<string, string> {
+  return { "ai.your-space.installation": installation, "ai.your-space.role": "knowledge-sync", "ai.your-space.knowledge": name };
+}
+
+/**
  * A knowledge base volume's labels: Your Space's installation and the knowledge base, never an app's
  * or a Compose project's, so nothing that finds an app's volumes finds it.
  */
@@ -525,6 +539,35 @@ export function egressConfig(hosts: string[]): string {
 }
 
 /**
+ * Your Space's outbound proxy as a Compose service: Squid on the sealed network and on one that
+ * reaches the internet, letting through only the hosts its configuration (`egressConfig`) names. An
+ * app's file gets one (FR-019), and so does the knowledge bases' sync (journey 014, sync.ts).
+ */
+export function egressService(image: string, labels: Record<string, string>, config: string, networks: [sealed: string, open: string]): Json {
+  return {
+    image,
+    restart: "unless-stopped",
+    networks: { [networks[0]]: {}, [networks[1]]: {} },
+    configs: [{ source: "egress", target: "/etc/squid/squid.conf" }],
+    ulimits: { nofile: { soft: EGRESS_FILES, hard: EGRESS_FILES } },
+    healthcheck: {
+      test: ["CMD", "bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${EGRESS_PORT}`],
+      interval: "10s",
+      timeout: "3s",
+      retries: 3,
+      start_period: "30s",
+      start_interval: "1s",
+    },
+    // Compose doesn't recreate a container when only its inline config changes; a label does.
+    labels: { ...labels, "ai.your-space.role": "egress", "ai.your-space.egress-config": createHash("sha256").update(config).digest("hex").slice(0, 16) },
+    mem_limit: EGRESS_MEMORY,
+    cpus: EGRESS_CPUS,
+    oom_score_adj: 500,
+    security_opt: ["no-new-privileges:true"],
+  };
+}
+
+/**
  * Checks the resolved file and, when nothing is refused, builds the file to run. A published app's own
  * Caddy runs the image of Your Space's Caddy, and lets that Caddy's origin frame the app when the owner
  * shows it in Your Space. A service that loads `.env` gets the environment the kit defines (`files`, in
@@ -659,27 +702,8 @@ export function adapt(spec: AppSpec, resolved: Json, profiledServices: string[] 
 
   const egressHosts = [...new Set((spec.egress ?? []).map((h) => h.toLowerCase()))].sort();
   const egress = egressConfig(egressHosts);
-  outServices[EGRESS_SERVICE] = {
-    image: spec.pins?.[`${EGRESS_IMAGE}:latest`] ? pinnedImage(EGRESS_IMAGE, spec.pins[`${EGRESS_IMAGE}:latest`]!) : `${EGRESS_IMAGE}:latest`,
-    restart: "unless-stopped",
-    networks: { app: {}, egress: {} },
-    configs: [{ source: "egress", target: "/etc/squid/squid.conf" }],
-    ulimits: { nofile: { soft: EGRESS_FILES, hard: EGRESS_FILES } },
-    healthcheck: {
-      test: ["CMD", "bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${EGRESS_PORT}`],
-      interval: "10s",
-      timeout: "3s",
-      retries: 3,
-      start_period: "30s",
-      start_interval: "1s",
-    },
-    // Compose doesn't recreate a container when only its inline config changes; a label does.
-    labels: { ...labels, "ai.your-space.role": "egress", "ai.your-space.egress-config": createHash("sha256").update(egress).digest("hex").slice(0, 16) },
-    mem_limit: EGRESS_MEMORY,
-    cpus: EGRESS_CPUS,
-    oom_score_adj: 500,
-    security_opt: ["no-new-privileges:true"],
-  };
+  const egressImage = spec.pins?.[`${EGRESS_IMAGE}:latest`] ? pinnedImage(EGRESS_IMAGE, spec.pins[`${EGRESS_IMAGE}:latest`]!) : `${EGRESS_IMAGE}:latest`;
+  outServices[EGRESS_SERVICE] = egressService(egressImage, labels, egress, ["app", "egress"]);
   adaptations.push({ service: EGRESS_SERVICE, kind: "added", detail: "Added Your Space's outbound proxy, which lets the app reach only approved hosts." });
 
   const networks: Json = {

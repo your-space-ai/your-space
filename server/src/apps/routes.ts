@@ -9,6 +9,7 @@ import { member } from "../db/auth-schema.ts";
 import { installation } from "../db/schema.ts";
 import { safeReturn, type Handoffs } from "./gate.ts";
 import { KnowledgeBases } from "./knowledge.ts";
+import { KnowledgeSync } from "./knowledge-sync.ts";
 import { AppError, type AppsService } from "./service.ts";
 
 interface Owner {
@@ -48,6 +49,7 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
   const router = Router();
   const publicOrigin = new URL(apps.config.publicUrl).origin;
   const knowledge = new KnowledgeBases(apps);
+  const sync = KnowledgeSync.for(apps);
 
   const owner = (handler: Handler) => async (req: Request, res: Response, next: NextFunction) => {
     res.set("Cache-Control", "no-store");
@@ -176,7 +178,53 @@ export function appRoutes(auth: Auth, db: Db, apps: AppsService, handoffs: Hando
       res.status(201).json(await knowledge.create({ name: kb, title }, who.actorId));
     }),
   );
+  router.get("/knowledge/:name", owner(async (req, res) => void res.json(await knowledge.detail(name(req)))));
   router.patch("/knowledge/:name", owner(async (req, res, who) => void res.json(await knowledge.retitle(name(req), body(req).title, who.actorId))));
+
+  // Synced knowledge bases (journey 014): a knowledge base connected to a Google Drive folder.
+  router.put("/knowledge/:name/sync", owner(async (req, res, who) => void res.status(202).json(await sync.connect(name(req), body(req), who.actorId))));
+  router.post(
+    "/knowledge/:name/sync",
+    owner(async (req, res, who) => {
+      await sync.start(name(req), body(req), who.actorId);
+      res.status(202).json({ started: true });
+    }),
+  );
+  router.delete(
+    "/knowledge/:name/sync",
+    owner(async (req, res, who) => {
+      await sync.disconnect(name(req), who.actorId);
+      res.status(204).end();
+    }),
+  );
+
+  // The Google connection synced knowledge bases use: the operator's own OAuth client, and the
+  // owner's sign-in with Google. Not under /knowledge/, where a knowledge base could have its name.
+  router.get("/google-drive", owner(async (_req, res) => void res.json(await sync.google())));
+  router.put("/google-drive", owner(async (req, res, who) => void res.json(await sync.saveClient(body(req), who.actorId))));
+  router.delete(
+    "/google-drive",
+    owner(async (_req, res, who) => {
+      await sync.removeGoogle(who.actorId);
+      res.status(204).end();
+    }),
+  );
+  router.post("/google-drive/authorize", owner(async (_req, res, who) => void res.json(await sync.authorize(who.sessionId))));
+  // Google sends the owner's browser back here. Only the session that started the sign-in finishes
+  // it, with the state Google returns; the answer is a redirect to the Knowledge page that says how it went.
+  router.get("/google-drive/callback", async (req, res, next) => {
+    res.set("Cache-Control", "no-store");
+    res.set("Referrer-Policy", "no-referrer");
+    try {
+      const who = await ownerFor(auth, db, req);
+      if (who === "signed_out") return void res.redirect(302, `${apps.config.publicUrl}/knowledge?google=signed_out`);
+      if (who === "forbidden") return void res.status(403).type("text").send("Only the owner can connect Google Drive.");
+      const outcome = await sync.finishSignIn(req.query as Record<string, unknown>, who);
+      res.redirect(302, `${apps.config.publicUrl}/knowledge?google=${outcome}`);
+    } catch (error) {
+      next(error);
+    }
+  });
   router.delete(
     "/knowledge/:name",
     owner(async (req, res, who) => {

@@ -13,6 +13,7 @@ import { socketRuntime } from "./apps/runtime-client.ts";
 import { moveSettingsToDataKey } from "./apps/keys.ts";
 import { AppsService } from "./apps/service.ts";
 import { GithubConnection } from "./github-connection.ts";
+import { KnowledgeSync } from "./apps/knowledge-sync.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 /** The gate's listener: only Caddy reaches it (deploy/Caddyfile). */
@@ -92,7 +93,15 @@ try {
 const auth = createAuth({ config, db });
 const handoffs = new Handoffs();
 const github = new GithubConnection(db, config.dataKey);
-const apps = new AppsService(db, socketRuntime(), { publicUrl: config.publicUrl, dataKey: config.dataKey, credentials: github, registries: github });
+// The browser tests sync every few seconds (YS_E2E_SYNC_INTERVAL_S in e2e/compose.e2e.yaml).
+const e2eInterval = Number(process.env.YS_E2E_SYNC_INTERVAL_S);
+const apps = new AppsService(db, socketRuntime(), {
+  publicUrl: config.publicUrl,
+  dataKey: config.dataKey,
+  credentials: github,
+  registries: github,
+  ...(e2eInterval > 0 ? { syncIntervalMs: e2eInterval * 1000 } : {}),
+});
 const app = createApp({ auth, db, dataKey: config.dataKey, apps: { service: apps, handoffs }, github });
 const gate = createGate({ db, publicUrl: config.publicUrl, authSecret: config.authSecret, handoffs });
 const gateServer: Server = gate.listen(GATE_PORT, "0.0.0.0");
@@ -115,6 +124,11 @@ async function reconcile(): Promise<void> {
 }
 void reconcile();
 const reconcileTimer = setInterval(() => void reconcile(), RECONCILE_INTERVAL_MS);
+
+// Synced knowledge bases sync about once a minute while the server runs (journey 014). A run under
+// way is in rclone, so it goes on when the server stops, and the next server records it.
+const knowledgeSync = KnowledgeSync.for(apps);
+knowledgeSync.startTimer();
 const server: Server = app.listen(PORT, "0.0.0.0", () => {
   // Which setup the .env produced, so `docker compose logs server` shows it.
   log("info", "server.listening", { port: PORT, setup: config.mode, address: config.publicUrl });
@@ -124,8 +138,10 @@ function shutdown(signal: string): void {
   log("info", "server.stopping", { signal });
   clearInterval(reconcileTimer);
   gateServer.close();
+  // No sync starts from now on; the step in its turn ends before the pool closes.
+  const syncsEnded = knowledgeSync.close();
   server.close(() => {
-    void pool.end().finally(() => process.exit(0));
+    void syncsEnded.then(() => pool.end()).finally(() => process.exit(0));
   });
   setTimeout(() => process.exit(0), 10_000).unref();
 }

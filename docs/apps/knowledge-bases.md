@@ -47,6 +47,13 @@ everyone, and gives new files its group, so apps running as any user can create 
 Between apps, a file keeps the permissions the app that wrote it gave it: an app running as another
 user may not be able to change it.
 
+Nothing an app sets stops the sync with Google Drive: whatever user the app runs as, and whatever
+modes it gives its files and folders, the sync reads and changes them, a folder the app made for
+itself and a file only it can read included. What the sync writes is readable and writable by
+everyone, so the app can still change it, replace it or delete it, though it can't change its mode
+or set its time to anything but now. A file that changed in Drive comes back that way too, even one
+the app had made readable only by itself.
+
 When two apps change the same file, the last one to write it wins. Your Space doesn't merge them.
 
 ## Removing apps and deleting knowledge bases
@@ -69,7 +76,53 @@ until you delete the knowledge base again, which starts it without the folder.
 
 Knowledge bases are Docker volumes named `ys-knowledge.<installation>.<name>`, labelled
 `ai.your-space.role=knowledge`. `docker compose down -v` of Your Space doesn't delete them, as it
-doesn't delete apps' volumes.
+doesn't delete apps' volumes. Deleting a synced knowledge base deletes its sync too, with the
+replaced files it kept, even those less than 30 days old: copy out any you need first, as before
+disconnecting it. The Drive folder keeps its files.
+
+## Sync with Google Drive
+
+A knowledge base can be kept in two-way sync with a folder in Google Drive. The operator sets up the
+Google connection once, with an OAuth client of their own: see
+[Sync knowledge bases with Google Drive](../operate/google-drive.md). Then open a knowledge base on
+the **Knowledge** page, paste the link of a Drive folder under **Google Drive**, and choose
+**Connect**. The first sync copies both ways and deletes nothing; after it, Your Space syncs about
+once a minute and when you choose **Sync now**. Apps keep reading and writing the local copy, so they
+work offline too, and can't tell a synced knowledge base from a local one. A sync covers only the
+chosen folder: shortcuts in it, and Google Docs, Sheets and Slides, stay in Drive only.
+
+Symbolic links an app makes in a synced knowledge base sync as links: Drive keeps each as a small
+`<name>.rclonelink` file holding the link's target, and a `.rclonelink` file made in Drive becomes a
+link here, with whatever target it holds. The sync never follows a link out of the knowledge base,
+or any absolute link. If the Drive folder has a folder, empty or not, where the knowledge base has
+such a link, the sync stops and names the path: remove that folder in Drive, or the link here and
+its `.rclonelink` file in Drive, then choose **Resync** (see
+[When a sync stops](../operate/google-drive.md#when-a-sync-stops)). A link written relative to
+where it is, to a folder in the knowledge base itself, is followed: the files of a Drive folder at
+its path are written where it leads, still in the knowledge base. Don't give a file, rather than a
+link, a name ending in `.rclonelink`: the sync reads it as a link, so it syncs nothing more until
+the file is renamed.
+
+The knowledge base's page shows:
+
+- When it last synced, and the Drive folder it syncs with.
+- **Conflict copies:** files changed on both sides between two syncs. The copy here kept the file's
+  name, and Drive's copy is beside it with `.conflict` and a number at the end. Keep what you want
+  and delete the other copy.
+- **Replaced files:** files a sync replaced or deleted here, kept for 30 days outside the knowledge
+  base.
+- Why a sync stopped, when it did, with **Resync**, which copies both ways and deletes nothing, and,
+  after more than half of the files were deleted on one side, the deletions (the first 500 in the
+  order the sync found them, and how many more) and **Apply these deletions**. Over 10,000
+  deletions are more than Your Space lists for you to confirm, so it offers only **Resync** (see
+  [When a sync stops](../operate/google-drive.md#when-a-sync-stops)). Where both sides changed a
+  file, Resync keeps the newer copy rather than both, and so does the resync Your Space runs itself
+  to finish an interrupted sync: a copy it replaced here is under **Replaced files**, and one it
+  replaced in Drive is in the file's version history there.
+- **Reconnect**, when Google refused Your Space's access.
+- **Disconnect**, which stops the sync. The knowledge base and the Drive folder both keep their
+  files, but the replaced files Your Space kept go with the sync: copy any you need first (see
+  [How it runs](../operate/google-drive.md#how-it-runs)).
 
 ## For app developers
 
@@ -96,5 +149,7 @@ too, Docker makes the folder owned by root with mode `0755` when the volume does
 app that doesn't run as root needs the folder in the volume already, owned by its user, as when its
 image has the folder and Docker copies it into the new volume.
 
-Keeping a knowledge base in sync with a Google Drive folder is
-[planned](../roadmap.md#knowledge-bases).
+An app can run as any user, with any umask: Your Space owns the files in a knowledge base and lends
+them to the app, and the sync with Google Drive reads and changes whatever the app writes there,
+and writes files the app can change. Other apps given the same knowledge base can change the app's
+files only as their permissions allow.

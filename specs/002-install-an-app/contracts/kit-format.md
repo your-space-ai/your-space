@@ -117,7 +117,12 @@ bases' folders and isn't storage: what an app writes there beside them is in the
 files, lost when it is recreated, so a kit whose app keeps files at that folder's root puts the path
 inside one of the app's volumes. A kit without `knowledge` gets no mounts
 and can't be given knowledge bases. Older Your Space versions refuse `knowledge` as an unknown field,
-so the change needs no new format version; `kit: 1` and `kit: 2` both take it.
+so the change needs no new format version; `kit: 1` and `kit: 2` both take it. The app can run as
+any user, with any umask, and give its files and folders any mode: the knowledge base's files belong
+to Your Space, which lends them to the app, and the sync with Google Drive reads and changes
+whatever the app writes there, and writes files and folders every user can read and write, so the
+app can change them, though not their mode or time (decision 2026-11-27, superseding 2026-11-26's
+user 1000 or umask 002). Other apps change the app's files only as their modes allow.
 
 Every field except `kit` and `source` is optional. A kit given with a Compose file on this machine
 may leave out `source`, and its `source` isn't matched. Any other kit without `source` is refused, as

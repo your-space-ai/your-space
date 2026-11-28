@@ -45,7 +45,7 @@ const AFTER_REPLACING: Record<string, string> = {
   POSTGRES_PASSWORD:
     'Replaced the database password. PostgreSQL still has the old one: follow "Give PostgreSQL the Database Password" in the recovery guide (docs/operate/recovery.md), then restart the server.',
   YS_DATA_KEY:
-    "Replaced the data key. Restart the server, which re-encrypts apps' settings with it, then: docker compose run --rm secrets --forget previous-data-key",
+    "Replaced the data key. Restart the server, which re-encrypts apps' settings and the Google connection with it, then: docker compose run --rm secrets --forget previous-data-key",
 };
 
 try {

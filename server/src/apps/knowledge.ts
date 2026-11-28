@@ -5,6 +5,7 @@ import { and, asc, eq, inArray, ne, or } from "drizzle-orm";
 import { recordEvent } from "../actors.ts";
 import { app, appKnowledgeBase, knowledgeBase } from "../db/schema.ts";
 import { log } from "../log.ts";
+import { KnowledgeSync } from "./knowledge-sync.ts";
 import { RuntimeError } from "./runtime-client.ts";
 import { AppError, type AppsService } from "./service.ts";
 
@@ -60,9 +61,18 @@ export class KnowledgeBases {
   async list() {
     const rows = await this.db.select().from(knowledgeBase).orderBy(asc(knowledgeBase.title), asc(knowledgeBase.name));
     const users = await this.users(rows.map((r) => r.id));
+    const syncs = await KnowledgeSync.for(this.apps).statuses();
     return {
-      knowledgeBases: rows.map((r) => ({ name: r.name, title: r.title, createdAt: r.createdAt, apps: users.get(r.id) ?? [] })),
+      knowledgeBases: rows.map((r) => ({ name: r.name, title: r.title, createdAt: r.createdAt, apps: users.get(r.id) ?? [], sync: syncs.get(r.id) ?? null })),
     };
+  }
+
+  /** One knowledge base, with its sync when it has one (journey 014). */
+  async detail(name: string) {
+    const row = await this.rowByName(name);
+    const users = await this.users([row.id]);
+    const syncs = await KnowledgeSync.for(this.apps).statuses();
+    return { name: row.name, title: row.title, createdAt: row.createdAt, apps: users.get(row.id) ?? [], sync: syncs.get(row.id) ?? null };
   }
 
   /** Creates a knowledge base: its storage first, then its record, so a retry after a failure works. */
@@ -117,6 +127,10 @@ export class KnowledgeBases {
    * applied or removed, nothing is deleted: that app keeps its grant, so the owner can fix it and try
    * again. The apps are held from the start to the end, so no other change of theirs runs meanwhile,
    * and so is the knowledge base, so no app is given it meanwhile.
+   *
+   * Its sync goes with it, and the Drive folder keeps its files. Its sync container is stopped as
+   * Ctrl+C stops rclone, which stops its run under way, and removed first; none of its runs starts
+   * until the deletion ends, and other knowledge bases' runs go on.
    */
   async delete(name: string, actorId: string): Promise<void> {
     // Its name is held first, so the row read is the one whose storage the name-based calls change:
@@ -126,7 +140,15 @@ export class KnowledgeBases {
       const row = await this.rowByName(name);
       const releaseBase = this.apps.holdKnowledge(row.id);
       try {
-        await this.deleteHeld(row, actorId);
+        const sync = KnowledgeSync.for(this.apps);
+        if (!sync.hold(row.id)) throw new AppError(409, "busy", "The knowledge base is being deleted, connected or disconnected already.");
+        try {
+          // Out of the sync first: its sync container mounts the knowledge base.
+          await sync.leaveService(row.id);
+          await this.deleteHeld(row, actorId);
+        } finally {
+          sync.release(row.id);
+        }
       } finally {
         releaseBase();
       }
@@ -143,7 +165,8 @@ export class KnowledgeBases {
   private async deleteHeld(row: typeof knowledgeBase.$inferSelect, actorId: string): Promise<void> {
     const { name } = row;
     const subject = { id: row.id, name: row.name };
-    const { apps: mounting } = await this.apps.runtime.knowledgeUsers(name).catch(refused);
+    const { apps: mounting, syncing } = await this.apps.runtime.knowledgeUsers(name).catch(refused);
+    if (syncing) throw new AppError(409, "busy", "The knowledge base's sync still mounts it. Try again in a moment.");
     const granted = (await this.db.select({ appId: appKnowledgeBase.appId }).from(appKnowledgeBase).where(eq(appKnowledgeBase.knowledgeBaseId, row.id))).map((g) => g.appId);
     const which = [...(granted.length ? [inArray(app.id, granted)] : []), ...(mounting.length ? [inArray(app.name, mounting)] : [])];
     // A removed app has no containers to apply.

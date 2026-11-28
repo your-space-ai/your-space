@@ -4,16 +4,19 @@
 // it is sent, as Docker does.
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { adapt, KNOWLEDGE_PREFIX, knowledgeLabels, knowledgeVolume, type AppSpec } from "../src/adapter.ts";
+import { adapt, KNOWLEDGE_PREFIX, knowledgeLabels, knowledgeStateVolume, knowledgeSyncLabels, knowledgeVolume, type AppSpec } from "../src/adapter.ts";
 import {
   anonymousVolumes,
   apply,
   createKnowledge,
   deleteKnowledge,
+  deleteKnowledgeState,
   deleteVolumes,
+  holdingKnowledge,
   INSTALLATION,
   isKnowledge,
   knowledgeInit,
+  holdKnowledgeBases,
   knowledgeUsers,
   SpecError,
   validateKnowledgeName,
@@ -178,6 +181,8 @@ let initExits: number[];
 let volumeDeleteFails: boolean;
 /** Whether the engine fails to remove the setup container. */
 let initDeleteFails: boolean;
+/** A volume the engine fails to delete, alone. */
+let failingVolume: string | undefined;
 
 function matches(labels: Record<string, string>, filters: string[]): boolean {
   return filters.every((filter) => {
@@ -195,6 +200,7 @@ beforeEach(() => {
   initExits = [];
   volumeDeleteFails = false;
   initDeleteFails = false;
+  failingVolume = undefined;
   vi.mocked(engineModule.engineJson).mockImplementation(async (method, path, body) => {
     calls.push(`${method} ${path.split("?")[0]}`);
     if (path === "/containers/runtime-id/json") return { Image: "sha256:runtime" } as never;
@@ -230,16 +236,17 @@ beforeEach(() => {
       const name = decodeURIComponent(path.slice("/volumes/".length));
       if (method === "GET") return volumes.has(name) ? { status: 200, body: JSON.stringify({ Name: name, Labels: volumes.get(name) }) } : { status: 404, body: "" };
       if (method === "DELETE") {
-        if (volumeDeleteFails) return { status: 500, body: "the engine failed" };
+        if (volumeDeleteFails || failingVolume === name) return { status: 500, body: "the engine failed" };
         if (containers.some((c) => c.volumes?.includes(name))) return { status: 409, body: "volume is in use" };
         return volumes.delete(name) ? { status: 204, body: "" } : { status: 404, body: "" };
       }
     }
     if (method === "DELETE" && path.startsWith("/containers/init-id")) return initDeleteFails ? { status: 500, body: "the engine failed" } : { status: 204, body: "" };
     if (method === "DELETE" && path.startsWith("/containers/")) {
-      const id = path.slice("/containers/".length).split("?")[0];
+      const id = decodeURIComponent(path.slice("/containers/".length).split("?")[0]!);
+      const before = containers.length;
       containers = containers.filter((c) => c.Id !== id);
-      return { status: 204, body: "" };
+      return before > containers.length ? { status: 204, body: "" } : { status: 404, body: "" };
     }
     // Every image is on the engine already, so an apply pulls nothing.
     if (method === "GET" && path.startsWith("/images/")) return { status: 200, body: "{}" };
@@ -369,6 +376,91 @@ describe("a knowledge base's volume", () => {
     await expect(deleteKnowledge("notes")).resolves.toBeUndefined();
   });
 
+  it("takes its sync state with it, and leaves a state volume Your Space didn't make", async () => {
+    const state = knowledgeStateVolume(INSTALLATION, "notes");
+    expect(state.startsWith(KNOWLEDGE_PREFIX)).toBe(true);
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    volumes.set(state, knowledgeSyncLabels(INSTALLATION, "notes"));
+    await deleteKnowledge("notes");
+    expect(volumes.has(state)).toBe(false);
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    volumes.set(state, { "ai.your-space.installation": "someone-else" });
+    await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409 });
+    // Refused before anything was deleted.
+    expect(volumes.has(state)).toBe(true);
+    expect(volumes.has(NOTES)).toBe(true);
+  });
+
+  it("keeps its files when its sync state can't be removed: the state goes first", async () => {
+    const state = knowledgeStateVolume(INSTALLATION, "notes");
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    volumes.set(state, knowledgeSyncLabels(INSTALLATION, "notes"));
+    failingVolume = state;
+    await expect(deleteKnowledge("notes")).rejects.toThrow(/the engine failed/);
+    expect(volumes.has(NOTES)).toBe(true);
+    expect(calls).not.toContain(`DELETE /volumes/${NOTES}`);
+    failingVolume = undefined;
+    await deleteKnowledge("notes");
+    expect([volumes.has(NOTES), volumes.has(state)]).toEqual([false, false]);
+  });
+
+  /** The sync's container, as runtime/src/sync.ts runs it, mounting the knowledge base and its state. */
+  const service = (State: string) => ({
+    Id: "rclone",
+    Names: [`/${INSTALLATION}_knowledge-sync-rclone-1`],
+    State,
+    Status: "",
+    Labels: { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "knowledge-sync", "ai.your-space.knowledge-bases": "notes" },
+    volumes: [NOTES, knowledgeStateVolume(INSTALLATION, "notes")],
+  });
+
+  it("isn't deleted, nor its sync state, while the sync's container mounts it, even a stopped one", async () => {
+    const state = knowledgeStateVolume(INSTALLATION, "notes");
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    volumes.set(state, knowledgeSyncLabels(INSTALLATION, "notes"));
+    for (const State of ["running", "exited"]) {
+      containers = containers.filter((c) => c.Id !== "rclone");
+      containers.push(service(State));
+      expect(await knowledgeUsers("notes")).toEqual({ apps: [], syncing: true });
+      await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409, message: expect.stringContaining("is still synced") });
+      expect(volumes.has(NOTES)).toBe(true);
+      expect(volumes.has(state)).toBe(true);
+    }
+    // Once the server took it out of the sync, it goes, with its state.
+    containers = containers.filter((c) => c.Id !== "rclone");
+    expect(await knowledgeUsers("notes")).toEqual({ apps: [], syncing: false });
+    await deleteKnowledge("notes");
+    expect(volumes.size).toBe(0);
+  });
+
+  it("is held while the sync's container is made to mount it, so neither it nor its state is deleted meanwhile", async () => {
+    const state = knowledgeStateVolume(INSTALLATION, "notes");
+    volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
+    volumes.set(state, knowledgeSyncLabels(INSTALLATION, "notes"));
+    const release = holdKnowledgeBases(["notes", "recipes"]);
+    try {
+      expect(await knowledgeUsers("notes")).toEqual({ apps: [], syncing: true });
+      await expect(deleteKnowledge("notes")).rejects.toMatchObject({ status: 409 });
+      await expect(deleteKnowledgeState("notes")).rejects.toMatchObject({ status: 409 });
+      // Nor held twice: a second start of the sync with one of them waits its turn.
+      expect(() => holdKnowledgeBases(["recipes"])).toThrow(/being synced/);
+    } finally {
+      // Let go even when a check failed, so the tests after it hold nothing of this one's.
+      release();
+    }
+    await deleteKnowledgeState("notes");
+    expect([...volumes.keys()]).toEqual([NOTES]);
+    // A deletion holds it in turn.
+    let finish: () => void = () => {};
+    const deleting = holdingKnowledge("notes", "delete", () => new Promise<void>((resolve) => (finish = resolve)));
+    try {
+      expect(() => holdKnowledgeBases(["notes"])).toThrow(/being deleted/);
+    } finally {
+      finish();
+      await deleting;
+    }
+  });
+
   it("is never deleted with an app's data", async () => {
     const own = { "ai.your-space.installation": INSTALLATION, "com.docker.compose.project": "ys-notes", "com.docker.compose.volume": "data" };
     volumes.set("ys-notes_data", own);
@@ -377,13 +469,16 @@ describe("a knowledge base's volume", () => {
     const spoofed = knowledgeVolume(INSTALLATION, "spoofed");
     volumes.set(spoofed, { ...knowledgeLabels(INSTALLATION, "spoofed"), "com.docker.compose.project": "ys-notes" });
     volumes.set("ys-notes_odd", { ...own, "ai.your-space.role": "knowledge" });
+    // Nor its sync state, even with the app's project's labels.
+    const state = knowledgeStateVolume(INSTALLATION, "notes");
+    volumes.set(state, { ...knowledgeSyncLabels(INSTALLATION, "notes"), "com.docker.compose.project": "ys-notes" });
     await deleteVolumes("ys-notes");
-    expect([...volumes.keys()].sort()).toEqual([NOTES, spoofed, "ys-notes_odd"].sort());
+    expect([...volumes.keys()].sort()).toEqual([NOTES, spoofed, "ys-notes_odd", state].sort());
     expect(isKnowledge({ Name: NOTES, Labels: null })).toBe(true);
   });
 
   it("names the apps of this installation whose containers mount it, running or stopped", async () => {
-    expect(await knowledgeUsers("notes")).toEqual({ apps: [] });
+    expect(await knowledgeUsers("notes")).toEqual({ apps: [], syncing: false });
     volumes.set(NOTES, knowledgeLabels(INSTALLATION, "notes"));
     const own = (app: string, state: string) => ({ "ai.your-space.installation": INSTALLATION, "ai.your-space.app": app, state });
     containers.push(
@@ -395,7 +490,7 @@ describe("a knowledge base's volume", () => {
       { Id: "x", Names: ["/shell"], State: "running", Status: "Up", Labels: {}, volumes: [NOTES] },
       { Id: "p", Names: ["/ys-plain-web-1"], State: "running", Status: "Up", Labels: own("plain", "running") },
     );
-    expect(await knowledgeUsers("notes")).toEqual({ apps: ["notes", "vault"] });
+    expect(await knowledgeUsers("notes")).toEqual({ apps: ["notes", "vault"], syncing: false });
     volumes.set(NOTES, { "ai.your-space.installation": "someone-else" });
     await expect(knowledgeUsers("notes")).rejects.toMatchObject({ status: 409 });
   });

@@ -37,6 +37,8 @@ import {
   type SourceFile,
   type SourceMiss,
 } from "./github.ts";
+import type { GoogleEndpoints } from "./google.ts";
+import type { RcFor } from "./rclone.ts";
 import { composeOf, kitFromFile, kitFromLink, kitFromSource, KitError, kitIdentity, NotAKitError, reservedKnowledgePath, type FoundKit } from "./kits.ts";
 import { localSource, type LocalCompose } from "./local.ts";
 import { RuntimeError, type AppSpec, type CheckAnswer, type RegistryCredential, type Runtime, type ServiceState } from "./runtime-client.ts";
@@ -128,6 +130,12 @@ export interface AppsConfig {
   /** Encrypts apps' settings (spec 009). */
   dataKey: string;
   github?: GithubEndpoints;
+  /** Google's sign-in and token endpoints, for synced knowledge bases (journey 014); stand-ins in tests. */
+  google?: GoogleEndpoints;
+  /** Each synced knowledge base's rclone remote control, by its name (journey 014); fakes in tests. */
+  rclone?: RcFor;
+  /** How often each synced knowledge base syncs; shorter in tests. */
+  syncIntervalMs?: number;
   fetch?: typeof fetch;
   /** Left out where nothing is connected, as in tests that don't need it. */
   credentials?: SourceCredentials;

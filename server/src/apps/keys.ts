@@ -1,12 +1,13 @@
 // Moves apps' settings, and the other values encrypted under the data key, onto the current data key
 // when the server starts (spec 009, FR-003, FR-005): values encrypted with the data key a replacement
-// left behind. No release wrote values before the data key, so none is read with the auth secret
-// (decision 2026-11-23, Alpha scope). It runs before the server serves
+// left behind. The Google connection of synced knowledge bases moves with them (journey 014), so
+// replacing the data key doesn't stop a sync. No release wrote values before the data key, so none is
+// read with the auth secret (decision 2026-11-23, Alpha scope). It runs before the server serves
 // anything, in one transaction, so a value is never half moved. A value no key can read is left as
 // it is, and the app reports it when it next needs its settings.
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { appSetting } from "../db/schema.ts";
+import { appSetting, googleConnection } from "../db/schema.ts";
 import { decrypt, encrypt } from "./settings.ts";
 
 export interface Keys {
@@ -59,6 +60,29 @@ export async function moveSettingsToDataKey(db: Db, keys: Keys): Promise<Moved> 
       }
       await tx.update(appSetting).set({ value: encrypt(keys.dataKey, value) }).where(and(eq(appSetting.appId, row.appId), eq(appSetting.name, row.name)));
       result.moved++;
+    }
+    // The Google connection's client secret and token (journey 014).
+    for (const row of await tx.select().from(googleConnection).for("update")) {
+      const moved: { clientSecret?: string; token?: string } = {};
+      for (const column of ["clientSecret", "token"] as const) {
+        const stored = row[column];
+        if (!stored) continue;
+        try {
+          decrypt(keys.dataKey, stored);
+          result.current++;
+          continue;
+        } catch {
+          // Not on the current key yet.
+        }
+        const value = readable(keys, stored);
+        if (value === undefined) {
+          result.unreadable++;
+          continue;
+        }
+        moved[column] = encrypt(keys.dataKey, value);
+        result.moved++;
+      }
+      if (Object.keys(moved).length > 0) await tx.update(googleConnection).set(moved).where(eq(googleConnection.id, row.id));
     }
     // Agent credentials, approval previews and receipts, and the GitHub connection's tokens, its
     // contents token and its image token (journey 015, decision 3), use the same installation data

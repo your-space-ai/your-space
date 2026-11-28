@@ -11,7 +11,7 @@
     "groups": [
       { "group": "Start", "pages": ["index", "install/index"] },
       { "group": "Install", "pages": ["install/macos-desktop", "install/other-devices", "install/manual", "install/agent-setup", "install/from-source", "install/canary"] },
-      { "group": "Run", "pages": ["operate/index", "operate/recovery", "appearance"] },
+      { "group": "Run", "pages": ["operate/index", "operate/recovery", "operate/google-drive", "appearance"] },
       { "group": "Apps", "pages": ["apps/install-apps", "apps/knowledge-bases", "apps/agent-access"] },
       { "group": "Project", "pages": ["roadmap", "architecture/overview", "architecture/decisions", "glossary", "maintainers/releasing", "maintainers/release-notes/v0.1.0-alpha.1", "maintainers/contributor-ci"] }
     ]

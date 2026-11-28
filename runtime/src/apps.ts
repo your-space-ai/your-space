@@ -12,6 +12,8 @@ import {
   KNOWLEDGE_NAME,
   KNOWLEDGE_PREFIX,
   knowledgeLabels,
+  knowledgeStateVolume,
+  knowledgeSyncLabels,
   knowledgeVolume,
   PUBLISH_TARGET,
   resetFiles,
@@ -290,7 +292,7 @@ export async function check(spec: AppSpec): Promise<CheckAnswer> {
   return (await checkWithImages(spec, 0, spec.placeholders === true)).answer;
 }
 
-async function installationContainer(service: string): Promise<string | undefined> {
+export async function installationContainer(service: string): Promise<string | undefined> {
   const found = await listContainers([`com.docker.compose.project=${INSTALLATION}`, `com.docker.compose.service=${service}`]);
   return found.find((c) => c.State === "running")?.Id ?? found[0]?.Id;
 }
@@ -323,7 +325,7 @@ export async function ownCaddy(waitMs = 0): Promise<OwnCaddy | undefined> {
   }
 }
 
-async function imagePresent(image: string): Promise<boolean> {
+export async function imagePresent(image: string): Promise<boolean> {
   const answer = await engine("GET", `/images/${encodeURIComponent(image)}/json`);
   return answer.status === 200;
 }
@@ -589,7 +591,7 @@ export async function deleteVolumes(project: string): Promise<void> {
 export const KNOWLEDGE_OWNER = "1000:1000";
 
 /** This installation's knowledge base volume, or undefined when there is none or it isn't Your Space's. */
-async function knowledgeOf(name: string): Promise<{ Name: string; Labels: Record<string, string> | null } | undefined> {
+export async function knowledgeOf(name: string): Promise<{ Name: string; Labels: Record<string, string> | null } | undefined> {
   const volume = knowledgeVolume(INSTALLATION, name);
   const answer = await engine("GET", `/volumes/${encodeURIComponent(volume)}`);
   if (answer.status === 404) return undefined;
@@ -606,23 +608,30 @@ async function knowledgeOf(name: string): Promise<{ Name: string; Labels: Record
  * A short-lived container that gives a new knowledge base's folder to user and group 1000, writable by
  * everyone and with the setgid bit, so files any app writes there get group 1000. It runs the runtime
  * manager's own image, which is on the engine already, with no network and only the capabilities
- * changing the folder's owner and mode needs.
+ * changing the folder's owner and mode needs. A knowledge base's sync state, and the sync's socket,
+ * get mode 0700 instead: only the server, user 1000, and the sync, root with DAC_OVERRIDE, open them;
+ * with `usernsHost`, in the engine's own user name space, as they then run (sync.ts).
  */
-export function knowledgeInit(image: string, volume: string): Record<string, unknown> {
+export function knowledgeInit(image: string, volume: string, mode: "2777" | "0700" = "2777", usernsHost = false, folders: string[] = []): Record<string, unknown> {
+  // Folders of the volume's own, each for user 1000, the server, alone: the sync's sockets, one for each knowledge
+  // base's rclone (sync.ts). Their names are knowledge bases' names, lowercase letters, digits and hyphens.
+  const made = folders.map((f) => ` && mkdir -p /knowledge/${f} && chown ${KNOWLEDGE_OWNER} /knowledge/${f} && chmod 0700 /knowledge/${f}`).join("");
   return {
     Image: image,
     Entrypoint: ["/bin/sh", "-c"],
-    Cmd: [`chown ${KNOWLEDGE_OWNER} /knowledge && chmod 2777 /knowledge`],
+    Cmd: [`chown ${KNOWLEDGE_OWNER} /knowledge && chmod ${mode} /knowledge${made}`],
     User: "0:0",
     Labels: { "ai.your-space.installation": INSTALLATION, "ai.your-space.role": "knowledge-init" },
     NetworkDisabled: true,
     HostConfig: {
       NetworkMode: "none",
       Mounts: [{ Type: "volume", Source: volume, Target: "/knowledge", VolumeOptions: { NoCopy: true } }],
+      ...(usernsHost ? { UsernsMode: "host" } : {}),
       ReadonlyRootfs: true,
       CapDrop: ["ALL"],
-      // Root changes the folder's owner, then its mode, keeping the setgid bit, on a folder it no longer owns.
-      CapAdd: ["CHOWN", "FOWNER", "FSETID"],
+      // Root changes the folder's owner, then its mode, keeping the setgid bit, on a folder it no longer
+      // owns; and makes folders in it, which only user 1000 (and the sync's root) opens, when asked for some.
+      CapAdd: ["CHOWN", "FOWNER", "FSETID", ...(folders.length > 0 ? ["DAC_OVERRIDE"] : [])],
       SecurityOpt: ["no-new-privileges:true"],
       Memory: 32 * 1024 * 1024,
       NanoCpus: 250_000_000,
@@ -642,8 +651,8 @@ async function ownImage(): Promise<string> {
  * Runs `knowledgeInit` on the volume and waits for it to finish. A helper the engine couldn't remove
  * still mounts the volume, so the setup fails: deleting the knowledge base removes it first.
  */
-async function initKnowledge(volume: string): Promise<void> {
-  const { Id } = await engineJson<{ Id: string }>("POST", "/containers/create", knowledgeInit(await ownImage(), volume));
+export async function initKnowledge(volume: string, mode: "2777" | "0700" = "2777", usernsHost = false, folders: string[] = []): Promise<void> {
+  const { Id } = await engineJson<{ Id: string }>("POST", "/containers/create", knowledgeInit(await ownImage(), volume, mode, usernsHost, folders));
   let failed: unknown;
   try {
     await engineJson("POST", `/containers/${Id}/start`);
@@ -716,31 +725,116 @@ async function mountedBy(volume: string): Promise<ContainerSummary[]> {
 }
 
 /**
- * The apps of this installation whose containers mount a knowledge base, running or not. The server
- * asks before deleting one, so it applies each of them again without it, even one it has no grant
- * for, as after a change that couldn't be applied.
+ * What holds each knowledge base in this process now: the sync's containers being started with it
+ * (sync.ts), or the deletion of the knowledge base or of its sync. One at a time, so neither is
+ * deleted while the container is made to mount it, which would make the deleted volumes again, empty
+ * and without Your Space's labels. A hold is checked and taken with no wait between the two.
  */
-export async function knowledgeUsers(name: string): Promise<{ apps: string[] }> {
-  if (!(await knowledgeOf(name))) return { apps: [] };
-  const users = await mountedBy(knowledgeVolume(INSTALLATION, name));
-  const apps = users.filter((c) => c.Labels["ai.your-space.installation"] === INSTALLATION).map((c) => c.Labels["ai.your-space.app"]);
-  return { apps: [...new Set(apps.filter((app): app is string => !!app))].sort() };
+const knowledgeHolds = new Map<string, "sync" | "delete">();
+
+export function knowledgeHold(name: string): "sync" | "delete" | undefined {
+  return knowledgeHolds.get(name);
+}
+
+function refuseHeld(name: string): void {
+  const held = knowledgeHolds.get(name);
+  if (held === "sync") throw new EngineError(`The knowledge base ${name} is being synced. Try again in a moment.`, 409);
+  if (held === "delete") throw new EngineError(`The knowledge base ${name}, or its sync, is being deleted.`, 409);
+}
+
+/** Runs `work` holding the knowledge base, or refuses with 409 when something else holds it. */
+export async function holdingKnowledge<T>(name: string, hold: "sync" | "delete", work: () => Promise<T>): Promise<T> {
+  refuseHeld(name);
+  knowledgeHolds.set(name, hold);
+  try {
+    return await work();
+  } finally {
+    knowledgeHolds.delete(name);
+  }
+}
+
+/** Holds every one of the knowledge bases for the sync, or none when one is held; answers the release. */
+export function holdKnowledgeBases(names: string[]): () => void {
+  for (const name of names) refuseHeld(name);
+  for (const name of names) knowledgeHolds.set(name, "sync");
+  return () => {
+    for (const name of names) if (knowledgeHolds.get(name) === "sync") knowledgeHolds.delete(name);
+  };
 }
 
 /**
- * Deletes a knowledge base's volume and its files. Refused while any container mounts it: the server
- * first takes it away from every app it was given to and applies them again.
+ * The apps of this installation whose containers mount a knowledge base, running or not, and whether
+ * it has a sync container. The server asks before deleting one, so it applies each of them again
+ * without it, even one it has no grant for, as after a change that couldn't be applied, and takes it
+ * out of the sync first.
  */
-export async function deleteKnowledge(name: string): Promise<void> {
-  if (!(await knowledgeOf(name))) return;
-  const volume = knowledgeVolume(INSTALLATION, name);
+export async function knowledgeUsers(name: string): Promise<{ apps: string[]; syncing: boolean }> {
+  if (!(await knowledgeOf(name))) return { apps: [], syncing: false };
+  const users = await mountedBy(knowledgeVolume(INSTALLATION, name));
+  const apps = users.filter((c) => c.Labels["ai.your-space.installation"] === INSTALLATION).map((c) => c.Labels["ai.your-space.app"]);
+  const syncing = knowledgeHolds.get(name) === "sync" || users.some((c) => c.Labels["ai.your-space.role"] === "knowledge-sync");
+  return { apps: [...new Set(apps.filter((app): app is string => !!app))].sort(), syncing };
+}
+
+/**
+ * Deletes a knowledge base's volume and its files, and its sync state. Refused while any container
+ * mounts it, the sync's included: the server first takes it out of the sync and away from every app
+ * it was given to, and applies them again.
+ */
+export function deleteKnowledge(name: string): Promise<void> {
+  return holdingKnowledge(name, "delete", async () => {
+    // A sync state volume Your Space didn't make stops the deletion before anything is deleted.
+    const state = await knowledgeStateOf(name);
+    const found = await knowledgeOf(name);
+    if (!found) return state ? removeKnowledgeState(name) : undefined;
+    const volume = knowledgeVolume(INSTALLATION, name);
+    await removeLeftInits(volume);
+    const users = await mountedBy(volume);
+    if (users.some((c) => c.Labels["ai.your-space.role"] === "knowledge-sync")) {
+      throw new EngineError(`The knowledge base ${name} is still synced, so it can't be deleted until its sync is stopped.`, 409);
+    }
+    const names = () => [...new Set(users.map((c) => c.Labels["ai.your-space.app"] ?? c.Names[0]?.replace(/^\//, "") ?? c.Id.slice(0, 12)))].join(", ");
+    if (users.length > 0) throw new EngineError(`The knowledge base ${name} is still mounted by ${names()}, so it can't be deleted yet.`, 409);
+    // Its sync state first: a deletion that fails after it keeps the knowledge base with its files,
+    // whose next sync asks for a resync, rather than a knowledge base whose files are gone.
+    if (state) await removeKnowledgeState(name);
+    const answer = await engine("DELETE", `/volumes/${encodeURIComponent(volume)}`);
+    if (answer.status === 409) throw new EngineError(`The knowledge base ${name} is still in use, so it can't be deleted yet.`, 409);
+    if (answer.status >= 400 && answer.status !== 404) throw new EngineError(`Deleting the knowledge base ${name} failed: ${answer.body.trim().slice(0, 300)}`);
+  });
+}
+
+/** Whether a knowledge base has sync state (journey 014); a volume of its name Your Space didn't make is refused. */
+async function knowledgeStateOf(name: string): Promise<boolean> {
+  const volume = knowledgeStateVolume(INSTALLATION, name);
+  const found = await engine("GET", `/volumes/${encodeURIComponent(volume)}`);
+  if (found.status === 404) return false;
+  if (found.status >= 400) throw new EngineError(`Reading the sync of ${name} failed: ${found.body.trim().slice(0, 300)}`);
+  const labels = (JSON.parse(found.body) as { Labels: Record<string, string> | null }).Labels ?? {};
+  if (!Object.entries(knowledgeSyncLabels(INSTALLATION, name)).every(([key, value]) => labels[key] === value)) {
+    throw new EngineError(`A volume named ${volume} exists on the engine, but Your Space didn't make it, so it is left as it is.`, 409);
+  }
+  return true;
+}
+
+/**
+ * Deletes a knowledge base's sync state, when it has one: bisync's listings and the files syncs
+ * replaced. The knowledge base and the remote folder keep their files; the next connection starts
+ * with a first run that deletes nothing. Refused while its sync container mounts it.
+ */
+export function deleteKnowledgeState(name: string): Promise<void> {
+  return holdingKnowledge(name, "delete", () => removeKnowledgeState(name));
+}
+
+/** Deletes the sync state volume; the caller holds the knowledge base. */
+async function removeKnowledgeState(name: string): Promise<void> {
+  if (!(await knowledgeStateOf(name))) return;
+  const volume = knowledgeStateVolume(INSTALLATION, name);
+  // Set up as a knowledge base's folder is, so a setup container may be left on it too.
   await removeLeftInits(volume);
-  const users = await mountedBy(volume);
-  const names = () => [...new Set(users.map((c) => c.Labels["ai.your-space.app"] ?? c.Names[0]?.replace(/^\//, "") ?? c.Id.slice(0, 12)))].join(", ");
-  if (users.length > 0) throw new EngineError(`The knowledge base ${name} is still mounted by ${names()}, so it can't be deleted yet.`, 409);
   const answer = await engine("DELETE", `/volumes/${encodeURIComponent(volume)}`);
-  if (answer.status === 409) throw new EngineError(`The knowledge base ${name} is still in use, so it can't be deleted yet.`, 409);
-  if (answer.status >= 400 && answer.status !== 404) throw new EngineError(`Deleting the knowledge base ${name} failed: ${answer.body.trim().slice(0, 300)}`);
+  if (answer.status === 409) throw new EngineError(`The knowledge base ${name} is still synced, so its sync can't be removed yet.`, 409);
+  if (answer.status >= 400 && answer.status !== 404) throw new EngineError(`Removing the sync of ${name} failed: ${answer.body.trim().slice(0, 300)}`);
 }
 
 export interface ServiceState {

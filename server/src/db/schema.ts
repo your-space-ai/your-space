@@ -74,7 +74,18 @@ export type EventType =
   | "knowledge.retitled"
   | "knowledge.deleted"
   | "knowledge.granted"
-  | "knowledge.revoked";
+  | "knowledge.revoked"
+  | "knowledge.connected"
+  | "knowledge.disconnected"
+  | "knowledge.resync_requested"
+  | "knowledge.deletions_applied"
+  | "knowledge.synced"
+  | "knowledge.sync_stopped"
+  | "knowledge.sync_failed"
+  | "google.client_saved"
+  | "google.connected"
+  | "google.refused"
+  | "google.removed";
 
 // Apps (journey 002, data-model.md).
 
@@ -248,6 +259,123 @@ export const appKnowledgeBase = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.appId, t.knowledgeBaseId] })],
+);
+
+/**
+ * The Google connection synced knowledge bases use (journey 014): the operator's own OAuth client and
+ * the token of the Google account the owner signed in with. One for the installation. The secret and
+ * the token are AES-256-GCM ciphertext under the data key, moved with apps' settings when it changes.
+ */
+export const googleConnection = pgTable(
+  "google_connection",
+  {
+    id: smallint("id").primaryKey().default(1),
+    clientId: text("client_id").notNull(),
+    clientSecret: text("client_secret").notNull(),
+    /** rclone's token JSON, encrypted; null until the owner signs in with Google. */
+    token: text("token"),
+    /** Why Google refused the token or the client, until the owner signs in again. */
+    problem: text("problem"),
+    connectedAt: timestamp("connected_at", { withTimezone: true }),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => actor.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("google_connection_single_row", sql`${t.id} = 1`)],
+);
+
+/** A file a sync run deletes, or would: deleted on one side, so deleted on the other. */
+export interface SyncDeletion {
+  side: "local" | "remote";
+  path: string;
+}
+
+export type SyncResult = "synced" | "stopped" | "unauthorized" | "failed";
+
+/**
+ * The part of a sync run that rclone's remote control runs now, as a job in the background, which a
+ * server that restarts meanwhile reads again by its ID: a run's result outlives the server.
+ */
+export interface SyncJob {
+  /** rclone's job, which its `executeId` names: a restarted rclone has forgotten it. */
+  id: number;
+  executeId: string;
+  /** A bisync; a resync's tie copy and its second pass; the dry run before applying deletions, and the run that applies them. */
+  step: "sync" | "resync" | "ties" | "resync_again" | "preview" | "force";
+  mode: "sync" | "resync" | "force";
+  /** When the run began: its last run time once recorded. */
+  startedAt: string;
+  /** The run's backup folder. */
+  run: string;
+  /** The Google connection's sign-in the run's remote had: Google's refusal disconnects only that one. */
+  connectedAt: string | null;
+  /** Who asked for a Resync or for deletions to be applied. */
+  by?: string;
+  /** A resync's tie files still to copy, and those copied. */
+  ties?: { pending: string[]; replaced: string[] };
+  /** Set once the run was past its time and its rclone was restarted to stop it. */
+  limited?: boolean;
+  /** A resync Your Space started itself, to finish an interrupted run that bisync could carry on only so. */
+  auto?: boolean;
+}
+
+/** A run the owner asked for, waiting for the run under way to end. */
+export interface SyncRequested {
+  mode: "sync" | "resync" | "force";
+  by: string;
+  at: string;
+  /** For deletions: the stopped run they were confirmed by, and how many. */
+  run?: string;
+  count?: number;
+  /** Asked for again after a run of it was interrupted, or found bisync's lock: it waits its turn among the runs due. */
+  again?: boolean;
+}
+
+/**
+ * A knowledge base kept in two-way sync with a Google Drive folder, and how its last run went.
+ * Disconnecting deletes the row and the sync's state; both sides keep their files.
+ */
+export const knowledgeSync = pgTable(
+  "knowledge_sync",
+  {
+    knowledgeBaseId: uuid("knowledge_base_id")
+      .primaryKey()
+      .references(() => knowledgeBase.id, { onDelete: "cascade" }),
+    folderId: text("folder_id").notNull(),
+    connectedBy: uuid("connected_by")
+      .notNull()
+      .references(() => actor.id, { onDelete: "restrict" }),
+    connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+    /** The next run copies both ways and deletes nothing: the first run, until one succeeds. */
+    resync: boolean("resync").notNull().default(true),
+    /**
+     * A run was interrupted since the last one that synced or stopped, and Your Space hasn't resynced
+     * for it yet: when bisync can carry on only with a resync, Your Space runs that resync itself, once.
+     */
+    interrupted: boolean("interrupted").notNull().default(false),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    result: text("result", { enum: ["synced", "stopped", "unauthorized", "failed"] }),
+    /** Why a run stopped: max_delete, too_many, empty, marker, resync, changed or link. */
+    reason: text("reason"),
+    side: text("side", { enum: ["local", "remote"] }),
+    message: text("message"),
+    deletions: jsonb("deletions").$type<SyncDeletion[]>().notNull().default([]),
+    conflicts: jsonb("conflicts").$type<string[]>().notNull().default([]),
+    backups: jsonb("backups").$type<{ run: string; path: string; size: number }[]>().notNull().default([]),
+    /** Files whose local copy replaced Drive's in the last resync, both having the same time. */
+    ties: jsonb("ties").$type<string[]>().notNull().default([]),
+    /** The run under way in rclone, if any. */
+    job: jsonb("job").$type<SyncJob>(),
+    /** A run the owner asked for, until it starts. */
+    requested: jsonb("requested").$type<SyncRequested>(),
+  },
+  (t) => [
+    check("knowledge_sync_result_valid", sql`${t.result} is null or ${t.result} in ('synced', 'stopped', 'unauthorized', 'failed')`),
+    check("knowledge_sync_side_valid", sql`${t.side} is null or ${t.side} in ('local', 'remote')`),
+  ],
 );
 
 export const appSetting = pgTable(

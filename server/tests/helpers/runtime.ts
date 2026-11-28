@@ -1,6 +1,6 @@
 // A runtime that records what it is asked and reports what a test sets, in place of the runtime
 // manager. The check follows the real adapter's shape for a fixture file.
-import { RuntimeError, type ApplyEvent, type AppSpec, type CheckAnswer, type Runtime, type ServiceState } from "../../src/apps/runtime-client.ts";
+import { RuntimeError, type ApplyEvent, type AppSpec, type CheckAnswer, type Runtime, type ServiceState, type SyncService } from "../../src/apps/runtime-client.ts";
 
 export class FakeRuntime implements Runtime {
   calls: { method: string; spec?: AppSpec; project?: string; publish?: { port: number; bind: string } }[] = [];
@@ -114,10 +114,14 @@ export class FakeRuntime implements Runtime {
     return { created };
   }
 
-  /** The apps whose containers mount it, from the spec each last ran. */
+  /** Held until released, so a test can act while the server is deleting a knowledge base. */
+  holdKnowledgeUsers: Promise<void> | undefined;
+
+  /** The apps whose containers mount it, from the spec each last ran, and whether the sync's container mounts it. */
   async knowledgeUsers(name: string) {
     this.calls.push({ method: "knowledgeUsers", project: name });
-    return { apps: this.mounting(name) };
+    await this.holdKnowledgeUsers;
+    return { apps: this.mounting(name), syncing: this.syncBases.includes(name) };
   }
 
   private mounting(name: string): string[] {
@@ -129,10 +133,65 @@ export class FakeRuntime implements Runtime {
 
   async deleteKnowledge(name: string) {
     this.calls.push({ method: "deleteKnowledge", project: name });
-    // Like the runtime manager, refused while an app's containers mount it.
+    // Like the runtime manager, refused while the sync's container, or an app's, mounts it.
+    if (this.syncBases.includes(name)) throw new RuntimeError(`The knowledge base ${name} is still synced, so it can't be deleted until its sync is stopped.`, 409, "engine_error");
     const users = this.mounting(name);
     if (users.length > 0) throw new RuntimeError(`The knowledge base ${name} is still mounted by ${users.join(", ")}, so it can't be deleted yet.`, 409, "engine_error");
     this.knowledge.delete(name);
+  }
+
+  /** The knowledge bases that have an rclone container, as the runtime manager last started them. */
+  syncBases: string[] = [];
+  /** Whether the runtime manager says the syncs are the browser tests'. */
+  syncFixture = false;
+  /** Each start of the sync's containers, with its knowledge bases. */
+  syncStarts: string[][] = [];
+  /** The knowledge bases whose rclone was restarted, in order. */
+  syncRestarts: string[] = [];
+  /** Called with a knowledge base whose rclone container is started, removed or restarted: that rclone forgets its remotes and jobs. */
+  onSyncRecreated: ((knowledgeBase: string) => void) | undefined;
+  /** Refuses the next starts of the sync's containers, as an engine that can't start them. */
+  failSyncService: RuntimeError | undefined;
+  /** Starts the containers, then refuses, as when a new one doesn't answer in time: it is left there. */
+  failSyncServiceAfter: RuntimeError | undefined;
+  /** Holds the starts of the sync's containers until it resolves. */
+  holdSyncService: Promise<void> | undefined;
+  removedSyncs: string[] = [];
+  /** Holds removeSync until it resolves, to catch a change in between. */
+  holdRemoveSync: Promise<void> | undefined;
+
+  async syncService(): Promise<SyncService> {
+    return { knowledgeBases: [...this.syncBases], running: [...this.syncBases], fixture: this.syncFixture };
+  }
+
+  async ensureSyncService(knowledgeBases: string[]): Promise<SyncService> {
+    this.calls.push({ method: "ensureSyncService", project: knowledgeBases.join(",") });
+    await this.holdSyncService;
+    if (this.failSyncService) throw this.failSyncService;
+    // Like the runtime manager, only knowledge bases on the engine.
+    const missing = knowledgeBases.find((n) => !this.knowledge.has(n));
+    if (missing) throw new RuntimeError(`The knowledge base ${missing} isn't on this machine's engine.`, 404, "engine_error");
+    // Only the containers of knowledge bases added or removed change; the others run on.
+    const changed = [...knowledgeBases.filter((n) => !this.syncBases.includes(n)), ...this.syncBases.filter((n) => !knowledgeBases.includes(n))];
+    this.syncStarts.push([...knowledgeBases]);
+    this.syncBases = [...knowledgeBases];
+    for (const name of changed) this.onSyncRecreated?.(name);
+    if (this.failSyncServiceAfter) throw this.failSyncServiceAfter;
+    return this.syncService();
+  }
+
+  async restartSyncService(knowledgeBase: string): Promise<SyncService> {
+    this.syncRestarts.push(knowledgeBase);
+    if (!this.syncBases.includes(knowledgeBase)) throw new RuntimeError(`The knowledge base ${knowledgeBase} doesn't sync, so its sync can't be restarted.`, 404, "engine_error");
+    this.onSyncRecreated?.(knowledgeBase);
+    return this.syncService();
+  }
+
+  async removeSync(name: string): Promise<void> {
+    this.calls.push({ method: "removeSync", project: name });
+    await this.holdRemoveSync;
+    if (this.syncBases.includes(name)) throw new RuntimeError(`The knowledge base ${name} is still synced, so its sync can't be removed yet.`, 409, "engine_error");
+    this.removedSyncs.push(name);
   }
 
   /** The spec the project's containers run, from its last apply that succeeded. */

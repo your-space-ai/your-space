@@ -80,9 +80,13 @@ first, then runs every step below. `your-space secrets show` says where each sec
   else changes.
 - **Data key:** `docker compose run --rm secrets --new data-key`, then `docker compose restart server`.
   The secrets step keeps the replaced key until the server, as it starts, has re-encrypted every
-  app's settings, and the GitHub connection's tokens, with the new one. Once `docker compose ps` shows the server healthy, remove the old
-  key: `docker compose run --rm secrets --forget previous-data-key`. Until it is removed, the data
-  key can't be replaced again.
+  app's settings, the GitHub connection's tokens and the [Google connection](google-drive.md) of
+  synced knowledge bases with the new one. Once `docker compose ps` shows the server healthy, check
+  that nothing was left behind: `docker compose logs server | grep settings.data_key` shows a
+  warning with an `unreadable` count when a value could be read with neither key. Such a value stays
+  as it was; for the Google connection, save the OAuth client again and sign in to Google again. Then
+  remove the old key: `docker compose run --rm secrets --forget previous-data-key`. Until it is
+  removed, the data key can't be replaced again.
 - **Database password:** `docker compose run --rm secrets --new database-password`, then
   [give PostgreSQL the database password](#give-postgresql-the-database-password) and restart the
   server.
