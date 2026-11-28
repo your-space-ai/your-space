@@ -37,7 +37,7 @@ driving the process."
 | 4 | Are checks run in the background or on demand? | **Decided:** when the owner uses the app in Your Space, now and then, and on demand. Opening the app's details page checks it when its last check is over 12 hours old; **Check for update**, there at any time, and the CLI check at once. Nothing runs on a timer. Owner: "periodic check can be triggered occasionally when the user interacts with the app."; on the interval: "at most 12 hours automatically, i should be able to trigger a manual check somewhere in the ui at any point tho" |
 | 5 | What happens to settings the new kit adds or removes? | **Decided:** an added setting is filled as at install (generated, derived, the kit's value, or asked in the review); a removed one is deleted when the update applies, and put back by a rollback. Values of kept settings stay, except that a value the kit sets, which the owner never changed, follows the new kit. Owner: "this is fine" |
 | 6 | Who can update from the CLI? | **Decided:** the operator, on the machine that runs Your Space: `your-space app check-update <app>` and `your-space app update <app>`, which an agent with a shell there can drive. An agent's Your Space key can't update apps. Owner: "yes" |
-| 7 | Can an update move an app to a kit or Compose file in another repository? | **Recommended:** yes, through Update from a link, with the move shown first in the review and confirmed by applying it; the app keeps its name, ID and data. |
+| 7 | Can an update move an app to a kit or Compose file in another repository? | **Decided:** an update never moves an app to another kit or kit location; it follows the installed kit at its own location. A change of the Compose file the kit pins, in its repository or path too, shows in the update's review like any change. Owner: "update wouldn't move to a different kit or kit location tho, it tracks the installed kit at its location as its updated. compose file changes would show up in the diff" |
 | 8 | Is a CLI to remove an app part of this? | **Recommended:** no. Updating in place removes the need to remove and reinstall; removing from the CLI is a follow-up of its own. |
 
 ## What Exists Today
@@ -83,12 +83,11 @@ by commit, so only a change to the kit changes what runs.
 - A link at a commit or a tag follows the repository's default branch for the same file. The owner,
   asked whether an app installed from a link pinned to a commit shows updates when that kit file
   changes on the repository's main branch: "Yes, follow main".
-- **Update from a link:** the owner gives another link, at any branch, tag or commit, in the
-  dashboard or with `--link`. It is reviewed against the installed kit like any update, whether or
-  not it is fixed, and applying the update makes it the app's link.
 - An app installed before this spec has no stored link; its check follows the default branch for
-  the file its pinned kit link names. Only an app installed from a kit file given on this machine
-  has nothing to check, until the owner gives a link.
+  the file its pinned kit link names. An app installed from a kit file given on this machine has no
+  kit location, so it has nothing to check.
+- The owner can't give another link: an update follows the installed kit at its own location
+  (section 7).
 - The new kit must name the same app (`name`) as the installed one, or none.
 
 **Considered:** tags, newest semver tag wins (needs a release discipline kit authors don't have
@@ -193,14 +192,13 @@ stored encrypted, with no way to see it).
 as `your-space owner reset-link` does:
 
 ```sh
-your-space app check-update <app> [--link <kit-link>] [--json]
-your-space app update <app> [--link <kit-link>] [--review <digest>] [--yes] [--json]
+your-space app check-update <app> [--json]
+your-space app update <app> [--review <digest>] [--yes] [--json]
 ```
 
 `check-update` prints the review of section 2, with the candidate's pinned kit link, or that the
 app is up to date. `update` makes the review, prints it and asks before applying that candidate, or
-applies it with `--yes`; it waits for the job and reports the result or the rollback. `--link` is
-Update from a link (section 1) for both commands.
+applies it with `--yes`; it waits for the job and reports the result or the rollback.
 
 Each review has a digest of everything it shows: the installed kit it was made against, the link
 the app will be checked at from then on, the candidate's kit and Compose commits, and its image
@@ -208,8 +206,7 @@ digests. `check-update` prints it. An agent that
 applies what it read later passes it as `--review`; `update` makes the review again and is refused,
 so the agent checks again, when its digest differs, as when another update was applied, the branch
 moved or an image tag now names another digest. The review shows the link the update stores as the
-app's link: the app's own link, the default branch's for one at a commit or a tag (decision 1), or the
-one given with `--link`; a different link gives a different digest. With `--json`,
+app's link: the app's own link, or the default branch's for one at a commit or a tag (decision 1). With `--json`,
 both commands print the review as data, so an agent driving the CLI reads it and decides. An agent's Your Space key can't update apps: updating changes what code runs, which is the
 owner's or the operator's to do.
 
@@ -218,22 +215,24 @@ workspace, not over one app's API).
 
 ## 7. Moving to Another Repository
 
-**Recommended:** allowed, confirmed by the owner. Update from a link may give a kit in another
-repository, and a kit may pin a Compose file in another repository than before. The review shows
-the move first, old repository to new, with how each file was read (public, or through the GitHub
-connection), and applying the update confirms it. The app keeps its name, ID, volumes and settings,
-as for any update; the app's link becomes the new one. Today the only way to move an app is to
-remove it and install the new kit, and that refuses to reuse data kept from another repository
-(`name_taken`). The kept data isn't deleted: the owner can install the app again from its original
-repository and reuse it, or delete it, which can't be undone; but it can't move with the app.
+**Decided (2026-11-27):** an update never moves an app to another kit or kit location. The owner:
+"update wouldn't move to a different kit or kit location tho, it tracks the installed kit at its
+location as its updated. compose file changes would show up in the diff".
 
-**Considered:** refusing a move, so that an app's repository never changes after install (a move
-changes whose code runs, which the review already shows for any update).
+An app's updates come from the kit it was installed from, at that file, following its branch
+(section 1). When the kit pins another Compose commit, or a Compose file at another path or in
+another repository, the review shows it, old to new, with how each file was read, like any change.
+Moving an app to another kit stays a removal and a new install. That install refuses to reuse data
+kept from another repository (`name_taken`). The kept data isn't deleted: the owner can install the
+app again from its original repository and reuse it, or delete it, which can't be undone.
+
+**Considered:** Update from a link, which reviewed and applied a kit at any link the owner gave,
+in another repository too (the recommendation).
 
 ## 8. Removing an App From the CLI
 
-**Recommended:** not part of this spec. Updating in place, including a move (section 7), covers
-what remove and reinstall were used for. A `your-space app remove` command, keeping data by default
+**Recommended:** not part of this spec. Updating in place covers what remove and reinstall were used
+for, except moving to another kit (section 7). A `your-space app remove` command, keeping data by default
 as Remove in the dashboard does, is a follow-up of its own.
 
 **Considered:** adding `your-space app remove` here, beside `check-update` and `update`.
@@ -276,9 +275,7 @@ spec's migration follows it.
 - **FR-002**: A check reads the kit at the latest commit of the app's link's branch, through the
   GitHub connection when the repository is private, and reports an update when the kit's content
   differs from the installed kit; a link at a commit or a tag, or none, follows the repository's
-  default branch for the same file. A check with a
-  link the owner gives (Update from a link) reviews the kit at that link against the installed kit,
-  whatever the link names. A check runs when the owner opens the app's details page and its last
+  default branch for the same file. A check never reads another kit or kit location. A check runs when the owner opens the app's details page and its last
   check is over 12 hours old, or when the owner asks for one; never on a timer. The last check's time
   and result are kept per app.
 - **FR-003**: An update's review lists, against the installed app: kit and Compose commits with
@@ -298,15 +295,16 @@ spec's migration follows it.
 - **FR-008**: Events record each check that found an update, each update and each rollback, with
   the actor.
 - **FR-009**: The dashboard's app page has **Check for update**, the review, and apply. The CLI has
-  `your-space app check-update` and `your-space app update`, with `--link`, `--review`, `--yes` and `--json`,
+  `your-space app check-update` and `your-space app update`, with `--review`, `--yes` and `--json`,
   over server commands.
 - **FR-010**: Agent access across an update follows [Agent Access Across an Update](#agent-access-across-an-update).
 - **FR-011**: Tests cover an update that changes the image, adds and removes a setting, adds a
   host, keeps an owner-approved host and publish settings, keeps an agent grant and key, a private
   kit, a check with nothing new, a stale review, and a failed start rolled back. The install guide
   replaces "Installed apps don't update" with how to update.
-- **FR-012**: An update may change the kit's or the Compose file's repository; the review shows the
-  move before anything else, and the app keeps its name, ID, volumes and settings.
+- **FR-012**: An update follows the installed kit at its location and never moves the app to
+  another kit; a change of the Compose file the kit pins, its repository or path too, shows in the
+  review.
 
 ## Sources
 
