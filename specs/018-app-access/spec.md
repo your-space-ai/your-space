@@ -5,7 +5,7 @@
 **Created**: 2026-11-27
 
 **Status**: Proposed. The owner set the model on 2026-11-27 (decisions 1 to 5) and settled
-decisions 6 to 8; two details are open, each with a recommendation. Nothing is built.
+decisions 6 to 9; one detail is open, each with a recommendation. Nothing is built.
 
 **Input**: The owner, on 2026-11-27, after the first live run of journey 017: 017's per-route model
 is too granular to start with. Start broad and add granularity only when it's needed. "access is per
@@ -41,7 +41,7 @@ applies the actual api key, agent never sees the api key."
 | 6 | How is a route that asks written? | **Decided:** a method and a path, where `*` stands for one path segment, such as `DELETE /rest/people/*`. Owner: "thats fine" |
 | 7 | Whose list is it? | **Decided:** each agent's, per app, beside the key it uses. Owner: "per agent per app is ok" |
 | 8 | What happens to 017's grants and Ask settings? | **Decided:** each grant carries over working, with its key and its routes that asked; its reach grows to the whole API on that key. Owner, told a read-only grant on a key that can also write would gain those writes: "thats fine" |
-| 9 | Does removing an app keep its agent access? | Open. Recommended: no. Removing an app, even keeping its data, ends its grants and app keys, as today; only a kit change keeps them |
+| 9 | Does removing an app keep its agent access? | **Decided:** no. Removing an app, even keeping its data, ends its grants and app keys; only a kit change keeps them. Owner: "removing an app should remove the agent access yeah" |
 | 10 | What about kits that still list roles and routes? | Open. Recommended: they keep installing; Your Space ignores the lists and takes the API's path from the routes' common prefix until the kit names it |
 
 ## What Exists Today
@@ -122,7 +122,8 @@ unseen (the recommendation); starting every grant blank, which would drop the ro
 
 ## 9. Removing an App
 
-**Recommended:** removing an app ends its grants and app keys, as today, whether or not its data is
+**Decided (2026-11-27):** as recommended; the owner: "removing an app should remove the agent access
+yeah". removing an app ends its grants and app keys, as today, whether or not its data is
 kept; installing it again starts with no agent access. Only a change to the installed app (decision
 5) keeps them.
 
