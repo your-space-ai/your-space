@@ -66,7 +66,7 @@ export async function discover(client: pg.PoolClient, who: Who) {
   const rows = (
     await client.query(
       `select g.app_id from agent_grant g join app a on g.app_id=a.id
-    where g.agent_id=$1 and a.desired<>'removed' and a.kit->'agentAccess' is not null order by a.name`,
+    where g.agent_id=$1 and a.desired<>'removed' and a.kit->'agentAccess' is not null and a.interface is not null order by a.name`,
       [who.agent],
     )
   ).rows;
@@ -132,7 +132,9 @@ async function admit(
   } catch (error) {
     if (!(error instanceof AgencyError) || error.status !== 403) throw error;
   }
-  const label = typeof v.method === "string" && typeof v.path === "string" ? (v.method + " " + v.path.split("?")[0]).slice(0, 300) : "call";
+  // A label the activity log can store and show: printable text only, else just "call".
+  const raw = typeof v.method === "string" && typeof v.path === "string" ? v.method + " " + v.path.split("?")[0] : "";
+  const label = /^[\x20-\x7e]{1,300}$/.test(raw) ? raw : "call";
   if (!install?.grant) {
     const id = await sampleDenial(client, who, v.installationId, label);
     return { outcome: { id, status: "denied" } };

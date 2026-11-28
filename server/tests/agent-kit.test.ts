@@ -85,6 +85,8 @@ describe("a kit's agent access (spec 018)", () => {
       "/rest/%2561dmin",
       "/rest//companies",
       "/rest/a;v=1",
+      "/rest/a%3Bv=1",
+      "/rest/a%3bv=1",
       "/rest/a b",
       "/rest/%zz",
       "/rest/" + "x".repeat(2048),
@@ -114,6 +116,13 @@ describe("a kit's agent access (spec 018)", () => {
     expect(asksFirst(rules, call("GET", "/rest/people/3f8a2c1e"))).toBe(false);
     expect(asksFirst(rules, call("POST", "/rest/metadata/fields"))).toBe(true);
     expect(asksFirst([], call("DELETE", "/rest/people/x"))).toBe(false);
+    const root = parseAskRules([{ method: "GET", path: "/" }]);
+    expect(root).toEqual([{ method: "GET", path: "/" }]);
+    const whole = { ...access, api: "/" };
+    expect(asksFirst(root, parseCall(whole, { method: "GET", path: "/" }))).toBe(true);
+    expect(asksFirst(root, parseCall(whole, { method: "GET", path: "/records" }))).toBe(false);
+    expect(parseAskRules(Array.from({ length: 128 }, (_, i) => ({ method: "POST", path: "/r" + i })))).toHaveLength(128);
+    expect(() => parseAskRules(Array.from({ length: 129 }, (_, i) => ({ method: "POST", path: "/r" + i })))).toThrow(/128/);
     for (const rules of [[{ method: "TRACE", path: "/x" }], [{ method: "GET", path: "x" }], [{ method: "GET", path: "/a;b" }], [{ method: "GET", path: "/%2e" }], "x"]) {
       expect(() => parseAskRules(rules)).toThrow();
     }

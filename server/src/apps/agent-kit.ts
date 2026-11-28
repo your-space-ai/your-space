@@ -145,7 +145,7 @@ export function parseCall(access: AgentAccess, input: { method: unknown; path: u
       throw new AgentKitError("The path has an invalid escape.");
     }
     // An app that decodes again mustn't see a path Your Space didn't check.
-    check(part.length > 0 && decoded !== "." && decoded !== ".." && !/[/\\\0%]/.test(decoded), "The path has an empty, dot or escaped segment.");
+    check(part.length > 0 && decoded !== "." && decoded !== ".." && !/[/\\\0%;]/.test(decoded), "The path has an empty, dot or escaped segment.");
     return decoded;
   });
   const apiSegments = access.api === "/" ? [] : access.api.slice(1).split("/");
@@ -177,13 +177,14 @@ export interface AskRule {
   path: string;
 }
 export function parseAskRules(value: unknown): AskRule[] {
-  check(Array.isArray(value) && value.length <= 64, "List at most 64 routes that ask.");
+  // At most as many as a 017 kit had routes, so every grant the 0019 migration carries over fits.
+  check(Array.isArray(value) && value.length <= 128, "List at most 128 routes that ask.");
   const rules: AskRule[] = [];
   for (const entry of value) {
     const rule = keys(entry, ["method", "path"]);
     check(typeof rule.method === "string" && (METHODS as readonly string[]).includes(rule.method), "A route that asks names GET, POST, PATCH, PUT or DELETE.");
     check(typeof rule.path === "string" && rule.path.startsWith("/") && rule.path.length <= 512, "A route that asks has a path starting with /.");
-    const segments = rule.path.slice(1).split("/");
+    const segments = rule.path === "/" ? [] : rule.path.slice(1).split("/");
     if (segments.length > 1 && segments.at(-1) === "") segments.pop();
     check(
       segments.every((segment) => segment === "*" || (LITERAL_SEGMENT.test(segment) && segment !== "." && segment !== "..")),
@@ -201,8 +202,8 @@ export function parseAskRules(value: unknown): AskRule[] {
 export function asksFirst(rules: readonly AskRule[], call: AgentCall): boolean {
   return rules.some((rule) => {
     if (rule.method !== call.method) return false;
-    const segments = rule.path === "/" ? [""] : rule.path.slice(1).split("/");
-    const called = call.segments.length ? call.segments : [""];
+    const segments = rule.path === "/" ? [] : rule.path.slice(1).split("/");
+    const called = call.segments;
     return (
       segments.length === called.length &&
       segments.every((segment, index) => segment === "*" || segment.toLowerCase() === called[index]!.toLowerCase())

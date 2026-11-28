@@ -219,7 +219,12 @@ it("keeps keys and grants across a kit change, staling pending calls, and leaves
   expect(broken.installations[0]).toMatchObject({ problem: "old_format", api: null });
   expect(broken.agents[0]!.grants).toHaveLength(1);
   await expect(transaction(t.db, async (c) => bind(c, installation, { revision: await revisionOf(), credentials: { records } }, key))).rejects.toMatchObject({ status: 400 });
+  // The owner can still take access away while the kit is old; it doesn't come back with a new kit.
+  await setGrant({ credential: null });
+  expect((await transaction(t.db, (c) => dashboard(c, owner, key))).agents[0]!.grants).toEqual([]);
   await t.pool.query("update app set kit=$2 where id=$1", [installation, JSON.stringify({ kit: 2, agentAccess: changed })]);
+  expect((await invoke(t.db, key, verifier, call("GET", "/rest/items"))).status).toBe("denied");
+  await setGrant({ credential: "records" });
   expect((await invoke(t.db, key, verifier, call("GET", "/rest/items"))).status).toBe("succeeded");
 
   // Removing the app ends its grants and keys, even with its data kept.
@@ -329,6 +334,20 @@ it("serializes removing a grant with an approval and refuses later calls", async
   else expect(state).toBe("revoked");
   expect((await invoke(t.db, key, verifier, call("GET", "/rest/items"))).status).toBe("denied");
   expect(dispatchAppAction).toHaveBeenCalledTimes(approval.status === "fulfilled" ? 1 : 0);
+});
+
+it("lists the apps it can still reach when one granted app has no interface, and stores a printable denial", async () => {
+  const headless = await install("headless", access);
+  await transaction(t.db, async (c) => bind(c, headless, { revision: 0, credentials: { records } }, key));
+  await setGrant({ credential: "records" });
+  await setGrant({ credential: "records" }, agent, headless);
+  await t.pool.query("update app set interface=null where id=$1", [headless]);
+  const offered = await transaction(t.db, async (c) => discover(c, await identity(c, verifier)));
+  expect(offered.apps.map((a) => a.installationId)).toEqual([installation]);
+  const other = await install("other", access);
+  const denied = await invoke(t.db, key, verifier, { installationId: other, method: "GET", path: "/rest/a\u0000b" });
+  expect(denied.status).toBe("denied");
+  expect((await t.pool.query("select route from agent_request where id=$1", [denied.id])).rows[0].route).toBe("call");
 });
 
 it("refuses a grant on an unbound key and an invalid route that asks", async () => {

@@ -111,7 +111,6 @@ export async function grant(
 ) {
   await owned(client, id, owner);
   const { row, access, problem, bound } = await catalog(client, appId);
-  if (!access) invalid(problem === "old_format" ? OLD_FORMAT : "This app gives agents no access.");
   if (body.bindingRevision !== (row.revision ?? 0)) conflict();
   const prior = (await client.query("select revision from agent_grant where agent_id=$1 and app_id=$2", [id, appId]))
     .rows[0];
@@ -124,6 +123,8 @@ export async function grant(
     );
     return { revision: 0 };
   }
+  // Removing access works on any app; giving it needs a kit that names its API.
+  if (!access) invalid(problem === "old_format" ? OLD_FORMAT : "This app gives agents no access.");
   if (typeof body.credential !== "string" || !credentialNames(access).includes(body.credential) || !Object.hasOwn(bound, body.credential))
     invalid("Pick a bound app key for this agent.");
   let asks;

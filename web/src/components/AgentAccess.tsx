@@ -154,6 +154,13 @@ export function GrantEditor({ agent, app, grant }: { agent: Agent; app: AgentIns
         {grant ? (grant.credential ? `Uses the ${grant.credential} key` : "Pick a key") : "No access"}
       </summary>
       <AgentAccessProblem app={app} />
+      {app.problem && grant && (
+        <div className="actions">
+          <button type="button" className="danger-outline" disabled={action.busy} onClick={() => void save(null)}>
+            Remove access
+          </button>
+        </div>
+      )}
       {!app.problem && (
         <form
           onSubmit={(e) => {
