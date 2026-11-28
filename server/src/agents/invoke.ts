@@ -111,7 +111,13 @@ export async function requestOutcome(db: Db, verifier: string, id: string, dataK
 }
 interface Admission {
   outcome: Outcome;
-  dispatch?: { args: Parameters<typeof dispatchAppAction>[0]; redact: string[]; write: boolean };
+  dispatch?: {
+    args: Parameters<typeof dispatchAppAction>[0];
+    redact: string[];
+    write: boolean;
+    /** The grant's credential as it was sealed at admission, checked again just before sending. */
+    sealed: { name: string; value: string };
+  };
 }
 async function admit(
   client: pg.PoolClient,
@@ -190,11 +196,32 @@ async function admit(
     headers: agentCredentialHeader(install.inject!, secrets[grant.credential]!),
     ...(call.body === undefined ? {} : { body: call.body }),
   };
-  return { outcome, dispatch: { args, redact: Object.values(secrets), write: call.method !== "GET" } };
+  return {
+    outcome,
+    dispatch: {
+      args,
+      redact: Object.values(secrets),
+      write: call.method !== "GET",
+      sealed: { name: grant.credential, value: install.bound[grant.credential]! },
+    },
+  };
 }
 async function run(db: Db, dataKey: string, admission: Admission): Promise<Outcome> {
   const { outcome, dispatch } = admission;
   if (!dispatch) return outcome;
+  // A replaced or removed key is never used again (spec 018 decision 12): a call admitted with it, and
+  // not yet sent, goes stale instead.
+  const current = await db.$client.query("select credential from agent_credential where app_id=$1 and name=$2", [
+    dispatch.args.installation.id,
+    dispatch.sealed.name,
+  ]);
+  if (current.rows[0]?.credential !== dispatch.sealed.value) {
+    await db.$client.query(
+      "update agent_request set status='stale',revision=revision+1 where id=$1 and status='dispatching'",
+      [outcome.id],
+    );
+    return { id: outcome.id, status: "stale" };
+  }
   let status = "unknown";
   let result: unknown;
   try {

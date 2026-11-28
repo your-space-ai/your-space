@@ -95,7 +95,8 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
           ))}
           <p className="muted small">
             An agent can do what its key's role in the app allows. Give an agent that should do less a narrower key.
-            Replacing a key keeps the agents that use it, on the new key.
+            Replacing a key keeps the agents that use it, on the new key; Your Space stops using the old one at
+            once. Revoke the old key in the app too: Your Space can't.
           </p>
           <div className="actions">
             <button disabled={action.busy || !Object.keys(filled).length}>Save keys</button>
@@ -105,7 +106,7 @@ export function AppConnection({ app }: { app: AgentInstallation }) {
                 type="button"
                 disabled={action.busy}
                 onClick={() => {
-                  if (window.confirm("Disconnect this app's keys for all agents?"))
+                  if (window.confirm("Disconnect this app's keys for all agents? Revoke them in the app too."))
                     void action.run(async () => {
                       await api("PUT", path, {
                         revision: app.revision,

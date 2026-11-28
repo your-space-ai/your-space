@@ -144,6 +144,25 @@ it("sends only the grant's key, never another bound key back, and keeps a grant 
   await expect(setGrant({ credential: "setup" })).rejects.toMatchObject({ status: 400 });
 });
 
+it("never sends a call with a key replaced after the call was admitted", async () => {
+  await setGrant({ credential: "records" });
+  const query = t.db.$client.query.bind(t.db.$client);
+  const spy = vi.spyOn(t.db.$client, "query").mockImplementation((async (text: unknown, values?: unknown) => {
+    // Just before sending, the owner replaces the key the call was admitted with.
+    if (typeof text === "string" && text.startsWith("select credential from agent_credential where app_id=$1 and name=$2")) {
+      spy.mockRestore();
+      await transaction(t.db, async (c) => bind(c, installation, { revision: await revisionOf(), credentials: { records: records + "-new" } }, key));
+    }
+    return query(text as string, values as unknown[]);
+  }) as never);
+  const outcome = await invoke(t.db, key, verifier, call("POST", "/rest/items", { name: "x" }));
+  expect(outcome).toEqual({ id: outcome.id, status: "stale" });
+  expect(dispatchAppAction).not.toHaveBeenCalled();
+  // The grant carries over: the next call goes with the new key only.
+  await invoke(t.db, key, verifier, call("GET", "/rest/items"));
+  expect(vi.mocked(dispatchAppAction).mock.calls[0]?.[0]).toMatchObject({ headers: { Authorization: "Bearer " + records + "-new" } });
+});
+
 it("reports a write the app answered with 2xx as succeeded, and keeps no operation ID", async () => {
   await setGrant({ credential: "records" });
   for (const answer of [

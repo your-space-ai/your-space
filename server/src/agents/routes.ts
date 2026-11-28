@@ -117,7 +117,7 @@ export function agentRoutes(auth: Auth, db: Db, dataKey: string) {
     route(async (r, res) => {
       if (!r.is("application/json")) invalid();
       const outcome = await invoke(db, dataKey, verifier(r), r.body);
-      const status = { pending: 202, denied: 403, refused: 422, unknown: 502 }[outcome.status] ?? 200;
+      const status = { pending: 202, denied: 403, refused: 422, stale: 409, unknown: 502 }[outcome.status] ?? 200;
       if (outcome.status === "denied") {
         res.status(403).json({ error: "denied", status: "denied" });
       } else {

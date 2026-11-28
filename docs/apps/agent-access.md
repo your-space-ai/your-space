@@ -39,8 +39,10 @@ app installed from one shows that its agent access is unavailable until it runs 
 ## Bind the app's keys
 
 Open **Agents**, then **App connections**, choose the app and paste each key. Replacing a key keeps
-the agents that use it, on the new key. **Disconnect** forgets the keys here; delete them in the app
-too.
+the agents that use it, with the same access, on the new key, and Your Space never uses the old one
+again: a call admitted with it and not yet sent isn't sent, and pending approvals go stale. Your
+Space can't revoke a key inside the app, so revoke the old key there too. **Disconnect** forgets the
+keys here; revoke them in the app as well.
 
 ## Give an agent the app
 
